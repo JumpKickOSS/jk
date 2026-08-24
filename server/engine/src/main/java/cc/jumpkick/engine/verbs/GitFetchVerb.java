@@ -4,9 +4,12 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.InstallPlans;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -40,7 +43,7 @@ public final class GitFetchVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -64,7 +67,7 @@ public final class GitFetchVerb implements HostedVerb {
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.InstallPlans.gitFetchBuildPlan(
+                BuildPlan plan = InstallPlans.gitFetchBuildPlan(
                         Jsonl.str(requestLine, "url"),
                         Jsonl.str(requestLine, "canonicalUrl"),
                         Jsonl.str(requestLine, "ref"),
@@ -72,10 +75,8 @@ public final class GitFetchVerb implements HostedVerb {
                         refresh,
                         Jsonl.bool(requestLine, "requireJkToml", true));
                 host.streamSinglePlan(plan, session, writer, result -> {
-                    Path checkout =
-                            plan.get(cc.jumpkick.runtime.InstallPlans.CHECKOUT).orElse(null);
-                    String sha = plan.get(cc.jumpkick.runtime.InstallPlans.FETCHED_SHA)
-                            .orElse(null);
+                    Path checkout = plan.get(InstallPlans.CHECKOUT).orElse(null);
+                    String sha = plan.get(InstallPlans.FETCHED_SHA).orElse(null);
                     return ProtoEvents.planFinishGitFetch(
                             dir, result.success(), checkout != null ? checkout.toString() : null, sha);
                 });

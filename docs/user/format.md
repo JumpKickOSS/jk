@@ -125,6 +125,18 @@ out in full stays that way — import it yourself.
 
 Optimize-imports also never rewrites Javadoc: `{@link com.example.Widget}` is left alone.
 
+**Two more things it will not shorten**, both worth knowing before you go looking for a bug:
+
+- **A static member or an annotation.** The pass rewrites a qualified name only when the name
+  itself resolves to a top-level class, so `java.lang.foreign.ValueLayout.JAVA_INT` and
+  `@org.jspecify.annotations.NullMarked` are left as written. Shorten those by hand; nothing
+  here will put them back.
+- **Any file whose Javadoc does not survive a parse/print round trip.** OpenRewrite checks that
+  it can reprint a file byte-for-byte before it will rewrite it, and its Javadoc printer mangles
+  the continuation line of a wrapped `@param`. When that check fails the file is skipped by the
+  OpenRewrite pass entirely — Spotless still formats it. On jk's own tree that is 108 of 2,063
+  files. The check is the reason a mangled reprint is never written over your source.
+
 **Precedence:** CLI flag → env var → `[format]` → default `true`.
 
 `--optimize-imports` / `--no-optimize-imports` (and the same pattern for the other two)

@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -178,9 +179,9 @@ class NewModuleTest {
         assertThat(NewCommand.jdkFloor(answers("lang", "java"), null)).isEqualTo(NewCommand.LATEST_LTS_MAJOR);
     }
 
-    private static cc.jumpkick.cli.tui.Answers answers(String... kv) {
+    private static Answers answers(String... kv) {
         var map = new HashMap<String, Object>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
-        return cc.jumpkick.cli.tui.Answers.of(map);
+        return Answers.of(map);
     }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.theme;
 import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Style;
 import java.util.Locale;
 
@@ -296,11 +297,11 @@ public interface Theme {
     /** True when foreground color should be emitted, given the resolved {@code --color} choice. */
     static boolean colorEnabled() {
         // No-ANSI triggers (--no-ansi, TERM=dumb, CI=true/1) imply no color.
-        if (cc.jumpkick.config.SessionContext.current().config().noAnsiOr(false)) return false;
+        if (SessionContext.current().config().noAnsiOr(false)) return false;
         if ("dumb".equals(System.getenv("TERM"))) return false;
         String ci = System.getenv("CI");
         if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) return false;
-        var choice = cc.jumpkick.config.SessionContext.current().config().colorOr(JkConfig.ColorChoice.AUTO);
+        var choice = SessionContext.current().config().colorOr(JkConfig.ColorChoice.AUTO);
         return switch (choice) {
             case ALWAYS -> true;
             case NEVER -> false;

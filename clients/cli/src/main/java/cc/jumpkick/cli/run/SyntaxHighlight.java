@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.terminal.Style;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -190,9 +191,9 @@ public final class SyntaxHighlight {
     }
 
     /** One RichText run of highlighted {@code src} (no caret underline). */
-    public static cc.jumpkick.cli.tui.RichText highlightRich(String src, Language lang) {
-        if (src == null || src.isEmpty()) return cc.jumpkick.cli.tui.RichText.empty();
-        return cc.jumpkick.cli.tui.RichText.ansi(render(src, -1, rulesFor(lang)));
+    public static RichText highlightRich(String src, Language lang) {
+        if (src == null || src.isEmpty()) return RichText.empty();
+        return RichText.ansi(render(src, -1, rulesFor(lang)));
     }
 
     static List<Rule> rulesFor(Language lang) {

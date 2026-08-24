@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.layout.Languages;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -22,8 +26,8 @@ public final class CompileSupport {
     private CompileSupport() {}
 
     /** One shared language answer for engine lanes and the resolver inject. */
-    public static cc.jumpkick.layout.Languages resolveLanguages(JkBuild.Project project, Path projectDir) {
-        return cc.jumpkick.layout.Languages.resolve(project, projectDir);
+    public static Languages resolveLanguages(JkBuild.Project project, Path projectDir) {
+        return Languages.resolve(project, projectDir);
     }
 
     /** True if {@code projectDir} contains any Java, Kotlin, Groovy, or Scala source files. */
@@ -32,15 +36,15 @@ public final class CompileSupport {
                 || Files.isDirectory(projectDir.resolve("src/main/kotlin"))
                 || Files.isDirectory(projectDir.resolve("src/main/groovy"))
                 || Files.isDirectory(projectDir.resolve("src/main/scala"))
-                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".java")
-                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".kt")
-                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".groovy")
-                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".scala");
+                || Languages.anySourceUnder(projectDir.resolve("src"), ".java")
+                || Languages.anySourceUnder(projectDir.resolve("src"), ".kt")
+                || Languages.anySourceUnder(projectDir.resolve("src"), ".groovy")
+                || Languages.anySourceUnder(projectDir.resolve("src"), ".scala");
     }
 
     /** Whether this project uses the flat ({@code src/}/{@code test/}) layout. */
     public static boolean isSimpleLayout(JkBuild.Project project, Path projectDir) {
-        return cc.jumpkick.layout.SourceLayout.isSimpleLayout(project, projectDir);
+        return SourceLayout.isSimpleLayout(project, projectDir);
     }
 
     /**
@@ -49,7 +53,7 @@ public final class CompileSupport {
      * parsed (workspace inheritance).
      */
     public static boolean isSimpleLayout(Path projectDir) {
-        return cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
+        return ModuleLayout.isCompact(projectDir);
     }
 
     private static boolean anySourceUnder(Path root, String... extensions) {
@@ -113,7 +117,7 @@ public final class CompileSupport {
      */
     public static List<Path> collectGroovySources(Path projectDir, boolean compact) throws IOException {
         var out = new LinkedHashSet<Path>();
-        for (Path root : cc.jumpkick.layout.ModuleLayout.mainGroovyRoots(projectDir, compact)) {
+        for (Path root : ModuleLayout.mainGroovyRoots(projectDir, compact)) {
             out.addAll(collectFilesWithExtension(root, ".groovy"));
         }
         return new ArrayList<>(out);
@@ -121,8 +125,7 @@ public final class CompileSupport {
 
     /** All default-suite test {@code .groovy} files (roots from {@link cc.jumpkick.layout.TestSuites}). */
     public static List<Path> collectGroovyTestSources(Path projectDir, boolean compact) throws IOException {
-        return cc.jumpkick.layout.TestSuites.collectGroovySources(
-                projectDir, compact, List.of(cc.jumpkick.layout.TestSuites.DEFAULT));
+        return TestSuites.collectGroovySources(projectDir, compact, List.of(TestSuites.DEFAULT));
     }
 
     /**
@@ -131,7 +134,7 @@ public final class CompileSupport {
      */
     public static List<Path> collectScalaSources(Path projectDir, boolean compact) throws IOException {
         var out = new LinkedHashSet<Path>();
-        for (Path root : cc.jumpkick.layout.ModuleLayout.mainScalaRoots(projectDir, compact)) {
+        for (Path root : ModuleLayout.mainScalaRoots(projectDir, compact)) {
             out.addAll(collectFilesWithExtension(root, ".scala"));
         }
         return new ArrayList<>(out);
@@ -139,8 +142,7 @@ public final class CompileSupport {
 
     /** All default-suite test {@code .scala} files (roots from {@link cc.jumpkick.layout.TestSuites}). */
     public static List<Path> collectScalaTestSources(Path projectDir, boolean compact) throws IOException {
-        return cc.jumpkick.layout.TestSuites.collectScalaSources(
-                projectDir, compact, List.of(cc.jumpkick.layout.TestSuites.DEFAULT));
+        return TestSuites.collectScalaSources(projectDir, compact, List.of(TestSuites.DEFAULT));
     }
 
     /**
@@ -149,7 +151,7 @@ public final class CompileSupport {
      * {@code VariantApply} folds them before this runs). Missing dirs are fine: a variant that
      * declares {@code src/demo/kotlin} doesn't force the dir to exist.
      */
-    public static List<Path> extraSrcDirs(cc.jumpkick.model.JkBuild project, Path projectDir) {
+    public static List<Path> extraSrcDirs(JkBuild project, Path projectDir) {
         List<Path> out = new ArrayList<>();
         for (String rel : project.build().extraSrc()) {
             Path dir = projectDir.resolve(rel);

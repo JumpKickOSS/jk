@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.publish;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.publish.testkit.GpgTestFixture;
 import com.sun.net.httpserver.HttpServer;
@@ -134,8 +135,7 @@ class MavenPublisherTest {
 
     @Test
     void bearer_credential_attaches_bearer_header() throws Exception {
-        MavenPublisher publisher =
-                new MavenPublisher(base, new cc.jumpkick.credential.RepoCredential.Bearer("tok-123"));
+        MavenPublisher publisher = new MavenPublisher(base, new RepoCredential.Bearer("tok-123"));
         publisher.publish(
                 new JkBuild.Project("com.example", "widget", "1.0.0", 21),
                 List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3})));

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.manifest;
 
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.PluginDeclaration;
@@ -35,7 +36,7 @@ public final class PluginDescriptorStore {
 
     /** The lock's pinned entry for {@code decl}, or empty when unlocked/no lock. */
     public static Optional<Lockfile.PluginEntry> lockEntry(Path moduleDir, PluginDeclaration decl) {
-        Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lock = LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lock)) return Optional.empty();
         try {
             for (Lockfile.PluginEntry e : LockfileReader.read(lock).plugins()) {

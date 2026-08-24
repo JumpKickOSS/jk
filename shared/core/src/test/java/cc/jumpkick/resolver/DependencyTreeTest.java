@@ -3,8 +3,11 @@ package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.GitRefSpec;
+import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -132,9 +135,7 @@ class DependencyTreeTest {
         // git dep — it renders exactly like a locked Maven coordinate, no special tag.
         var deps = new ArrayList<Dependency>();
         deps.add(Dependency.git(
-                "com.foo:forked",
-                cc.jumpkick.model.GitSource.of(
-                        "https://x/forked", "https://x/forked", new cc.jumpkick.model.GitRefSpec.Branch("main"))));
+                "com.foo:forked", GitSource.of("https://x/forked", "https://x/forked", new GitRefSpec.Branch("main"))));
         JkBuild project = new JkBuild(
                 new JkBuild.Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
@@ -151,9 +152,7 @@ class DependencyTreeTest {
     void branch_git_dep_missing_from_lock_is_marked_missing(@org.junit.jupiter.api.io.TempDir Path tmp) {
         var deps = new ArrayList<Dependency>();
         deps.add(Dependency.git(
-                "com.foo:forked",
-                cc.jumpkick.model.GitSource.of(
-                        "https://x/forked", "https://x/forked", new cc.jumpkick.model.GitRefSpec.Branch("main"))));
+                "com.foo:forked", GitSource.of("https://x/forked", "https://x/forked", new GitRefSpec.Branch("main"))));
         JkBuild project = new JkBuild(
                 new JkBuild.Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
@@ -275,7 +274,7 @@ class DependencyTreeTest {
                 """);
         Files.writeString(b.resolve("jk-lock.toml"), EMPTY_LOCK);
 
-        JkBuild rootProject = cc.jumpkick.config.JkBuildParser.parse(root.resolve("jk.toml"));
+        JkBuild rootProject = JkBuildParser.parse(root.resolve("jk.toml"));
         String rendered =
                 DependencyTree.render(rootProject, lockOf(), root, Integer.MAX_VALUE, DependencyTree.Styling.plain());
 
@@ -330,7 +329,7 @@ class DependencyTreeTest {
         Lockfile lock = lockOf(
                 pkg("com.foo:leaf", "1.0", List.of("com.foo:grand@1.0")), pkg("com.foo:grand", "1.0", List.of()));
 
-        JkBuild member = cc.jumpkick.config.JkBuildParser.parse(b.resolve("jk.toml"));
+        JkBuild member = JkBuildParser.parse(b.resolve("jk.toml"));
         String declared = DependencyTree.render(member, lock, b, 0, DependencyTree.Styling.plain());
         assertThat(declared).contains("com.acme:b:9.9.9");
         assertThat(declared).contains("com.acme:a:9.9.9");
@@ -396,7 +395,7 @@ class DependencyTreeTest {
                 pkg("com.foo:driver", "1.0", List.of()),
                 pkg("com.foo:mocks", "1.0", List.of()));
 
-        JkBuild member = cc.jumpkick.config.JkBuildParser.parse(b.resolve("jk.toml"));
+        JkBuild member = JkBuildParser.parse(b.resolve("jk.toml"));
         String tree = DependencyTree.render(
                 member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), false, List.of(Scope.TEST));
         assertThat(tree).contains("com.acme:a:1.0");
@@ -449,7 +448,7 @@ class DependencyTreeTest {
                 """);
         Lockfile lock = lockOf(pkg("com.foo:driver", "1.0", List.of()), pkg("com.foo:hidden", "1.0", List.of()));
 
-        JkBuild member = cc.jumpkick.config.JkBuildParser.parse(b.resolve("jk.toml"));
+        JkBuild member = JkBuildParser.parse(b.resolve("jk.toml"));
         String tree = DependencyTree.render(
                 member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), false, List.of(Scope.MAIN));
         assertThat(tree).contains("com.acme:a:1.0");

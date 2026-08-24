@@ -335,7 +335,7 @@ public final class JdkInstallCommand implements CliCommand {
         TerminalSession terminal = Terminals.controlling();
         terminal.drain(java.time.Duration.ofMillis(40));
         try {
-            JdkInventory defaults = JdkInventory.of(jdksDir != null ? jdksDir : cc.jumpkick.util.JkDirs.jdks());
+            JdkInventory defaults = JdkInventory.of(jdksDir != null ? jdksDir : JkDirs.jdks());
             if (!alreadyMadeDefault) {
                 Integer cur =
                         defaults.defaultId().map(JdkListCommand::parseMajor).orElse(null);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.util.JkDirs;
@@ -52,7 +53,7 @@ final class BuildLogicKtsHost {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             pb.directory(projectDir.toFile());
-            Process p = cc.jumpkick.engine.JobWorkers.start(pb);
+            Process p = JobWorkers.start(pb);
             String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exit = p.waitFor();
             if (exit != 0) {

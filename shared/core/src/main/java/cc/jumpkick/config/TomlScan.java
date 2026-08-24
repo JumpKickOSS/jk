@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -138,6 +139,6 @@ public final class TomlScan {
      * trailing same-line comment on unquoted values.
      */
     static String scalar(String v) {
-        return cc.jumpkick.util.MinimalToml.unquote(v);
+        return MinimalToml.unquote(v);
     }
 }

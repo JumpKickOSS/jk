@@ -3,9 +3,12 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.PluginCommands;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -38,12 +41,12 @@ public final class PluginCommandVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.PluginCommandReport report;
+            PluginCommandReport report;
             try {
-                report = cc.jumpkick.runtime.PluginCommands.run(
+                report = PluginCommands.run(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Path.of(Jsonl.str(requestLine, "cache")),
                         Jsonl.str(requestLine, "command"),
@@ -51,7 +54,7 @@ public final class PluginCommandVerb implements HostedVerb {
                         ProtoSession.variantOf(requestLine),
                         ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
-                report = cc.jumpkick.engine.protocol.PluginCommandReport.error(cc.jumpkick.host.Errors.text(e));
+                report = PluginCommandReport.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

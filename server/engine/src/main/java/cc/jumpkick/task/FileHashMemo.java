@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -281,7 +282,7 @@ public final class FileHashMemo {
      */
     private static Path entryPath(Path abs) {
         try {
-            Path cache = cc.jumpkick.config.SessionContext.current().cacheDir();
+            Path cache = SessionContext.current().cacheDir();
             String key = Hashing.sha256Hex(abs.toString().getBytes(StandardCharsets.UTF_8));
             return cache.resolve("hash-memo").resolve(key.substring(0, 2)).resolve(key.substring(2));
         } catch (RuntimeException e) {

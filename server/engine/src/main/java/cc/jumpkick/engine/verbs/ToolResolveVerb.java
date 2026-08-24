@@ -3,9 +3,14 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.ToolCoordSpec;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.ToolPlans;
+import cc.jumpkick.tool.ToolEnv;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Files;
@@ -41,7 +46,7 @@ public final class ToolResolveVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -51,18 +56,16 @@ public final class ToolResolveVerb implements HostedVerb {
                 String mainClass = Jsonl.str(requestLine, "mainClass");
                 URI repoUrl = LockVerb.repoUrlOf(requestLine);
                 Files.createDirectories(cache);
-                cc.jumpkick.model.ToolCoordSpec spec = cc.jumpkick.model.ToolCoordSpec.parse(coord);
-                List<cc.jumpkick.model.ToolCoordSpec> with = Jsonl.strArray(requestLine, "with").stream()
-                        .map(cc.jumpkick.model.ToolCoordSpec::parse)
+                ToolCoordSpec spec = ToolCoordSpec.parse(coord);
+                List<ToolCoordSpec> with = Jsonl.strArray(requestLine, "with").stream()
+                        .map(ToolCoordSpec::parse)
                         .toList();
                 Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Plain g:a[:v] label — coordinate colorization is a client-side concern.
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.ToolPlans.resolveBuildPlan(
-                        spec, with, bin, mainClass, repoUrl, cache, coord);
+                BuildPlan plan = ToolPlans.resolveBuildPlan(spec, with, bin, mainClass, repoUrl, cache, coord);
                 host.streamSinglePlan(plan, session, writer, result -> {
-                    cc.jumpkick.tool.ToolEnv env =
-                            plan.get(cc.jumpkick.runtime.ToolPlans.TOOL_ENV).orElse(null);
+                    ToolEnv env = plan.get(ToolPlans.TOOL_ENV).orElse(null);
                     return ProtoSession.planFinishTool(
                             dir,
                             result.success(),

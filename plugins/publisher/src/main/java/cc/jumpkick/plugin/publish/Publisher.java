@@ -3,7 +3,11 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
@@ -16,6 +20,7 @@ import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.PublishContext;
 import cc.jumpkick.plugin.build.PublishExtension;
 import cc.jumpkick.plugin.build.PublishResult;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
@@ -103,7 +108,7 @@ public final class Publisher implements Plugin, PublishExtension {
         c.stringOpt("pluginJars").ifPresent(joined -> {
             for (String p : joined.split(Pattern.quote(File.pathSeparator))) {
                 if (!p.isBlank()) {
-                    cc.jumpkick.plugin.manifest.PluginTableRegistry.installFromJar(Path.of(p));
+                    PluginTableRegistry.installFromJar(Path.of(p));
                 }
             }
         });
@@ -111,8 +116,8 @@ public final class Publisher implements Plugin, PublishExtension {
         // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
         // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
         // artifact unconsumable.
-        JkBuild project = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(
-                projectDir, JkBuildParser.parse(projectDir.resolve("jk.toml")));
+        JkBuild project =
+                WorkspaceResolve.applyWorkspace(projectDir, JkBuildParser.parse(projectDir.resolve("jk.toml")));
 
         // Assemble artifacts.
         List<MavenPublisher.Artifact> artifacts = new ArrayList<>();
@@ -121,9 +126,7 @@ public final class Publisher implements Plugin, PublishExtension {
         ctx.label("artifact " + jar.getFileName() + " (" + jarBytes.length + " bytes)");
 
         PublishablePom.Pom pom = PublishablePom.render(
-                project,
-                PublishablePom.Metadata.empty(),
-                cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(projectDir));
+                project, PublishablePom.Metadata.empty(), WorkspaceResolve.siblingCoordinates(projectDir));
         byte[] pomBytes = pom.xml().getBytes(StandardCharsets.UTF_8);
         artifacts.add(new MavenPublisher.Artifact(".pom", pomBytes));
         ctx.label(
@@ -131,12 +134,12 @@ public final class Publisher implements Plugin, PublishExtension {
 
         if (project.project().sourcesMode().publishSources()) {
             byte[] sourcesBytes;
-            cc.jumpkick.layout.BuildLayout layout = cc.jumpkick.layout.BuildLayout.of(projectDir, project);
+            BuildLayout layout = BuildLayout.of(projectDir, project);
             Path onDisk = layout.sourcesJar();
             if (Files.isRegularFile(onDisk)) {
                 sourcesBytes = Files.readAllBytes(onDisk);
             } else {
-                boolean compact = cc.jumpkick.layout.SourceLayout.isSimpleLayout(project.project(), projectDir);
+                boolean compact = SourceLayout.isSimpleLayout(project.project(), projectDir);
                 List<Path> sourceRoots = compact
                         ? List.of(projectDir.resolve("src"))
                         : List.of(projectDir.resolve("src/main/java"), projectDir.resolve("src/main/kotlin"));
@@ -172,7 +175,7 @@ public final class Publisher implements Plugin, PublishExtension {
         }
 
         if (c.bool("sbom", false)) {
-            Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+            Path lockPath = LockPaths.lockFile(projectDir);
             Lockfile lock = Files.exists(lockPath) ? LockfileReader.read(lockPath) : null;
             byte[] cdx = Sbom.cyclonedx(project, lock);
             byte[] spdxBytes = Sbom.spdx(project, lock);

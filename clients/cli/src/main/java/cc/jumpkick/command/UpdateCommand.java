@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
@@ -9,6 +11,9 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -58,7 +63,7 @@ public final class UpdateCommand implements CliCommand {
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
                 Opt.value("<enforced|floor>", "BOM policy: enforced or floor (lower bounds)", "--platform"),
-                cc.jumpkick.cli.CommonOpts.cacheDir());
+                CommonOpts.cacheDir());
     }
 
     @Override
@@ -66,21 +71,20 @@ public final class UpdateCommand implements CliCommand {
         this.features = in.values("features");
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.platform = in.value("platform").orElse(null);
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
         if (!Files.exists(dir.resolve("jk.toml"))) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir));
+            CommandWedge.printFail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
         // Same pre-flight as lock: first-time download + revalidate before engine parses jk.toml.
         // Engine-hosted (JIT, no client-side TTL): the CLI never talks to the registry's network.
-        cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
-                cc.jumpkick.engine.EnginePaths.current(), "libraries", global.offline, null, null);
+        EngineClient.freshenCatalog(EnginePaths.current(), "libraries", global.offline, null, null);
 
         String gitTarget = null;
         if (in.has("git")) {
@@ -94,7 +98,7 @@ public final class UpdateCommand implements CliCommand {
     // ---- engine-hosted paths -------------------------------------------------
 
     private EngineRequests.UpdateRequest updateRequest(Path dir, Path cache) {
-        var session = cc.jumpkick.config.SessionContext.current();
+        var session = SessionContext.current();
         return new EngineRequests.UpdateRequest(
                 dir,
                 cache,
@@ -120,28 +124,25 @@ public final class UpdateCommand implements CliCommand {
             public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
                     printUpdatedLine(
-                            cc.jumpkick.lock.LockPaths.lockFile(Path.of(moduleDir)),
-                            (int) counts.packages(),
-                            global.workingDir());
+                            LockPaths.lockFile(Path.of(moduleDir)), (int) counts.packages(), global.workingDir());
                 }
             }
         };
 
         EngineRequests.LockOutcome outcome;
         try {
-            outcome = EngineClient.runUpdate(
-                    cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), handler);
+            outcome = EngineClient.runUpdate(EnginePaths.current(), updateRequest(dir, cache), handler);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", e.getMessage());
+            CommandWedge.printFail("Update", e.getMessage());
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", err);
+            CommandWedge.printFail("Update", err);
         }
         // A failed plan sends its real diagnostics as plan events and an EMPTY errors list, so
         // the loop above prints nothing — every interactive command still settles with a wedge.
         if (!outcome.success() && outcome.errors().isEmpty() && !global.outputIsJson()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", "update failed — see diagnostics above");
+            CommandWedge.printFail("Update", "update failed — see diagnostics above");
         }
         return outcome.exitCode();
     }
@@ -150,14 +151,13 @@ public final class UpdateCommand implements CliCommand {
     private int runHostedGitOnly(Path dir, Path cache, String gitTarget) {
         EngineRequests.LockOutcome outcome;
         try {
-            outcome = EngineClient.runUpdateGitOnly(
-                    cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), gitTarget);
+            outcome = EngineClient.runUpdateGitOnly(EnginePaths.current(), updateRequest(dir, cache), gitTarget);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", e.getMessage());
+            CommandWedge.printFail("Update", e.getMessage());
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", err);
+            CommandWedge.printFail("Update", err);
         }
         if (outcome.success() && !global.outputIsJson()) {
             printGitSummary(outcome.refreshed());

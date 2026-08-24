@@ -2,10 +2,14 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.model.command.Arity;
@@ -53,8 +57,8 @@ public final class TasksCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new ArrayList<Opt>();
-        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
-        opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
+        opts.addAll(CommonOpts.moduleSelection());
+        opts.add(CommonOpts.cacheDirHidden());
         return opts;
     }
 
@@ -113,20 +117,18 @@ public final class TasksCommand implements CliCommand {
                 case "show", "inspect" -> {
                     String task = taskName(pos);
                     if (task == null) {
-                        cc.jumpkick.cli.tui.CommandWedge.printFail(
-                                "Tasks", action + " expects a task name (e.g. package-jar)");
+                        CommandWedge.printFail("Tasks", action + " expects a task name (e.g. package-jar)");
                         yield Exit.USAGE;
                     }
                     yield showOrInspect(action, task, in, startDir, proj.buildFile());
                 }
                 default -> {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail(
-                            "Tasks", "unknown action `" + action + "` (list | show | inspect)");
+                    CommandWedge.printFail("Tasks", "unknown action `" + action + "` (list | show | inspect)");
                     yield Exit.USAGE;
                 }
             };
         } catch (IllegalStateException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", e.getMessage());
+            CommandWedge.printFail("Tasks", e.getMessage());
             return Exit.CONFIG;
         }
     }
@@ -134,7 +136,7 @@ public final class TasksCommand implements CliCommand {
     static int list(Invocation in, Path startDir, Path buildFile) throws Exception {
         Map<Path, ProjectInfo> modules = resolveModules(in, startDir);
         if (modules.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "no modules selected");
+            CommandWedge.printFail("Tasks", "no modules selected");
             return Exit.CONFIG;
         }
         boolean multi = modules.size() > 1;
@@ -157,8 +159,8 @@ public final class TasksCommand implements CliCommand {
                         "logic",
                         "Project build-logic task (anchor via SPI or AFTER_RESOURCES for *Build)"));
             }
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            for (String line : cc.jumpkick.cli.tui.Table.render(title, List.of("Name", "Stage", "Description"), rows)) {
+            CommandWedge.envelopeStart();
+            for (String line : Table.render(title, List.of("Name", "Stage", "Description"), rows)) {
                 CliOutput.out(line);
             }
         }
@@ -171,19 +173,18 @@ public final class TasksCommand implements CliCommand {
             throws Exception {
         Optional<TaskCatalog.TaskDef> def = TaskCatalog.find(stepName);
         if (def.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Tasks", "unknown task `" + stepName + "` — run `jk tasks` for names");
+            CommandWedge.printFail("Tasks", "unknown task `" + stepName + "` — run `jk tasks` for names");
             return Exit.CONFIG;
         }
         TaskCatalog.TaskDef task = def.get();
         Map<Path, ProjectInfo> modules = resolveModules(in, startDir);
         if (modules.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "no modules selected");
+            CommandWedge.printFail("Tasks", "no modules selected");
             return Exit.CONFIG;
         }
         boolean inspect = "inspect".equals(action);
         GlobalOptions global = GlobalOptions.from(in);
-        Path cache = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        Path cache = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         if (cache == null) cache = JkDirs.cache();
         // One explain forecast for the entry project — maps tasks to hit/miss.
         ExplainPlan forecast = inspect ? explainBestEffort(startDir, cache, global) : null;
@@ -214,8 +215,7 @@ public final class TasksCommand implements CliCommand {
             } else {
                 // show: path only (Mill-like), one line per module
                 if (out.isEmpty()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail(
-                            "Show", "task `" + task.name() + "` has no primary output path");
+                    CommandWedge.printFail("Show", "task `" + task.name() + "` has no primary output path");
                     return Exit.CONFIG;
                 }
                 if (modules.size() > 1) {

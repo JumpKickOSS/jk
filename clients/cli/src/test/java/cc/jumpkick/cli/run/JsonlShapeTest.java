@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import java.util.List;
@@ -94,7 +95,7 @@ class JsonlShapeTest {
 
     @Test
     void error_carries_enriched_test_failure() {
-        var failure = new cc.jumpkick.run.TestFailureInfo(
+        var failure = new TestFailureInfo(
                 "cc.jumpkick:jk-engine",
                 "junit-jupiter",
                 "cc.jumpkick.runtime.LockFreshenConservativeTest",

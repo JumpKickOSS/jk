@@ -4,6 +4,8 @@ package cc.jumpkick.http;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -105,15 +107,14 @@ class HttpTest {
 
     @Test
     void offline_short_circuits_with_offline_exception() {
-        var prev = cc.jumpkick.config.SessionContext.current().config();
-        cc.jumpkick.config.SessionContext.installConfig(
-                prev.mergedWith(cc.jumpkick.config.JkConfig.empty().withOffline(Optional.of(true))));
+        var prev = SessionContext.current().config();
+        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(Optional.of(true))));
         try {
             assertThatThrownBy(() -> http().get(base.resolve("/anything")))
                     .isInstanceOf(OfflineException.class)
                     .hasMessageContaining("offline:");
         } finally {
-            cc.jumpkick.config.SessionContext.installConfig(prev);
+            SessionContext.installConfig(prev);
         }
     }
 

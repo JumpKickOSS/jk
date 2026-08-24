@@ -4,6 +4,10 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.http.EngineHttpJobs;
+import cc.jumpkick.engine.http.McpHandler;
+import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -52,9 +56,9 @@ class McpManifestTest {
 
     @Test
     void applied_manifest_edits_carry_the_relock_hint() {
-        cc.jumpkick.engine.http.EngineHttpJobs jobs = new cc.jumpkick.engine.http.EngineHttpJobs() {
+        EngineHttpJobs jobs = new EngineHttpJobs() {
             @Override
-            public long trigger(cc.jumpkick.engine.jobs.JobSpec spec) {
+            public long trigger(JobSpec spec) {
                 return 1L;
             }
 
@@ -68,9 +72,8 @@ class McpManifestTest {
                 return 0;
             }
         };
-        cc.jumpkick.engine.http.McpHandler mcp = new cc.jumpkick.engine.http.McpHandler(
-                () -> new cc.jumpkick.engine.http.StatusSnapshot(
-                        "0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+        McpHandler mcp = new McpHandler(
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
                 jobs,
                 d -> Map.of(),
                 List::of,

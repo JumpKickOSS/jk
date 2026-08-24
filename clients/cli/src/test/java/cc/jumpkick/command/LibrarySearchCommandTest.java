@@ -4,11 +4,13 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -44,7 +46,7 @@ class LibrarySearchCommandTest {
         // Only the bundled layer may load: a downloaded store/libs.global.toml shadows the
         // curated rows as "global". user.home no longer isolates anything (JkDirs resolves via
         // JK_HOME env since the platform-native layout), so move the downloaded catalog aside.
-        Path downloaded = cc.jumpkick.util.JkDirs.libraryRegistry();
+        Path downloaded = JkDirs.libraryRegistry();
         Path aside = downloaded.resolveSibling(downloaded.getFileName() + ".test-aside");
         boolean moved = false;
         try {
@@ -111,7 +113,7 @@ class LibrarySearchCommandTest {
         byte[] bytes = "junit-jar".getBytes(StandardCharsets.UTF_8);
         Path blob = new Cas(cache).put(bytes);
         String seededRel = MavenLayout.artifactPath(coord);
-        RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")
+        RepoArtifactStore.forRepoName(JkStores.store(), "central")
                 .materialize(seededRel, blob, Hashing.sha256Hex(bytes));
 
         try {
@@ -124,8 +126,7 @@ class LibrarySearchCommandTest {
             assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
         } finally {
             // A fake blob for a REAL coordinate poisons later offline locks that pin it (JK-2179).
-            Path seeded =
-                    cc.jumpkick.cache.JkStores.store().resolve("repos/central").resolve(seededRel);
+            Path seeded = JkStores.store().resolve("repos/central").resolve(seededRel);
             Files.deleteIfExists(Path.of(seeded + ".sha256"));
             Files.deleteIfExists(seeded);
         }
@@ -136,7 +137,7 @@ class LibrarySearchCommandTest {
         Path cache = tempDir.resolve("cache");
         // The store is suite-shared (JK-2176): scrub the searched family so this test is
         // order-independent — nothing else in the suite syncs commons-io.
-        Path repos = cc.jumpkick.cache.JkStores.store().resolve("repos");
+        Path repos = JkStores.store().resolve("repos");
         if (Files.isDirectory(repos)) {
             try (var names = Files.list(repos)) {
                 for (Path repo : names.toList()) {

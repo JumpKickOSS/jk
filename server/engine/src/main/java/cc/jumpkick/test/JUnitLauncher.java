@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.ToolDefaults;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
@@ -92,7 +100,7 @@ public final class JUnitLauncher {
      * any {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
     private List<String> runnerFlags(int concurrency) {
-        List<String> flags = new ArrayList<>(cc.jumpkick.engine.plugin.JvmOptions.workerFlags(concurrency));
+        List<String> flags = new ArrayList<>(JvmOptions.workerFlags(concurrency));
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
         // Suite JVMs: no AOT train-on-miss (nested engines / compiler workers); still map caches.
         flags.add("-Djk.aot.train=off");
@@ -261,7 +269,7 @@ public final class JUnitLauncher {
         if (locked != null) return locked;
         String declared = quarkusVersion(toml, null);
         if (declared != null && isConcreteVersion(declared)) return declared;
-        return cc.jumpkick.model.ToolDefaults.QUARKUS_TOOLING_BOM_VERSION;
+        return ToolDefaults.QUARKUS_TOOLING_BOM_VERSION;
     }
 
     /**
@@ -270,9 +278,9 @@ public final class JUnitLauncher {
      */
     private static String lockedQuarkusVersion(Path moduleDir) {
         try {
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+            Path lockFile = LockPaths.lockFile(moduleDir);
             if (!Files.isRegularFile(lockFile)) return null;
-            for (var artifact : cc.jumpkick.lock.LockfileReader.read(lockFile).artifacts()) {
+            for (var artifact : LockfileReader.read(lockFile).artifacts()) {
                 if (artifact.name().startsWith("io.quarkus:quarkus-core:")) return artifact.version();
             }
         } catch (RuntimeException | IOException ignored) {
@@ -458,7 +466,7 @@ public final class JUnitLauncher {
         classpathBase.addAll(runtimeClasspath);
         // Thin workers: jar + Maven runtime closure from the POM. Gradle-vendored runners
         // already contain PluginMain; extra entries are harmless.
-        classpathBase.addAll(cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(runnerJar));
+        classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
         String classpath = joinClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
@@ -498,7 +506,7 @@ public final class JUnitLauncher {
         // throwable / System.exit before any test event) can be explained instead
         // of surfacing only as "runner exited N".
         var crash = new CaptureBuffer();
-        int exit = cc.jumpkick.engine.plugin.PluginLoader.run(
+        int exit = PluginLoader.run(
                 javaBinary,
                 classpath,
                 runnerFlags(1),
@@ -721,7 +729,7 @@ public final class JUnitLauncher {
         // shortfall. Surface every abnormal exit as a failure naming the worker's last class
         // (idle-watchdog kills land here too — JK-2202). Skipped on user cancel: those exits
         // are the kill we asked for.
-        if (worstExit != 0 && !cc.jumpkick.run.SessionCancel.cancelled()) {
+        if (worstExit != 0 && !SessionCancel.cancelled()) {
             for (int i = 0; i < actualWorkers; i++) {
                 if (exits[i] == 0) continue;
                 total += 1;
@@ -827,7 +835,7 @@ public final class JUnitLauncher {
                     // best-effort isolation
                 }
             }
-            return cc.jumpkick.engine.plugin.PluginLoader.converse(
+            return PluginLoader.converse(
                     javaBinary,
                     classpath,
                     // N test JVMs run at once → divide the heap cap by N so they fit.
@@ -857,7 +865,7 @@ public final class JUnitLauncher {
             Path javaBinary, String classpath, Path testClassesDir, TestProgressListener listener)
             throws IOException, InterruptedException {
         var classes = new ArrayList<String>();
-        cc.jumpkick.engine.plugin.PluginLoader.run(
+        PluginLoader.run(
                 javaBinary,
                 classpath,
                 runnerFlags(1),
@@ -896,7 +904,7 @@ public final class JUnitLauncher {
         // Location (override → CAS-by-SHA) is shared with every other worker via
         // PluginJar; adapt its IllegalStateException to this method's IOException.
         try {
-            return PluginJar.TEST_RUNNER.locate(cc.jumpkick.cache.JkStores.cas(cacheRoot));
+            return PluginJar.TEST_RUNNER.locate(JkStores.cas(cacheRoot));
         } catch (IllegalStateException e) {
             throw new IOException("jk test: " + e.getMessage(), e);
         }

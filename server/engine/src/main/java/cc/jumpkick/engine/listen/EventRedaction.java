@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Redacted;
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.test.JUnitLauncher;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -19,7 +23,7 @@ public final class EventRedaction {
 
     public static String redactEnv(@Nullable String dir, @Nullable String text) {
         if (text == null || text.isEmpty()) return text;
-        cc.jumpkick.config.SecretRedactor redactor;
+        SecretRedactor redactor;
         try {
             redactor = redactorFor(dir);
         } catch (RuntimeException e) {
@@ -49,19 +53,19 @@ public final class EventRedaction {
      */
     public static List<Redacted> redactErrors(@Nullable String dir, @Nullable List<String> errors) {
         if (errors == null || errors.isEmpty()) return List.of();
-        cc.jumpkick.config.SecretRedactor redactor;
+        SecretRedactor redactor;
         try {
             redactor = redactorFor(dir);
         } catch (RuntimeException e) {
             // A blank dir with no session is a routine off-request call, not a broken redactor.
             if (dir != null && !dir.isBlank()) warnFailOpen(e);
-            redactor = cc.jumpkick.config.SecretRedactor.none();
+            redactor = SecretRedactor.none();
         }
         try {
             return redactor.redactAll(errors);
         } catch (RuntimeException e) {
             warnFailOpen(e);
-            return cc.jumpkick.config.SecretRedactor.none().redactAll(errors);
+            return SecretRedactor.none().redactAll(errors);
         }
     }
 
@@ -92,15 +96,15 @@ public final class EventRedaction {
      * callers must hoist the result instead of calling {@link #redactEnv} per line.
      * Never null; throws only what {@link #redactEnv} already swallows.
      */
-    public static cc.jumpkick.config.SecretRedactor redactorFor(@Nullable String dir) {
+    public static SecretRedactor redactorFor(@Nullable String dir) {
         Path root;
         if (dir != null && !dir.isBlank()) {
             root = Path.of(dir);
         } else {
-            root = cc.jumpkick.config.SessionContext.current().workingDir();
+            root = SessionContext.current().workingDir();
         }
-        if (root == null) return cc.jumpkick.config.SecretRedactor.none();
-        return cc.jumpkick.config.BuildEnv.secretsFor(root);
+        if (root == null) return SecretRedactor.none();
+        return BuildEnv.secretsFor(root);
     }
 
     /**
@@ -119,13 +123,12 @@ public final class EventRedaction {
     }
 
     /** {@link #redactFailure(String, TestFailureInfo)} with a hoisted redactor (per-plan callers). */
-    public static @Nullable TestFailureInfo redactFailure(
-            cc.jumpkick.config.SecretRedactor redactor, @Nullable TestFailureInfo f) {
+    public static @Nullable TestFailureInfo redactFailure(SecretRedactor redactor, @Nullable TestFailureInfo f) {
         if (f == null) return null;
         String message = redactTruncationSeam(
-                redactor, redactSafe(redactor, f.message()), cc.jumpkick.test.JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
-        String stack = redactTruncationSeam(
-                redactor, redactSafe(redactor, f.stack()), cc.jumpkick.test.JUnitLauncher.STACK_TRUNCATION_MARKER);
+                redactor, redactSafe(redactor, f.message()), JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
+        String stack =
+                redactTruncationSeam(redactor, redactSafe(redactor, f.stack()), JUnitLauncher.STACK_TRUNCATION_MARKER);
         if (Objects.equals(message, f.message()) && Objects.equals(stack, f.stack())) {
             return f;
         }
@@ -150,7 +153,7 @@ public final class EventRedaction {
      * secret prefix at the cut point.
      */
     private static @Nullable String redactTruncationSeam(
-            cc.jumpkick.config.SecretRedactor redactor, @Nullable String text, String marker) {
+            SecretRedactor redactor, @Nullable String text, String marker) {
         if (text == null || text.isEmpty()) return text;
         try {
             int at = text.lastIndexOf(marker);
@@ -163,7 +166,7 @@ public final class EventRedaction {
         }
     }
 
-    private static @Nullable String redactSafe(cc.jumpkick.config.SecretRedactor redactor, @Nullable String text) {
+    private static @Nullable String redactSafe(SecretRedactor redactor, @Nullable String text) {
         if (text == null || text.isEmpty()) return text;
         try {
             return redactor.redact(text);

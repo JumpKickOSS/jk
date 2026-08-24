@@ -5,6 +5,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -41,7 +42,7 @@ public final class PubGrubResolver implements Resolver {
     private final EffectivePomBuilder pomBuilder;
     private KmpRedirects kmp = KmpRedirects.NONE;
     /** Optional palette injected by the CLI so diagnostic colors match the live theme. */
-    cc.jumpkick.resolver.pubgrub.Diagnostics.Palette palette; // package-private for LockOrchestrator
+    Diagnostics.Palette palette; // package-private for LockOrchestrator
     /** Optional live graph progress (package key, version) during PubGrub decisions. */
     private BiConsumer<String, String> onDecision;
 
@@ -97,7 +98,7 @@ public final class PubGrubResolver implements Resolver {
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp,
             PlatformPolicy platformPolicy,
-            cc.jumpkick.model.UnmappedPolicy unmappedPolicy) {
+            UnmappedPolicy unmappedPolicy) {
         EffectivePomBuilder builder = new EffectivePomBuilder(repos);
         this.pomBuilder = builder;
         this.kmp = kmp;
@@ -207,8 +208,8 @@ public final class PubGrubResolver implements Resolver {
                 var moved = pom.relocation();
                 if (moved != null && moved.redirects(toCoord(e.getKey(), e.getValue()))) {
                     var to = moved.applyTo(toCoord(e.getKey(), e.getValue()));
-                    String toPkg = cc.jumpkick.model.PackageId.ofGa(to.group() + ":" + to.artifact())
-                            .key();
+                    String toPkg =
+                            PackageId.ofGa(to.group() + ":" + to.artifact()).key();
                     if (decisions.containsKey(toPkg)) {
                         deps.add(toPkg + "@" + decisions.get(toPkg));
                     }
@@ -272,11 +273,9 @@ public final class PubGrubResolver implements Resolver {
                     System.console() != null && !"dumb".equals(System.getenv("TERM")) && System.getenv("CI") == null;
             // Use the injected palette (from the CLI theme) when available; fall back to the
             // built-in DEFAULT which hard-codes the same values as JkDarkTheme.
-            cc.jumpkick.resolver.pubgrub.Diagnostics.Palette palette = this.palette != null
+            Diagnostics.Palette palette = this.palette != null
                     ? this.palette
-                    : (ansi
-                            ? cc.jumpkick.resolver.pubgrub.Diagnostics.Palette.DEFAULT
-                            : cc.jumpkick.resolver.pubgrub.Diagnostics.Palette.PLAIN);
+                    : (ansi ? Diagnostics.Palette.DEFAULT : Diagnostics.Palette.PLAIN);
             throw new UnsatisfiableException(Diagnostics.render(e.rootCause(), palette), e.rootCause());
         }
 

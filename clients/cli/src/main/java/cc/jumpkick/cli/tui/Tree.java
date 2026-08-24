@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Width;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -254,7 +255,7 @@ public final class Tree implements Widget {
 
     private static Parsed parsePainted(String line) {
         if (line == null || line.isEmpty()) return null;
-        String vis = cc.jumpkick.terminal.Width.stripAnsi(line);
+        String vis = Width.stripAnsi(line);
         int origin = 0;
         if (startsWithConnector(vis, 1) && vis.startsWith(" ")) origin = 1;
         int i = origin;

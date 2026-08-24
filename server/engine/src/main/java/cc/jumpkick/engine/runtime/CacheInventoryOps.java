@@ -7,7 +7,9 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.run.TaskNames;
@@ -216,7 +218,7 @@ public final class CacheInventoryOps {
         long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
         DiskUsage.Stats mavenLocal;
         try {
-            mavenLocal = DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
+            mavenLocal = DiskUsage.of(M2Dirs.localRepository());
         } catch (Exception e) {
             mavenLocal = new DiskUsage.Stats(0, 0);
         }
@@ -292,16 +294,16 @@ public final class CacheInventoryOps {
 
     private static List<String> repoNames(Path reposRoot) {
         if (!Files.isDirectory(reposRoot)) {
-            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+            return List.of("central", RepoArtifactResolver.JK_LOCAL);
         }
         try (var s = Files.list(reposRoot)) {
             List<String> names = s.filter(Files::isDirectory)
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
-            return names.isEmpty() ? List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL) : names;
+            return names.isEmpty() ? List.of("central", RepoArtifactResolver.JK_LOCAL) : names;
         } catch (IOException e) {
-            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+            return List.of("central", RepoArtifactResolver.JK_LOCAL);
         }
     }
 

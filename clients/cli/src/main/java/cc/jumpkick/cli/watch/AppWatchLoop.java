@@ -3,12 +3,20 @@ package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.command.BuildCommand;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -33,7 +41,7 @@ public final class AppWatchLoop {
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         if (!build(projectDir, cache)) return 1;
 
-        cc.jumpkick.engine.protocol.ExecPlan plan = devPlan(projectDir, cache);
+        ExecPlan plan = devPlan(projectDir, cache);
         if (plan.error() != null) {
             CliOutput.err(logPrefix + ": " + plan.error());
             return Exit.SOFTWARE;
@@ -95,7 +103,7 @@ public final class AppWatchLoop {
         }
     }
 
-    private int deviceLoop(Path projectDir, Path cache, cc.jumpkick.engine.protocol.ExecPlan plan, List<String> appArgs)
+    private int deviceLoop(Path projectDir, Path cache, ExecPlan plan, List<String> appArgs)
             throws IOException, InterruptedException {
         List<Path> watchRoots = rootsFromPlan(plan);
         logWatching(projectDir, watchRoots, "redeploy to device on change");
@@ -135,17 +143,16 @@ public final class AppWatchLoop {
                 + " — " + mode + ". Ctrl-C stops.");
     }
 
-    private static List<Path> rootsFromPlan(cc.jumpkick.engine.protocol.ExecPlan plan) {
+    private static List<Path> rootsFromPlan(ExecPlan plan) {
         List<Path> watchRoots = new ArrayList<>();
         for (String root : plan.watchRoots()) watchRoots.add(Path.of(root));
         return watchRoots;
     }
 
     private int deploy(Path projectDir, Path cache, String command, List<String> appArgs) {
-        cc.jumpkick.engine.protocol.PluginCommandReport report;
+        PluginCommandReport report;
         try {
-            report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
-                    cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
+            report = EngineClient.pluginCommand(EnginePaths.current(), projectDir, cache, command, appArgs);
         } catch (Exception e) {
             CliOutput.err(logPrefix + ": " + e.getMessage());
             return Exit.SOFTWARE;
@@ -168,10 +175,10 @@ public final class AppWatchLoop {
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Built", Theme.active().focused()), r -> "Build failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        var session = cc.jumpkick.config.SessionContext.current();
-        BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineRequests.SingleBuildRequest(
+        var session = SessionContext.current();
+        BuildPlanResult result = EngineClient.runSingleBuild(
+                EnginePaths.current(),
+                new EngineRequests.SingleBuildRequest(
                         projectDir,
                         cache,
                         jdksDir,
@@ -184,7 +191,7 @@ public final class AppWatchLoop {
                         session.variant(),
                         session.clientEnv()),
                 steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target),
-                new cc.jumpkick.run.TestSummary[1],
+                new TestSummary[1],
                 new String[1]);
         return result.success();
     }
@@ -194,31 +201,30 @@ public final class AppWatchLoop {
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Recompiled", Theme.active().focused()), r -> "Compile failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        var session = cc.jumpkick.config.SessionContext.current();
-        BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCompile(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
+        var session = SessionContext.current();
+        BuildPlanResult result = EngineClient.runCompile(
+                EnginePaths.current(),
+                new EngineRequests.CompileRequest(
                         projectDir, cache, null, session.offline(), session.force(), global.verbose),
                 steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
         return result.success();
     }
 
-    private cc.jumpkick.engine.protocol.ExecPlan devPlan(Path projectDir, Path cache) throws IOException {
-        return cc.jumpkick.cli.engine.EngineClient.execPlan(
-                cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, "dev", null, null);
+    private ExecPlan devPlan(Path projectDir, Path cache) throws IOException {
+        return EngineClient.execPlan(EnginePaths.current(), projectDir, cache, "dev", null, null);
     }
 
-    private Process startApp(cc.jumpkick.engine.protocol.ExecPlan plan, List<String> appArgs) throws IOException {
+    private Process startApp(ExecPlan plan, List<String> appArgs) throws IOException {
         List<String> command = new ArrayList<>(plan.argv());
         command.addAll(appArgs);
-        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Terminals.restoreForChild();
         return new ProcessBuilder(command)
                 .directory(Path.of(plan.workingDir()).toFile())
                 .inheritIO()
                 .start();
     }
 
-    private Process restartApp(Process app, cc.jumpkick.engine.protocol.ExecPlan plan, List<String> appArgs)
+    private Process restartApp(Process app, ExecPlan plan, List<String> appArgs)
             throws IOException, InterruptedException {
         if (app.isAlive()) {
             app.destroy();

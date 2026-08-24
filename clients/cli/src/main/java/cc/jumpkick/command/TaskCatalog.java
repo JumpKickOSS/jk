@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,7 +34,7 @@ final class TaskCatalog {
         }
     }
 
-    static Optional<Path> output(TaskDef task, cc.jumpkick.engine.protocol.ProjectInfo info) {
+    static Optional<Path> output(TaskDef task, ProjectInfo info) {
         if (task.primaryOutput == null || info == null) return Optional.empty();
         String path =
                 switch (task.name()) {
@@ -117,7 +119,6 @@ final class TaskCatalog {
         // Stage comes from the one taxonomy the whole system speaks: the catalog once
         // said `setup` where BuildStage says `resolve`, and hand-assigned stages drifted from
         // the inference (`write-stamp` is COMPILE, not package).
-        return new TaskDef(
-                name, cc.jumpkick.run.BuildStage.ofTaskName(name).wireName(), description, out, List.of(aliases));
+        return new TaskDef(name, BuildStage.ofTaskName(name).wireName(), description, out, List.of(aliases));
     }
 }

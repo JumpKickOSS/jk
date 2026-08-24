@@ -4,10 +4,14 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.resolver.DependencyGraphModel;
 import cc.jumpkick.runtime.ExplainReport;
+import cc.jumpkick.runtime.GenerateOps;
 import cc.jumpkick.runtime.GraphOps;
 import cc.jumpkick.runtime.OutdatedPlans;
 import cc.jumpkick.runtime.TaskForecast;
@@ -95,10 +99,10 @@ public final class McpReads {
     public static Map<String, Object> graph(String dir, String scopesCsv, boolean transitive) {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> m = new LinkedHashMap<>();
-        cc.jumpkick.resolver.DependencyGraphModel.Graph g;
+        DependencyGraphModel.Graph g;
         try {
-            List<cc.jumpkick.model.Scope> scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(scopesCsv);
-            g = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(root, scopes, transitive);
+            List<Scope> scopes = DependencyGraphModel.parseScopes(scopesCsv);
+            g = DependencyGraphModel.forProjectDir(root, scopes, transitive);
         } catch (Exception e) {
             m.put("error", cc.jumpkick.host.Errors.text(e));
             return m;
@@ -163,9 +167,9 @@ public final class McpReads {
             m.put("error", "format must be maven | gradle | bom (IDE files: run `jk ide` — generators are CLI-side)");
             return m;
         }
-        cc.jumpkick.engine.protocol.GeneratedFiles files;
+        GeneratedFiles files;
         try {
-            files = cc.jumpkick.runtime.GenerateOps.generate(root, kind, Map.of());
+            files = GenerateOps.generate(root, kind, Map.of());
         } catch (RuntimeException e) {
             m.put("error", cc.jumpkick.host.Errors.text(e));
             return m;

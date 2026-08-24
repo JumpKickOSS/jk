@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.KotlincDriver;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.KotlincResult;
@@ -23,10 +24,7 @@ public final class KotlinCompile {
 
     /** Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each. */
     public record Result(
-            boolean success,
-            String outcome,
-            String actionKey,
-            List<cc.jumpkick.compile.CompileResult.Diagnostic> diagnostics) {
+            boolean success, String outcome, String actionKey, List<CompileResult.Diagnostic> diagnostics) {
 
         public Result {
             diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
@@ -39,9 +37,7 @@ public final class KotlinCompile {
 
         /** Joined diagnostics for logs and exception messages. */
         public String output() {
-            return diagnostics.stream()
-                    .map(cc.jumpkick.compile.CompileResult.Diagnostic::describe)
-                    .collect(Collectors.joining("\n"));
+            return diagnostics.stream().map(CompileResult.Diagnostic::describe).collect(Collectors.joining("\n"));
         }
     }
 

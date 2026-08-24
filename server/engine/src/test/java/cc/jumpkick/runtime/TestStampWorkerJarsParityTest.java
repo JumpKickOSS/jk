@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -94,8 +96,8 @@ class TestStampWorkerJarsParityTest {
         assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
         assertThat(env).doesNotContainKey("JK_CACHE_DIR");
         assertThat(env).doesNotContainKey("JK_STORE_DIR");
-        Path hostCache = cc.jumpkick.util.JkDirs.cache().toAbsolutePath().normalize();
-        Path hostStore = cc.jumpkick.util.JkDirs.store().toAbsolutePath().normalize();
+        Path hostCache = JkDirs.cache().toAbsolutePath().normalize();
+        Path hostStore = JkDirs.store().toAbsolutePath().normalize();
         Path jkHome = Path.of(env.get("JK_HOME")).toAbsolutePath().normalize();
         assertThat(jkHome).isAbsolute();
         assertThat(jkHome).isNotEqualTo(hostCache.getParent()); // not ambient product root
@@ -175,7 +177,7 @@ class TestStampWorkerJarsParityTest {
         // hand it to nested engine workers. The override also makes this
         // deterministic on warm developer trees, where the process/EngineInstall probes would
         // otherwise satisfy the assertion even if monorepo fallback broke.
-        String ver = cc.jumpkick.model.JkVersion.VERSION;
+        String ver = JkVersion.VERSION;
         Path seed = tmp.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar");
         Files.createDirectories(seed.getParent());
         writeMinimalJar(seed);

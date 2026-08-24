@@ -306,7 +306,7 @@ public final class BuildLogicSupport {
                 if (e instanceof IOException ioe) throw ioe;
                 throw new IllegalStateException("[build] logic task " + simple + " failed: " + e.getMessage(), e);
             }
-            actionCache.store(taskId, key, java.util.Map.of("build-logic", key), outDir);
+            actionCache.store(taskId, key, Map.of("build-logic", key), outDir);
             if (!generatesSources) mergeIntoClasses(outDir, classesDir);
         }
         return true;
@@ -717,7 +717,7 @@ public final class BuildLogicSupport {
                 cc.jumpkick.layout.ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false));
         for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
             Path p = projectDir.resolve(root.relative());
-            if (java.nio.file.Files.isDirectory(p)) dirs.add(p.toAbsolutePath().normalize());
+            if (Files.isDirectory(p)) dirs.add(p.toAbsolutePath().normalize());
         }
         for (Path dir : dirs) {
             hashTree(projectDir, dir, "in", tokens);

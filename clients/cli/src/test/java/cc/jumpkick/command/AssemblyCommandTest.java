@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -22,7 +23,7 @@ class AssemblyCommandTest {
 
     @AfterEach
     void resetSession() {
-        cc.jumpkick.config.SessionContext.reset();
+        SessionContext.reset();
     }
 
     private static final String TOML = """

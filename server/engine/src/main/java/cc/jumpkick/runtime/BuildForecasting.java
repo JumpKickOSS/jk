@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
@@ -138,8 +139,7 @@ public final class BuildForecasting {
         // The memo is also keyed without the test selection: a widened run (`jk build --all`,
         // tag flags) must take the real forecast walk — its run-tests stamps differ from the
         // default tier the memo's clean claim covered (JK-2203).
-        boolean defaultSelection =
-                SessionContext.current().testSelection().equals(cc.jumpkick.config.TestSelection.DEFAULT);
+        boolean defaultSelection = SessionContext.current().testSelection().equals(TestSelection.DEFAULT);
         boolean memoSafe = (t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST) && defaultSelection;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());

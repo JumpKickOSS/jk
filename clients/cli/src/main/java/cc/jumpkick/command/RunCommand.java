@@ -1,17 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.BuildOptions;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.JobCancelledException;
+import cc.jumpkick.cli.run.AggregateContext;
+import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
+import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.ModulePlan;
+import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.runtime.WorkspaceRequest;
+import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -38,7 +60,7 @@ public final class RunCommand {
     List<String> positional = new ArrayList<>();
     Path cacheDirOverride;
     Path jdksDir;
-    cc.jumpkick.cli.BuildOptions buildOpts;
+    BuildOptions buildOpts;
     GlobalOptions global;
 
     /** Package-private: {@code jk tool run <dir>} delegates a jk-project directory here. */
@@ -79,9 +101,9 @@ public final class RunCommand {
                 });
 
         BuildPlanResult result;
-        cc.jumpkick.run.TestSummary testResult;
-        var session = cc.jumpkick.config.SessionContext.current();
-        cc.jumpkick.run.TestSummary[] testResultHolder = new cc.jumpkick.run.TestSummary[1];
+        TestSummary testResult;
+        var session = SessionContext.current();
+        TestSummary[] testResultHolder = new TestSummary[1];
         try {
             boolean workspace = false;
             var peek = BuildCommand.projectInfoOrNull(projectDir);
@@ -96,7 +118,7 @@ public final class RunCommand {
                 // Session variant/clientEnv ride the request like `jk build` at a root does
                 // `jk run --release` used to build debug and then exec release artifacts that
                 // were never produced.
-                var request = new cc.jumpkick.runtime.WorkspaceRequest(
+                var request = new WorkspaceRequest(
                                 wsRoot,
                                 cache,
                                 jdksDir,
@@ -116,9 +138,8 @@ public final class RunCommand {
                 List<String> scopeNames = cwdScope.workspaceMember()
                         ? (cwdScope.focusLabel() == null ? List.of() : List.of(cwdScope.focusLabel()))
                         : List.of();
-                cc.jumpkick.cli.tui.ModuleScopeHint.print(
-                        "building", scopeNames, global != null && global.outputIsJson());
-                cc.jumpkick.runtime.WorkspaceResult wr;
+                ModuleScopeHint.print("building", scopeNames, global != null && global.outputIsJson());
+                WorkspaceResult wr;
                 if (liveWorkspace) {
                     // Same live chrome as `jk build` at a root: aggregate bar + module
                     // chips from the engine tracker, completions collapse into the region.
@@ -128,25 +149,23 @@ public final class RunCommand {
                     // Quiet / JSON / non-tty: append-only per-module completions (unchanged).
                     AtomicInteger done = new AtomicInteger();
                     int[] total = {0};
-                    var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                    var listener = new WorkspaceBuildListener() {
                         @Override
-                        public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
+                        public void onPlan(List<ModulePlan> plan) {
                             total[0] = plan.size();
                         }
 
                         @Override
-                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            String glyph =
-                                    o.success() ? cc.jumpkick.cli.tui.Glyphs.CHECK : cc.jumpkick.cli.tui.Glyphs.CROSS;
+                        public void onModuleFinish(ModuleOutcome o) {
+                            String glyph = o.success() ? Glyphs.CHECK : Glyphs.CROSS;
                             CliOutput.out(glyph + " [" + done.incrementAndGet() + "/" + Math.max(total[0], 1) + "] "
                                     + o.coord());
                         }
                     };
-                    wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                            cc.jumpkick.engine.EnginePaths.current(), request, listener);
+                    wr = EngineClient.buildWorkspace(EnginePaths.current(), request, listener);
                 }
                 if (wr != null && !wr.success()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Run", "workspace build failed");
+                    CommandWedge.printFail("Run", "workspace build failed");
                     return 1;
                 }
                 // Synthetic success result so the exec chip path continues unchanged.
@@ -154,9 +173,9 @@ public final class RunCommand {
                 testResult = null;
             } else {
                 // Engine-hosted single-module build (SINGLE_BUILD_REQUEST, skipTests).
-                result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineRequests.SingleBuildRequest(
+                result = EngineClient.runSingleBuild(
+                        EnginePaths.current(),
+                        new EngineRequests.SingleBuildRequest(
                                 projectDir,
                                 cache,
                                 jdksDir,
@@ -174,7 +193,7 @@ public final class RunCommand {
                 testResult = testResultHolder[0];
             }
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
+            CommandWedge.printFail("Run", e.getMessage());
             return Exit.SOFTWARE;
         }
 
@@ -188,7 +207,7 @@ public final class RunCommand {
         // never forks on the host — the plan names the plugin's deploy command instead.
         List<String> command;
         try {
-            cc.jumpkick.engine.protocol.ExecPlan plan = execPlan(projectDir);
+            ExecPlan plan = execPlan(projectDir);
             if (!plan.deployCommand().isEmpty()) {
                 return dispatchDeployCommand(projectDir, cache, plan.deployCommand(), appArgs, mode);
             }
@@ -198,11 +217,11 @@ public final class RunCommand {
             // first and cached the same plan) — VERBOSE/JSON print no chip, so give them the plain
             // text version there instead of leaving the command silent.
             if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
+                CommandWedge.printFail("Run", e.getMessage());
             }
             return Exit.DATA_ERR;
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
+            CommandWedge.printFail("Run", e.getMessage());
             return Exit.USAGE;
         }
         if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
@@ -217,7 +236,7 @@ public final class RunCommand {
             }
         }
         command.addAll(appArgs);
-        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Terminals.restoreForChild();
         // The program's own stdout is the last thing on this terminal — `jk run > app.out` must
         // not collect jk's closing blank.
         Process p = new ProcessBuilder(command).inheritIO().start();
@@ -238,22 +257,21 @@ public final class RunCommand {
         if (mode != BuildPlanConsole.Mode.VERBOSE && mode != BuildPlanConsole.Mode.JSON) {
             CliOutput.err();
         }
-        cc.jumpkick.engine.protocol.PluginCommandReport report;
+        PluginCommandReport report;
         try {
-            report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
-                    cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
+            report = EngineClient.pluginCommand(EnginePaths.current(), projectDir, cache, command, appArgs);
         } catch (Exception e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
+            CommandWedge.printFail("Run", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!report.found()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Run",
                     "the packaging plugin declares deploy command `" + command + "` but does not" + " register it");
             return Exit.SOFTWARE;
         }
         if (report.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", report.error());
+            CommandWedge.printFail("Run", report.error());
             return 1;
         }
         for (String line : report.output()) CliOutput.out(line);
@@ -264,10 +282,9 @@ public final class RunCommand {
      * Engine-computed execution plan (artifact preference, RUN classpath, main-class). Memoized so
      * the console's exec-tail and the real exec agree.
      */
-    private cc.jumpkick.engine.protocol.ExecPlan execPlan(Path projectDir) throws IOException {
+    private ExecPlan execPlan(Path projectDir) throws IOException {
         if (cachedPlan == null) {
-            cachedPlan = cc.jumpkick.cli.engine.EngineClient.execPlan(
-                    cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir(), "run", null, null);
+            cachedPlan = EngineClient.execPlan(EnginePaths.current(), projectDir, cacheDir(), "run", null, null);
         }
         // Checked on every access: the memoized plan may be an error plan (the console's
         // tail closure swallows the first throw; the exec path must still see it).
@@ -280,7 +297,7 @@ public final class RunCommand {
         return cachedPlan;
     }
 
-    private cc.jumpkick.engine.protocol.ExecPlan cachedPlan;
+    private ExecPlan cachedPlan;
 
     /**
      * The build succeeded but the engine's main-class scan couldn't name an entry point — {@code
@@ -320,7 +337,7 @@ public final class RunCommand {
      * {@code Executing [yellow]`java -jar path`[/]} (from {@link
      * cc.jumpkick.engine.protocol.ExecPlan#display}), or a native binary path in the same shape.
      */
-    private static String execTail(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
+    private static String execTail(Path projectDir, ExecPlan plan) {
         Theme t = Theme.active();
         String command;
         if (plan.argv().size() == 1) {
@@ -341,7 +358,7 @@ public final class RunCommand {
      * Prints the play {@link CommandWedge} to stderr (verbose/JSON modes, where no plan chip is
      * rendered). Same shape as the chip-mode settle: {@code ▶ Run Executing `java …`}.
      */
-    private static void printExecBanner(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
+    private static void printExecBanner(Path projectDir, ExecPlan plan) {
         CommandWedge.printWorking("Run", execTail(projectDir, plan));
         CliOutput.err();
         // Reset any lingering SGR state so the program's own output starts from
@@ -358,24 +375,23 @@ public final class RunCommand {
      * lines. Settles the region itself on failure/cancel and returns {@code null}; on success the
      * region settles to an exec-style chip so the run banner follows cleanly.
      */
-    private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(
-            cc.jumpkick.runtime.WorkspaceRequest request, List<String> scopeNames) {
-        var view = cc.jumpkick.cli.tui.JkManager.plan(CliOutput.stdout(), "Run", true);
+    private WorkspaceResult runWorkspaceLive(WorkspaceRequest request, List<String> scopeNames) {
+        var view = JkManager.plan(CliOutput.stdout(), "Run", true);
         view.setPlanCoord(BuildCommand.projectGaLabel(request.entryDir()));
-        cc.jumpkick.cli.tui.ModuleScopeHint.apply(view, "building", scopeNames);
-        var agg = new cc.jumpkick.cli.run.AggregateContext(view);
+        ModuleScopeHint.apply(view, "building", scopeNames);
+        var agg = new AggregateContext(view);
         Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
         List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger completed = new AtomicInteger();
         int[] total = {0};
-        var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
+        var listener = new WorkspaceBuildListener() {
             @Override
             public void onPreflight(String stage, int done, int totalUnits, String label) {
                 agg.preflight(stage, done, totalUnits, label);
             }
 
             @Override
-            public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+            public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
                 agg.applySnapshot(snap);
             }
 
@@ -385,22 +401,21 @@ public final class RunCommand {
             }
 
             @Override
-            public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
+            public void onPlan(List<ModulePlan> plan) {
                 total[0] = plan.size();
             }
 
             @Override
-            public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+            public BuildPlanListener onModuleStart(ModulePlan m) {
                 List<String> buf = Collections.synchronizedList(new ArrayList<String>());
                 buffers.put(m.dir(), buf);
-                var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
-                        agg, m.coord(), m.plan().steps(), m.weight());
+                var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
                 lis.bufferOutputInto(buf);
                 return lis;
             }
 
             @Override
-            public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+            public void onModuleFinish(ModuleOutcome o) {
                 List<String> buf = buffers.getOrDefault(o.dir(), List.of());
                 String completion = BuildCommand.completionLine(
                         o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
@@ -419,11 +434,10 @@ public final class RunCommand {
                 }
             }
         };
-        cc.jumpkick.runtime.WorkspaceResult wr;
+        WorkspaceResult wr;
         try {
-            wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                    cc.jumpkick.engine.EnginePaths.current(), request, listener);
-        } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            wr = EngineClient.buildWorkspace(EnginePaths.current(), request, listener);
+        } catch (JobCancelledException e) {
             view.finishBuildPlanCancelled(deferredOutput);
             return null;
         } catch (IOException e) {

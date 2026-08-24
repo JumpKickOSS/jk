@@ -346,7 +346,7 @@ final class AotCacheTrainer {
                     .redirectErrorStream(true)
                     .start();
             String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            p.waitFor(5, TimeUnit.SECONDS);
             return !out.contains("rootless");
         } catch (IOException e) {
             return true;

@@ -3,8 +3,11 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolver.ResolveObserver;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
@@ -36,7 +39,7 @@ class LockFreshenConservativeTest {
     private URI base;
     private final Map<String, byte[]> served = new HashMap<>();
 
-    @org.junit.jupiter.api.io.TempDir
+    @TempDir
     Path isolatedStore;
 
     @BeforeEach
@@ -168,7 +171,7 @@ class LockFreshenConservativeTest {
         restartServer();
         touchManifest(tmp);
 
-        var effective = cc.jumpkick.config.JkBuildParser.parse(tmp.resolve("jk.toml"));
+        var effective = JkBuildParser.parse(tmp.resolve("jk.toml"));
         var plan = LockPlans.lockBuildPlan(
                 tmp, effective, tmp.resolve("cache2"), base, List.of(), true, false, true, ResolveObserver.NOOP, null);
         var result = plan.run();
@@ -313,11 +316,11 @@ class LockFreshenConservativeTest {
      * developer's.
      */
     private void dropLibIndexCache() throws IOException {
-        cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
+        ResolveProcessCacheControl.clearAll();
         String root = base.toString();
         if (!root.endsWith("/")) root = root + "/";
         URI metaUri = URI.create(root).resolve("com/foo/lib/maven-metadata.xml");
-        Path metaDir = cc.jumpkick.cache.JkStores.store().resolve("metadata");
+        Path metaDir = JkStores.store().resolve("metadata");
         Path body = metaDir.resolve(cc.jumpkick.host.Hashing.sha256Hex(metaUri.toString()));
         Files.deleteIfExists(body);
         Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".h"));

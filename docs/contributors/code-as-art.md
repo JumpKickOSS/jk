@@ -243,7 +243,9 @@ count. Annotations without a deleted map do not count.
   `Collectors.toList()`.
 - `Optional` is a return type, never a field or parameter.
 - Never return `null` from a collection method — `List.of()`.
-- No FQCN except collisions.
+- No FQCN except collisions. `jk format` shortens what it can reach;
+  `checkNoFqcn` ratchets the rest against `fqcn-baseline.txt`, where
+  every surviving reference is filed under the reason it survives.
 - Preview APIs only with an explicit ticket. Virtual threads are
   already house style.
 

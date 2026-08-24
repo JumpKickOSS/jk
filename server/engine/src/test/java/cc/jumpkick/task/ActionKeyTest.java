@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,24 +46,22 @@ class ActionKeyTest {
                 .build();
         Path cache = tempDir.resolve("cache");
         Files.createDirectories(cache);
-        cc.jumpkick.config.SessionContext.runWhere(
-                cc.jumpkick.config.Session.defaults().withCacheDir(cache), () -> {
-                    try {
-                        FileHashMemo.clearThreadCache();
-                        FileHashMemo.resetStats();
-                        String key = ActionKey.forJavac("compile-main", request, "0.1.0");
-                        var snap = ActionKey.snapshotInputs(request);
-                        assertThat(key).isNotBlank();
-                        assertThat(snap)
-                                .containsKey(src.toAbsolutePath().normalize().toString());
-                        assertThat(FileHashMemo.contentReads())
-                                .as("forJavac + snapshotInputs share one content read")
-                                .isEqualTo(1);
-                        assertThat(FileHashMemo.threadHits()).isGreaterThanOrEqualTo(1);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        SessionContext.runWhere(Session.defaults().withCacheDir(cache), () -> {
+            try {
+                FileHashMemo.clearThreadCache();
+                FileHashMemo.resetStats();
+                String key = ActionKey.forJavac("compile-main", request, "0.1.0");
+                var snap = ActionKey.snapshotInputs(request);
+                assertThat(key).isNotBlank();
+                assertThat(snap).containsKey(src.toAbsolutePath().normalize().toString());
+                assertThat(FileHashMemo.contentReads())
+                        .as("forJavac + snapshotInputs share one content read")
+                        .isEqualTo(1);
+                assertThat(FileHashMemo.threadHits()).isGreaterThanOrEqualTo(1);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @Test

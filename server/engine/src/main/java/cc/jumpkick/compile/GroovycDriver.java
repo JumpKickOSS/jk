@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -39,7 +42,7 @@ public final class GroovycDriver {
             return run(request);
         } catch (IOException e) {
             // One retry when the worker pipe closes mid-compile flake).
-            if (cc.jumpkick.engine.plugin.PluginProcess.isPipeClosed(e)) {
+            if (PluginProcess.isPipeClosed(e)) {
                 try {
                     return run(request);
                 } catch (IOException e2) {
@@ -63,15 +66,15 @@ public final class GroovycDriver {
             // The plugin is jk's OWN process: it runs on jk's runtime (plugins are built at jk's
             // language level and must not be hostage to the project's pinned JDK). The bytecode
             // level is an input: writeSpec passes it as the spec's jvmTarget.
-            Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
+            Path hostJavaHome = JavaHomes.runningJavaHome();
             String classpath = request.workerClasspath().stream()
                     .map(Path::toString)
                     .collect(Collectors.joining(File.pathSeparator));
             List<String> rest = new ArrayList<>(List.of(
                     // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
                     "--enable-native-access=ALL-UNNAMED", "-cp", classpath, WORKER_MAIN, "@" + spec.toAbsolutePath()));
-            List<String> cmd = cc.jumpkick.engine.plugin.JvmOptions.javaCommand(
-                    JdkFingerprint.java(hostJavaHome).toString(), 1, rest);
+            List<String> cmd =
+                    JvmOptions.javaCommand(JdkFingerprint.java(hostJavaHome).toString(), 1, rest);
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             String[] status = {null};

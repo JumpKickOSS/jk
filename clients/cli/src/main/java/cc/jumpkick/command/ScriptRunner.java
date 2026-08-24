@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -76,7 +80,7 @@ final class ScriptRunner {
 
     private int runJavaScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "script not found: " + script);
+            CommandWedge.printFail("Tool", "script not found: " + script);
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
@@ -89,7 +93,7 @@ final class ScriptRunner {
 
     private int runKotlinScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "script not found: " + script);
+            CommandWedge.printFail("Tool", "script not found: " + script);
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
@@ -107,7 +111,7 @@ final class ScriptRunner {
 
     private int runKtsScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "script not found: " + script);
+            CommandWedge.printFail("Tool", "script not found: " + script);
             return Exit.NO_INPUT;
         }
         EngineRequests.ScriptPrepareOutcome prep = prepare("kts", script);
@@ -125,7 +129,7 @@ final class ScriptRunner {
         // line-preserving copy with those annotations commented out.
         String source = new String(Files.readAllBytes(script), StandardCharsets.UTF_8);
         Path execScript = script.toAbsolutePath();
-        String neutralized = cc.jumpkick.script.ScriptHeaderParser.neutralizeKotlinAnnotations(source);
+        String neutralized = ScriptHeaderParser.neutralizeKotlinAnnotations(source);
         if (neutralized != null) {
             Path srcDir = stateDir()
                     .resolve("script-cache")
@@ -154,11 +158,11 @@ final class ScriptRunner {
             command.add("--");
             command.addAll(args);
         }
-        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Terminals.restoreForChild();
         Process p = new ProcessBuilder(command).inheritIO().start();
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
-        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
+        CliOutput.skipTrailingBlank();
         return p.waitFor();
     }
 
@@ -166,7 +170,7 @@ final class ScriptRunner {
 
     private int runJar(Path jar, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(jar)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "jar not found: " + jar);
+            CommandWedge.printFail("Tool", "jar not found: " + jar);
             return Exit.NO_INPUT;
         }
         EngineRequests.ScriptPrepareOutcome prep = prepare("jar", jar);
@@ -192,11 +196,11 @@ final class ScriptRunner {
             command.add(prep.mainClass());
         }
         command.addAll(args);
-        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Terminals.restoreForChild();
         Process p = new ProcessBuilder(command).inheritIO().start();
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
-        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
+        CliOutput.skipTrailingBlank();
         return p.waitFor();
     }
 
@@ -211,7 +215,7 @@ final class ScriptRunner {
         BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
 
         return EngineClient.runScriptPrepare(
-                cc.jumpkick.engine.EnginePaths.current(),
+                EnginePaths.current(),
                 new EngineRequests.ScriptPrepareRequest(
                         mode, file.toAbsolutePath(), cacheDir(), stateDir(), repoUrl, forceRecompile, extraDeps),
                 steps -> BuildPlanConsole.chooseConsoleListener("script", steps, consoleMode));
@@ -254,11 +258,11 @@ final class ScriptRunner {
         command.add(joinClasspath(full));
         command.add(mainClass);
         command.addAll(args);
-        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Terminals.restoreForChild();
         Process p = new ProcessBuilder(command).inheritIO().start();
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
-        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
+        CliOutput.skipTrailingBlank();
         return p.waitFor();
     }
 

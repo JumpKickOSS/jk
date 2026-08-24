@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.RepoGroup;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,8 +23,8 @@ class WorkerLaunchClasspathTest {
 
     @BeforeEach
     void clearCaches() {
-        cc.jumpkick.repo.EffectivePomBuilder.clearProcessCache();
-        cc.jumpkick.repo.RepoGroup.clearProcessFetchCache();
+        EffectivePomBuilder.clearProcessCache();
+        RepoGroup.clearProcessFetchCache();
         PomRuntimeClasspath.clearResolveCacheForTests();
     }
 

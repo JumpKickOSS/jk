@@ -1,14 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.FetchTimings;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkLts;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,8 +61,8 @@ public final class EffortWeights {
         // happens on the submitting thread (inside withOverReserveTails), restore on the worker;
         // remove() in finally keeps shared cpu() workers clean.
         // SessionContext's static init uses bind() (displaces); force it to land before our add().
-        cc.jumpkick.config.SessionContext.current();
-        cc.jumpkick.run.ContextPropagator.add(new cc.jumpkick.run.ContextPropagator.Propagator() {
+        SessionContext.current();
+        ContextPropagator.add(new ContextPropagator.Propagator() {
             @Override
             public Runnable wrapRunnable(Runnable r) {
                 if (!overReserveTails()) return r;
@@ -274,7 +287,7 @@ public final class EffortWeights {
             if (dir == null || dir.isBlank()) {
                 key = "task." + task + ".wall-ms";
             } else {
-                key = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
+                key = "module." + AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
             }
             Double mean = agg.meanMap().get(key);
             Double last = agg.lastMap().get(key);
@@ -418,10 +431,10 @@ public final class EffortWeights {
      * the build countdown so it shares {@link #costFromRunningSteps} with explain rather than
      * re-pricing with empty counts (which collapses cold test ETA to suite-startup only).
      */
-    public static Map<String, Integer> stepCountsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
+    public static Map<String, Integer> stepCountsFromBuildPlan(BuildPlan plan) {
         Map<String, Integer> counts = new HashMap<>();
         if (plan == null) return counts;
-        for (cc.jumpkick.run.Task s : plan.steps()) {
+        for (Task s : plan.steps()) {
             String key = metricsStepName(s.name());
             if (key.isEmpty()) continue;
             int ticks;
@@ -439,10 +452,10 @@ public final class EffortWeights {
      * Steps that will do real work in a prepared plan (weight &gt; {@link #TOKEN}). Cached/skip
      * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached}.
      */
-    public static List<String> runningStepsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
+    public static List<String> runningStepsFromBuildPlan(BuildPlan plan) {
         List<String> running = new ArrayList<>();
         if (plan == null) return running;
-        for (cc.jumpkick.run.Task s : plan.steps()) {
+        for (Task s : plan.steps()) {
             try {
                 if (s.estimateWeight() > TOKEN) running.add(s.name());
             } catch (RuntimeException e) {
@@ -537,8 +550,8 @@ public final class EffortWeights {
         if (!live.isEmpty()) return live;
         if (moduleDir == null || moduleDir.isBlank()) return Map.of();
         try {
-            var agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(cc.jumpkick.util.JkDirs.builds());
-            String prefix = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(moduleDir) + ".test-class.";
+            var agg = AggregatedMetrics.loadAll(JkDirs.builds());
+            String prefix = "module." + AggregatedMetrics.sanitize(moduleDir) + ".test-class.";
             String suffix = ".wall-ms";
             Map<String, Long> out = new LinkedHashMap<>();
             for (var e : agg.meanMap().entrySet()) {
@@ -830,20 +843,18 @@ public final class EffortWeights {
     public static int jdkWeight(Path dir, Path jdksDir) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
-            Path lf = cc.jumpkick.lock.LockPaths.lockFile(dir);
+            Path lf = LockPaths.lockFile(dir);
             Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
-            cc.jumpkick.jdk.JdkRegistry registry =
-                    jdksDir != null ? new cc.jumpkick.jdk.JdkRegistry(jdksDir) : new cc.jumpkick.jdk.JdkRegistry();
-            var req = new cc.jumpkick.jdk.JdkResolution.Request(
+            JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+            var req = new JdkResolution.Request(
                     dir,
-                    cc.jumpkick.config.SessionContext.current().jdkSpec(),
+                    SessionContext.current().jdkSpec(),
                     System.getenv("JK_JDK"),
                     lock != null ? lock.jdk() : null,
                     project.project() != null ? project.project().jdk() : null,
                     project.project() != null ? project.project().javaRelease() : 0,
                     System::getenv);
-            var r = cc.jumpkick.jdk.JdkResolution.resolve(
-                    req, registry, cc.jumpkick.jdk.JdkInventory.current(), cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS);
+            var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return (r.jdk().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
         } catch (Exception e) {
             return SKIP;
@@ -959,13 +970,13 @@ public final class EffortWeights {
      */
     static boolean mainJarWillChange(Path dir) {
         try {
-            var cfg = cc.jumpkick.config.SessionContext.current().config();
+            var cfg = SessionContext.current().config();
             if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
             if (dir == null || !Files.isDirectory(dir)) return true;
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
             BuildLayout layout = BuildLayout.of(dir, project);
             if (!Files.isRegularFile(layout.mainJar())) return true;
-            boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(dir);
+            boolean compact = ModuleLayout.isCompact(dir);
             // Java main sources
             List<Path> javaSrc =
                     CompileSupport.collectJavaSources(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
@@ -1002,8 +1013,8 @@ public final class EffortWeights {
      */
     private static boolean artifactFresh(Path dir, Function<BuildLayout, Path> artifact) {
         try {
-            if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
-            if (cc.jumpkick.config.SessionContext.current().config().forceOr(false)) return false;
+            if (SessionContext.current().config().rebuildOr(false)) return false;
+            if (SessionContext.current().config().forceOr(false)) return false;
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
             BuildLayout layout = BuildLayout.of(dir, project);
             Path art = artifact.apply(layout);
@@ -1046,7 +1057,7 @@ public final class EffortWeights {
      * {@link #ARTIFACT_FETCH}.
      */
     static int artifactFetchWeight() {
-        return cc.jumpkick.cache.FetchTimings.weightUnits(ARTIFACT_FETCH, MS_PER_WEIGHT);
+        return FetchTimings.weightUnits(ARTIFACT_FETCH, MS_PER_WEIGHT);
     }
 
     // --- parallel-aware wall-clock estimate ----------------------------------
@@ -1063,7 +1074,7 @@ public final class EffortWeights {
      * step as a cross-module serial bound). Shared by {@code jk build} and {@code jk explain} so
      * their wall-clock estimates are computed from the plan identically.
      */
-    public static ModuleCost costOf(Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan plan) {
+    public static ModuleCost costOf(Path dir, Set<Path> prereqs, BuildPlan plan) {
         return costOf(dir, prereqs, plan, Set.of());
     }
 
@@ -1077,11 +1088,10 @@ public final class EffortWeights {
      * two modules, ~11s on five. A single-module project looked fine only because one module's full
      * cost rounds to "&lt;1s".
      */
-    public static ModuleCost costOf(
-            Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan plan, Set<String> cachedSteps) {
+    public static ModuleCost costOf(Path dir, Set<Path> prereqs, BuildPlan plan, Set<String> cachedSteps) {
         int weight = 0;
         int testWeight = 0;
-        for (cc.jumpkick.run.Task step : plan.steps()) {
+        for (Task step : plan.steps()) {
             int stepWeight;
             if (cachedSteps.contains(step.name())) {
                 stepWeight = SKIP;

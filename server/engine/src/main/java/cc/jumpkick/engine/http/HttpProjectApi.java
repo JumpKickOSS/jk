@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.runtime.NewProjectOps;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.resolver.DependencyGraphModel;
+import cc.jumpkick.runtime.ProjectCard;
+import cc.jumpkick.scaffold.NewGroupGuess;
+import cc.jumpkick.scaffold.NewParentDirGuess;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -51,9 +60,8 @@ final class HttpProjectApi {
         boolean executable = cc.jumpkick.jsonl.Jsonl.bool(body, "executable", true);
         try {
             // The SPA routes #project/<id> immediately, so identity materializes with creation.
-            var result = cc.jumpkick.engine.runtime.NewProjectOps.createWithIdentity(
-                    new cc.jumpkick.engine.runtime.NewProjectOps.Request(
-                            name, parentDir, group, lang, layout, template, executable));
+            var result = NewProjectOps.createWithIdentity(
+                    new NewProjectOps.Request(name, parentDir, group, lang, layout, template, executable));
             JsonOut created = JsonOut.object()
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());
@@ -80,7 +88,7 @@ final class HttpProjectApi {
      * git email like {@code jk new}, parent dir from history / well-known roots / git clusters).
      */
     void handleProjectDefaults(HttpExchange exchange) throws IOException {
-        String group = cc.jumpkick.scaffold.NewGroupGuess.guess();
+        String group = NewGroupGuess.guess();
         List<Path> historyDirs = new ArrayList<>();
         try {
             for (var rec : journal.list()) {
@@ -91,7 +99,7 @@ final class HttpProjectApi {
         } catch (RuntimeException ignored) {
             // journal empty / unreadable — parent guess still works without it
         }
-        Path parent = cc.jumpkick.scaffold.NewParentDirGuess.guess(
+        Path parent = NewParentDirGuess.guess(
                 Optional.ofNullable(System.getProperty("user.home"))
                         .map(Path::of)
                         .orElse(null),
@@ -115,8 +123,7 @@ final class HttpProjectApi {
             HttpEngineServer.sendJson(exchange, 200, cached.json());
             return;
         }
-        var entries =
-                cc.jumpkick.giter8.Giter8TemplateIndex.picker(cc.jumpkick.giter8.Giter8TemplateIndex.searchRoots());
+        var entries = Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {
@@ -166,7 +173,7 @@ final class HttpProjectApi {
             return;
         }
         if (projectId != null && !projectId.isBlank()) {
-            var path = cc.jumpkick.builds.ProjectIdentity.pathForId(projectId);
+            var path = ProjectIdentity.pathForId(projectId);
             if (path.isEmpty()) {
                 HttpEngineServer.sendJson(
                         exchange,
@@ -181,7 +188,7 @@ final class HttpProjectApi {
         }
         // One card, one parse path (shared with MCP jk_project): identity resolves without a
         // parseable manifest, so a ?dir= call on a broken workspace still gets its durable id.
-        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(Path.of(dir));
+        ProjectCard card = ProjectCard.of(Path.of(dir));
         String resolvedId = card.projectId() != null ? card.projectId() : projectId;
         if (card.coord() != null) {
             HttpEngineServer.sendJson(
@@ -211,7 +218,7 @@ final class HttpProjectApi {
     void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
         Path projectDir;
-        List<cc.jumpkick.model.Scope> scopes;
+        List<Scope> scopes;
         try {
             String dir = HttpEngineServer.queryParam(query, "dir");
             if (dir == null || dir.isBlank()) {
@@ -222,18 +229,17 @@ final class HttpProjectApi {
                 return;
             }
             projectDir = Path.of(dir);
-            scopes =
-                    cc.jumpkick.resolver.DependencyGraphModel.parseScopes(HttpEngineServer.queryParam(query, "scopes"));
+            scopes = DependencyGraphModel.parseScopes(HttpEngineServer.queryParam(query, "scopes"));
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
         boolean transitive = parseTruthy(HttpEngineServer.queryParamLenient(query, "transitive"));
-        cc.jumpkick.resolver.DependencyGraphModel.Graph data;
+        DependencyGraphModel.Graph data;
         try {
-            data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
-        } catch (IOException | cc.jumpkick.config.JkBuildParseException e) {
+            data = DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
+        } catch (IOException | JkBuildParseException e) {
             String msg = e.getMessage() == null || e.getMessage().isBlank() ? e.toString() : e.getMessage();
             HttpEngineServer.sendJson(
                     exchange, 422, JsonOut.object().put("error", msg).toString());

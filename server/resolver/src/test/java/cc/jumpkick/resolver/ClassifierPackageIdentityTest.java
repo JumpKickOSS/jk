@@ -3,9 +3,11 @@ package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.Pom;
 import cc.jumpkick.resolver.pubgrub.InMemoryPackageSource;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
 import java.util.List;
@@ -44,7 +46,7 @@ class ClassifierPackageIdentityTest {
     @Test
     void bare_ga_lock_name_normalizes_to_default_jar_package_key() {
         assertThat(PackageId.parse("com.google.guava:guava").key()).isEqualTo("com.google.guava:guava:jar:");
-        var art = new cc.jumpkick.lock.Lockfile.Artifact(
+        var art = new Lockfile.Artifact(
                 "com.google.guava:guava",
                 "33.0.0-jre",
                 "central+https://repo1.maven.org/maven2/",
@@ -60,7 +62,7 @@ class ClassifierPackageIdentityTest {
 
     @Test
     void maven_package_source_package_key_includes_classifier() {
-        var dep = new cc.jumpkick.repo.Pom.Dep(
+        var dep = new Pom.Dep(
                 "io.netty",
                 "netty-transport-native-epoll",
                 "4.1.100.Final",

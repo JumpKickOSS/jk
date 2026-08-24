@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
@@ -49,8 +50,7 @@ public final class KotlinPluginSetup {
         Path stdlib = KotlinBtaResolver.resolveStdlib(repos, cas, version);
 
         // Expand thin worker jar + Maven runtime closure from its POM, then BTA closure.
-        List<Path> workerClasspath =
-                new ArrayList<>(cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(locateWorkerJar(cas)));
+        List<Path> workerClasspath = new ArrayList<>(WorkerLaunchClasspath.paths(locateWorkerJar(cas)));
         for (Path p : closure) {
             if (!workerClasspath.contains(p)) workerClasspath.add(p);
         }

@@ -3,7 +3,9 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
@@ -139,8 +141,8 @@ public final class HistoryCommand extends GroupCommand {
                         saved,
                         note));
             }
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            for (String line : cc.jumpkick.cli.tui.Table.render(
+            CommandWedge.envelopeStart();
+            for (String line : Table.render(
                     "Build history", List.of("", "Id", "Project", "Kind", "Took", "When", "Saved", "Notes"), rows)) {
                 CliOutput.out(line);
             }
@@ -191,8 +193,8 @@ public final class HistoryCommand extends GroupCommand {
             }
             boolean success = Jsonl.bool(record, "success", false);
             boolean cancelled = Jsonl.bool(record, "cancelled", false);
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Build " + Jsonl.str(record, "id")));
+            CommandWedge.envelopeStart();
+            CliOutput.out(CommandWedge.menu("Build " + Jsonl.str(record, "id")));
             CliOutput.out(glyph(success, cancelled) + " " + Jsonl.str(record, "id"));
             CliOutput.out("  status:   " + outcome(success, cancelled) + " (exit "
                     + Jsonl.longValue(record, "exitCode", 0) + ")");
@@ -300,7 +302,7 @@ public final class HistoryCommand extends GroupCommand {
             }
             String id = in.positionals().get(0);
             if (EngineClient.historyDelete(EnginePaths.current(), id)) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("History", "Deleted build " + id);
+                CommandWedge.printOk("History", "Deleted build " + id);
                 return 0;
             }
             CliOutput.err("No such build: " + id);

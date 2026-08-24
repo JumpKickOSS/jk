@@ -9,6 +9,7 @@ import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.Width;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class DiagnosticReportTest {
 
     private static String plain(String s) {
-        return cc.jumpkick.terminal.Width.stripAnsi(s == null ? "" : s);
+        return Width.stripAnsi(s == null ? "" : s);
     }
 
     @Test

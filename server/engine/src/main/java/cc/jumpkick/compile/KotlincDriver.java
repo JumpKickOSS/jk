@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -51,7 +56,7 @@ public final class KotlincDriver {
             return run(request);
         } catch (IOException e) {
             // One retry when the worker pipe closes mid-compile flake).
-            if (cc.jumpkick.engine.plugin.PluginProcess.isPipeClosed(e)) {
+            if (PluginProcess.isPipeClosed(e)) {
                 try {
                     return run(request);
                 } catch (IOException e2) {
@@ -77,7 +82,7 @@ public final class KotlincDriver {
             // pinned JDK; requirements.md promises a 17+ project floor). The project JDK is an
             // INPUT: writeSpec passes it as kotlinc's -jdk-home so cross-compilation still
             // resolves the pinned JDK's platform classes.
-            Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
+            Path hostJavaHome = JavaHomes.runningJavaHome();
             String classpath = request.workerClasspath().stream()
                     .map(Path::toString)
                     .collect(Collectors.joining(File.pathSeparator));
@@ -86,15 +91,15 @@ public final class KotlincDriver {
             // the cache tames its multi-second JIT warmup. Mapped when one exists for (host JDK,
             // GC, classpath); else a background trainer compiles a synthetic hello.kt so the NEXT
             // kotlin build maps it. JVM flags, so they precede -cp.
-            rest.addAll(cc.jumpkick.engine.plugin.PluginAot.kotlincFlags(
+            rest.addAll(PluginAot.kotlincFlags(
                     hostJavaHome,
                     classpath,
                     (aotOutput, scratch) -> trainerCommand(request, classpath, hostJavaHome, aotOutput, scratch)));
             rest.addAll(List.of(
                     // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
                     "--enable-native-access=ALL-UNNAMED", "-cp", classpath, WORKER_MAIN, "@" + spec.toAbsolutePath()));
-            List<String> cmd = cc.jumpkick.engine.plugin.JvmOptions.javaCommand(
-                    JdkFingerprint.java(hostJavaHome).toString(), 1, rest);
+            List<String> cmd =
+                    JvmOptions.javaCommand(JdkFingerprint.java(hostJavaHome).toString(), 1, rest);
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             String[] status = {null};
@@ -204,11 +209,10 @@ public final class KotlincDriver {
         // (dedicated train key must match real kotlinc worker keys).
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
-        jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
+        jvmFlags.addAll(JvmOptions.batchFlags(1));
         jvmFlags.add("--enable-native-access=ALL-UNNAMED");
         Path javaExe = JdkFingerprint.java(hostJavaHome);
-        return cc.jumpkick.engine.plugin.PluginLoader.command(
-                javaExe, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
+        return PluginLoader.command(javaExe, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
     }
 
     /**

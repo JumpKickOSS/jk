@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.resolver.Versions;
 import java.io.IOException;
@@ -40,7 +41,7 @@ public final class LockFloor {
      */
     public static @Nullable String requiredNewer(Path entryDir, String running) {
         try {
-            Path lock = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
+            Path lock = LockPaths.lockFile(entryDir);
             if (!Files.isRegularFile(lock)) return null;
             String floor = LockfileReader.read(lock).jkMin();
             if (floor == null || floor.isBlank()) return null;

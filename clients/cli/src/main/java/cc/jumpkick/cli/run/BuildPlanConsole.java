@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -90,7 +92,7 @@ public final class BuildPlanConsole {
      * <p>{@code --output json} wins over the visualization flags because it's an explicit "I want
      * machine-readable output" — the user's other preferences don't override that.
      */
-    public static Mode modeFor(cc.jumpkick.cli.GlobalOptions opts) {
+    public static Mode modeFor(GlobalOptions opts) {
         if (opts == null) return Mode.AUTO;
         if (opts.outputIsJson()) return Mode.JSON;
         if (opts.quiet) return Mode.QUIET;
@@ -285,6 +287,6 @@ public final class BuildPlanConsole {
      * deliberately stdout-only so {@code jk build | less} draws plain text.
      */
     public static boolean isInteractiveTerminal() {
-        return cc.jumpkick.cli.tui.Interactivity.stdoutIsTty();
+        return Interactivity.stdoutIsTty();
     }
 }

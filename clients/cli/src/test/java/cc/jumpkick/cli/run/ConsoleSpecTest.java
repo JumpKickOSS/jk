@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -81,7 +82,7 @@ class ConsoleSpecTest {
     void took_ansi_is_dim_italic_without_dash() throws Exception {
         // When ANSI is available the body is styled "took …" (no leading dash).
         String took = ConsoleSpec.took(Duration.ofMillis(100));
-        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (Theme.active().isAnsi()) {
             assertThat(took).contains("took 100ms");
             assertThat(took).doesNotStartWith("- ");
             assertThat(took).contains("\u001B["); // styled

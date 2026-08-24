@@ -1,15 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.runtime.TestSupport;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Map;
@@ -45,7 +55,7 @@ public final class SingleBuildVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
@@ -60,20 +70,18 @@ public final class SingleBuildVerb implements HostedVerb {
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Path buildFile = entryDir.resolve("jk.toml");
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
+            Path lockFile = LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
 
             int estimatedTestCount = skipTests
                     ? 0
-                    : cc.jumpkick.runtime.TestSupport.estimateSelectedSuiteTestCount(
-                            entryDir,
-                            cc.jumpkick.layout.ModuleLayout.isCompact(entryDir),
-                            ProtoJobs.testSelectionOf(requestLine));
+                    : TestSupport.estimateSelectedSuiteTestCount(
+                            entryDir, ModuleLayout.isCompact(entryDir), ProtoJobs.testSelectionOf(requestLine));
 
             Session session =
                     host.resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
 
-            cc.jumpkick.runtime.BuildPlanner.Inputs inputs = new cc.jumpkick.runtime.BuildPlanner.Inputs(
+            BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                             entryDir,
                             cache,
                             buildFile,
@@ -90,9 +98,9 @@ public final class SingleBuildVerb implements HostedVerb {
                             Set.of(),
                             session)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
-            cc.jumpkick.run.BuildPlan plan = SessionContext.where(session, () -> {
-                cc.jumpkick.run.BuildPlan.Builder builder = cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs, false);
-                cc.jumpkick.runtime.BuildPlanner.appendDeclaredTails(builder, inputs);
+            BuildPlan plan = SessionContext.where(session, () -> {
+                BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, false);
+                BuildPlanner.appendDeclaredTails(builder, inputs);
                 return builder.build();
             });
             long barWeight = plan.estimatedTotalWeight();
@@ -103,7 +111,7 @@ public final class SingleBuildVerb implements HostedVerb {
             Map<Path, String> preFps = null;
             if (!session.config().rebuildOr(false) && !session.config().forceOr(false)) {
                 try {
-                    cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
+                    JkBuild entry = JkBuildParser.parse(buildFile);
                     BuildGraph.Result g = BuildGraph.resolve(entryDir, entry);
                     if (!g.hasErrors()) {
                         preGraph = g;
@@ -115,17 +123,15 @@ public final class SingleBuildVerb implements HostedVerb {
             }
 
             long startNanos = System.nanoTime();
-            cc.jumpkick.run.BuildPlanResult result = SessionContext.where(session, plan::run);
+            BuildPlanResult result = SessionContext.where(session, plan::run);
             host.releaseExclusiveSlot();
             host.accTests(
-                    host.eventRequestId(),
-                    plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            cc.jumpkick.engine.jobs.JobOutcome outcome =
-                    cc.jumpkick.engine.jobs.JobOutcome.of(result.success(), result.success() ? 0 : 1);
+                    host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+            JobOutcome outcome = JobOutcome.of(result.success(), result.success() ? 0 : 1);
             if (result.success() && barWeight > 0) {
                 long moduleMs = (System.nanoTime() - startNanos) / 1_000_000;
                 if (moduleMs > 0) {
-                    cc.jumpkick.runtime.Calibration.refine(moduleMs / (double) barWeight, System.currentTimeMillis());
+                    Calibration.refine(moduleMs / (double) barWeight, System.currentTimeMillis());
                 }
                 host.maybeEnqueuePrune(cache);
             }

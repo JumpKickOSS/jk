@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.cli.CommandDispatch;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
@@ -39,8 +40,7 @@ class ResultsCommandTest {
 
     @Test
     void command_is_registered() {
-        assertThat(cc.jumpkick.cli.CommandDispatch.commands().stream().map(c -> c.name()))
-                .contains("results");
+        assertThat(CommandDispatch.commands().stream().map(c -> c.name())).contains("results");
     }
 
     @Test

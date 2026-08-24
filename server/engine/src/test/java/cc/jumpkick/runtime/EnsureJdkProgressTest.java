@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.JdkProgressLabel;
+import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import java.util.ArrayList;
 import java.util.List;
@@ -71,15 +72,15 @@ class EnsureJdkProgressTest {
         }
 
         @Override
-        public <T> void put(cc.jumpkick.run.BuildPlanKey<T> key, T value) {}
+        public <T> void put(BuildPlanKey<T> key, T value) {}
 
         @Override
-        public <T> Optional<T> get(cc.jumpkick.run.BuildPlanKey<T> key) {
+        public <T> Optional<T> get(BuildPlanKey<T> key) {
             return Optional.empty();
         }
 
         @Override
-        public <T> T require(cc.jumpkick.run.BuildPlanKey<T> key) {
+        public <T> T require(BuildPlanKey<T> key) {
             throw new IllegalStateException(key.toString());
         }
     }

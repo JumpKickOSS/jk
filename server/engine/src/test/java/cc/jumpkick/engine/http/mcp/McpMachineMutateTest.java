@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.task.CachePruneScheduler;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -59,8 +60,7 @@ class McpMachineMutateTest {
     void disk_clean_stamps_last_pruned(@TempDir Path cache) {
         Map<String, Object> done = McpMachine.diskAction("clean", true, cache, null);
         assertThat(done.get("cleaned")).isEqualTo(true);
-        assertThat(cache.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE))
-                .exists();
+        assertThat(cache.resolve(CachePruneScheduler.LAST_PRUNED_FILE)).exists();
     }
 
     @Test

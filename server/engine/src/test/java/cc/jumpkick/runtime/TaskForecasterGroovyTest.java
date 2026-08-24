@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
@@ -71,7 +72,7 @@ class TaskForecasterGroovyTest {
         assertThat(gv.cached()).isFalse();
 
         // Stamp the merged classes dir (where write-stamp-groovy writes it) — CACHED.
-        var layout = cc.jumpkick.layout.BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
+        var layout = BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
         FreshnessStamp.write(
                 layout.classesDir(), FreshnessStamp.GROOVY_STAMP, "compile-groovy", "", List.of(foo), List.of(), 21);
         List<TaskForecast.Module> warm = TaskForecaster.of(graph, cas, actionCache, cache);

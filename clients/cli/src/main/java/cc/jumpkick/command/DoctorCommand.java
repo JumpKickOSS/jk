@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.config.JkCacheConfig;
@@ -12,6 +13,7 @@ import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -101,8 +103,8 @@ public final class DoctorCommand implements CliCommand {
         }
 
         Theme t = Theme.active();
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Doctor"));
+        CommandWedge.envelopeStart();
+        CliOutput.out(CommandWedge.menu("Doctor"));
 
         printCheck(engine, t);
         printCheck(cache, t);
@@ -222,7 +224,7 @@ public final class DoctorCommand implements CliCommand {
     private static Check checkLock() {
         try {
             Path cwd = Path.of(System.getProperty("user.dir", "."));
-            Path lock = cc.jumpkick.lock.LockPaths.lockFile(cwd);
+            Path lock = LockPaths.lockFile(cwd);
             Path proj = lock.getParent();
             if (!Files.isRegularFile(lock))
                 return new Check(Status.WARN, "lock", "no jk-lock.toml at " + proj + " (run jk lock)");

@@ -2,14 +2,27 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.run.TimelineOpts;
+import cc.jumpkick.command.BuildCommand;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import cc.jumpkick.engine.protocol.CatalogReadAck;
+import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.engine.protocol.GeneratedFiles;
+import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.engine.protocol.ModuleGraphAck;
+import cc.jumpkick.engine.protocol.NewProjectAck;
+import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -18,10 +31,14 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.BuildForecast;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
+import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
@@ -80,7 +97,7 @@ final class EngineBuildListenerAdapter {
         EngineClient.ensureRunning(paths, Jk.VERSION);
         Session session = SessionContext.current();
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -93,7 +110,7 @@ final class EngineBuildListenerAdapter {
                     // rebuild rides the session envelope: bypass jk's caches without implying
                     // refresh — verify's scratch rebuild stays CAS-local (no re-download).
                     session.config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline(),
+                    TimelineOpts.noTimeline(),
                     SessionContext.current().assemblyOverride()));
             writer.write('\n');
             writer.flush();
@@ -181,11 +198,11 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths,
             EngineRequests.TestRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut)
+            TestSummary[] testResultOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -209,7 +226,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
                     SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -228,12 +245,12 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths,
             EngineRequests.SingleBuildRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut,
+            TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -255,7 +272,7 @@ final class EngineBuildListenerAdapter {
                     req.clientEnv(),
                     SessionContext.current().jvm(),
                     SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline(),
+                    TimelineOpts.noTimeline(),
                     SessionContext.current().assemblyOverride()));
             writer.write('\n');
             writer.flush();
@@ -276,7 +293,7 @@ final class EngineBuildListenerAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -308,7 +325,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
                     SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -324,7 +341,7 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths, EngineRequests.ImageRequest req, WorkspaceBuildListener listener)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -346,7 +363,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
                     SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
             return streamEvents(reader, listener, req.cache(), ch);
@@ -362,7 +379,7 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths, EngineRequests.CompileRequest req, WorkspaceBuildListener listener)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -379,7 +396,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
                     SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
             return streamEvents(reader, listener, req.cache(), ch);
@@ -396,11 +413,11 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths,
             EngineRequests.InstallRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut)
+            TestSummary[] testResultOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -419,7 +436,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
                     SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -443,7 +460,7 @@ final class EngineBuildListenerAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -463,8 +480,8 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            List<cc.jumpkick.runtime.TaskForecast.Module> modules = new ArrayList<>();
-            Map<String, List<cc.jumpkick.runtime.TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();
+            List<TaskForecast.Module> modules = new ArrayList<>();
+            Map<String, List<TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();
             Map<String, String> coordByDir = new LinkedHashMap<>();
             Map<String, int[]> countsByDir = new LinkedHashMap<>(); // [sourceCount, testCount]
             Map<String, boolean[]> flagsByDir = new LinkedHashMap<>(); // [producesJar, producesImage]
@@ -490,9 +507,9 @@ final class EngineBuildListenerAdapter {
                         String dir = Jsonl.str(line, "dir");
                         stepsByDir
                                 .get(dir)
-                                .add(new cc.jumpkick.runtime.TaskForecast.Task(
+                                .add(new TaskForecast.Task(
                                         Jsonl.str(line, "name"),
-                                        cc.jumpkick.runtime.TaskForecast.Status.valueOf(Jsonl.str(line, "status")),
+                                        TaskForecast.Status.valueOf(Jsonl.str(line, "status")),
                                         Jsonl.str(line, "text"),
                                         Jsonl.str(line, "key")));
                     }
@@ -515,7 +532,7 @@ final class EngineBuildListenerAdapter {
                         for (String dir : order) {
                             int[] counts = countsByDir.get(dir);
                             boolean[] flags = flagsByDir.get(dir);
-                            modules.add(cc.jumpkick.runtime.TaskForecast.Module.fromWire(
+                            modules.add(TaskForecast.Module.fromWire(
                                     Path.of(dir),
                                     coordByDir.get(dir),
                                     stepsByDir.get(dir),
@@ -549,7 +566,7 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths, String requestLine, String ackType, String what, AckDecoder<T> decoder)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -563,7 +580,7 @@ final class EngineBuildListenerAdapter {
                     // A verb that failed before producing its ack answers with an error line;
                     // surface the engine's message instead of reading to EOF and reporting a
                     // generic disconnect (JK-2158).
-                    throw cc.jumpkick.engine.protocol.EngineWireException.fromJsonLine(line);
+                    throw EngineWireException.fromJsonLine(line);
                 }
                 if (!ackType.equals(type)) continue;
                 return decoder.decode(line);
@@ -585,7 +602,7 @@ final class EngineBuildListenerAdapter {
                     return Jsonl.bool(line, "changed", false);
                 });
         // Manifest just changed — drop memoized project summaries for this invocation (JK-2162).
-        if (changed) cc.jumpkick.command.BuildCommand.forgetProjectInfo();
+        if (changed) BuildCommand.forgetProjectInfo();
         return changed;
     }
 
@@ -612,17 +629,17 @@ final class EngineBuildListenerAdapter {
      * case) — this method itself just sends the request. Best-effort: swallows the engine's error
      * rather than throwing, since the caller falls back to whatever the local cache already holds.
      */
-    static cc.jumpkick.engine.protocol.ModuleGraphAck moduleGraph(
+    static ModuleGraphAck moduleGraph(
             EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
         return request(
                 paths,
                 ProtoReads.moduleGraphRequest(dir.toString(), format, modules, affectedSince),
                 EngineProtocol.MODULE_GRAPH_ACK,
                 "module-graph request",
-                cc.jumpkick.engine.protocol.ModuleGraphAck::decode);
+                ModuleGraphAck::decode);
     }
 
-    static cc.jumpkick.engine.protocol.CacheInventoryAck cacheInventory(
+    static CacheInventoryAck cacheInventory(
             EnginePaths.Paths paths,
             String query,
             Path cache,
@@ -642,10 +659,10 @@ final class EngineBuildListenerAdapter {
                         dryRun),
                 EngineProtocol.CACHE_INVENTORY_ACK,
                 "cache-inventory request",
-                cc.jumpkick.engine.protocol.CacheInventoryAck::decode);
+                CacheInventoryAck::decode);
     }
 
-    static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
+    static CatalogReadAck catalogRead(
             EnginePaths.Paths paths,
             Path dir,
             Path cache,
@@ -667,7 +684,7 @@ final class EngineBuildListenerAdapter {
                         bundledOnly),
                 EngineProtocol.CATALOG_READ_ACK,
                 "catalog-read request",
-                cc.jumpkick.engine.protocol.CatalogReadAck::decode);
+                CatalogReadAck::decode);
     }
 
     static void freshenCatalog(EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile) {
@@ -721,30 +738,27 @@ final class EngineBuildListenerAdapter {
     }
 
     /** One engine-hosted why lookup. */
-    static cc.jumpkick.engine.protocol.WhyReport why(EnginePaths.Paths paths, Path dir, String query)
-            throws IOException {
+    static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
         return request(
                 paths,
                 ProtoReads.whyRequest(dir.toString(), query),
                 EngineProtocol.WHY_ACK,
                 "why request",
-                cc.jumpkick.engine.protocol.WhyReport::decode);
+                WhyReport::decode);
     }
 
     /** One engine-hosted IDE model computation: the wire model back, generation stays client-side. */
-    static cc.jumpkick.engine.protocol.IdeWireModel ideModel(
-            EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
+    static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
         return request(
                 paths,
                 ProtoReads.ideModelRequest(
                         dir.toString(), cache.toString(), jdksDir == null ? null : jdksDir.toString()),
                 EngineProtocol.IDE_MODEL_ACK,
                 "ide-model request",
-                cc.jumpkick.engine.protocol.IdeWireModel::decode);
+                IdeWireModel::decode);
     }
 
-    static cc.jumpkick.engine.protocol.NewProjectAck newProject(
-            EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
+    static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
         return request(
                 paths,
                 ProtoReads.newProjectRequest(
@@ -769,22 +783,22 @@ final class EngineBuildListenerAdapter {
                         req.targetDir()),
                 EngineProtocol.NEW_PROJECT_ACK,
                 "new-project request",
-                cc.jumpkick.engine.protocol.NewProjectAck::decode);
+                NewProjectAck::decode);
     }
 
     /** One engine-hosted generator run: file payloads back, guards/writes stay client-side. */
-    static cc.jumpkick.engine.protocol.GeneratedFiles generate(
-            EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params) throws IOException {
+    static GeneratedFiles generate(EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params)
+            throws IOException {
         return request(
                 paths,
                 ProtoReads.generateRequest(dir.toString(), kind, params),
                 EngineProtocol.GENERATE_ACK,
                 "generate request",
-                cc.jumpkick.engine.protocol.GeneratedFiles::decode);
+                GeneratedFiles::decode);
     }
 
     /** One engine-hosted plugin command run. */
-    static cc.jumpkick.engine.protocol.PluginCommandReport pluginCommand(
+    static PluginCommandReport pluginCommand(
             EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args) throws IOException {
         return request(
                 paths,
@@ -794,27 +808,27 @@ final class EngineBuildListenerAdapter {
                         SessionContext.current().clientEnv(),
                         SessionContext.current().jvm(),
                         SessionContext.current().config().rebuildOr(false),
-                        cc.jumpkick.cli.run.TimelineOpts.noTimeline()),
+                        TimelineOpts.noTimeline()),
                 EngineProtocol.PLUGIN_VERB_ACK,
                 "plugin command",
-                cc.jumpkick.engine.protocol.PluginCommandReport::decode);
+                PluginCommandReport::decode);
     }
 
     /** One engine-hosted deny check: policy parse + lock read + violations, engine-side. */
-    static cc.jumpkick.engine.protocol.DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
+    static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
         return request(
                 paths,
                 ProtoReads.denyCheckRequest(dir.toString()),
                 EngineProtocol.DENY_CHECK_ACK,
                 "deny check",
-                cc.jumpkick.engine.protocol.DenyReport::decode);
+                DenyReport::decode);
     }
 
-    static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
+    static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
         return projectInfo(paths, dir, null, null, false);
     }
 
-    static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
+    static ProjectInfo projectInfo(
             EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
             throws IOException {
         return request(
@@ -822,10 +836,10 @@ final class EngineBuildListenerAdapter {
                 ProtoReads.projectInfoRequest(dir.toString(), modules, affectedSince, counts),
                 EngineProtocol.PROJECT_INFO_ACK,
                 "project-info request",
-                cc.jumpkick.engine.protocol.ProjectInfo::decode);
+                ProjectInfo::decode);
     }
 
-    static cc.jumpkick.engine.protocol.ExecPlan execPlan(
+    static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
             Path cache,
@@ -850,10 +864,10 @@ final class EngineBuildListenerAdapter {
                         SessionContext.current().clientEnv(),
                         SessionContext.current().jvm(),
                         SessionContext.current().config().rebuildOr(false),
-                        cc.jumpkick.cli.run.TimelineOpts.noTimeline()),
+                        TimelineOpts.noTimeline()),
                 EngineProtocol.EXEC_PLAN_ACK,
                 "exec-plan request",
-                cc.jumpkick.engine.protocol.ExecPlan::decode);
+                ExecPlan::decode);
     }
 
     /**
@@ -862,8 +876,8 @@ final class EngineBuildListenerAdapter {
      * request line, one {@code forecast-ack} back. The session's offline/force/rerun flags ride
      * the request so the engine's forecast honors them exactly as the in-process one did.
      */
-    static cc.jumpkick.runtime.BuildForecast forecast(
-            EnginePaths.Paths paths, Path entryDir, Path cache, boolean skipTests) throws IOException {
+    static BuildForecast forecast(EnginePaths.Paths paths, Path entryDir, Path cache, boolean skipTests)
+            throws IOException {
         Session session = SessionContext.current();
         return request(
                 paths,
@@ -879,7 +893,7 @@ final class EngineBuildListenerAdapter {
                 line -> {
                     Set<Path> dirty = new LinkedHashSet<>();
                     for (String d : Jsonl.strArray(line, "dirtyDirs")) dirty.add(Path.of(d));
-                    return new cc.jumpkick.runtime.BuildForecast(
+                    return new BuildForecast(
                             dirty,
                             Jsonl.bool(line, "lockStale", false),
                             Jsonl.bool(line, "empty", false),
@@ -891,7 +905,7 @@ final class EngineBuildListenerAdapter {
     static BuildPlanResult streamSingleBuildPlanEvents(
             BufferedReader reader,
             Function<List<Task>, BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut,
+            TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
         return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, buildOutcomeOut, null);
@@ -900,7 +914,7 @@ final class EngineBuildListenerAdapter {
     static BuildPlanResult streamSingleBuildPlanEvents(
             BufferedReader reader,
             Function<List<Task>, BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut,
+            TestSummary[] testResultOut,
             String[] buildOutcomeOut,
             @Nullable SocketChannel ch)
             throws IOException {
@@ -964,7 +978,7 @@ final class EngineBuildListenerAdapter {
                         boolean success = Jsonl.bool(line, "success", false);
                         long total = Jsonl.longValue(line, "testTotal", -1);
                         if (total >= 0 && testResultOut != null) {
-                            testResultOut[0] = new cc.jumpkick.run.TestSummary(
+                            testResultOut[0] = new TestSummary(
                                     total,
                                     Jsonl.longValue(line, "testSucceeded", 0),
                                     Jsonl.longValue(line, "testFailed", 0),
@@ -1052,13 +1066,11 @@ final class EngineBuildListenerAdapter {
                         // Prefer engine strategy percent (clock when R0 set); fall back to num/den.
                         double pct = Jsonl.has(line, "progress")
                                 ? Jsonl.doubleValue(line, "progress", Double.NaN)
-                                : (den > 0
-                                        ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den)
-                                        : Double.NaN);
+                                : (den > 0 ? WorkspaceProgressTracker.percentOf(num, den) : Double.NaN);
                         if (Double.isNaN(pct) && den > 0) {
-                            pct = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den);
+                            pct = WorkspaceProgressTracker.percentOf(num, den);
                         }
-                        listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
+                        listener.onWorkspaceProgress(new WorkspaceProgressTracker.Snapshot(
                                 num, den, pct, phase == null ? "" : phase, mc, mt, rem, r0));
                         // Residual remainingMs rides the snapshot; AggregateContext re-anchors
                         // the countdown + adaptive bar (seed path stays on eta events only).

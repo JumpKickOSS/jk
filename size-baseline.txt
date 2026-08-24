@@ -36,6 +36,12 @@
 # Paste that number over the old one, keep or rewrite the comment, and it lands in the same commit
 # as the shrink. Deleting a listed file works the same way: drop its entry.
 #
+# JK-2412 moved 17 of the numbers below UPWARD, by 2 to 16 lines, and 7 downward. Nothing was
+# added to any of them: the tree-wide FQCN sweep replaced an inline `cc.jumpkick.foo.Bar` with an
+# `import` line, so a file that named a package-qualified type in ten places gained one line and
+# lost ten qualifiers. Characters fell everywhere; lines moved either way depending on how much
+# re-wrapping the shorter names bought back. The invariants below are unchanged.
+#
 # FORMAT. One entry per line: `<lines>  <path from the repo root>`. The comment lines immediately
 # above an entry, with no blank line between, are that entry's invariant. A blank line separates
 # entries. Sorted by path.
@@ -44,16 +50,16 @@
 # `step-start` renders a module that never started. T56 deletes this file outright into
 # EngineJobs / EngineReads / EngineEventDecoder / EngineExplainDecoder; until then the ordering
 # lives in one switch.
-1315  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineBuildListenerAdapter.java
+1327  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineBuildListenerAdapter.java
 
 # T56: request framing and the single socket writer stay together (JK-2385 made that one owner);
 # a split hands the writer to a second object and the synchronization with it.
-1012  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineClient.java
+1010  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineClient.java
 
 # Mode, artifact and `awaitStartup` stay together so a torn AOT cache cannot be mapped without the
 # self-heal retry that repairs it — the file's own javadoc names this and the AOT key/manifest
 # comments are most of the excess.
-859  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineSpawn.java
+864  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineSpawn.java
 
 # One painter owns the whole failure block: the OSC-8 deep link, the gutter, the source snippet and
 # the box drawing are aligned against each other column by column, and a split desynchronises them.
@@ -63,11 +69,11 @@
 # JkManagerColor 678) is 3,414 lines against the 2,204-line class it replaced. The live region owns
 # animation state and the Ctrl-C handoff, which is why paint (JkManagerView) and token colour
 # (JkManagerColor) are already out and this facade is not further splittable at the seam.
-1545  clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManager.java
+1548  clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManager.java
 
 # T54: paint and settle for the plan-mode frame. 47 dead static delegates go first; what is left is
 # one frame budget, and two files cannot share a frame budget.
-1191  clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManagerView.java
+1193  clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManagerView.java
 
 # Incremental redraw of the active step only, with no alt-screen: the step ladder, the redraw
 # cursor arithmetic and the cancel path that restores cursor/SGR are one state machine. Split it
@@ -77,12 +83,12 @@
 # T57: the lock -> sync -> compile -> test -> package order is the command's contract, and every
 # early-exit arm has to leave the workspace in a state the next verb can resume from. T57 peels
 # ProjectPeek / BuildTails / WorkspaceRunView / BuildSelection off the edges, not the order.
-1213  clients/cli/src/main/java/cc/jumpkick/command/BuildCommand.java
+1206  clients/cli/src/main/java/cc/jumpkick/command/BuildCommand.java
 
 # T57: 91 forwarders and CURATED_IDS are deleted, and the wizard chrome peels to NewChrome /
 # NewPlans. The template-apply step and its rollback must stay in one place: a half-applied
 # giter8 template is a directory the user has to clean up by hand.
-1104  clients/cli/src/main/java/cc/jumpkick/command/NewCommand.java
+1120  clients/cli/src/main/java/cc/jumpkick/command/NewCommand.java
 
 # T60: one root component and two views, and `clients/web` has no bundler — a split costs a
 # <script> tag and a load-order invariant no compiler checks, which is exactly why the JS band is
@@ -107,38 +113,38 @@
 # `tryStartBuildPlan` IS that invariant — the proposal to peel it was withdrawn on purpose, because
 # any extraction hands the lock to a second object and spreads the invariant across two files.
 # T53 peels EngineElection + DrainReporter only, which do not touch the lock.
-1223  server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java
+1231  server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java
 
 # The Host-header check, the admission semaphore and the bearer-token gate are one admission
 # decision made in one order. Splitting them splits a security control, and a request that passes
 # two of three is a request that got in.
-840  server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java
+839  server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java
 
 # T55 — the largest file in the repo, and the least defensible. 63 tool names typed exactly twice,
 # five telescoping constructors and a 361-line `toolsList`. The only real invariant is that
 # `toolsList` / `toolsCall` / INSTRUCTIONS / PROMPTS agree on every name; T55 replaces that
 # coincidence with an McpTool registry and takes the file to about 150 lines.
-1680  server/engine/src/main/java/cc/jumpkick/engine/http/McpHandler.java
+1673  server/engine/src/main/java/cc/jumpkick/engine/http/McpHandler.java
 
 # T58: the append path and the replay path must read and write the same record shape, and a
 # journal that replays differently from how it was written is a corrupted history.
-855  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildJournal.java
+857  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildJournal.java
 
 # T58: `coreBuilder` and `appendDeclaredTails` have to agree on DAG edge order — a tail appended
 # against a stale edge set is a step that runs before its input exists.
-1249  server/engine/src/main/java/cc/jumpkick/runtime/BuildPlanner.java
+1255  server/engine/src/main/java/cc/jumpkick/runtime/BuildPlanner.java
 
 # T58: the probe bootstrap, the continuous learned-rate fold and the cold-ETA model are one model.
 # Micro-probes must never become absolute method costs (empty @Tests run in ~5 ms and would
 # under-shoot real suites by 10x), and that rule is only enforceable where both halves are visible.
-1385  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
+1388  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
 
 # T58: the per-phase weight table is data that belongs in a resource, not code. No invariant holds
 # it here — this entry is a ratchet, not a justification.
-1189  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
+1199  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
 
 # T58: one plan per verb, with the shared step bodies next to the plans that compose them.
-1085  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
+1089  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
 
 # The Jib path and the docker/podman Dockerfile path must produce the same structured success keys
 # (IMAGE_REF / TARBALL_PATH / ...) — two files means two key sets and a caller that can only handle
@@ -146,33 +152,33 @@
 808  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
 
 # T58: step bodies shared by the Planner* collaborators. No invariant holds it here — ratchet only.
-940  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
+949  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
 
 # T58: plugin discovery, the contribution fold and the plugin step bodies. Ratchet only.
-820  server/engine/src/main/java/cc/jumpkick/runtime/PluginBuild.java
+826  server/engine/src/main/java/cc/jumpkick/runtime/PluginBuild.java
 
 # T58: the forecast's cache keys must mirror the real build's request field for field — drift makes
 # `jk explain` forecast a phantom rebuild. Dirty-marking of a module and of its consumers is one
 # traversal, so misses stay pessimistic and never become false cache hits.
-1213  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
+1212  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
 
 # T58: workspace step execution and the target/ write-drain that `jk build` must not return ahead
 # of (JK-2451). Ratchet only.
-902  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
+908  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
 
 # T58: the `##JKT:` fork protocol has exactly one writer and one reader, and they are the two ends
 # of the same wire format. The one-shot and pull-queue worker modes share it.
-1365  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
+1373  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
 
 # T59: the three scope solves (main / test / processor) must stay independent of each other and
 # produce one lockfile — a shared mutable universe between them is how a test-only version leaks
 # into the main classpath.
-1209  server/resolver/src/main/java/cc/jumpkick/resolver/LockOrchestrator.java
+1216  server/resolver/src/main/java/cc/jumpkick/resolver/LockOrchestrator.java
 
 # The per-solve version/dependency cache, the transitive prefetch and the preferred-version seeding
 # are one PubGrub PackageSource contract; the solver's determinism depends on all three answering
 # from the same snapshot.
-813  server/resolver/src/main/java/cc/jumpkick/resolver/MavenPackageSource.java
+815  server/resolver/src/main/java/cc/jumpkick/resolver/MavenPackageSource.java
 
 # T59: revisit-marking is what stops a diamond graph exploding, and it is only correct if the walk
 # that marks and the render that reads the mark are the same traversal. T59 splits the ANSI styling
@@ -186,7 +192,7 @@
 # T51 / T59: every wire key is typed twice, once to write and once to decode, and the pair must
 # agree. The fix is generation, not a split — two hand-written halves in two files is strictly
 # worse than two in one.
-1045  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
+1029  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
 
 # T51 / T59: same pairing as ProtoEvents, for the job verbs.
-1022  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
+1020  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java

@@ -3,10 +3,13 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -62,7 +65,7 @@ public final class JdkGraalCommand implements CliCommand {
         List<JdkHit> graals =
                 registry.listHits().stream().filter(JdkGraalCommand::isGraal).toList();
         if (graals.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "no GraalVM JDK installed — install one with "
                             + "`jk jdk install native` (or `jk jdk install graalvm-25`).");
@@ -73,12 +76,11 @@ public final class JdkGraalCommand implements CliCommand {
         if (spec == null || spec.isBlank()) {
             chosen = graals.stream().sorted(byGraalPreference()).findFirst().orElseThrow();
         } else {
-            Optional<JdkHit> match = cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)
-                    ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, graals)
+            Optional<JdkHit> match = JdkKeywords.isKeyword(spec)
+                    ? JdkKeywords.bestInstalledMatch(spec, graals)
                     : registry.findHitBySpec(spec).filter(JdkGraalCommand::isGraal);
             if (match.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "JDK", "no installed GraalVM matches `" + spec + "` (try `jk jdk list`).");
+                CommandWedge.printFail("JDK", "no installed GraalVM matches `" + spec + "` (try `jk jdk list`).");
                 return 1;
             }
             chosen = match.get();
@@ -107,8 +109,7 @@ public final class JdkGraalCommand implements CliCommand {
                     return i >= 0 ? i : Integer.MAX_VALUE;
                 })
                 .thenComparing(
-                        h -> h.version() == null ? "" : cc.jumpkick.jdk.JdkSelector.versionKey(h.version()),
-                        Comparator.reverseOrder());
+                        h -> h.version() == null ? "" : JdkSelector.versionKey(h.version()), Comparator.reverseOrder());
     }
 
     private static String display(JdkHit hit) {

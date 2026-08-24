@@ -3,8 +3,11 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.PolicyOps;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -37,14 +40,14 @@ public final class DenyCheckVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.DenyReport report;
+            DenyReport report;
             try {
-                report = cc.jumpkick.runtime.PolicyOps.denyCheck(Path.of(Jsonl.str(requestLine, "dir")));
+                report = PolicyOps.denyCheck(Path.of(Jsonl.str(requestLine, "dir")));
             } catch (RuntimeException e) {
-                report = cc.jumpkick.engine.protocol.DenyReport.error(cc.jumpkick.host.Errors.text(e));
+                report = DenyReport.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

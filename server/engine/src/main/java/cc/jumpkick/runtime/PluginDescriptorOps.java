@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
@@ -45,7 +46,7 @@ public final class PluginDescriptorOps {
      * anything new was written, so callers can re-parse.
      */
     public static boolean ensureMaterialized(Path moduleDir, Path cache) {
-        Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lock = LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lock)) return false;
         Lockfile lockfile;
         try {

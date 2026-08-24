@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -358,7 +359,7 @@ public final class Http {
      * calling Http entirely in offline mode or catch this and substitute a cache lookup.
      */
     private static void checkOffline(URI uri) throws OfflineException {
-        if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
+        if (SessionContext.current().config().offlineOr(false)) {
             throw new OfflineException(uri);
         }
     }

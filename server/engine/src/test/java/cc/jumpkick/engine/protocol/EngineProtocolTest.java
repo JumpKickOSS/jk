@@ -4,6 +4,7 @@ package cc.jumpkick.engine.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.build.InvocationPhase;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -192,11 +193,10 @@ class EngineProtocolTest {
      */
     @Test
     void invocation_phase_wire_names_round_trip_the_enum() {
-        for (var p : cc.jumpkick.plugin.build.InvocationPhase.values()) {
-            assertThat(cc.jumpkick.plugin.build.InvocationPhase.fromWire(p.wireName()))
-                    .isEqualTo(p);
+        for (var p : InvocationPhase.values()) {
+            assertThat(InvocationPhase.fromWire(p.wireName())).isEqualTo(p);
         }
-        String line = ProtoEvents.invocationPhase(cc.jumpkick.plugin.build.InvocationPhase.RESOLVE.wireName(), "start");
+        String line = ProtoEvents.invocationPhase(InvocationPhase.RESOLVE.wireName(), "start");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.INVOCATION_PHASE);
         assertThat(Jsonl.str(line, "phase")).isEqualTo("resolve");
         assertThat(Jsonl.str(line, "status")).isEqualTo("start");

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
@@ -12,6 +13,8 @@ import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
+import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -79,10 +82,10 @@ public final class EngineHttpFront {
                 events,
                 httpJobs(),
                 journal,
-                () -> cc.jumpkick.runtime.BuildMetrics.load(metricsFile.get()).entries(),
+                () -> BuildMetrics.load(metricsFile.get()).entries(),
                 // Single-flight + 30s TTL: dashboard SSE reconnect + GET /api/cache must not each
                 // exclusive-walk multi-GiB stores (SerialGC balloons committed heap ~90 MiB).
-                cc.jumpkick.engine.http.CacheSnapshot.memoizing(cc.jumpkick.util.JkDirs.cache()),
+                CacheSnapshot.memoizing(JkDirs.cache()),
                 log);
         // Hard-refresh mid-build: history rows carry live requestId/progress/phases; SSE connect
         // delivers one compact run-snapshot per job to the new subscription only.

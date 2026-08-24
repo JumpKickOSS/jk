@@ -2,9 +2,13 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.FetchTimings;
+import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
+import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import java.io.IOException;
@@ -54,7 +58,7 @@ public final class MavenRepo {
      * The HTTP client, retained for the small sidecar GETs that are not artifact fetches — currently the
      * {@code.sha1} that confirms an {@code ~/.m2} candidate. Null for non-HTTP transports.
      */
-    private final cc.jumpkick.http.Http http;
+    private final Http http;
 
     /** Artifacts pinned this run without an upstream checksum sidecar. */
     private final AtomicInteger missingUpstreamChecksums = new AtomicInteger();
@@ -217,14 +221,14 @@ public final class MavenRepo {
      * before walking remotes that would 404 warm multi-repo re-lock).
      */
     public Optional<Fetched> tryLocalArtifact(Coordinate coord) {
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
         return tryLocalMirror(coord, MavenLayout.artifactPath(coord));
     }
 
     /** Local-only POM probe (no HTTP). See {@link #tryLocalArtifact}. */
     public Optional<Fetched> tryLocalPom(Coordinate coord) {
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
         return tryLocalMirror(coord, MavenLayout.pomPath(coord));
     }
@@ -243,7 +247,7 @@ public final class MavenRepo {
      * can union across repos.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
+        if (SessionContext.current().config().offlineOr(false)) {
             return repoStore.versions(coord.group(), coord.artifact());
         }
         try {
@@ -286,12 +290,12 @@ public final class MavenRepo {
             BooleanSupplier abort,
             String expectedSha256)
             throws IOException, InterruptedException {
-        if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
+        if (SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
         }
         // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
         // --force always revalidates from the network (checksums re-checked).
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean force = SessionContext.current().config().forceOr(false);
         if (mirror && !force) {
             Optional<Fetched> local = tryLocalMirror(coord, relativePath);
             if (local.isPresent()) {
@@ -338,7 +342,7 @@ public final class MavenRepo {
                 return downloadAndVerify(coord, uri, relativePath, mirror);
             });
         }
-        cc.jumpkick.config.SessionContext.current().io().remoteDown(stored.size());
+        SessionContext.current().io().remoteDown(stored.size());
         Path placed = stored.path();
         if (mirror) {
             placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
@@ -358,7 +362,7 @@ public final class MavenRepo {
      * already equal; otherwise {@code repos/<name>/}. Never overwrites a mismatched local-repo file.
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
-        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().integration()) {
+        if (m2integration && JkM2Config.resolve().integration()) {
             // Refuse a relativePath (from a possibly hostile GAV) that would escape ~/.m2 (JK-2291).
             Path m2Target = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             Optional<Path> used = writeThroughM2(m2Target, source, relativePath, sha256);
@@ -408,7 +412,7 @@ public final class MavenRepo {
      * download, so the worst case is one wasted small GET.
      */
     private Optional<Fetched> tryM2(Coordinate coord, String relativePath, URI uri) {
-        if (!m2integration || !cc.jumpkick.config.JkM2Config.resolve().integration()) return Optional.empty();
+        if (!m2integration || !JkM2Config.resolve().integration()) return Optional.empty();
         if (http == null || !isHttp(baseUrl)) return Optional.empty();
         try {
             Path candidate = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
@@ -435,7 +439,7 @@ public final class MavenRepo {
 
             String sha256 = Hashing.sha256Hex(candidate);
             repoStore.writeMemo(relativePath, candidate, sha256);
-            if (cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) {
+            if (SessionContext.current().config().verboseOr(false)) {
                 System.err.println("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo
                         + " confirmed by " + name + ")");
             }
@@ -485,12 +489,11 @@ public final class MavenRepo {
     private record Downloaded(Path path, String sha256, long size) {}
 
     /** Per-host concurrency cap around the network leg only; file:// is not capped. */
-    private static Downloaded rateLimited(
-            URI uri, cc.jumpkick.http.HostRateLimiter.ThrowingSupplier<Downloaded, IOException> work)
+    private static Downloaded rateLimited(URI uri, HostRateLimiter.ThrowingSupplier<Downloaded, IOException> work)
             throws IOException, InterruptedException {
         String host = uri.getHost();
         boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
-        return limitHost ? cc.jumpkick.http.HostRateLimiter.shared().run(host, work) : work.get();
+        return limitHost ? HostRateLimiter.shared().run(host, work) : work.get();
     }
 
     private Downloaded downloadAndVerify(Coordinate coord, URI uri, String relativePath, boolean mirror)
@@ -531,7 +534,7 @@ public final class MavenRepo {
         // train the host fetch-duration prior.
         if (ms > 0) {
             try {
-                cc.jumpkick.cache.FetchTimings.record(ms);
+                FetchTimings.record(ms);
             } catch (RuntimeException ignored) {
                 // advisory
             }
@@ -544,7 +547,7 @@ public final class MavenRepo {
      * return it without network I/O.
      */
     private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
-        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().integration()) {
+        if (m2integration && JkM2Config.resolve().integration()) {
             Path m2File = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             Optional<String> hex = repoStore.readSha256Sidecar(relativePath);
             if (Files.isRegularFile(m2File) && hex.isPresent()) {

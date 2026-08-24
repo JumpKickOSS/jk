@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.jdk.JavaHomes;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,7 +69,7 @@ public final class WorkerAotBootstrap {
             Path host, long timeoutMs, boolean force, List<String> trained, List<String> skipped, List<String> notes) {
         try {
             Path workerJar = PluginJar.JAVA_COMPILER.locate();
-            String cp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(workerJar);
+            String cp = WorkerLaunchClasspath.resolve(workerJar);
             Path cache = PluginAot.cachePath("java-compiler", host, cp);
             if (!force && PluginAot.usableCache(cache)) {
                 trained.add("java-compiler (cached)");

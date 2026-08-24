@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.terminal.Width;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,7 @@ class HelpWidthTest {
     /** Visible columns of one help line once ANSI chrome is stripped (wcwidth-aware). */
     private static int visibleColumns(String line) {
         String stripped = TestAnsi.strip(line);
-        return cc.jumpkick.terminal.Width.columns(stripped);
+        return Width.columns(stripped);
     }
 
     private static void check(String screenName, String help, List<String> violations) {

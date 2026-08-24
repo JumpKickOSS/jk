@@ -7,18 +7,24 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.surface.TrainLayout;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
@@ -333,9 +339,8 @@ public final class PlannerPlugin {
                     // outputs produced by the old code.
                     tokens.add("worker:" + ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
                     String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
-                    String actionKey =
-                            ActionKey.forArtifact(taskId, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
-                    cc.jumpkick.task.ActionCache actionCache = cx.actionCache();
+                    String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+                    ActionCache actionCache = cx.actionCache();
                     var hit = actionCache.lookup(actionKey);
                     if (hit.isPresent()) {
                         try {
@@ -356,16 +361,16 @@ public final class PlannerPlugin {
                     cc.jumpkick.host.PathUtil.deleteRecursively(scratch); // stale outputs never survive
                     Files.createDirectories(scratch);
                     ctx.label(step.name());
-                    cc.jumpkick.plugin.protocol.SpecWriter specWriter = new cc.jumpkick.plugin.protocol.SpecWriter()
+                    SpecWriter specWriter = new SpecWriter()
                             .op(
-                                    cc.jumpkick.plugin.protocol.PluginProtocol.OP_RUN_STEP,
+                                    PluginProtocol.OP_RUN_STEP,
                                     step.name(),
                                     active.manifest().id())
                             .configValues(active.config().values())
                             .project(facts)
                             .layout(classes, in.dir(), scratch)
                             .javaHome(javaHome)
-                            .classpath(classpath, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE);
+                            .classpath(classpath, PluginProtocol.ROLE_COMPILE);
                     for (var pe : prodEntries) {
                         specWriter.entry(
                                 pe.fileName(),
@@ -480,14 +485,14 @@ public final class PlannerPlugin {
         // "up-to-date" and training never reaches the shipped artifact.
         if ("minified-jar".equals(decls.packager().name())) {
             Path trainSurface = jarPath.getParent()
-                    .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                    .resolve(TrainLayout.ROOT)
                     .resolve("merged")
-                    .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
+                    .resolve(TrainLayout.SURFACE_JSON);
             tokens.add("train:"
                     + (Files.isRegularFile(trainSurface) ? ClasspathFingerprint.entry(trainSurface) : "absent"));
         }
         String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
-        String pkgKey = ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
+        String pkgKey = ActionKey.forArtifact(pkgTask, BuildIdentity.cacheKeyVersion(), tokens);
         if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
             ctx.put(JAR_PATH, jarPath);
             ctx.label(jarPath.getFileName() + " up-to-date");
@@ -505,11 +510,8 @@ public final class PlannerPlugin {
         Path sbomFile = Files.createTempFile("jk-plugin-sbom-", ".cdx.json");
         Files.write(sbomFile, sbom);
 
-        cc.jumpkick.plugin.protocol.SpecWriter spec = new cc.jumpkick.plugin.protocol.SpecWriter()
-                .op(
-                        cc.jumpkick.plugin.protocol.PluginProtocol.OP_PACKAGE,
-                        null,
-                        active.manifest().id())
+        SpecWriter spec = new SpecWriter()
+                .op(PluginProtocol.OP_PACKAGE, null, active.manifest().id())
                 .configValues(active.config().values())
                 .project(facts)
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
@@ -590,7 +592,7 @@ public final class PlannerPlugin {
                 && PluginBuild.shape(project, moduleDir)
                         .map(sh -> sh.mainScan())
                         .orElse(false)) {
-            main = cc.jumpkick.layout.MainClassScanner.scanUnique(classes);
+            main = MainClassScanner.scanUnique(classes);
         }
         return main;
     }

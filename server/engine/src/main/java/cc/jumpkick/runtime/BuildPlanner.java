@@ -4,20 +4,31 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Variants;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.GroovyCompile;
+import cc.jumpkick.task.KotlinCompile;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -43,8 +54,7 @@ public final class BuildPlanner {
     static {
         // Wire session cancel into TaskContext.cancelled (lazy; pool tasks see it via
         // SessionContext propagation on JkThreads).
-        cc.jumpkick.run.SessionCancel.bind(
-                () -> cc.jumpkick.config.SessionContext.current().cancelled());
+        SessionCancel.bind(() -> SessionContext.current().cancelled());
     }
 
     private BuildPlanner() {}
@@ -130,7 +140,7 @@ public final class BuildPlanner {
             boolean testOnly,
             boolean compileOnly,
             Set<Path> projectModules,
-            cc.jumpkick.config.Session session,
+            Session session,
             String variant,
             Map<String, String> clientEnv,
             boolean ephemeralActions) {
@@ -155,7 +165,7 @@ public final class BuildPlanner {
                 boolean testOnly,
                 boolean compileOnly,
                 Set<Path> projectModules,
-                cc.jumpkick.config.Session session) {
+                Session session) {
             this(
                     dir,
                     cache,
@@ -192,7 +202,7 @@ public final class BuildPlanner {
                 boolean testOnly,
                 boolean compileOnly,
                 Set<Path> projectModules,
-                cc.jumpkick.config.Session session,
+                Session session,
                 String variant,
                 Map<String, String> clientEnv) {
             this(
@@ -250,7 +260,7 @@ public final class BuildPlanner {
          * already documents.
          */
         public UnaryOperator<String> env() {
-            return cc.jumpkick.config.BuildEnv.forModule(dir);
+            return BuildEnv.forModule(dir);
         }
 
         /** This request with a variant selection + client-resolved env attached. */
@@ -372,8 +382,8 @@ public final class BuildPlanner {
      * test branch hangs off the terminal join the tails add, and a core-only plan silently
      * prunes run-tests (a fixture that "builds and tests" would stop testing).
      */
-    public static cc.jumpkick.run.BuildPlan fullPlan(Inputs in) {
-        cc.jumpkick.run.BuildPlan.Builder b = coreBuilder(in);
+    public static BuildPlan fullPlan(Inputs in) {
+        BuildPlan.Builder b = coreBuilder(in);
         appendDeclaredTails(b, in);
         return b.build();
     }
@@ -416,13 +426,12 @@ public final class BuildPlanner {
             // Variant overlays fold into plugin configs HERE, so describe keys, contribution
             // predicates, step/packager action keys, and plugin specs all see one flat effective
             // config (parameterized plans, not configured objects).
-            var applied = cc.jumpkick.plugin.manifest.VariantApply.apply(
-                    jkBuild, in.dir(), cc.jumpkick.model.Variants.Selection.parse(in.variant()), in.clientEnv());
+            var applied = VariantApply.apply(jkBuild, in.dir(), Variants.Selection.parse(in.variant()), in.clientEnv());
             jkBuild = applied.build();
             variantSecrets = applied.secrets();
             parsedBuild = jkBuild;
             var project = jkBuild.project();
-            cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project, in.dir());
+            Languages langs = CompileSupport.resolveLanguages(project, in.dir());
             useJava = langs.java() || langs.scala();
             useKotlin = langs.kotlin();
             useGroovy = langs.groovy();
@@ -795,7 +804,7 @@ public final class BuildPlanner {
     static volatile Path hostEngineSearchOverride;
 
     /** Apply CLI {@code --fat}/{@code --minified} over the parsed manifest for this invocation. */
-    static JkBuild applyAssemblyOverride(JkBuild build, cc.jumpkick.config.Session session) {
+    static JkBuild applyAssemblyOverride(JkBuild build, Session session) {
         String raw = session != null ? session.assemblyOverride() : "";
         if (raw == null || raw.isBlank()) {
             raw = SessionContext.current().assemblyOverride();
@@ -983,7 +992,7 @@ public final class BuildPlanner {
         return PlannerSupport.nestedEngineTestEnv(moduleDir);
     }
 
-    static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
+    static TestSelection effectiveSelection(TestSelection sel, Path moduleDir) {
         return PlannerSupport.effectiveSelection(sel, moduleDir);
     }
 
@@ -1015,19 +1024,16 @@ public final class BuildPlanner {
     }
 
     static List<String> testStampExtras(
-            Map<String, String> workerJars,
-            cc.jumpkick.config.TestSelection selection,
-            Map<String, String> testEnv,
-            Path moduleDir) {
+            Map<String, String> workerJars, TestSelection selection, Map<String, String> testEnv, Path moduleDir) {
         return PlannerSupport.testStampExtras(workerJars, selection, testEnv, moduleDir);
     }
 
     static List<String> testStampExtras(
             Map<String, String> workerJars,
-            cc.jumpkick.config.TestSelection selection,
+            TestSelection selection,
             Map<String, String> testEnv,
-            cc.jumpkick.config.SecretRedactor redactor,
-            cc.jumpkick.config.EnvLookup lookup) {
+            SecretRedactor redactor,
+            EnvLookup lookup) {
         return PlannerSupport.testStampExtras(workerJars, selection, testEnv, redactor, lookup);
     }
 
@@ -1044,8 +1050,8 @@ public final class BuildPlanner {
         return PlannerSupport.contributionsToken(contributed);
     }
 
-    static Path stageClassesWithContributions(
-            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout) throws IOException {
+    static Path stageClassesWithContributions(TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout)
+            throws IOException {
         return PlannerSupport.stageClassesWithContributions(ctx, classes, extra, layout);
     }
 
@@ -1067,7 +1073,7 @@ public final class BuildPlanner {
         return PlannerKsp.pluginTestClasspath(layout, decls);
     }
 
-    static List<Path> contributedProvidedFor(cc.jumpkick.run.TaskContext ctx) {
+    static List<Path> contributedProvidedFor(TaskContext ctx) {
         return PlannerKsp.contributedProvidedFor(ctx);
     }
 
@@ -1128,7 +1134,7 @@ public final class BuildPlanner {
     }
 
     static void packagePlugin(
-            cc.jumpkick.run.TaskContext ctx,
+            TaskContext ctx,
             Inputs in,
             Cas cas,
             JkBuild project,
@@ -1183,7 +1189,7 @@ public final class BuildPlanner {
         return PlannerSupport.contributedProvidedClasspath(project, in, cas);
     }
 
-    static cc.jumpkick.task.KotlinCompile.Result compileKotlinSources(
+    static KotlinCompile.Result compileKotlinSources(
             TaskContext ctx,
             Inputs in,
             Cas cas,
@@ -1199,7 +1205,7 @@ public final class BuildPlanner {
                 ctx, in, cas, actionCache, sources, classpath, outputDir, taskId, workingDir, javaSourceRoots);
     }
 
-    static cc.jumpkick.task.GroovyCompile.Result compileGroovySources(
+    static GroovyCompile.Result compileGroovySources(
             TaskContext ctx,
             Inputs in,
             Cas cas,

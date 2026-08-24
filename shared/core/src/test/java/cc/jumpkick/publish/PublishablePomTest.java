@@ -4,6 +4,7 @@ package cc.jumpkick.publish;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
@@ -60,9 +61,9 @@ class PublishablePomTest {
         // test-jars exist upstream and stay.
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         Dependency siblingTests = Dependency.of("lib", "com.example:lib", VersionSelector.parse("=1.0.0"))
-                .withKind(cc.jumpkick.model.DependencyKind.TESTS);
+                .withKind(DependencyKind.TESTS);
         Dependency externalTests = Dependency.of("helpers", "com.acme:helpers", VersionSelector.parse("=1.2.3"))
-                .withKind(cc.jumpkick.model.DependencyKind.TESTS);
+                .withKind(DependencyKind.TESTS);
         byScope.put(Scope.TEST, List.of(siblingTests, externalTests));
         JkBuild project = new JkBuild(
                 new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
@@ -83,7 +84,7 @@ class PublishablePomTest {
         byScope.put(
                 Scope.TEST,
                 List.of(Dependency.of("lib", "com.example:lib", VersionSelector.parse("=1.0.0"))
-                        .withKind(cc.jumpkick.model.DependencyKind.TESTS)));
+                        .withKind(DependencyKind.TESTS)));
         JkBuild project = new JkBuild(
                 new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
 

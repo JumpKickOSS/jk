@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.model.Coordinate;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -58,8 +59,8 @@ public record Pom(
     public record Relocation(String groupId, String artifactId, String version, String message) {
 
         /** Resolve against the coordinate that was asked for, filling in whatever was omitted. */
-        public cc.jumpkick.model.Coordinate applyTo(cc.jumpkick.model.Coordinate from) {
-            return new cc.jumpkick.model.Coordinate(
+        public Coordinate applyTo(Coordinate from) {
+            return new Coordinate(
                     groupId == null || groupId.isBlank() ? from.group() : groupId,
                     artifactId == null || artifactId.isBlank() ? from.artifact() : artifactId,
                     version == null || version.isBlank() ? from.version() : version,
@@ -68,8 +69,8 @@ public record Pom(
         }
 
         /** True when this redirect points somewhere other than {@code from}. */
-        public boolean redirects(cc.jumpkick.model.Coordinate from) {
-            cc.jumpkick.model.Coordinate to = applyTo(from);
+        public boolean redirects(Coordinate from) {
+            Coordinate to = applyTo(from);
             return !to.group().equals(from.group())
                     || !to.artifact().equals(from.artifact())
                     || !Objects.equals(to.version(), from.version());

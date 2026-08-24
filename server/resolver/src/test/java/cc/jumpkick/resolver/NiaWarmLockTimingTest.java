@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.http.Http;
@@ -12,8 +13,11 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.repo.EffectivePomBuilder;
+import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolve.ResolveProfile;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,7 +59,7 @@ class NiaWarmLockTimingTest {
             root = JkBuildParser.parse(nia.resolve("jk.toml"));
             modules = WorkspaceLoader.loadModules(nia, root);
             project = WorkspaceMerge.merge(root, modules.values());
-        } catch (cc.jumpkick.config.JkBuildParseException e) {
+        } catch (JkBuildParseException e) {
             assumeTrue(false, "stale local NIA overlay: " + e.getMessage());
             return;
         }
@@ -71,11 +75,11 @@ class NiaWarmLockTimingTest {
         System.setProperty("jk.resolve.profile", "true");
 
         // Pass A: true first-in-process (process caches cold).
-        cc.jumpkick.repo.EffectivePomBuilder.clearProcessCache();
-        cc.jumpkick.repo.GradleModuleMetadata.clearParseCache();
-        cc.jumpkick.repo.RepoGroup.clearProcessFetchCache();
+        EffectivePomBuilder.clearProcessCache();
+        GradleModuleMetadata.clearParseCache();
+        RepoGroup.clearProcessFetchCache();
         KmpRedirects.clearProcessCache();
-        cc.jumpkick.resolve.ResolveProfile.reset();
+        ResolveProfile.reset();
         TimingObserver coldObs = new TimingObserver();
         long coldT0 = System.nanoTime();
         Lockfile cold = new LockOrchestrator(repos)
@@ -87,10 +91,10 @@ class NiaWarmLockTimingTest {
                 "COLD_TOTAL_MS=" + coldMs + " packages=" + cold.artifacts().size());
         System.out.println("COLD_graphMs=" + coldObs.msUntilDownloadPhase.get() + " COLD_matMs="
                 + coldObs.msInDownloadPhase.get());
-        System.out.println("COLD_" + cc.jumpkick.resolve.ResolveProfile.report());
+        System.out.println("COLD_" + ResolveProfile.report());
 
         // Pass B: process caches hot.
-        cc.jumpkick.resolve.ResolveProfile.reset();
+        ResolveProfile.reset();
         TimingObserver hotObs = new TimingObserver();
         long hotT0 = System.nanoTime();
         Lockfile hot = new LockOrchestrator(repos)
@@ -102,7 +106,7 @@ class NiaWarmLockTimingTest {
                 "HOT_TOTAL_MS=" + hotMs + " packages=" + hot.artifacts().size());
         System.out.println(
                 "HOT_graphMs=" + hotObs.msUntilDownloadPhase.get() + " HOT_matMs=" + hotObs.msInDownloadPhase.get());
-        System.out.println("HOT_" + cc.jumpkick.resolve.ResolveProfile.report());
+        System.out.println("HOT_" + ResolveProfile.report());
 
         assertThat(cold.artifacts().size()).isGreaterThan(200);
         assertThat(hot.artifacts().size()).isGreaterThan(200);

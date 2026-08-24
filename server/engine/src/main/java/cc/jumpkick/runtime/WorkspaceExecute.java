@@ -3,15 +3,23 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Linking;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.run.SessionCancel;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -112,7 +120,7 @@ public final class WorkspaceExecute {
      * {@code HeapPlan}/{@code PluginSlots} state sized for just itself.
      */
     public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
-        cc.jumpkick.model.JkBuild entryBuild;
+        JkBuild entryBuild;
         try {
             entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
         } catch (Exception e) {
@@ -123,7 +131,7 @@ public final class WorkspaceExecute {
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
         if (req.freshenLock()) {
-            Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(req.entryDir());
+            Path rootLock = LockPaths.lockFile(req.entryDir());
             boolean lockStale = WorkspaceLock.workspaceLockStale(req.entryDir(), entryBuild, rootLock);
             if (lockStale) {
                 // Countdown during lock: price lock + a coarse remaining-build prior so the TUI
@@ -393,7 +401,7 @@ public final class WorkspaceExecute {
         // still re-anchors the painted countdown mid-run).
         listener.onEtaEstimate(etaMs);
 
-        if (cc.jumpkick.run.SessionCancel.cancelled()) {
+        if (SessionCancel.cancelled()) {
             WorkspaceResult r = new WorkspaceResult(false, 1, List.of(), List.of(), true);
             listener.onWorkspaceFinish(r);
             return r;
@@ -430,14 +438,14 @@ public final class WorkspaceExecute {
                         return null;
                     },
                     req.maxModuleConcurrency(),
-                    cc.jumpkick.run.SessionCancel::cancelled);
+                    SessionCancel::cancelled);
         }
         Perf.end("ws-schedule-run", tsched);
         long executeWallMs = Math.max(0L, System.currentTimeMillis() - executeStartMs);
         // Session cancel (Ctrl-C / jk cancel / web) may finish modules with a non-success exit
         // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
         // cancelled rather than a generic failure.
-        boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
+        boolean cancelled = SessionCancel.cancelled();
         boolean ok = failure == null && !cancelled;
         if (ok) {
             // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
@@ -496,7 +504,7 @@ public final class WorkspaceExecute {
             Map<Path, ModulePlan> plans = new LinkedHashMap<>();
             int prepared = 0;
             for (BuildGraph.BuildUnit u : dirtyUnits) {
-                if (cc.jumpkick.run.SessionCancel.cancelled()) break;
+                if (SessionCancel.cancelled()) break;
                 ModulePlan p = prepareModule(u, req, moduleDirs, jarConsumed, true);
                 prepared++;
                 listener.onPreflight(
@@ -512,10 +520,10 @@ public final class WorkspaceExecute {
         Map<Path, ModulePlan> plans = new ConcurrentHashMap<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>(dirtyUnits.size());
         for (BuildGraph.BuildUnit u : dirtyUnits) {
-            if (cc.jumpkick.run.SessionCancel.cancelled()) break;
+            if (SessionCancel.cancelled()) break;
             futures.add(CompletableFuture.runAsync(
                     () -> {
-                        if (cc.jumpkick.run.SessionCancel.cancelled()) return;
+                        if (SessionCancel.cancelled()) return;
                         ModulePlan p = prepareModule(u, req, moduleDirs, jarConsumed, true);
                         if (p == null) throw new PrepareFailed(u.coord(), u.dir());
                         p.plan().addListener(timingsRecorder(p, timingSamples, hostSamples));
@@ -638,10 +646,8 @@ public final class WorkspaceExecute {
         if (spec == null || !spec.hasSelection()) return graph;
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) byDir.put(u.dir(), u.manifest());
-        var scopes = req.skipTests()
-                ? cc.jumpkick.config.ModuleOrder.PRODUCTION_SCOPES
-                : List.of(cc.jumpkick.model.Scope.values());
-        Set<Path> cone = cc.jumpkick.config.WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
+        var scopes = req.skipTests() ? ModuleOrder.PRODUCTION_SCOPES : List.of(Scope.values());
+        Set<Path> cone = WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
         return graph.restrict(cone);
     }
 
@@ -836,7 +842,7 @@ public final class WorkspaceExecute {
             // cache hit; never grow the bar mid-run.
             BuildPlanResult r = EffortWeights.withOverReserveTails(module.plan()::run);
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            boolean cancelled = r.userCancelled() || cc.jumpkick.run.SessionCancel.cancelled();
+            boolean cancelled = r.userCancelled() || SessionCancel.cancelled();
             // NativePlans owns the full failure mapping (native main-class misconfig → USAGE,
             // test failure → 4, else 1) so jk native --main bad exits 64 like the old verb did.
             int exit = r.success() && !cancelled ? 0 : NativePlans.failureExitCode(module.plan(), r);
@@ -851,7 +857,7 @@ public final class WorkspaceExecute {
             return o;
         } catch (RuntimeException e) {
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
+            boolean cancelled = SessionCancel.cancelled();
             ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), false, 1, ms, true, cancelled);
             listener.onModuleFinish(o);
             return o;
@@ -859,14 +865,14 @@ public final class WorkspaceExecute {
     }
 
     /** Fire {@code artifactsReady} once when all of the plan's artifact steps finish ok (JK-2210). */
-    static void watchArtifactSteps(cc.jumpkick.run.BuildPlan plan, Runnable artifactsReady) {
+    static void watchArtifactSteps(BuildPlan plan, Runnable artifactsReady) {
         Set<String> artifactSteps = new HashSet<>();
-        for (cc.jumpkick.run.Task step : plan.steps()) {
+        for (Task step : plan.steps()) {
             // compile-test is an artifact too: kind=tests siblings consume this module's
             // classes/test (WorkspaceClasspath testClassesDir), and it never waits on the suite.
-            if (cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(step.name())
-                    || cc.jumpkick.run.TaskNames.PACKAGE_ASSEMBLY.equals(step.name())
-                    || cc.jumpkick.run.TaskNames.COMPILE_TEST.equals(step.name())) {
+            if (TaskNames.PACKAGE_JAR.equals(step.name())
+                    || TaskNames.PACKAGE_ASSEMBLY.equals(step.name())
+                    || TaskNames.COMPILE_TEST.equals(step.name())) {
                 artifactSteps.add(step.name());
             }
         }
@@ -874,9 +880,9 @@ public final class WorkspaceExecute {
         AtomicInteger remaining = new AtomicInteger(artifactSteps.size());
         plan.addListener(new BuildPlanListener() {
             @Override
-            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
                 if (!artifactSteps.contains(step)) return;
-                if (status != cc.jumpkick.run.TaskStatus.SUCCESS && status != cc.jumpkick.run.TaskStatus.SKIPPED) {
+                if (status != TaskStatus.SUCCESS && status != TaskStatus.SKIPPED) {
                     return; // failed/cancelled artifact: stay unpublished
                 }
                 if (remaining.decrementAndGet() == 0) artifactsReady.run();

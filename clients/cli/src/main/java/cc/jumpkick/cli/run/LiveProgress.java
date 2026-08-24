@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
+
 /**
  * Workspace/plan aggregate progress snapshot for JSONL riders.
  *
@@ -41,7 +43,7 @@ public final class LiveProgress {
      * rounded to one decimal ({@link cc.jumpkick.runtime.WorkspaceProgressTracker#percentOf}).
      */
     public void update(long numerator, long denominator) {
-        double p = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(numerator, denominator);
+        double p = WorkspaceProgressTracker.percentOf(numerator, denominator);
         if (!Double.isNaN(p)) percent = p;
     }
 
@@ -49,7 +51,7 @@ public final class LiveProgress {
      * Apply an engine workspace snapshot — the only aggregate truth for multi-module builds.
      * Percent-only snapshots (denominator 0) still land.
      */
-    public void apply(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+    public void apply(WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;
         if (snap.denominator() > 0) update(snap.numerator(), snap.denominator());
         else if (snap.hasPercent()) setPercent(snap.percent());
@@ -57,7 +59,7 @@ public final class LiveProgress {
 
     /** Explicit percent (tests / session-finish at 100). */
     public void setPercent(Double value) {
-        percent = value == null ? null : cc.jumpkick.runtime.WorkspaceProgressTracker.clampPercent(value);
+        percent = value == null ? null : WorkspaceProgressTracker.clampPercent(value);
     }
 
     /** Current percent, or {@code null} if unknown. */

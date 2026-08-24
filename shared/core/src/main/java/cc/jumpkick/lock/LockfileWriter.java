@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.builds.DeclaredDeps;
+import cc.jumpkick.builds.DepFrequency;
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,23 +51,22 @@ public final class LockfileWriter {
             if (existing != null && !existing.isBlank()) {
                 stamped = stamped.withProjectId(existing);
             } else {
-                stamped = cc.jumpkick.builds.ProjectIdentity.ensureProjectId(stamped, owner);
+                stamped = ProjectIdentity.ensureProjectId(stamped, owner);
             }
         }
         // Atomic (temp + rename): concurrent readers never observe a truncated lock.
-        cc.jumpkick.util.AtomicWrites.replace(file, render(stamped));
+        AtomicWrites.replace(file, render(stamped));
         // Materialize identity.toml so project= id resolves to a checkout without a prior build.
         try {
             LockfileReader.clearCache();
-            cc.jumpkick.builds.ProjectIdentity identity = cc.jumpkick.builds.ProjectIdentity.resolve(owner);
-            Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(
-                    cc.jumpkick.builds.ProjectBuilds.buildsRoot(), identity);
-            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(home, identity);
+            ProjectIdentity identity = ProjectIdentity.resolve(owner);
+            Path home = ProjectBuilds.projectHome(ProjectBuilds.buildsRoot(), identity);
+            ProjectIdentity.IdentityFile.write(home, identity);
             // Host declared-dep frequency for the New wizard library picker.
             try {
                 String id = identity.id();
-                Set<String> deps = cc.jumpkick.builds.DeclaredDeps.collect(owner);
-                cc.jumpkick.builds.DepFrequency.load().observe(id, deps).save();
+                Set<String> deps = DeclaredDeps.collect(owner);
+                DepFrequency.load().observe(id, deps).save();
             } catch (Exception ignoredFreq) {
                 // never fail the lock write over frequency tracking
             }

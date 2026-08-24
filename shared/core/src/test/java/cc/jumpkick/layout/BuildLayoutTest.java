@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,7 +20,7 @@ class BuildLayoutTest {
 
     /** Application project: has {@code [application].main}. Artifacts land in {@code target/}. */
     private static JkBuild appProject(String artifact, String version) {
-        return cc.jumpkick.config.JkBuildParser.parse("""
+        return JkBuildParser.parse("""
                 group   = "com.acme"
                 name    = "%s"
                 version = "%s"
@@ -154,7 +155,7 @@ class BuildLayoutTest {
                 version  = "1.0.0"
                 """);
 
-        JkBuild moduleProject = cc.jumpkick.config.JkBuildParser.parse(module.resolve("jk.toml"));
+        JkBuild moduleProject = JkBuildParser.parse(module.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(module, moduleProject);
 
         assertThat(layout.workspaceRoot()).isEqualTo(workspace.toAbsolutePath().normalize());
@@ -174,7 +175,7 @@ class BuildLayoutTest {
     }
 
     private static JkBuild workspaceRootProject(String artifact, String version) {
-        return cc.jumpkick.config.JkBuildParser.parse("""
+        return JkBuildParser.parse("""
                 group    = "com.example"
                 name     = "%s"
                 version  = "%s"

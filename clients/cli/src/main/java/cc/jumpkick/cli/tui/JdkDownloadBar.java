@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
@@ -50,9 +53,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
      */
     public static JdkDownloadBar show(PrintStream out, String displayName) {
         // Script mode is no-progress — see the same rule on Spinner's constructor (JK-2330).
-        boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false)
-                || cc.jumpkick.cli.CliOutput.scriptMode();
-        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        boolean silent = SessionContext.current().config().noProgressOr(false) || CliOutput.scriptMode();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
         // Leading blank of the human chrome envelope (idempotent per command).
         CommandWedge.envelopeStart(out);
@@ -82,9 +84,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
      */
     public static JdkDownloadBar showInstalling(PrintStream out, String displayName) {
         // Script mode is no-progress — see the same rule on Spinner's constructor (JK-2330).
-        boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false)
-                || cc.jumpkick.cli.CliOutput.scriptMode();
-        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        boolean silent = SessionContext.current().config().noProgressOr(false) || CliOutput.scriptMode();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
         db.installing = true;
         // Same envelope as show() — first chrome may be the installing chip alone.

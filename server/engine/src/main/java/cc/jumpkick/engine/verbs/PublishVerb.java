@@ -2,10 +2,18 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.PublishPlans;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -51,11 +59,11 @@ public final class PublishVerb implements HostedVerb {
      * config; the worker skips the network on {@code dryRun}.
      */
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.publishRequest(
+    public String decodeJob(JobSpec spec) {
+        return ProtoSession.withTrigger(
+                ProtoJobs.publishRequest(
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        JkDirs.cache().toString(),
                         "https://publish.invalid/",
                         null,
                         null,
@@ -76,7 +84,7 @@ public final class PublishVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -84,17 +92,16 @@ public final class PublishVerb implements HostedVerb {
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
                 String jar = Jsonl.str(requestLine, "jar");
                 String keyFile = Jsonl.str(requestLine, "keyFile");
-                cc.jumpkick.credential.RepoCredential credential =
+                RepoCredential credential =
                         switch (String.valueOf(Jsonl.str(requestLine, "authType"))) {
                             case "basic" ->
-                                new cc.jumpkick.credential.RepoCredential.Basic(
+                                new RepoCredential.Basic(
                                         Jsonl.str(requestLine, "user"),
                                         Jsonl.str(requestLine, "pass") != null ? Jsonl.str(requestLine, "pass") : "");
-                            case "bearer" ->
-                                new cc.jumpkick.credential.RepoCredential.Bearer(Jsonl.str(requestLine, "token"));
-                            default -> cc.jumpkick.credential.RepoCredential.ANONYMOUS;
+                            case "bearer" -> new RepoCredential.Bearer(Jsonl.str(requestLine, "token"));
+                            default -> RepoCredential.ANONYMOUS;
                         };
-                cc.jumpkick.runtime.PublishPlans.Request req = new cc.jumpkick.runtime.PublishPlans.Request(
+                PublishPlans.Request req = new PublishPlans.Request(
                         URI.create(Jsonl.str(requestLine, "repoUrl")),
                         Jsonl.str(requestLine, "region"),
                         Jsonl.str(requestLine, "endpoint"),
@@ -112,8 +119,7 @@ public final class PublishVerb implements HostedVerb {
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                cc.jumpkick.run.BuildPlan plan =
-                        cc.jumpkick.runtime.PublishPlans.publishBuildPlan(entryDir, cache, req);
+                BuildPlan plan = PublishPlans.publishBuildPlan(entryDir, cache, req);
                 host.streamSinglePlan(
                         plan,
                         session,
@@ -121,7 +127,7 @@ public final class PublishVerb implements HostedVerb {
                         result -> ProtoEvents.planFinishPublish(
                                 dir,
                                 result.success(),
-                                plan.get(cc.jumpkick.runtime.PublishPlans.FILES).orElse(-1)));
+                                plan.get(PublishPlans.FILES).orElse(-1)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
             }

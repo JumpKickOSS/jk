@@ -11,6 +11,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
@@ -58,7 +59,7 @@ public final class JkBuildParser {
         Path abs = file.toAbsolutePath().normalize();
         Path dir = abs.getParent();
         JkBuild resolved = WorkspaceResolve.applyWorkspace(dir, parseLocal(file));
-        List<cc.jumpkick.model.PluginDeclaration> user = UserPlugins.fromConfig();
+        List<PluginDeclaration> user = UserPlugins.fromConfig();
         if (user.isEmpty()) return resolved;
         return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
     }
@@ -165,11 +166,11 @@ public final class JkBuildParser {
         Map<String, String> manifest = ManifestTables.parseManifest(result);
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
         Optional<JkBuild.Application> application = ManifestTables.parseApplication(result);
-        if (application.isPresent() && cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
+        if (application.isPresent() && PluginModule.isWorker(moduleDir)) {
             throw new JkBuildParseException(
                     "[application] is for apps — a plugin worker (jk-plugin.toml or Plugin service)"
                             + " already implies main "
-                            + cc.jumpkick.plugin.PluginModule.WORKER_MAIN
+                            + PluginModule.WORKER_MAIN
                             + "; drop the [application] table");
         }
         Optional<JkBuild.NativeConfig> nativeConfig = ManifestBuild.parseNativeConfig(result);

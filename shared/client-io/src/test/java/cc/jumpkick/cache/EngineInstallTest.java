@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -385,9 +386,9 @@ class EngineInstallTest {
         Path legacyWorker = Files.writeString(aot.resolve("java-compiler-dddddddddddddddd.aot"), "legacy");
         Path snap = Files.writeString(aot.resolve("engine-0.12.0-SNAPSHOT-eeeeeeeeeeeeeeee.aot"), "snap");
         Path lock = Files.writeString(aot.resolve("aot.toml.lock"), "");
-        cc.jumpkick.util.AotManifest.upsert(
+        AotManifest.upsert(
                 aot,
-                cc.jumpkick.util.AotManifest.Entry.builder("engine-0.10.1-cccccccccccccccc.aot")
+                AotManifest.Entry.builder("engine-0.10.1-cccccccccccccccc.aot")
                         .tool("engine")
                         .status("ready")
                         .build());

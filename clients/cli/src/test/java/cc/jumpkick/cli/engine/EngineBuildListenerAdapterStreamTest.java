@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TestFailureInfo;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
@@ -60,7 +62,7 @@ class EngineBuildListenerAdapterStreamTest {
                 "{\"type\":\"past-the-end\"}");
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
-                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
+                reader, steps -> new BuildPlanListener() {}, null, null);
 
         assertThat(result.success()).isTrue();
         assertThat(consumed).anyMatch(l -> l.contains("job-finish"));
@@ -76,7 +78,7 @@ class EngineBuildListenerAdapterStreamTest {
                 ProtoEvents.planFinish("/proj", true, false));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
-                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
+                reader, steps -> new BuildPlanListener() {}, null, null);
 
         assertThat(result.success()).isTrue();
         assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
@@ -90,7 +92,7 @@ class EngineBuildListenerAdapterStreamTest {
                 ProtoEvents.planFinish("/proj", false, true));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
-                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
+                reader, steps -> new BuildPlanListener() {}, null, null);
 
         assertThat(result.cancelled()).isTrue();
         assertThat(result.success()).isFalse();
@@ -99,7 +101,7 @@ class EngineBuildListenerAdapterStreamTest {
 
     @Test
     void test_failure_does_not_take_class_from_nested_throwable() throws Exception {
-        var info = new cc.jumpkick.run.TestFailureInfo(
+        var info = new TestFailureInfo(
                 "",
                 "junit-jupiter",
                 "",
@@ -113,7 +115,7 @@ class EngineBuildListenerAdapterStreamTest {
                 ProtoEvents.planFinish("/p", false, false));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
-                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
+                reader, steps -> new BuildPlanListener() {}, null, null);
 
         assertThat(result.errors()).singleElement().satisfies(d -> {
             assertThat(d.className()).isEmpty();

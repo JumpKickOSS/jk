@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -80,7 +81,7 @@ public final class HostCooldown {
     public static HostCooldown standard() {
         String override = System.getProperty("jk.http.cooldown.dir");
         if (override != null && !override.isBlank()) return new HostCooldown(Path.of(override.trim()));
-        return new HostCooldown(cc.jumpkick.util.JkDirs.store());
+        return new HostCooldown(JkDirs.store());
     }
 
     /**

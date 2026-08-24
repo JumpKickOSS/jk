@@ -3,8 +3,13 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.CacheSync;
@@ -36,7 +41,7 @@ class AndroidRemoteAarTest {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);
         acceptLicenses();
@@ -61,7 +66,7 @@ class AndroidRemoteAarTest {
         assertThat(lockfile.sdk()).anyMatch(e -> e.component().equals("platforms;android-34"));
 
         // ---- 2. jk sync: the AAR re-fetches under its real extension ----
-        var sync = new CacheSync(new cc.jumpkick.cache.Cas(cache), new cc.jumpkick.http.Http()).sync(lockfile);
+        var sync = new CacheSync(new Cas(cache), new Http()).sync(lockfile);
         assertThat(sync.errors()).isEmpty();
 
         // ---- 3. jk build: compile against classes.jar, R from R.txt, dex the closure ----
@@ -95,12 +100,11 @@ class AndroidRemoteAarTest {
     }
 
     private static void acceptLicenses() throws Exception {
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-34")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
     }

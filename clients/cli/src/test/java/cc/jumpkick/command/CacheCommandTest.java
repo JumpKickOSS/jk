@@ -4,8 +4,17 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.task.ActionKey;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,7 +42,7 @@ class CacheCommandTest {
     @Test
     void dir_prints_store_root() {
         String stdout = Capture.stdout(() -> run("storage", "dir"));
-        assertThat(stdout.trim()).isEqualTo(cc.jumpkick.cache.JkStores.store().toString());
+        assertThat(stdout.trim()).isEqualTo(JkStores.store().toString());
     }
 
     /**
@@ -44,7 +53,7 @@ class CacheCommandTest {
     /** An absent store says so rather than rendering a table of zeros. */
     @Test
     void storage_usage_reports_an_absent_store() throws Exception {
-        Path store = cc.jumpkick.cache.JkStores.store();
+        Path store = JkStores.store();
         if (Files.isDirectory(store)) return; // the shared harness store already has content
         String plain = TestAnsi.strip(Capture.stdout(() -> run("storage", "usage")));
         assertThat(plain).contains("not yet created");
@@ -130,7 +139,7 @@ class CacheCommandTest {
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[256]);
         Path fresh = writeBlob(cache.resolve("actions/keys/new"), new byte[256]);
         Path cacheTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[128]);
-        Path storeCas = cc.jumpkick.cache.JkStores.resolve(cache, "sha256");
+        Path storeCas = JkStores.resolve(cache, "sha256");
         Path storeTmp = writeBlob(storeCas.resolve("ab/cd/.put-jk1531.tmp"), new byte[128]);
         try {
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
@@ -300,7 +309,7 @@ class CacheCommandTest {
         // here. Structural shape only; the hard-link no-double-count arithmetic is covered
         // hermetically by DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
         // The store has to exist for there to be a table at all — an absent store reports itself.
-        writeBlob(cc.jumpkick.cache.JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
+        writeBlob(JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
 
         String plain = TestAnsi.strip(Capture.stdout(() -> run("storage", "usage")));
         assertThat(plain).contains("Artifact Storage");
@@ -334,9 +343,8 @@ class CacheCommandTest {
     private static String classesTag(Path projectDir) throws Exception {
         // BuildCommand realpaths the module root before hashing tags — match that form.
         Path norm = projectDir.toRealPath();
-        cc.jumpkick.model.JkBuild jb = cc.jumpkick.config.JkBuildParser.parse(norm.resolve("jk.toml"));
-        return cc.jumpkick.task.ActionKey.taskTag(
-                cc.jumpkick.layout.BuildLayout.of(norm, jb).classesDir());
+        JkBuild jb = JkBuildParser.parse(norm.resolve("jk.toml"));
+        return ActionKey.taskTag(BuildLayout.of(norm, jb).classesDir());
     }
 
     /** Write an action record ({@code keys/<key>}) plus its {@code tasks/<taskId>} pointer. */
@@ -359,7 +367,7 @@ class CacheCommandTest {
     /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks (JK-2179). */
     @org.junit.jupiter.api.AfterEach
     void scrubSeededRepoArtifacts() {
-        Path repos = cc.jumpkick.cache.JkStores.store().resolve("repos");
+        Path repos = JkStores.store().resolve("repos");
         for (String rel : SEEDED_PATHS) {
             Path f = repos.resolve("central").resolve(rel);
             try {
@@ -376,17 +384,14 @@ class CacheCommandTest {
     private static void seedRepo(Path cache, String group, String artifact, String version) {
         try {
             byte[] bytes = (group + ":" + artifact + ":" + version).getBytes(StandardCharsets.UTF_8);
-            cc.jumpkick.cache.Cas cas = new cc.jumpkick.cache.Cas(cache);
+            Cas cas = new Cas(cache);
             Path blob = cas.put(bytes);
-            var coord = cc.jumpkick.model.Coordinate.of(group, artifact, version);
-            SEEDED_PATHS.add(cc.jumpkick.repo.MavenLayout.artifactPath(coord));
+            var coord = Coordinate.of(group, artifact, version);
+            SEEDED_PATHS.add(MavenLayout.artifactPath(coord));
             // repos/ lives under the STORE root — where MavenRepo writes (JK-2176); the old
             // cache-rooted seed only matched the pre-fix search's wrong walk root.
-            cc.jumpkick.repo.RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")
-                    .materialize(
-                            cc.jumpkick.repo.MavenLayout.artifactPath(coord),
-                            blob,
-                            cc.jumpkick.host.Hashing.sha256Hex(bytes));
+            RepoArtifactStore.forRepoName(JkStores.store(), "central")
+                    .materialize(MavenLayout.artifactPath(coord), blob, cc.jumpkick.host.Hashing.sha256Hex(bytes));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

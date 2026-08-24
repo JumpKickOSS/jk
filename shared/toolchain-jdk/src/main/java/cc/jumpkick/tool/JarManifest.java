@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import cc.jumpkick.model.Coordinate;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -102,7 +103,7 @@ public final class JarManifest {
      * META-INF/maven/}. Returns empty when no entry has all three of {@code groupId}, {@code
      * artifactId}, and {@code version}.
      */
-    public static Optional<cc.jumpkick.model.Coordinate> coordinateFrom(Path jar) throws IOException {
+    public static Optional<Coordinate> coordinateFrom(Path jar) throws IOException {
         for (EmbeddedPom pom : scanEmbeddedPoms(jar)) {
             if (pom.pomProperties() == null) continue;
             String groupId = null, artifactId = null, version = null;
@@ -123,7 +124,7 @@ public final class JarManifest {
                     && !artifactId.isBlank()
                     && version != null
                     && !version.isBlank()) {
-                return Optional.of(cc.jumpkick.model.Coordinate.of(groupId, artifactId, version));
+                return Optional.of(Coordinate.of(groupId, artifactId, version));
             }
         }
         return Optional.empty();

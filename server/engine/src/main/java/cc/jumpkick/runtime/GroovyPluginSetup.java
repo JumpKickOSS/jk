@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
@@ -46,8 +47,7 @@ public final class GroovyPluginSetup {
         Path groovyJar = GroovyToolResolver.resolveGroovyJar(repos, cas, version);
 
         // Expand thin worker jar + Maven runtime closure from its POM, then Groovy closure.
-        List<Path> workerClasspath =
-                new ArrayList<>(cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(locateWorkerJar(cas)));
+        List<Path> workerClasspath = new ArrayList<>(WorkerLaunchClasspath.paths(locateWorkerJar(cas)));
         for (Path p : closure) {
             if (!workerClasspath.contains(p)) workerClasspath.add(p);
         }

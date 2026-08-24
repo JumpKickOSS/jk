@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import com.sun.net.httpserver.HttpServer;
@@ -48,7 +49,7 @@ class KmpRedirectsMemoTest {
     @BeforeEach
     void start() throws IOException {
         KmpRedirects.clearProcessCache();
-        cc.jumpkick.repo.GradleModuleMetadata.clearParseCache();
+        GradleModuleMetadata.clearParseCache();
         RepoGroup.clearProcessFetchCache();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         serverPool = Executors.newCachedThreadPool();

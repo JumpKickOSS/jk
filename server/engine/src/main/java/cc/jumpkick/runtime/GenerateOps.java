@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.gradle.GradleExporter;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.BomExporter;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
@@ -80,7 +81,7 @@ public final class GenerateOps {
      */
     private static GeneratedFiles exportBom(Path dir, Map<String, String> params) throws IOException {
         Loaded loaded = load(dir);
-        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockPath = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockPath)) {
             return GeneratedFiles.error("no jk-lock.toml — run `jk lock` before `jk export bom`");
         }
@@ -148,7 +149,7 @@ public final class GenerateOps {
     }
 
     private static Map<String, String> lockedVersions(Path dir) {
-        Path lock = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lock = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lock)) return Map.of();
         try {
             Lockfile lf = LockfileReader.read(lock);

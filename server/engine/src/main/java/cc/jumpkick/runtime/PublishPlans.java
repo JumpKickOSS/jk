@@ -3,7 +3,9 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.jsonl.Jsonl;
@@ -146,9 +148,7 @@ public final class PublishPlans {
                             files[0] = Jsonl.intValue(json, "files", 0);
                             // The worker knows what it PUT (body lengths); the run's ledger shows it
                             // as remote-up on the dashboard.
-                            cc.jumpkick.config.SessionContext.current()
-                                    .io()
-                                    .remoteUp(Jsonl.longValue(json, "bytes", 0L));
+                            SessionContext.current().io().remoteUp(Jsonl.longValue(json, "bytes", 0L));
                         })
                         .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
                         .passthrough(line -> workerDiag.append(line).append('\n'))
@@ -202,7 +202,7 @@ public final class PublishPlans {
         if (req.endpoint() != null && !req.endpoint().isBlank()) sw.configString("objectStoreEndpoint", req.endpoint());
         sw.artifact(jar);
         sw.layout(Map.of("moduleDir", projectDir));
-        String pluginJars = cc.jumpkick.engine.plugin.BuiltInPluginJars.tablePluginJars().stream()
+        String pluginJars = BuiltInPluginJars.tablePluginJars().stream()
                 .map(Path::toString)
                 .reduce((a, b) -> a + File.pathSeparator + b)
                 .orElse("");

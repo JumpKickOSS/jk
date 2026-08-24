@@ -3,9 +3,12 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.GenerateOps;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -38,17 +41,17 @@ public final class GenerateVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.GeneratedFiles files;
+            GeneratedFiles files;
             try {
-                files = cc.jumpkick.runtime.GenerateOps.generate(
+                files = GenerateOps.generate(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Jsonl.str(requestLine, "kind"),
                         ProtoReads.generateParams(requestLine));
             } catch (RuntimeException e) {
-                files = cc.jumpkick.engine.protocol.GeneratedFiles.error(cc.jumpkick.host.Errors.text(e));
+                files = GeneratedFiles.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, files.encode());
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.HostPlatform;
@@ -58,7 +59,7 @@ public final class JavacRunner {
                 // (jk-java-compiler ToolProvider host and kotlin-compiler). See PluginAot.
                 command.add("@" + argfile);
                 ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-                Process process = cc.jumpkick.engine.JobWorkers.start(pb);
+                Process process = JobWorkers.start(pb);
                 List<String> stray = new ArrayList<>();
                 List<CompileResult.Diagnostic> diagnostics;
                 int exit;

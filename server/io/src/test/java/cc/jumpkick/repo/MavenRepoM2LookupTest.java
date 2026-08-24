@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import com.sun.net.httpserver.HttpServer;
@@ -49,7 +50,7 @@ class MavenRepoM2LookupTest {
     void stop() {
         server.stop(0);
         System.clearProperty("jk.m2.local");
-        cc.jumpkick.config.SessionContext.reset();
+        SessionContext.reset();
     }
 
     private void serve(String path, int status, byte[] body) {

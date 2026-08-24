@@ -369,7 +369,7 @@ public final class TrainRunner {
         Thread drain = Thread.ofVirtual().start(() -> {
             try (var in = p.inputReader()) {
                 in.lines().forEach(l -> createOut.append(l).append('\n'));
-            } catch (java.io.IOException ignored) {
+            } catch (IOException ignored) {
             }
         });
         p.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);

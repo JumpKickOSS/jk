@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -233,8 +234,7 @@ class BuildCommandTest {
         assertThat(tempDir.resolve("target/app/lib/app-1.0.0.jar")).exists();
         assertThat(tempDir.resolve("target/liba/lib/liba-1.0.0.jar")).exists();
         assertThat(tempDir.resolve("target/libb/lib/libb-1.0.0.jar")).doesNotExist();
-        assertThat(cc.jumpkick.cli.TestAnsi.strip(stdout.toString(StandardCharsets.UTF_8)))
-                .contains("building module app");
+        assertThat(TestAnsi.strip(stdout.toString(StandardCharsets.UTF_8))).contains("building module app");
     }
 
     private static void module(Path dir, String name, String pkg, String cls, String extra) throws IOException {

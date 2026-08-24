@@ -77,7 +77,7 @@ class AndroidReleaseTest {
                         false,
                         false,
                         false,
-                        java.util.Set.of(),
+                        Set.of(),
                         cc.jumpkick.config.SessionContext.current())
                 .withVariant(
                         "release",

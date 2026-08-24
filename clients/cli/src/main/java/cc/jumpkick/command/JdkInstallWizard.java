@@ -6,7 +6,9 @@ import cc.jumpkick.cli.tui.Choice;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.jdk.JdkCatalog;
+import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkSelector;
+import cc.jumpkick.jdk.SupportedJdk;
 import cc.jumpkick.terminal.TerminalSession;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -107,7 +109,7 @@ final class JdkInstallWizard {
         // Default to the latest LTS we have on hand; if there's no LTS in
         // the catalog at all (unlikely), fall back to the highest major.
         int defaultMajor = majors.stream()
-                .filter(cc.jumpkick.jdk.JdkLts::isLtsMajor)
+                .filter(JdkLts::isLtsMajor)
                 .max(Integer::compareTo)
                 .orElse(majors.getFirst());
         versionStep.defaultChoice(String.valueOf(defaultMajor));
@@ -190,7 +192,7 @@ final class JdkInstallWizard {
             // this defensive check covers programmatically-constructed
             // catalogs (tests, fixtures) so an unsupported major from those
             // can't leak through to the wizard.
-            if (!cc.jumpkick.jdk.SupportedJdk.isSupported(e.majorVersion())) continue;
+            if (!SupportedJdk.isSupported(e.majorVersion())) continue;
             String key = e.vendor() + VENDOR_PRODUCT_SEP + e.product();
             var byMajor = perKey.computeIfAbsent(key, k -> new TreeMap<>());
             var prior = byMajor.get(e.majorVersion());

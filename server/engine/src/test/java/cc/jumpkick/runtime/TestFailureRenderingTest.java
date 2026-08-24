@@ -3,6 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
 import java.util.List;
 import java.util.Optional;
@@ -80,7 +83,7 @@ class TestFailureRenderingTest {
         assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)  [w2]"));
         assertThat(String.join("\n", lines)).doesNotContain("class: cc.jumpkick");
         var info = f.toInfo();
-        var diag = new cc.jumpkick.run.BuildPlanResult.Diagnostic("run-tests", "test-failure", f.message(), info);
+        var diag = new BuildPlanResult.Diagnostic("run-tests", "test-failure", f.message(), info);
         assertThat(diag.worker()).isEqualTo(2);
         assertThat(diag.testFailure().worker()).isEqualTo(2);
     }
@@ -141,7 +144,7 @@ class TestFailureRenderingTest {
         assertThat(last.get()).isEqualTo("cc.jumpkick:core :: FooTest.bar()");
     }
 
-    private static final class LabelCaptureContext implements cc.jumpkick.run.TaskContext {
+    private static final class LabelCaptureContext implements TaskContext {
         private final AtomicReference<String> last;
 
         LabelCaptureContext(AtomicReference<String> last) {
@@ -174,15 +177,15 @@ class TestFailureRenderingTest {
         }
 
         @Override
-        public <T> void put(cc.jumpkick.run.BuildPlanKey<T> key, T value) {}
+        public <T> void put(BuildPlanKey<T> key, T value) {}
 
         @Override
-        public <T> Optional<T> get(cc.jumpkick.run.BuildPlanKey<T> key) {
+        public <T> Optional<T> get(BuildPlanKey<T> key) {
             return Optional.empty();
         }
 
         @Override
-        public <T> T require(cc.jumpkick.run.BuildPlanKey<T> key) {
+        public <T> T require(BuildPlanKey<T> key) {
             throw new IllegalStateException("missing " + key);
         }
     }

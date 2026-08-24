@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.repo.RepoArtifactStore;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -79,8 +80,7 @@ class CacheSyncTest {
         Path store = tempDir.resolve("cache");
         Path src = tempDir.resolve("leaf.jar");
         Files.write(src, jar);
-        cc.jumpkick.repo.RepoArtifactStore.forRepoName(store, "central")
-                .materialize("com/foo/leaf/1.0/leaf-1.0.jar", src, hex);
+        RepoArtifactStore.forRepoName(store, "central").materialize("com/foo/leaf/1.0/leaf-1.0.jar", src, hex);
         registerJar("com.foo", "leaf", "1.0", jar);
 
         CacheSync.Report report = new CacheSync(new Cas(store), new Http(), false)

@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -119,12 +121,7 @@ class PubGrubResolverTest {
         assertThat(mediated.modules().get("com.foo:leaf:jar:").version()).isEqualTo("2.0");
 
         Resolution strict = new PubGrubResolver(
-                        repos,
-                        bom,
-                        Map.of(),
-                        KmpRedirects.NONE,
-                        cc.jumpkick.model.PlatformPolicy.ENFORCED,
-                        cc.jumpkick.model.UnmappedPolicy.STRICT)
+                        repos, bom, Map.of(), KmpRedirects.NONE, PlatformPolicy.ENFORCED, UnmappedPolicy.STRICT)
                 .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
         assertThat(strict.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
     }

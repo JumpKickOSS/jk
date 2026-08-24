@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.config.JkCacheConfig;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -15,8 +16,7 @@ import org.junit.jupiter.api.Test;
 class StorageSurfacesRenderTest {
 
     /** 4 GiB action budget / 512 MiB incremental budget — the shipped defaults. */
-    private static final cc.jumpkick.config.JkCacheConfig CACHE_CONFIG =
-            new cc.jumpkick.config.JkCacheConfig(true, 7, 4.0, 0.5);
+    private static final JkCacheConfig CACHE_CONFIG = new JkCacheConfig(true, 7, 4.0, 0.5);
 
     @Test
     void cache_usage_table_rows_share_one_visible_width() {

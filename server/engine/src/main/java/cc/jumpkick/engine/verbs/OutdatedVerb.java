@@ -5,8 +5,11 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.OutdatedPlans;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -41,10 +44,10 @@ public final class OutdatedVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.OutdatedReport report;
+            OutdatedReport report;
             try {
                 Path dir = Path.of(Jsonl.str(requestLine, "dir"));
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
@@ -67,11 +70,9 @@ public final class OutdatedVerb implements HostedVerb {
                         .withWorkingDir(dir)
                         .withCacheDir(cache);
                 report = SessionContext.where(
-                        session,
-                        () -> cc.jumpkick.runtime.OutdatedPlans.compute(
-                                dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
+                        session, () -> OutdatedPlans.compute(dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
             } catch (Exception e) {
-                report = cc.jumpkick.engine.protocol.OutdatedReport.error(cc.jumpkick.host.Errors.text(e));
+                report = OutdatedReport.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

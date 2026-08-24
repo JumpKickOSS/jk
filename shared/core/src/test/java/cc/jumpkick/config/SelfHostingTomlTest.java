@@ -3,9 +3,14 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
+import cc.jumpkick.plugin.PluginModule;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -148,8 +153,7 @@ class SelfHostingTomlTest {
         JkBuild root = JkBuildParser.parseLocal(REPO.resolve("jk.toml"));
         List<Path> manifests = new ArrayList<>();
         manifests.add(REPO.resolve("jk.toml"));
-        for (Path moduleDir :
-                cc.jumpkick.config.WorkspaceLoader.loadModules(REPO, root).keySet()) {
+        for (Path moduleDir : WorkspaceLoader.loadModules(REPO, root).keySet()) {
             Path mt = moduleDir.resolve("jk.toml");
             if (Files.isRegularFile(mt)) manifests.add(mt);
         }
@@ -172,10 +176,9 @@ class SelfHostingTomlTest {
         }
         assertThat(shortNames).as("self-host manifests use catalog short names").isNotEmpty();
 
-        cc.jumpkick.library.LibraryCatalog bundled = cc.jumpkick.library.LibraryCatalog.bundled();
-        cc.jumpkick.library.LibraryCatalog pins = cc.jumpkick.library.LibraryCatalog.parse(
-                Files.readString(cc.jumpkick.library.LibraryCatalog.projectFile(REPO)));
-        cc.jumpkick.library.LibraryCatalog chain = cc.jumpkick.library.LibraryCatalog.forProject(REPO);
+        LibraryCatalog bundled = LibraryCatalog.bundled();
+        LibraryCatalog pins = LibraryCatalog.parse(Files.readString(LibraryCatalog.projectFile(REPO)));
+        LibraryCatalog chain = LibraryCatalog.forProject(REPO);
         for (String name : shortNames) {
             var expected = bundled.lookup(name);
             assertThat(expected)
@@ -203,10 +206,10 @@ class SelfHostingTomlTest {
     void lock_stamp_matches_manifests() throws Exception {
         Path lock = REPO.resolve("jk-lock.toml");
         Assumptions.assumeTrue(Files.isRegularFile(lock), "workspace lock missing");
-        assertThat(cc.jumpkick.lock.LockfileReader.read(lock).manifestsSha256())
+        assertThat(LockfileReader.read(lock).manifestsSha256())
                 .as("jk-lock.toml manifests-sha256 is stale — re-lock (jk lock) and commit the "
                         + "re-stamp together with the manifest/pin edit")
-                .isEqualTo(cc.jumpkick.lock.LockManifestDigest.compute(REPO));
+                .isEqualTo(LockManifestDigest.compute(REPO));
     }
 
     @Test
@@ -226,8 +229,7 @@ class SelfHostingTomlTest {
         assertThat(web.project().name()).isEqualTo("jk-web");
         assertThat(web.mainClass()).isNull();
         assertThat(web.assembly()).isFalse();
-        assertThat(cc.jumpkick.layout.SourceLayout.looksTraditional(REPO.resolve("clients/web")))
-                .isTrue();
+        assertThat(SourceLayout.looksTraditional(REPO.resolve("clients/web"))).isTrue();
     }
 
     @Test
@@ -268,7 +270,7 @@ class SelfHostingTomlTest {
                     .as(module + " must not declare [application]")
                     .isFalse();
             assertThat(p.mainClass()).as(module).isNull();
-            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+            assertThat(PluginModule.isWorker(REPO.resolve(module)))
                     .as(module + " is a plugin worker")
                     .isTrue();
             assertThat(p.dependencies().of(Scope.MAIN).stream()
@@ -297,7 +299,7 @@ class SelfHostingTomlTest {
                     .as(module + " must not declare [application]")
                     .isFalse();
             assertThat(p.mainClass()).as(module).isNull();
-            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+            assertThat(PluginModule.isWorker(REPO.resolve(module)))
                     .as(module + " is a plugin worker")
                     .isTrue();
             assertThat(p.assembly())

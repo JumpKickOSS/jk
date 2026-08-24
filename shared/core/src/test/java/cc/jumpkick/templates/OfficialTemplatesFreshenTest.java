@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import cc.jumpkick.config.JkTemplatesConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,10 +59,9 @@ class OfficialTemplatesFreshenTest {
      * short name on an offline host can't re-run a 60–120s git attempt on every retry. */
     @Test
     void sourceRefEncodesUrlAndRev() {
-        var plain = new cc.jumpkick.config.JkTemplatesConfig.Source(
-                "acme", "https://github.com/acme/jk-g8", Optional.empty());
-        var pinned = new cc.jumpkick.config.JkTemplatesConfig.Source(
-                "corp", "https://git.example/corp/jk-templates.git", Optional.of("main"));
+        var plain = new JkTemplatesConfig.Source("acme", "https://github.com/acme/jk-g8", Optional.empty());
+        var pinned =
+                new JkTemplatesConfig.Source("corp", "https://git.example/corp/jk-templates.git", Optional.of("main"));
         org.assertj.core.api.Assertions.assertThat(OfficialTemplatesFreshen.sourceRef(plain))
                 .isEqualTo("https://github.com/acme/jk-g8");
         org.assertj.core.api.Assertions.assertThat(OfficialTemplatesFreshen.sourceRef(pinned))

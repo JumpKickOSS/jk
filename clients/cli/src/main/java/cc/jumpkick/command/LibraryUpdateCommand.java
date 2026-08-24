@@ -2,10 +2,13 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -57,8 +60,7 @@ public final class LibraryUpdateCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.source = in.value("source").map(URI::create).orElse(DEFAULT_SOURCE);
-        this.cacheFileOverride =
-                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheFileOverride = in.value("cache-file").map(CliPaths::abs).orElse(null);
 
         long startNanos = System.nanoTime();
         Path cacheFile = cacheFileOverride != null ? cacheFileOverride : JkDirs.libraryRegistry();
@@ -70,16 +72,16 @@ public final class LibraryUpdateCommand implements CliCommand {
             Files.copy(cacheFile, previousBackup, StandardCopyOption.REPLACE_EXISTING);
         }
         try {
-            String error = cc.jumpkick.cli.engine.EngineClient.freshenCatalogNow(
-                    cc.jumpkick.engine.EnginePaths.current(), "libraries", source.toString(), cacheFile);
+            String error =
+                    EngineClient.freshenCatalogNow(EnginePaths.current(), "libraries", source.toString(), cacheFile);
             if (error != null) {
                 restoreBackup(cacheFile, previousBackup);
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Library", error);
+                CommandWedge.printFail("Library", error);
                 return 1;
             }
         } catch (IOException e) {
             restoreBackup(cacheFile, previousBackup);
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
+            CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
             return 1;
         }
         Map<String, LibraryCatalog.Module> after = currentEntries(cacheFile);

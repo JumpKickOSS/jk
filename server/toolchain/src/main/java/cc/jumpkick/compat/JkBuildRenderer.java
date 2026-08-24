@@ -9,6 +9,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.util.MinimalToml;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -81,7 +83,7 @@ public final class JkBuildRenderer {
      * lives here.
      */
     private static void renderPluginTables(StringBuilder sb, JkBuild jkBuild) {
-        for (var manifest : cc.jumpkick.plugin.manifest.PluginTableRegistry.manifests()) {
+        for (var manifest : PluginTableRegistry.manifests()) {
             var config = jkBuild.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
             sb.append("\n[").append(manifest.table()).append("]\n");
@@ -280,6 +282,6 @@ public final class JkBuildRenderer {
     }
 
     private static String quote(String s) {
-        return cc.jumpkick.util.MinimalToml.quote(s);
+        return MinimalToml.quote(s);
     }
 }

@@ -2,6 +2,8 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.Languages;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
@@ -154,10 +156,10 @@ public final class WorkspaceClasspath {
             String missingLabel = module + " (expected at " + siblingJar + ")";
             Path missingSibDir = siblingDirByModule.get(module);
             if (missingSibDir != null
-                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".java")
-                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".kt")
-                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")
-                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".scala")) {
+                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".java")
+                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".kt")
+                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")
+                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".scala")) {
                 // Name the real cause: the sibling was never going to compile anything — its jar
                 // only appears once the module is scheduled and packages empty.
                 missingLabel = module + " has no sources — jk packages an empty jar for it once the"
@@ -193,7 +195,7 @@ public final class WorkspaceClasspath {
             // declared in jk-core is needed by jk-io via the transitive chain).
             Path sibDir = siblingDirByModule.get(module);
             if (sibDir != null) {
-                Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(sibDir);
+                Path lockFile = LockPaths.lockFile(sibDir);
                 if (Files.exists(lockFile)) siblingLockfiles.add(lockFile);
             }
         }

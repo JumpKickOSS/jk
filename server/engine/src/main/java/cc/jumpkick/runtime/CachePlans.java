@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -10,6 +13,12 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.CacheRetention;
+import cc.jumpkick.task.CacheRoots;
+import cc.jumpkick.task.CacheTier;
+import cc.jumpkick.task.CasSweep;
+import cc.jumpkick.task.TmpGc;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,7 +62,7 @@ public final class CachePlans {
                 .execute(ctx -> {
                     // Drop retired engine jars and parked PATH binaries.
                     try {
-                        var pruned = cc.jumpkick.cache.EngineInstall.current().gc();
+                        var pruned = EngineInstall.current().gc();
                         if (!pruned.isEmpty()) {
                             ctx.warn("prune", "retired " + pruned.size() + " displaced jk install file(s)");
                         }
@@ -72,24 +81,22 @@ public final class CachePlans {
 
                     var timingsReport = StepTimings.prune(
                             root,
-                            StepTimings.Limits.resolve(cc.jumpkick.util.JkDirs.userConfigFile(), System::getenv),
+                            StepTimings.Limits.resolve(JkDirs.userConfigFile(), System::getenv),
                             System.currentTimeMillis(),
                             dryRun);
                     totalFiles += timingsReport.evictedByAge() + timingsReport.evictedBySize();
 
                     if (includeJkTmp) {
-                        var tmpReport = cc.jumpkick.task.TmpGc.sweep(
-                                cc.jumpkick.util.JkDirs.tmp(), cc.jumpkick.task.TmpGc.DEFAULT_TTL, dryRun);
+                        var tmpReport = TmpGc.sweep(JkDirs.tmp(), TmpGc.DEFAULT_TTL, dryRun);
                         totalFiles += tmpReport.deleted();
                         totalBytes += tmpReport.freedBytes();
                     }
 
                     // Reclaim unreferenced payloads before the budget prune: garbage the sweep frees
                     // is a shortfall the prune then does not have to cover by evicting live entries.
-                    var cacheCas = cc.jumpkick.cache.JkStores.cacheCas(root);
-                    var cacheLive = cc.jumpkick.task.CacheRoots.collect(
-                            cacheCas, root.resolve("actions"), root.resolve("tools"));
-                    var cacheSweep = cc.jumpkick.task.CasSweep.sweep(cacheCas, cacheLive, dryRun);
+                    var cacheCas = JkStores.cacheCas(root);
+                    var cacheLive = CacheRoots.collect(cacheCas, root.resolve("actions"), root.resolve("tools"));
+                    var cacheSweep = CasSweep.sweep(cacheCas, cacheLive, dryRun);
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
 
@@ -97,8 +104,7 @@ public final class CachePlans {
                     // name. The sweep's victims are still on disk in a dry run, so hand them over:
                     // without that the action prune counts the same blob twice and dry-run totals
                     // diverge.
-                    var retention =
-                            cc.jumpkick.task.CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun);
+                    var retention = CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun);
                     totalFiles += retention.deletedFiles();
                     totalBytes += retention.freedBytes();
                     ctx.put(FINAL_ACTION_BYTES, retention.finalActionBytes());
@@ -108,8 +114,7 @@ public final class CachePlans {
                                 "reclaimed unrecognised cache entries: "
                                         + String.join(", ", retention.unknownEntries()));
                     }
-                    long actionBudget =
-                            cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
+                    long actionBudget = JkCacheConfig.resolve().maxCacheSizeBytes();
                     if (actionBudget > 0 && retention.finalActionBytes() > actionBudget) {
                         ctx.warn(
                                 "prune",
@@ -146,7 +151,7 @@ public final class CachePlans {
      * silently survive {@code jk cache nuke}.
      */
     public static void purgeActionCache(Path root) throws IOException {
-        for (var tier : cc.jumpkick.task.CacheTier.purgeable()) {
+        for (var tier : CacheTier.purgeable()) {
             Path dir = root.resolve(tier.entry());
             if (Files.isDirectory(dir)) deleteContents(dir);
             else Files.deleteIfExists(dir);
@@ -183,13 +188,13 @@ public final class CachePlans {
         long totalFiles = 0;
         long totalBytes = 0;
 
-        TempSweep temps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "sha256"), dryRun);
+        TempSweep temps = sweepCasTemps(JkStores.resolve(root, "sha256"), dryRun);
         totalFiles += temps.files();
         totalBytes += temps.bytes();
 
         // Reclaim leaked .put-*.tmp download temps under the Maven-layout store too — mirror=false
         // fetches (metadata / file:// POMs) return the temp and never delete it.
-        TempSweep repoTemps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "repos"), dryRun);
+        TempSweep repoTemps = sweepCasTemps(JkStores.resolve(root, "repos"), dryRun);
         totalFiles += repoTemps.files();
         totalBytes += repoTemps.bytes();
 

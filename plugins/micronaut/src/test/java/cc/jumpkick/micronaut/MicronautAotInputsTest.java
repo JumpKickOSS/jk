@@ -3,6 +3,7 @@ package cc.jumpkick.micronaut;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -47,7 +48,7 @@ class MicronautAotInputsTest {
         Files.createDirectories(dir.resolve("cfg"));
         Files.writeString(dir.resolve("cfg/native-aot.properties"), "scan.reactive.types.enabled=false\n");
         String spec = MicronautPlugin.configSpec(
-                new cc.jumpkick.plugin.PluginConfig("micronaut", Map.of("aot-config", "cfg/native-aot.properties")));
+                new PluginConfig("micronaut", Map.of("aot-config", "cfg/native-aot.properties")));
         assertThat(dir.resolve(spec)).isEqualTo(MicronautPlugin.userConfigFile(dir, "cfg/native-aot.properties"));
         assertThat(inputsOf(describe(dir, "cfg/native-aot.properties"))).contains("project:" + spec);
     }

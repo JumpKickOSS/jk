@@ -5,6 +5,8 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -85,7 +87,7 @@ public final class JsonlShape {
         StringBuilder sb = new StringBuilder(line.length() + 24);
         sb.append(line, 0, end);
         sb.append(",\"progress\":");
-        sb.append(progress == null ? "null" : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progress));
+        sb.append(progress == null ? "null" : WorkspaceProgressTracker.progressToken(progress));
         sb.append('}');
         return sb.toString();
     }
@@ -254,7 +256,7 @@ public final class JsonlShape {
      * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
      * exceptionClass, and a single top-level stack (no nested throwable duplicate —).
      */
-    static String error(String step, String code, String msg, cc.jumpkick.run.TestFailureInfo failure) {
+    static String error(String step, String code, String msg, TestFailureInfo failure) {
         if (failure == null) return error(step, code, msg);
         String message = msg == null || msg.isEmpty() ? failure.message() : msg;
         StringBuilder sb = open("error")

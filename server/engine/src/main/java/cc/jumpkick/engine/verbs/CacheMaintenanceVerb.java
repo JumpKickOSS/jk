@@ -3,9 +3,14 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.CachePlans;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
@@ -44,13 +49,13 @@ public final class CacheMaintenanceVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+    public String decodeJob(JobSpec spec) {
         return ProtoSession.withTrigger(
-                ProtoSession.cacheClearRequest(cc.jumpkick.util.JkDirs.cache().toString(), spec.dir(), false), "web");
+                ProtoSession.cacheClearRequest(JkDirs.cache().toString(), spec.dir(), false), "web");
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String op = String.valueOf(Jsonl.str(requestLine, "op"));
@@ -63,15 +68,15 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                     () -> host.sendQuiet(writer, ProtoSession.pruneWait(host.activePlanCount(), false)),
                     () -> host.sendQuiet(writer, ProtoSession.pruneWait(0, true)),
                     () -> {
-                        cc.jumpkick.run.BuildPlan plan =
+                        BuildPlan plan =
                                 switch (op) {
-                                    case "purge" -> cc.jumpkick.runtime.CachePlans.purgeBuildPlan(cache);
-                                    case "sweep" -> cc.jumpkick.runtime.CachePlans.sweepBuildPlan(cache, dryRun);
+                                    case "purge" -> CachePlans.purgeBuildPlan(cache);
+                                    case "sweep" -> CachePlans.sweepBuildPlan(cache, dryRun);
                                     case "clear" ->
-                                        cc.jumpkick.runtime.CachePlans.clearBuildPlan(
+                                        CachePlans.clearBuildPlan(
                                                 cache, Path.of(Jsonl.str(requestLine, "dir")), dryRun);
                                     default ->
-                                        cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
+                                        CachePlans.pruneBuildPlan(
                                                 cache, dryRun, Jsonl.bool(requestLine, "includeJkTmp", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
@@ -85,16 +90,13 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                 CacheMaintenanceLocks.stampLastPruned(
                                         cache,
                                         host.nowMillis(),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.FINAL_ACTION_BYTES)
-                                                .orElse(-1L));
+                                        plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
                             }
                             return ProtoSession.planFinishCache(
                                     dir,
                                     result.success(),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.FILES)
-                                            .orElse(-1L),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.BYTES)
-                                            .orElse(-1L));
+                                    plan.get(CachePlans.FILES).orElse(-1L),
+                                    plan.get(CachePlans.BYTES).orElse(-1L));
                         });
                     });
         } catch (Exception e) {

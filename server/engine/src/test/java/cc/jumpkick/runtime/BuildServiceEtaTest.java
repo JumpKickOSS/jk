@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -275,8 +277,8 @@ class BuildServiceEtaTest {
                 Map.of(core, Set.of(), a, Set.of(core), eng, Set.of(a), cli, Set.of(eng)),
                 4,
                 List.of());
-        List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
-                cc.jumpkick.config.Session.defaults(),
+        List<EffortWeights.ModuleCost> costs = SessionContext.where(
+                Session.defaults(),
                 () -> BuildService.etaCostsFromExplainPlan(
                         plan, Path.of("/tmp/jk-eta-cascade-test-cache"), 1, null, null, false, false));
         EffortWeights.ModuleCost coreCost =

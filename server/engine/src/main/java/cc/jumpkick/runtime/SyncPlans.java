@@ -7,16 +7,22 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.CacheSync;
+import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.SyncManifest;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -61,7 +67,7 @@ public final class SyncPlans {
             AtomicInteger totalUpToDate,
             BiFunction<String, String, String> coordLabel,
             boolean allowJdkInstall) {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockFile = LockPaths.lockFile(dir);
         // Plain engine path uses Artifact.displayCoord() (g:a:v, or g:a:v!aar / :classifier when
         // non-default). An explicit coordLabel overrides for themed in-process clients.
         BiFunction<String, String, String> label = coordLabel;
@@ -109,10 +115,10 @@ public final class SyncPlans {
                                 lockFile,
                                 cache,
                                 repoUrl,
-                                cc.jumpkick.model.JkVersion.VERSION,
+                                JkVersion.VERSION,
                                 List.of(),
                                 true,
-                                cc.jumpkick.resolver.ResolveObserver.NOOP,
+                                ResolveObserver.NOOP,
                                 ctx::output);
                         ctx.put(LOCKFILE, updated != null ? updated : existing);
                         var build = parseBuildIfPresent(dir);
@@ -233,7 +239,7 @@ public final class SyncPlans {
                     ctx.label("stamp reachability manifest");
                     try {
                         Lockfile lock = ctx.require(LOCKFILE);
-                        cc.jumpkick.task.SyncManifest.write(cache.resolve("actions"), lockFile, lock);
+                        SyncManifest.write(cache.resolve("actions"), lockFile, lock);
                     } catch (IOException e) {
                         ctx.warn("manifest", "could not stamp reachability manifest: " + e.getMessage());
                     }
@@ -254,7 +260,7 @@ public final class SyncPlans {
                     ctx.label("sync plugins");
                     Cas cas = JkStores.cas(cache);
                     JkBuild build = ctx.get(BUILD).orElse(null);
-                    cc.jumpkick.repo.RepoGroup repos = build != null
+                    RepoGroup repos = build != null
                             ? RepoGroupBuilder.buildFor(build, repoUrl, cas)
                             : RepoGroupBuilder.buildFor(JkBuildParser.parse(dir.resolve("jk.toml")), repoUrl, cas);
                     for (var pe : pluginEntries) {
@@ -387,8 +393,7 @@ public final class SyncPlans {
      * it can't be had — a silent POM 404 used to surface only at worker launch as "has no Maven
      * POM; run `jk install`".
      */
-    private static void ensureSiblingPom(
-            cc.jumpkick.run.TaskContext ctx, cc.jumpkick.repo.RepoGroup repos, Coordinate coord) {
+    private static void ensureSiblingPom(TaskContext ctx, RepoGroup repos, Coordinate coord) {
         try {
             var pom = repos.tryFetchArtifact(
                     new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));

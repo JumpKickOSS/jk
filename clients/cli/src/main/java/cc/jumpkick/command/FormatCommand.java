@@ -4,12 +4,19 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.config.FormatStyles;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -70,13 +77,12 @@ public final class FormatCommand implements CliCommand {
         Path projectDir = global.workingDir();
         Path buildFile = projectDir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
+            CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
-        cc.jumpkick.engine.protocol.ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
+        ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
         if (build == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Format", "could not read the project summary (is the engine reachable?)");
+            CommandWedge.printFail("Format", "could not read the project summary (is the engine reachable?)");
             return Exit.CONFIG;
         }
 
@@ -100,7 +106,7 @@ public final class FormatCommand implements CliCommand {
                     cliOptimize,
                     cliImportOrder,
                     cliRemoveUnused,
-                    new cc.jumpkick.model.JkBuild.FormatConfig(
+                    new JkBuild.FormatConfig(
                             emptyToNull(build.formatStyle()),
                             emptyToNull(build.formatJava()),
                             emptyToNull(build.formatKotlin()),
@@ -108,7 +114,7 @@ public final class FormatCommand implements CliCommand {
                             build.formatImportOrder(),
                             build.formatRemoveUnusedImports()));
         } catch (IllegalArgumentException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Format", e.getMessage());
+            CommandWedge.printFail("Format", e.getMessage());
             return Exit.USAGE;
         }
         // Supplying --rewrite-config implicitly enables optimize-imports when neither
@@ -168,27 +174,26 @@ public final class FormatCommand implements CliCommand {
                         observer,
                         chatterListener(global, line -> CliOutput.err("  [formatter] " + line)));
             } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Format", e.getMessage());
+                CommandWedge.printFail("Format", e.getMessage());
                 return Exit.SOFTWARE;
             }
             if (!o.result().success()) {
                 for (BuildPlanResult.Diagnostic d : o.result().errors()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Format", d.message());
+                    CommandWedge.printFail("Format", d.message());
                 }
                 return 1;
             }
             if (o.total() == 0) {
-                if (!global.outputIsJson())
-                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
+                if (!global.outputIsJson()) CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
                 return 0;
             }
             if (!global.outputIsJson()) {
                 String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
                 Summary summary = summarize(check, counts[0], counts[1], counts[2], took);
                 if (summary.failed()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Format", summary.body());
+                    CommandWedge.printFail("Format", summary.body());
                 } else {
-                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", summary.body());
+                    CommandWedge.printOk("Format", summary.body());
                 }
             }
             return o.workerExit();
@@ -288,10 +293,10 @@ public final class FormatCommand implements CliCommand {
             BuildPlanListener listener)
             throws IOException {
 
-        var session = cc.jumpkick.config.SessionContext.current();
-        var outcome = cc.jumpkick.cli.engine.EngineClient.runFormat(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineRequests.FormatRequest(
+        var session = SessionContext.current();
+        var outcome = EngineClient.runFormat(
+                EnginePaths.current(),
+                new EngineRequests.FormatRequest(
                         projectDir,
                         cache,
                         check,

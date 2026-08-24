@@ -1,17 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.run.AggregateContext;
+import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.ModulePlan;
+import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -43,8 +61,8 @@ public final class CompileCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new ArrayList<Opt>();
         opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
-        opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
-        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
+        opts.add(CommonOpts.cacheDir());
+        opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -52,7 +70,7 @@ public final class CompileCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         String profileName = in.value("profile").orElse(null);
-        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
@@ -69,13 +87,13 @@ public final class CompileCommand implements CliCommand {
         Path infoDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : dir;
         var info = BuildCommand.projectInfoOrError(infoDir, modulesSpec, affectedSince);
         if (info.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", info.error());
+            CommandWedge.printFail("Compile", info.error());
             return Exit.CONFIG;
         }
         // Explicit selectors that match nothing are a no-op, not the whole graph — the wire
         // treats empty selectedModules as "everything" (WorkspaceSpec), so short-circuit here.
         if (!selectors.isEmpty() && info.moduleDirs().isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Compile", "nothing selected to compile");
+            CommandWedge.printOk("Compile", "nothing selected to compile");
             return 0;
         }
         if (info.workspaceRoot()
@@ -88,16 +106,16 @@ public final class CompileCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         // Engine-hosted: same plan as CompilePlans; listener chosen when the step list
         // arrives over the socket.
-        var session = cc.jumpkick.config.SessionContext.current();
+        var session = SessionContext.current();
         for (Path moduleDir : List.of(dir)) {
             ConsoleSpec spec = new ConsoleSpec(
                     "Compile", r -> Theme.colorize("Compiled", Theme.active().focused()), r -> "Compilation failed");
             String target = BuildCommand.buildTarget(moduleDir.resolve("jk.toml"), moduleDir);
             BuildPlanResult result;
             try {
-                result = cc.jumpkick.cli.engine.EngineClient.runCompile(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
+                result = EngineClient.runCompile(
+                        EnginePaths.current(),
+                        new EngineRequests.CompileRequest(
                                 moduleDir,
                                 cache,
                                 profileName,
@@ -106,11 +124,11 @@ public final class CompileCommand implements CliCommand {
                                 global.verbose,
                                 selectors),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
-            } catch (cc.jumpkick.engine.protocol.EngineWireException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", e.getMessage());
+            } catch (EngineWireException e) {
+                CommandWedge.printFail("Compile", e.getMessage());
                 return Exit.CONFIG;
             } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", e.getMessage());
+                CommandWedge.printFail("Compile", e.getMessage());
                 return Exit.SOFTWARE;
             }
             if (!result.success()) return 1;
@@ -127,44 +145,41 @@ public final class CompileCommand implements CliCommand {
             List<String> modules,
             List<String> scopeNames)
             throws IOException {
-        var session = cc.jumpkick.config.SessionContext.current();
-        var req = new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
+        var session = SessionContext.current();
+        var req = new EngineRequests.CompileRequest(
                 entryDir, cache, profileName, session.offline(), session.force(), global.verbose, modules);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        cc.jumpkick.cli.tui.JkManager view =
-                cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Compile", animate);
+        JkManager view = JkManager.plan(CliOutput.stdout(), "Compile", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
         ModuleScopeHint.show("compiling", scopeNames, global != null && global.outputIsJson(), view);
-        cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
+        AggregateContext agg = new AggregateContext(view);
         int[] finished = {0};
         long start = System.nanoTime();
-        cc.jumpkick.runtime.WorkspaceResult result;
+        WorkspaceResult result;
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runCompileWorkspace(
-                    cc.jumpkick.engine.EnginePaths.current(), req, new cc.jumpkick.runtime.WorkspaceBuildListener() {
-                        @Override
-                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
-                            agg.applySnapshot(snap);
-                        }
+            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, new WorkspaceBuildListener() {
+                @Override
+                public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
+                    agg.applySnapshot(snap);
+                }
 
-                        @Override
-                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            return new cc.jumpkick.cli.run.AggregateModuleListener(
-                                    agg, m.coord(), m.plan().steps(), m.weight());
-                        }
+                @Override
+                public BuildPlanListener onModuleStart(ModulePlan m) {
+                    return new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
+                }
 
-                        @Override
-                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            int n = ++finished[0];
-                            String completion =
-                                    BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
-                            if (view.animating()) {
-                                view.addCompletion(completion);
-                            }
-                        }
-                    });
-        } catch (cc.jumpkick.engine.protocol.EngineWireException e) {
+                @Override
+                public void onModuleFinish(ModuleOutcome o) {
+                    int n = ++finished[0];
+                    String completion =
+                            BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
+                    if (view.animating()) {
+                        view.addCompletion(completion);
+                    }
+                }
+            });
+        } catch (EngineWireException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.CONFIG;
         } catch (IOException e) {

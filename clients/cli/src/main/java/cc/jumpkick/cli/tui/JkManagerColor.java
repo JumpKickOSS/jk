@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.run.SyntaxHighlight;
+import cc.jumpkick.cli.run.TestFailureHighlight;
+import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.jdk.JdkProgressLabel;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.Width;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
@@ -77,13 +81,11 @@ public final class JkManagerColor {
             return worker.isEmpty() ? nativePainted : nativePainted + Theme.colorize(worker, t.midGray());
         }
         // Wire may carry FQCNs (java.nio.file.Path, pkg.FooTest); display simple names only.
-        body = cc.jumpkick.cli.run.TestFailureHighlight.shortDisplayLabel(body);
+        body = TestFailureHighlight.shortDisplayLabel(body);
         // Only syntax-highlight true member refs (FooTest.bar). Phase "Test" also hosts
         // compile-test labels like "compiling 12 sources" — those must stay mid-gray prose
         // (SyntaxHighlight paints unmatched text as terminal default/white).
-        String painted = looksLikeJavaMember(body)
-                ? cc.jumpkick.cli.run.SyntaxHighlight.highlight(body, -1)
-                : colorProseDetail(body, t);
+        String painted = looksLikeJavaMember(body) ? SyntaxHighlight.highlight(body, -1) : colorProseDetail(body, t);
         if (worker.isEmpty()) return painted;
         return painted + Theme.colorize(worker, t.midGray());
     }
@@ -250,7 +252,7 @@ public final class JkManagerColor {
 
             // 4. After resolve/fetch verbs, tint bare library / package short-names.
             if (isFetchOrResolveVerb(prevWord) && looksLikeLibraryShortName(tok)) {
-                out.append(cc.jumpkick.cli.theme.Coords.shortName(tok));
+                out.append(Coords.shortName(tok));
                 if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
                 prevWord = tok.toLowerCase(Locale.ROOT);
                 i = j;
@@ -437,12 +439,12 @@ public final class JkManagerColor {
     /** Paint {@code g:a} / {@code g:a:v} with the same colors as dependency trees. */
     static String colorCoord(String tok) {
         String[] parts = tok.split(":", -1);
-        if (parts.length == 2) return cc.jumpkick.cli.theme.Coords.ga(parts[0], parts[1]);
+        if (parts.length == 2) return Coords.ga(parts[0], parts[1]);
         if (parts.length >= 3) {
             // group:artifact:version — extra segments (classifier) stay on the version color.
             StringBuilder ver = new StringBuilder(parts[2]);
             for (int i = 3; i < parts.length; i++) ver.append(':').append(parts[i]);
-            return cc.jumpkick.cli.theme.Coords.gav(parts[0], parts[1], ver.toString());
+            return Coords.gav(parts[0], parts[1], ver.toString());
         }
         return Theme.colorize(tok, Theme.active().midGray());
     }
@@ -606,7 +608,7 @@ public final class JkManagerColor {
                 // One code point per step (never splitting a surrogate pair), wcwidth columns.
                 int cp = s.codePointAt(i);
                 int cpLen = Character.charCount(cp);
-                int w = cc.jumpkick.terminal.Width.wcwidth(cp);
+                int w = Width.wcwidth(cp);
                 if (w < 0) {
                     // C0/C1 controls (stray tab/backspace/CR in a step message — @DisplayName
                     // content flows in unsanitized). Emitting one at weight 0 advances real
@@ -668,7 +670,7 @@ public final class JkManagerColor {
                 continue;
             }
             int cp = s.codePointAt(i);
-            if (cc.jumpkick.terminal.Width.wcwidth(cp) > 0) return true;
+            if (Width.wcwidth(cp) > 0) return true;
             i += Character.charCount(cp);
         }
         return false;

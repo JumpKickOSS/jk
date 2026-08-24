@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkBuild;
@@ -69,7 +70,7 @@ public final class RepoGroupBuilder {
     }
 
     private static String interp(String repoName, String raw, UnaryOperator<String> env) {
-        return cc.jumpkick.config.RepositoryToml.interpolate(raw, var -> {
+        return RepositoryToml.interpolate(raw, var -> {
             String value = env.apply(var);
             if (value == null) {
                 throw new IllegalStateException(

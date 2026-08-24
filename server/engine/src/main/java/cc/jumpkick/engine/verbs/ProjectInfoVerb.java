@@ -3,8 +3,11 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.ExecPlans;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -37,18 +40,18 @@ public final class ProjectInfoVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.ProjectInfo info;
+            ProjectInfo info;
             try {
-                info = cc.jumpkick.runtime.ExecPlans.projectInfo(
+                info = ExecPlans.projectInfo(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Jsonl.str(requestLine, "modules"),
                         Jsonl.str(requestLine, "affectedSince"),
                         Jsonl.bool(requestLine, "counts", false));
             } catch (RuntimeException e) {
-                info = cc.jumpkick.engine.protocol.ProjectInfo.error(cc.jumpkick.host.Errors.text(e));
+                info = ProjectInfo.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, info.encode());
 

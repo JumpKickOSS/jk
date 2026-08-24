@@ -3,7 +3,9 @@ package cc.jumpkick.plugin.publish;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -36,8 +38,8 @@ class PublisherDryRunTest {
         Path spec = dir.resolve("publish.spec");
         Files.write(
                 spec,
-                new cc.jumpkick.plugin.protocol.SpecWriter()
-                        .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_PUBLISH, null, "jk-publisher")
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
                         .configString("repoUrl", "https://repo.example.com/")
                         .configString("repoAuthType", "anonymous")
                         .configBool("dryRun", true)

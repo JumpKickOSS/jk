@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.FormatStyles;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.FormatPlans;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
@@ -44,22 +54,21 @@ public final class FormatVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+    public String decodeJob(JobSpec spec) {
         Path entryDir = Path.of(spec.dir());
-        cc.jumpkick.model.JkBuild entry;
+        JkBuild entry;
         try {
-            entry = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
         } catch (Exception e) {
             throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
         }
         // Same style/hygiene precedence as `jk format` without CLI flags: the entry [format]
         // table, then the built-in defaults — one verb, one result across entry points.
-        cc.jumpkick.config.FormatStyles.Resolved styles =
-                cc.jumpkick.config.FormatStyles.resolve(null, null, null, null, null, null, entry.format());
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.formatRequest(
+        FormatStyles.Resolved styles = FormatStyles.resolve(null, null, null, null, null, null, entry.format());
+        return ProtoSession.withTrigger(
+                ProtoJobs.formatRequest(
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        JkDirs.cache().toString(),
                         false,
                         styles.java(),
                         styles.kotlin(),
@@ -73,7 +82,7 @@ public final class FormatVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -86,7 +95,7 @@ public final class FormatVerb implements HostedVerb {
                 String rewriteConfig = Jsonl.str(requestLine, "rewriteConfig");
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.FormatPlans.formatBuildPlan(
+                BuildPlan plan = FormatPlans.formatBuildPlan(
                         session.workingDir(),
                         session.cacheDir(),
                         check,
@@ -105,13 +114,11 @@ public final class FormatVerb implements HostedVerb {
                         result -> ProtoEvents.planFinishFormat(
                                 dir,
                                 result.success(),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.CHANGED)
-                                        .orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.CLEAN).orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.ERRORS).orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.TOTAL).orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.WORKER_EXIT)
-                                        .orElse(-1)));
+                                plan.get(FormatPlans.CHANGED).orElse(-1),
+                                plan.get(FormatPlans.CLEAN).orElse(-1),
+                                plan.get(FormatPlans.ERRORS).orElse(-1),
+                                plan.get(FormatPlans.TOTAL).orElse(-1),
+                                plan.get(FormatPlans.WORKER_EXIT).orElse(-1)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
             }

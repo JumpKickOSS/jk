@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
@@ -59,8 +60,7 @@ final class VariantSelection {
     static String install(Invocation in, Path projectDir) {
         String selector = selector(in);
         Map<String, String> clientEnv = resolveClientEnv(projectDir);
-        cc.jumpkick.config.SessionContext.install(
-                cc.jumpkick.config.SessionContext.current().withVariant(selector, clientEnv));
+        SessionContext.install(SessionContext.current().withVariant(selector, clientEnv));
         return selector;
     }
 

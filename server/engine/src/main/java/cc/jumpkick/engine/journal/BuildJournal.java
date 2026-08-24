@@ -4,6 +4,9 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.BuildHistoryKinds;
+import cc.jumpkick.runtime.TaskPhases;
+import cc.jumpkick.runtime.TestClassWalls;
+import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -380,7 +383,7 @@ public final class BuildJournal {
 
     private static void appendTestClassWalls(StringBuilder sb, String moduleDir) {
         if (moduleDir == null || moduleDir.isBlank()) return;
-        Map<String, Long> walls = cc.jumpkick.runtime.TestClassWalls.take(moduleDir);
+        Map<String, Long> walls = TestClassWalls.take(moduleDir);
         if (walls.isEmpty()) return;
         String mod = sanitize(moduleDir);
         for (var e : walls.entrySet()) {
@@ -413,8 +416,7 @@ public final class BuildJournal {
         // and every stage(RESOLVE) task in ScriptPlans landed in `other`. Name inference
         // stays as the fallback for records that carry no stage.
         String declared = s.stage();
-        String phase = sanitize(
-                declared != null && !declared.isBlank() ? declared : cc.jumpkick.runtime.TaskPhases.of(s.name()));
+        String phase = sanitize(declared != null && !declared.isBlank() ? declared : TaskPhases.of(s.name()));
         sb.append("task.").append(task).append(".wall-ms = ").append(s.millis()).append('\n');
         phaseTotals.merge(phase, s.millis(), Long::sum);
         if (moduleDir != null && !moduleDir.isBlank()) {
@@ -451,7 +453,7 @@ public final class BuildJournal {
         if (s == null) return "unknown";
         // Forward slashes first so Windows paths stay one key family with Unix; a POSIX
         // backslash name is NOT a separator and folds to '_' like any other odd character.
-        return cc.jumpkick.util.DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/-]+", "_");
+        return DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/-]+", "_");
     }
 
     public int abandonStaleRunning(String jkVersion) {

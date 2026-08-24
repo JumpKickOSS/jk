@@ -4,6 +4,8 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.Session;
@@ -89,7 +91,7 @@ class TuiModeFixturesTest {
     @Test
     void spinner_wedge_frame_plain_is_ascii() throws Exception {
         var colors = Spinner.buildChipPulseStyles(
-                Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
+                Spinner.PULSE_FRAMES, Theme.active().planBadgeColor());
         withConfig(noAnsiConfig(), () -> {
             // Every animator frame renders the same still line: --no-ansi has no animation.
             for (int i : new int[] {0, 1, Spinner.PULSE_FRAMES - 1}) {
@@ -123,7 +125,7 @@ class TuiModeFixturesTest {
     @Test
     void format_settle_plain_shape_matches_wedge_and_took() throws Exception {
         withConfig(noAnsiConfig(), () -> {
-            String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(547));
+            String took = ConsoleSpec.took(Duration.ofMillis(547));
             String settle = CommandWedge.ok("Format", "Already formatted " + took, NerdFontCaps.NONE);
             assertThat(settle).isEqualTo("jk: + Format > Already formatted - took 547ms");
             assertThat(settle).doesNotContain(CSI).doesNotContain(Glyphs.CHECK);

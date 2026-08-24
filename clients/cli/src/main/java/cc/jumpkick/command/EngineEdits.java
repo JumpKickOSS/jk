@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.engine.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -16,10 +18,10 @@ final class EngineEdits {
     /** Apply one edit; returns whether the file changed. Throws with a ready-to-print message. */
     static boolean apply(Path file, String op, List<String> args) throws IOException {
 
-        return cc.jumpkick.cli.engine.EngineClient.edit(cc.jumpkick.engine.EnginePaths.current(), file, op, args);
+        return EngineClient.edit(EnginePaths.current(), file, op, args);
     }
 
     static String applyDetail(Path file, String op, List<String> args) throws IOException {
-        return cc.jumpkick.cli.engine.EngineClient.editDetail(cc.jumpkick.engine.EnginePaths.current(), file, op, args);
+        return EngineClient.editDetail(EnginePaths.current(), file, op, args);
     }
 }

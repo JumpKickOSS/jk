@@ -2,7 +2,9 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Osc;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
@@ -104,7 +106,7 @@ final class JkManagerView {
      * {@code job was cancelled took …} — no "by user".
      */
     public void finishBuildPlanCancelled(List<String> above) {
-        String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(m.elapsedMillis()));
+        String took = ConsoleSpec.took(Duration.ofMillis(m.elapsedMillis()));
         m.settle(JkWedge.cancelled(m.planName(), false, took).renderLine(m.headerContext()), above);
     }
 
@@ -306,7 +308,7 @@ final class JkManagerView {
      */
     void emitPlainStepDetail(String detail) {
         if (m.done || !m.animate) return;
-        if (!cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) return;
+        if (!SessionContext.current().config().verboseOr(false)) return;
         String extra = detail == null ? "" : PlainAscii.transform(detail);
         if (extra.isBlank()) return;
         m.plainProgressMode = true;
@@ -550,7 +552,7 @@ final class JkManagerView {
      */
     public void writeProcessOutput(String text) {
         if (text == null) return;
-        boolean verbose = cc.jumpkick.config.SessionContext.current().config().verboseOr(false);
+        boolean verbose = SessionContext.current().config().verboseOr(false);
         if (!Theme.active().isAnsi() && !verbose) {
             synchronized (m.lock) {
                 if (m.planMode && !m.done) m.outputWindow.append(text);

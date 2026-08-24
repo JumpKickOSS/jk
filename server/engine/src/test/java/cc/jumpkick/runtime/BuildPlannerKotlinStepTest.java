@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import java.nio.file.Files;
@@ -114,7 +115,7 @@ class BuildPlannerKotlinStepTest {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         BuildPlan plan = BuildPlanner.fullPlan(in);
         return plan.steps().stream().map(Task::name).toList();
     }

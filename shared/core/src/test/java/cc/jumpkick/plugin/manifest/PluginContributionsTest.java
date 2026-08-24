@@ -9,6 +9,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.VersionSelector;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,7 +42,7 @@ class PluginContributionsTest {
         // The contribution lands as written, not exactified with a leading `=`, so a
         // `version = "4"` floor floats within the Boot 4 line at lock.
         assertThat(build.dependencies().of(Scope.PLATFORM).getFirst().version())
-                .isInstanceOf(cc.jumpkick.model.VersionSelector.Caret.class);
+                .isInstanceOf(VersionSelector.Caret.class);
     }
 
     @Test
@@ -298,7 +299,7 @@ class PluginContributionsTest {
         JkBuild.Project resolved = JkBuild.Project.builder("g", "m", "1.0")
                 .jdkMajor(25)
                 .java(21)
-                .kotlin(cc.jumpkick.model.VersionSelector.parse("=2.4.0"))
+                .kotlin(VersionSelector.parse("=2.4.0"))
                 .build();
         assertThat(PluginContributions.platformDependencies(resolved, false, configs, List.of(manifest)))
                 .extracting(PluginContributions.PlatformDep::module)

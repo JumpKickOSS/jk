@@ -3,8 +3,11 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.IdeOps;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -37,19 +40,19 @@ public final class IdeModelVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.IdeWireModel model;
+            IdeWireModel model;
             try {
                 String jdksDir = Jsonl.str(requestLine, "jdksDir");
-                model = cc.jumpkick.runtime.IdeOps.ideModel(
+                model = IdeOps.ideModel(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Path.of(Jsonl.str(requestLine, "cache")),
                         jdksDir == null ? null : Path.of(jdksDir),
                         false);
             } catch (RuntimeException e) {
-                model = cc.jumpkick.engine.protocol.IdeWireModel.error(cc.jumpkick.host.Errors.text(e));
+                model = IdeWireModel.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, model.encode());
 

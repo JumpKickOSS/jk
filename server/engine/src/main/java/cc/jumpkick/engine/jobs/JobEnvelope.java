@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.BuildJobFingerprint;
@@ -15,7 +16,9 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.task.IoLedger;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -70,7 +73,7 @@ public final class JobEnvelope {
 
         void unbindEventRequestId();
 
-        cc.jumpkick.task.IoLedger runIo(long id);
+        IoLedger runIo(long id);
 
         InFlightBuilds inFlight();
 
@@ -253,7 +256,7 @@ public final class JobEnvelope {
                 JobWorkers.open(eventRequestId);
                 // Every Session this request builds adopts this ledger, so fetches/cache traffic on
                 // the shared pools all land in one place (see IoLedger).
-                cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
+                IoLedger.open(host.runIo(eventRequestId));
                 JobOutcome outcome = runner.run(requestLine, cancelToken, writer);
                 // The one success law: the body's verdict is stamped here, nowhere else. A null
                 // verdict leaves the journal to the accumulated facts (failures, cancel stamps).
@@ -262,7 +265,7 @@ public final class JobEnvelope {
                     if (acc != null) acc.setOutcome(outcome.success(), outcome.exitCode());
                 }
             } finally {
-                cc.jumpkick.task.IoLedger.close();
+                IoLedger.close();
                 // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
                 // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
                 // burn its full 15s join before this force-kill ran (JK-2299). Killing the process
@@ -270,7 +273,7 @@ public final class JobEnvelope {
                 // Never clear() the registry without shutdown, or a racing cancel thread's
                 // shutdownForRequest finds an empty set and plugin/javac children keep running.
                 JobWorkers.shutdownForRequest(eventRequestId, 0L);
-                cc.jumpkick.compile.JavaCompilerHost.end(eventRequestId);
+                JavaCompilerHost.end(eventRequestId);
                 JobWorkers.close();
                 host.unbindEventRequestId();
                 if (plan) host.cacheGate().readLock().unlock();
@@ -448,7 +451,7 @@ public final class JobEnvelope {
                         .put("jid", eventRequestId)
                         .put("kind", eventKind)
                         .put("dir", eventDir)
-                        .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
+                        .put("projectId", ProjectIds.idOf(eventDir))
                         .put("success", success)
                         .put("cancelled", cancelled)
                         .put("millis", elapsedMillis)

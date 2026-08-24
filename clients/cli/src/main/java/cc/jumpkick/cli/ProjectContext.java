@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,10 +23,10 @@ public record ProjectContext(Path dir, Path buildFile, Path lockFile) {
     public static Optional<ProjectContext> require(Path dir, String command) {
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(command, "no jk.toml in " + PathDisplay.styledRaw(dir));
+            CommandWedge.printFail(command, "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Optional.empty();
         }
-        return Optional.of(new ProjectContext(dir, buildFile, cc.jumpkick.lock.LockPaths.lockFile(dir)));
+        return Optional.of(new ProjectContext(dir, buildFile, LockPaths.lockFile(dir)));
     }
 
     /** True when the project has been locked ({@code jk-lock.toml} exists). */

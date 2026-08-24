@@ -3,12 +3,20 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.task.ActionKey;
 import com.sun.net.httpserver.HttpServer;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -71,7 +79,7 @@ class EngineServerTest {
         // Every test that gets a real EngineServer to run triggers planSharedWorkerMemoryOnce,
         // which mutates JvmOptions' process-wide static heap plan — reset it so it doesn't leak into
         // unrelated tests (e.g. JvmOptionsTest) sharing this test JVM.
-        cc.jumpkick.engine.plugin.JvmOptions.resetSharedPlanForTests();
+        JvmOptions.resetSharedPlanForTests();
         for (Path dir : tempDirs) {
             try (var walk = Files.walk(dir)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {
@@ -241,21 +249,20 @@ class EngineServerTest {
         Path stateDir = shortTempDir();
         Path metricsFile = stateDir.resolve("metrics.json");
         // Seed the store the same way a finished build/test does at request-finish.
-        cc.jumpkick.runtime.BuildMetrics.record(
+        BuildMetrics.record(
                 metricsFile,
-                new cc.jumpkick.runtime.BuildMetrics.Outcome(
+                new BuildMetrics.Outcome(
                         "build",
                         "/proj/a",
                         "g:a",
                         true,
                         false,
                         1200,
-                        List.of(new cc.jumpkick.runtime.BuildMetrics.StepSample(
-                                "/proj/a", "compile-java", "SUCCESS", 700))),
+                        List.of(new BuildMetrics.StepSample("/proj/a", "compile-java", "SUCCESS", 700))),
                 1_700_000_000_000L);
-        cc.jumpkick.runtime.BuildMetrics.record(
+        BuildMetrics.record(
                 metricsFile,
-                new cc.jumpkick.runtime.BuildMetrics.Outcome("build", "/proj/b", "g:b", false, false, 400, List.of()),
+                new BuildMetrics.Outcome("build", "/proj/b", "g:b", false, false, 400, List.of()),
                 1_700_000_000_001L);
 
         EnginePaths.Paths p = paths(stateDir);
@@ -277,7 +284,7 @@ class EngineServerTest {
             assertThat(rows).hasSize(5);
 
             String global = rows.stream()
-                    .filter(r -> cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL.equals(Jsonl.str(r, "scope")))
+                    .filter(r -> BuildMetrics.SCOPE_GLOBAL.equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
             assertThat(Jsonl.longValue(global, "okCount", -1)).isEqualTo(1);
@@ -301,7 +308,7 @@ class EngineServerTest {
             assertThat(filtered).hasSize(4);
             assertThat(filtered).noneMatch(r -> "/proj/b".equals(Jsonl.str(r, "dir")));
             String taskRow = filtered.stream()
-                    .filter(r -> cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT_TASK.equals(Jsonl.str(r, "scope")))
+                    .filter(r -> BuildMetrics.SCOPE_PROJECT_TASK.equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
             assertThat(Jsonl.str(taskRow, "task")).isEqualTo("compile-java");
@@ -521,7 +528,7 @@ class EngineServerTest {
 
             // The engine (not the client) wrote the lockfile.
             assertThat(Files.isRegularFile(project.resolve("jk-lock.toml"))).isTrue();
-            var lock = cc.jumpkick.lock.LockfileReader.read(project.resolve("jk-lock.toml"));
+            var lock = LockfileReader.read(project.resolve("jk-lock.toml"));
             assertThat(lock.artifacts().stream().anyMatch(a -> a.matchesModule("com.foo:leaf")))
                     .as("lock contains com.foo:leaf")
                     .isTrue();
@@ -532,7 +539,7 @@ class EngineServerTest {
             repo.stop(0);
             if (previousM2 != null) System.setProperty("jk.m2.local", previousM2);
             else System.clearProperty("jk.m2.local");
-            cc.jumpkick.lock.LockfileReader.clearCache();
+            LockfileReader.clearCache();
         }
     }
 
@@ -628,7 +635,7 @@ class EngineServerTest {
             serverThread.join(5_000);
         } finally {
             osv.stop(0);
-            cc.jumpkick.lock.LockfileReader.clearCache();
+            LockfileReader.clearCache();
         }
     }
 
@@ -674,7 +681,7 @@ class EngineServerTest {
         EnginePaths.Paths p = paths(shortTempDir());
         // Real version so the freshened lock's jk-min floor can never exceed the test server's
         // version between request #1 and #2.
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.model.JkVersion.VERSION, null);
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, JkVersion.VERSION, null);
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {
@@ -781,7 +788,7 @@ class EngineServerTest {
 
         server.close();
         serverThread.join(5_000);
-        cc.jumpkick.lock.LockfileReader.clearCache();
+        LockfileReader.clearCache();
     }
 
     /**
@@ -956,8 +963,7 @@ class EngineServerTest {
                 """);
         // Cache clear realpaths the module root (matches BuildCommand); seed tags the same way.
         Path projectReal = project.toRealPath();
-        String tag = cc.jumpkick.task.ActionKey.taskTag(cc.jumpkick.layout.BuildLayout.of(
-                        projectReal, cc.jumpkick.config.JkBuildParser.parse(projectReal.resolve("jk.toml")))
+        String tag = ActionKey.taskTag(BuildLayout.of(projectReal, JkBuildParser.parse(projectReal.resolve("jk.toml")))
                 .classesDir());
         Path mine = cache.resolve("actions/keys/mine");
         Files.createDirectories(mine.getParent());
@@ -1047,9 +1053,8 @@ class EngineServerTest {
 
     // ---- embedded HTTP server (docs/http.md) ----------------------------------------------------
 
-    private static cc.jumpkick.config.JkHttpConfig httpOnEphemeralPort(Path webRoot) {
-        return new cc.jumpkick.config.JkHttpConfig(
-                "127.0.0.1", 0, 16, 16, webRoot.toString(), cc.jumpkick.config.JkHttpConfig.Mcp.DEFAULTS);
+    private static JkHttpConfig httpOnEphemeralPort(Path webRoot) {
+        return new JkHttpConfig("127.0.0.1", 0, 16, 16, webRoot.toString(), JkHttpConfig.Mcp.DEFAULTS);
     }
 
     @Test
@@ -1109,13 +1114,13 @@ class EngineServerTest {
         Path stateDir = shortTempDir();
         EnginePaths.Paths p = paths(stateDir);
         try (var blocker = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            var http = new cc.jumpkick.config.JkHttpConfig(
+            var http = new JkHttpConfig(
                     "127.0.0.1",
                     blocker.getLocalPort(),
                     16,
                     16,
                     stateDir.resolve("web").toString(),
-                    cc.jumpkick.config.JkHttpConfig.Mcp.DEFAULTS);
+                    JkHttpConfig.Mcp.DEFAULTS);
             EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, http, "1.0", null);
             Thread serverThread = runInBackground(server);
             waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));

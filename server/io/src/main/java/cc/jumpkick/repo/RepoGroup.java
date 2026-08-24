@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.Coordinate;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -268,7 +269,7 @@ public final class RepoGroup {
         // (local store listing vs remote metadata), so it is part of the question: an --offline
         // session's [] must not poison an online session for the TTL, nor may network-derived
         // lists leak into offline resolves.
-        boolean offline = cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
+        boolean offline = SessionContext.current().config().offlineOr(false);
         String key = (offline ? "offline|" : "online|") + repoIdentity + "|" + coord.group() + ":" + coord.artifact();
         // Force means the caller does not trust any cached view of what exists.
         boolean memoable = !MavenMetadataCache.forceRevalidate();

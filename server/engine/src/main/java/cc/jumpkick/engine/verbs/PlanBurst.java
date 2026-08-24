@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import java.io.BufferedWriter;
 import java.util.function.Function;
@@ -32,9 +35,9 @@ final class PlanBurst {
     static void stream(
             VerbHost host,
             BuildPlan plan,
-            cc.jumpkick.config.Session session,
+            Session session,
             BufferedWriter writer,
-            Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder)
+            Function<BuildPlanResult, String> finishEncoder)
             throws Exception {
         String dir = EngineProtocol.SINGLE_PLAN_DIR;
         for (Task p : plan.steps()) {
@@ -48,6 +51,6 @@ final class PlanBurst {
         }
         host.sendQuiet(writer, ProtoEvents.planDone(1));
         plan.addListener(host.planListener(dir, writer, finishEncoder));
-        cc.jumpkick.config.SessionContext.where(session, plan::run);
+        SessionContext.where(session, plan::run);
     }
 }

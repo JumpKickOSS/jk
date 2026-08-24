@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.Jobs;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.http.HttpEngineServer;
+import cc.jumpkick.engine.http.HttpEvents;
+import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.jobs.JobTransport;
@@ -20,6 +25,10 @@ import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -154,7 +163,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
-    private final cc.jumpkick.engine.http.HttpEvents httpEvents;
+    private final HttpEvents httpEvents;
 
     /** Ids for {@code request-start}/{@code request-finish} events and {@code POST /api/build} acks. */
     private final AtomicLong requestIds = new AtomicLong();
@@ -173,7 +182,7 @@ public final class EngineServer implements AutoCloseable {
     private final BuildJournal journal = BuildJournal.current();
 
     /** The running invocation/step aggregates every finished build/test folds into. */
-    private Path metricsFile = cc.jumpkick.runtime.BuildMetrics.defaultFile();
+    private Path metricsFile = BuildMetrics.defaultFile();
 
     /** Exclusive same-fingerprint slots + in-flight holds. */
     private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
@@ -230,7 +239,7 @@ public final class EngineServer implements AutoCloseable {
     private EngineMaintenance engineMaintenance;
 
     public EngineServer(EnginePaths.Paths paths, JkEngineConfig config, String version, Consumer<String> log) {
-        this(paths, config, null, version, cc.jumpkick.model.BuildIdentity.buildId(), log);
+        this(paths, config, null, version, BuildIdentity.buildId(), log);
     }
 
     /** As above plus the optional {@code [http]} table ({@code null} = feature off). */
@@ -240,7 +249,7 @@ public final class EngineServer implements AutoCloseable {
             JkHttpConfig httpConfig,
             String version,
             Consumer<String> log) {
-        this(paths, config, httpConfig, version, cc.jumpkick.model.BuildIdentity.buildId(), log);
+        this(paths, config, httpConfig, version, BuildIdentity.buildId(), log);
     }
 
     /**
@@ -259,7 +268,7 @@ public final class EngineServer implements AutoCloseable {
         this.paths = paths;
         this.config = config;
         this.httpConfig = httpConfig;
-        this.httpEvents = httpConfig != null ? new cc.jumpkick.engine.http.HttpEvents() : null;
+        this.httpEvents = httpConfig != null ? new HttpEvents() : null;
         this.version = version;
         this.buildId = buildId == null ? "" : buildId;
         this.log = log != null ? log : s -> {};
@@ -445,7 +454,7 @@ public final class EngineServer implements AutoCloseable {
             // This token gates every engine RPC — i.e. arbitrary code execution as the engine
             // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
             // umask on a shared machine.
-            cc.jumpkick.util.OwnerOnlyFiles.write(active.token().getParent(), active.token(), expectedToken);
+            OwnerOnlyFiles.write(active.token().getParent(), active.token(), expectedToken);
             Files.writeString(active.socket(), Integer.toString(port));
         } else {
             serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
@@ -471,8 +480,7 @@ public final class EngineServer implements AutoCloseable {
         drainDisplaced(previousActive);
         // Drop other product versions' AOT (engine + workers); keep ours (named *-<version>-*).
         try {
-            int wiped = cc.jumpkick.cache.EngineInstall.wipeAotDirectory(
-                    cc.jumpkick.util.JkDirs.state().resolve("aot"), version);
+            int wiped = EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), version);
             if (wiped > 0) {
                 log.accept("jk engine: retired " + wiped + " AOT cache(s) from other versions");
             }
@@ -480,7 +488,7 @@ public final class EngineServer implements AutoCloseable {
             // best-effort
         }
         try {
-            var gc = cc.jumpkick.cache.EngineInstall.current().gc();
+            var gc = EngineInstall.current().gc();
             if (!gc.isEmpty()) {
                 log.accept("jk engine: removed " + gc.size() + " displaced install file(s)");
             }
@@ -587,9 +595,9 @@ public final class EngineServer implements AutoCloseable {
             w.flush();
             String ack = r.readLine();
             if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
-            String v = cc.jumpkick.jsonl.Jsonl.str(ack, "version");
+            String v = Jsonl.str(ack, "version");
             if (v == null) return null;
-            String id = cc.jumpkick.jsonl.Jsonl.str(ack, "buildId");
+            String id = Jsonl.str(ack, "buildId");
             return new Incumbent(v, id == null ? "" : id, Jsonl.longValue(ack, "pid", -1));
         } catch (IOException | RuntimeException e) {
             return null;
@@ -792,7 +800,7 @@ public final class EngineServer implements AutoCloseable {
                 }
                 case EngineProtocol.PING -> WireWriter.send(writer, ProtoLifecycle.pong());
                 case EngineProtocol.STATUS -> {
-                    cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
+                    StatusSnapshot s = statusSnapshot();
                     HttpEngineServer hs = http.server();
                     WireWriter.send(
                             writer,
@@ -815,7 +823,7 @@ public final class EngineServer implements AutoCloseable {
                                     s.peakActiveBuildPlans()));
                 }
                 case EngineProtocol.SHUTDOWN -> {
-                    boolean force = cc.jumpkick.jsonl.Jsonl.bool(line, "force", false);
+                    boolean force = Jsonl.bool(line, "force", false);
                     // Takeover already repointed the endpoint before sending shutdown — kill the
                     // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
                     // Voluntary `jk engine stop` still names us; leave train to finish then.
@@ -884,7 +892,7 @@ public final class EngineServer implements AutoCloseable {
                 yield true;
             }
             case VerbShape.SyncRead() -> {
-                verb.run(line, cc.jumpkick.config.Session.defaults().cancel(), writer);
+                verb.run(line, Session.defaults().cancel(), writer);
                 yield false;
             }
         };
@@ -962,7 +970,7 @@ public final class EngineServer implements AutoCloseable {
         return http.server();
     }
 
-    private cc.jumpkick.engine.http.StatusSnapshot statusSnapshot() {
+    private StatusSnapshot statusSnapshot() {
         return vitals.snapshot();
     }
 
@@ -1205,7 +1213,7 @@ public final class EngineServer implements AutoCloseable {
      * builds pass {@code applyMemoryPlan=false} so concurrent requests do not overwrite it.
      */
     private void planSharedWorkerMemoryOnce() {
-        int cap = cc.jumpkick.config.Jobs.resolve(cc.jumpkick.config.JkEngineConfig.resolve());
+        int cap = Jobs.resolve(JkEngineConfig.resolve());
         JvmOptions.planAndApply(HeapPlan.requestedJvms(cap, 1, false, cap));
     }
 

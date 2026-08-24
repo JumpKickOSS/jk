@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
@@ -80,7 +82,7 @@ public final class StatusCommand implements CliCommand {
 
         // Fresh lock before forecast / module pins — never make the user run `jk lock` for status.
         if (!globalOnly && Files.isRegularFile(cwd.resolve("jk.toml"))) {
-            int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
+            int lockCode = EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
             if (lockCode != 0) return lockCode;
         }
 
@@ -249,7 +251,7 @@ public final class StatusCommand implements CliCommand {
     private static CacheSnapshot loadCacheSnapshot() {
         Path root = JkDirs.cache();
         try {
-            Path storeRoot = cc.jumpkick.cache.JkStores.storeRootFor(root);
+            Path storeRoot = JkStores.storeRootFor(root);
             if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
                 return new CacheSnapshot("—", "0", "0");
             }

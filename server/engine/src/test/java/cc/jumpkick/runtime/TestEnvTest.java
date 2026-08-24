@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ActionCache;
@@ -118,8 +119,7 @@ class TestEnvTest {
         List<String> extras = BuildPlanner.testStampExtras(tmp, project);
 
         assertThat(extras).noneMatch(s -> s.contains(home));
-        assertThat(extras)
-                .anyMatch(s -> s.startsWith("test-env:HOME_DIR=" + cc.jumpkick.config.SecretRedactor.KEY_PREFIX));
+        assertThat(extras).anyMatch(s -> s.startsWith("test-env:HOME_DIR=" + SecretRedactor.KEY_PREFIX));
     }
 
     @Test
@@ -131,8 +131,7 @@ class TestEnvTest {
 
         List<String> extras = BuildPlanner.testStampExtras(tmp, project);
         assertThat(extras).noneMatch(s -> s.contains(secret));
-        assertThat(extras)
-                .anyMatch(s -> s.startsWith("test-env:API_KEY=" + cc.jumpkick.config.SecretRedactor.KEY_PREFIX));
+        assertThat(extras).anyMatch(s -> s.startsWith("test-env:API_KEY=" + SecretRedactor.KEY_PREFIX));
 
         // A different secret must retest (different digest).
         Files.writeString(tmp.resolve(".env"), "TOKEN=other-secret-value\n");

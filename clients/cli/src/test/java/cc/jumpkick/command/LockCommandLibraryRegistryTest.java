@@ -6,8 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.repo.LibraryRegistrySync;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -86,7 +88,7 @@ class LockCommandLibraryRegistryTest {
     @AfterEach
     void stop() {
         registryServer.stop(0);
-        cc.jumpkick.config.SessionContext.reset();
+        SessionContext.reset();
         LockfileReader.clearCache();
     }
 
@@ -94,9 +96,7 @@ class LockCommandLibraryRegistryTest {
     private static void makeStale(Path file) throws IOException {
         Files.setLastModifiedTime(
                 file,
-                FileTime.from(Instant.now()
-                        .minus(cc.jumpkick.repo.LibraryRegistrySync.FRESH_FOR)
-                        .minusSeconds(60)));
+                FileTime.from(Instant.now().minus(LibraryRegistrySync.FRESH_FOR).minusSeconds(60)));
     }
 
     @Test

@@ -8,6 +8,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
@@ -16,6 +17,7 @@ import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.repo.RepoGroup;
@@ -70,7 +72,7 @@ public final class OutdatedPlans {
             Path moduleDir = scope.getKey();
             JkBuild build = scope.getValue();
             String moduleLabel = workspace ? LockPlans.coordLabel(build, moduleDir) : "";
-            Map<String, String> locked = lockedVersions(cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
+            Map<String, String> locked = lockedVersions(LockPaths.lockFile(moduleDir));
             Cas cas = JkStores.cas(cache);
             RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);
             Set<String> seen = new LinkedHashSet<>();
@@ -236,9 +238,8 @@ public final class OutdatedPlans {
                 out.putIfAbsent(a.name(), a.version());
                 out.putIfAbsent(a.packageKey(), a.version());
                 try {
-                    if (cc.jumpkick.model.PackageId.isMavenPackageKey(a.name())) {
-                        out.putIfAbsent(
-                                cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
+                    if (PackageId.isMavenPackageKey(a.name())) {
+                        out.putIfAbsent(PackageId.parse(a.name()).ga(), a.version());
                     }
                 } catch (RuntimeException ignored) {
                     // non-Maven lock name

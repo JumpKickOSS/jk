@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.cache.LockTimings;
+import cc.jumpkick.layout.Languages;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -8,12 +11,16 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.Diagnostics;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -101,13 +108,13 @@ public final class LockOrchestrator {
     /** Consuming project directory — resolves path= deps for cross-package features. */
     private Path projectDir;
 
-    private cc.jumpkick.resolver.pubgrub.Diagnostics.Palette diagnosticPalette;
+    private Diagnostics.Palette diagnosticPalette;
 
     /** BOM pin policy; default {@link PlatformPolicy#ENFORCED}. */
     private PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
 
     /** Unmapped-fill policy; default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
-    private cc.jumpkick.model.UnmappedPolicy unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.MEDIATE;
+    private UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
 
     /** Directory of the consuming {@code jk.toml} (path= feature expansion). */
     public LockOrchestrator withProjectDir(Path projectDir) {
@@ -122,7 +129,7 @@ public final class LockOrchestrator {
     }
 
     /** Unmapped-fill policy under a platform (see {@link cc.jumpkick.model.UnmappedPolicy}). */
-    public LockOrchestrator withUnmappedPolicy(cc.jumpkick.model.UnmappedPolicy policy) {
+    public LockOrchestrator withUnmappedPolicy(UnmappedPolicy policy) {
         if (policy != null) this.unmappedPolicy = policy;
         return this;
     }
@@ -152,13 +159,13 @@ public final class LockOrchestrator {
         return this;
     }
 
-    public LockOrchestrator withDiagnosticPalette(cc.jumpkick.resolver.pubgrub.Diagnostics.Palette palette) {
+    public LockOrchestrator withDiagnosticPalette(Diagnostics.Palette palette) {
         this.diagnosticPalette = palette;
         return this;
     }
 
     private PubGrubResolver buildResolver(
-            cc.jumpkick.repo.RepoGroup repos,
+            RepoGroup repos,
             Map<String, String> bomConstraints,
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
@@ -515,7 +522,7 @@ public final class LockOrchestrator {
             packages.add(new Lockfile.Artifact(
                     dep.module(),
                     version,
-                    cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL,
+                    RepoArtifactResolver.JK_LOCAL,
                     "sha256:" + dep.sha256(),
                     null,
                     new ArrayList<>(tags),
@@ -528,7 +535,7 @@ public final class LockOrchestrator {
         try {
             int graphPkgs = Math.max(1, graphSeen.size());
             int matPkgs = Math.max(1, packages.size());
-            cc.jumpkick.cache.LockTimings.record(graphMs, graphPkgs, materializeMs, matPkgs, totalMs);
+            LockTimings.record(graphMs, graphPkgs, materializeMs, matPkgs, totalMs);
         } catch (RuntimeException ignored) {
             // advisory — never fail a lock over metrics I/O
         }
@@ -953,7 +960,7 @@ public final class LockOrchestrator {
      * Names the coordinate, the Maven layout path tried, and the repositories consulted.
      */
     private IllegalStateException unfetchableArtifact(Coordinate coord, String fallbackSource) {
-        String rel = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
+        String rel = MavenLayout.artifactPath(coord);
         StringBuilder reposTried = new StringBuilder();
         for (MavenRepo r : repos.repos()) {
             if (reposTried.length() > 0) reposTried.append(", ");
@@ -1043,9 +1050,9 @@ public final class LockOrchestrator {
         // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too
         // jk run and packaging read the lock only. Pin-only keying shipped jars that died with
         // NoClassDefFoundError: groovy/lang/GroovyObject.
-        cc.jumpkick.layout.Languages langs = projectDir != null
-                ? cc.jumpkick.layout.Languages.resolve(p, projectDir)
-                : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy(), p.isScala());
+        Languages langs = projectDir != null
+                ? Languages.resolve(p, projectDir)
+                : new Languages(true, p.isKotlin(), p.isGroovy(), p.isScala());
         // Only when the language has actual sources (src/ or plugin-contributed roots like
         // grails-app/): a bare `kotlin = "2.1.0"` pin on a sourceless module pins the COMPILER
         // (lock.kotlin) but produces no classes — injecting its runtime made such locks fail
@@ -1065,9 +1072,9 @@ public final class LockOrchestrator {
     /** True when any {@code ext} source exists under src/ or a plugin-contributed root. */
     private static boolean hasLangSources(Path projectDir, String ext) {
         if (projectDir == null) return true; // no dir context — keep the inject (fail-safe)
-        if (cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ext)) return true;
-        for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
-            if (cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve(root.relative()), ext)) {
+        if (Languages.anySourceUnder(projectDir.resolve("src"), ext)) return true;
+        for (var root : ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
+            if (Languages.anySourceUnder(projectDir.resolve(root.relative()), ext)) {
                 return true;
             }
         }

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -83,7 +84,7 @@ public final class EngineFleet {
      * nowhere and is the one {@code status} must not hide.
      */
     public static List<Member> list() {
-        return list(cc.jumpkick.util.JkDirs.state(), EnginePaths.current().key(), true);
+        return list(JkDirs.state(), EnginePaths.current().key(), true);
     }
 
     /**
@@ -91,7 +92,7 @@ public final class EngineFleet {
      * nested test suite cannot kill the host engine running {@code jk build}.
      */
     public static List<Member> listThisHome() {
-        return list(cc.jumpkick.util.JkDirs.state(), EnginePaths.current().key(), false);
+        return list(JkDirs.state(), EnginePaths.current().key(), false);
     }
 
     /** Test seam: enumerate against an explicit state dir (all homes). */
@@ -167,8 +168,8 @@ public final class EngineFleet {
     private static List<Member> untracked(Set<Long> known, boolean allHomes) {
         long self = ProcessHandle.current().pid();
         String me = ProcessHandle.current().info().user().orElse("");
-        Path data = cc.jumpkick.util.JkDirs.data();
-        Path state = cc.jumpkick.util.JkDirs.state();
+        Path data = JkDirs.data();
+        Path state = JkDirs.state();
         List<Member> out = new ArrayList<>();
         try {
             ProcessHandle.allProcesses().forEach(h -> {
@@ -251,7 +252,7 @@ public final class EngineFleet {
         Path data = dataDirFromCommandLine(commandLine);
         Path umbrella = data == null ? null : data.getParent();
         if (umbrella != null) out.add(umbrella.resolve("state"));
-        Path own = cc.jumpkick.util.JkDirs.state();
+        Path own = JkDirs.state();
         if (own != null && !out.contains(own)) out.add(own);
         return out;
     }

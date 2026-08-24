@@ -70,13 +70,12 @@ public final class RemoveCommand implements CliCommand {
         Path dir = global.workingDir();
         Path file = dir.resolve("jk.toml");
         if (!Files.exists(file)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Remove", "no jk.toml in current directory");
+            CommandWedge.printFail("Remove", "no jk.toml in current directory");
             return Exit.CONFIG;
         }
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Remove", "--test / --runtime / --provided / --processor are mutually exclusive");
+            CommandWedge.printFail("Remove", "--test / --runtime / --provided / --processor are mutually exclusive");
             return Exit.USAGE;
         }
         Scope scope = test
@@ -87,7 +86,7 @@ public final class RemoveCommand implements CliCommand {
         // `jk remove jackson` to that module's project name. Explicit path syntax
         // (:m, ./m, m/) is unambiguous and resolves via the module only.
         boolean explicitPath = AddCommand.isExplicitPathSyntax(nameArg);
-        java.util.List<String> candidates = new java.util.ArrayList<>(2);
+        List<String> candidates = new java.util.ArrayList<>(2);
         boolean pathCandidate = false;
         try {
             if (explicitPath) {
@@ -104,7 +103,7 @@ public final class RemoveCommand implements CliCommand {
                 }
             }
         } catch (IllegalArgumentException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Remove", e.getMessage());
+            CommandWedge.printFail("Remove", e.getMessage());
             return Exit.USAGE;
         }
 
@@ -112,7 +111,7 @@ public final class RemoveCommand implements CliCommand {
         IOException firstError = null;
         for (String candidate : candidates) {
             try {
-                EngineEdits.apply(file, "remove-dependency", java.util.List.of(scope.canonical(), candidate));
+                EngineEdits.apply(file, "remove-dependency", List.of(scope.canonical(), candidate));
                 removed = candidate;
                 break;
             } catch (IOException e) {
@@ -120,7 +119,7 @@ public final class RemoveCommand implements CliCommand {
             }
         }
         if (removed == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Remove", firstError.getMessage());
+            CommandWedge.printFail("Remove", firstError.getMessage());
             return 1;
         }
         CommandWedge.printOk(
@@ -157,15 +156,14 @@ public final class RemoveCommand implements CliCommand {
         String rel = root.relativize(target).toString().replace('\\', '/');
         if (rel.isBlank()) return;
         try {
-            if (EngineEdits.apply(rootToml, "remove-workspace-module", java.util.List.of(rel))) {
+            if (EngineEdits.apply(rootToml, "remove-workspace-module", List.of(rel))) {
                 CliOutput.out("Unregistered module '"
                         + rel
                         + "' from workspace "
                         + cc.jumpkick.cli.PathDisplay.styledRaw(root));
             }
         } catch (IOException | RuntimeException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Remove", "could not unregister workspace module: " + e.getMessage());
+            CommandWedge.printFail("Remove", "could not unregister workspace module: " + e.getMessage());
         }
     }
 

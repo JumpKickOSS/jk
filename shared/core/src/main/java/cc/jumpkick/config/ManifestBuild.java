@@ -9,6 +9,7 @@ import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -77,7 +78,7 @@ public final class ManifestBuild {
         Map<String, String> failures = new LinkedHashMap<>();
         for (String key : root.keySet()) {
             if (CORE_TABLES.contains(key) || ManifestProject.PROJECT_KEYS.contains(key)) continue;
-            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
+            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof TomlArray)) continue;
             if (PluginTableRegistry.byTable(key).isPresent()) continue;
             String detail = PluginTableRegistry.tryFetchMissingBuiltIn(key);
             if (detail != null) failures.put(key, detail);
@@ -102,7 +103,7 @@ public final class ManifestBuild {
             if (owned.contains(key)) continue;
             // Project identity keys (and Cargo-style inherit tables like group = { workspace = true }).
             if (ManifestProject.PROJECT_KEYS.contains(key)) continue;
-            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
+            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof TomlArray)) continue;
             StringBuilder known = new StringBuilder();
             for (PluginDescriptor m : installed) {
                 if (known.length() > 0) known.append(", ");
@@ -258,7 +259,7 @@ public final class ManifestBuild {
             }
         }
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
-        cc.jumpkick.model.UnmappedPolicy unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.MEDIATE;
+        UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
         if (resolve != null && resolve.contains("platform")) {
             String raw = resolve.getString("platform");
             if (raw == null || raw.isBlank()) {
@@ -276,7 +277,7 @@ public final class ManifestBuild {
                 throw new JkBuildParseException("[resolve].unmapped must be a string (mediate or strict)");
             }
             try {
-                unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.parse(raw);
+                unmappedPolicy = UnmappedPolicy.parse(raw);
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException("[resolve].unmapped: " + e.getMessage());
             }

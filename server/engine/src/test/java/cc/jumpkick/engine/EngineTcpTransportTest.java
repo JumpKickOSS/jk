@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
@@ -63,7 +64,7 @@ class EngineTcpTransportTest {
 
     @AfterEach
     void cleanupTempDirs() {
-        cc.jumpkick.engine.plugin.JvmOptions.resetSharedPlanForTests();
+        JvmOptions.resetSharedPlanForTests();
         for (Path dir : tempDirs) {
             try (var walk = Files.walk(dir)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {

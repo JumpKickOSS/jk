@@ -5,6 +5,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 
 /**
@@ -78,7 +79,7 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
-    public void error(String step, String code, String msg, cc.jumpkick.run.TestFailureInfo failure) {
+    public void error(String step, String code, String msg, TestFailureInfo failure) {
         line(JsonlShape.error(step, code, msg, failure), "error");
     }
 

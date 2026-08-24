@@ -48,12 +48,11 @@ public final class EngineStatusCommand implements CliCommand {
     public int run(Invocation in) {
         GlobalOptions global = GlobalOptions.from(in);
         EnginePaths.Paths paths = EnginePaths.current();
-        Optional<EngineClient.Status> status = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+        Optional<EngineClient.Status> status = EngineClient.status(EnginePaths.activeSocket(paths));
         if (status.isEmpty()) {
             // "not running" is only true of THIS directory's engine. Saying it flatly while others are
             // alive is how eighteen engines once went unnoticed, so name them.
-            java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> others =
-                    cc.jumpkick.cli.engine.EngineFleet.list();
+            List<cc.jumpkick.cli.engine.EngineFleet.Member> others = cc.jumpkick.cli.engine.EngineFleet.list();
             if (global.outputIsJson()) {
                 CliOutput.out("{\"running\":false,\"engines\":" + enginesJson(others) + "}");
             } else {
@@ -118,7 +117,7 @@ public final class EngineStatusCommand implements CliCommand {
         if (s.mcpUrl() != null) {
             detail("MCP", s.mcpUrl() + "  (POST JSON-RPC; Bearer token)");
         }
-        java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet = cc.jumpkick.cli.engine.EngineFleet.list();
+        List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet = cc.jumpkick.cli.engine.EngineFleet.list();
         if (fleet.size() > 1) printFleet(fleet);
         return Exit.SUCCESS;
     }
@@ -131,7 +130,7 @@ public final class EngineStatusCommand implements CliCommand {
      * alongside the pid, which is what {@code stop --pid} takes. Without this the only way to discover a
      * second engine was {@code ps}.
      */
-    private static void printFleet(java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet) {
+    private static void printFleet(List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet) {
         if (fleet.isEmpty()) return;
         CliOutput.out("");
         CliOutput.out(" Engines (" + fleet.size() + "):");
@@ -157,7 +156,7 @@ public final class EngineStatusCommand implements CliCommand {
         CliOutput.out(" Stop this home with `jk engine stop --all`, or one engine with `jk engine stop --pid <pid>`.");
     }
 
-    private static String enginesJson(java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet) {
+    private static String enginesJson(List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet) {
         StringBuilder b = new StringBuilder("[");
         for (int i = 0; i < fleet.size(); i++) {
             cc.jumpkick.cli.engine.EngineFleet.Member m = fleet.get(i);

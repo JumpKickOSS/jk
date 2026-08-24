@@ -4,6 +4,7 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import cc.jumpkick.repo.ArtifactMemo;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -160,7 +161,7 @@ class CacheInventoryOpsTest {
         Files.createDirectories(f.getParent());
         Files.writeString(f, "jar-bytes");
         Files.writeString(
-                cc.jumpkick.repo.ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(repo), rel),
+                ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(repo), rel),
                 "g:a:v\n0\n9\n" + "a".repeat(64) + "\n");
         return f;
     }

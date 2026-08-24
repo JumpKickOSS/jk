@@ -5,6 +5,11 @@ import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.task.Bound;
+import cc.jumpkick.task.CachePruneScheduler;
+import cc.jumpkick.task.CacheTier;
+import cc.jumpkick.task.FormatStamps;
 import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.Objects;
@@ -61,10 +66,8 @@ public record CacheSnapshot(
     public static final long MEMO_TTL_MILLIS = 30_000L;
 
     /** Tiers the report breaks out by name; everything else in the table sums into {@code derived}. */
-    private static final Set<cc.jumpkick.task.CacheTier> OWN_ROW = EnumSet.of(
-            cc.jumpkick.task.CacheTier.ACTIONS,
-            cc.jumpkick.task.CacheTier.CACHE_CAS,
-            cc.jumpkick.task.CacheTier.FORMAT_STAMPS);
+    private static final Set<CacheTier> OWN_ROW =
+            EnumSet.of(CacheTier.ACTIONS, CacheTier.CACHE_CAS, CacheTier.FORMAT_STAMPS);
 
     /**
      * Supplier that walks at most once per TTL and coalesces concurrent callers onto a single
@@ -190,7 +193,7 @@ public record CacheSnapshot(
      */
     static DiskUsage.Stats mavenLocalStats() {
         try {
-            return DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
+            return DiskUsage.of(M2Dirs.localRepository());
         } catch (Exception e) {
             return new DiskUsage.Stats(0, 0);
         }
@@ -262,9 +265,9 @@ public record CacheSnapshot(
     private static DiskUsage.Stats derivedStats(Path cacheRoot) {
         long files = 0;
         long bytes = 0;
-        for (var tier : cc.jumpkick.task.CacheTier.values()) {
+        for (var tier : CacheTier.values()) {
             if (OWN_ROW.contains(tier)) continue;
-            if (tier.bound().kind() == cc.jumpkick.task.Bound.Kind.UNBOUNDED) continue;
+            if (tier.bound().kind() == Bound.Kind.UNBOUNDED) continue;
             try {
                 DiskUsage.Stats stats = DiskUsage.of(cacheRoot.resolve(tier.entry()));
                 files += stats.files();
@@ -304,8 +307,8 @@ public record CacheSnapshot(
     }
 
     private static long readLastPrunedMillis(Path cacheRoot) {
-        return cc.jumpkick.task.CachePruneScheduler.read(cacheRoot)
-                .map(cc.jumpkick.task.CachePruneScheduler.Stamp::millis)
+        return CachePruneScheduler.read(cacheRoot)
+                .map(CachePruneScheduler.Stamp::millis)
                 .orElse(0L);
     }
 
@@ -327,7 +330,7 @@ public record CacheSnapshot(
                 // Zinc analysis is budgeted apart from the action index: own bar, own denominator.
                 .put("incrementalMaxBytes", incrementalMaxBytes)
                 // Count-cap for the stamp tree — web shows % of the cap used, never GiB.
-                .put("formatStampsMax", cc.jumpkick.task.FormatStamps.maxFiles())
+                .put("formatStampsMax", FormatStamps.maxFiles())
                 .put("totalCount", totalCount())
                 .put("totalBytes", totalBytes())
                 .put("actionCacheCount", actionCacheCount())

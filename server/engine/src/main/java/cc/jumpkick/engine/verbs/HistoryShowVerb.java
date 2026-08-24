@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
@@ -40,7 +44,7 @@ public final class HistoryShowVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String id = Jsonl.str(requestLine, "id");
@@ -86,7 +90,7 @@ public final class HistoryShowVerb implements HostedVerb {
             // Defense in depth: records persisted before write-time redaction
             // may carry .env secrets — re-redact on replay against the record's own dir. Hoisted
             // above the step loops so labels get the same coverage as diagnostics.
-            cc.jumpkick.config.SecretRedactor redactor = replayRedactor(r.dir());
+            SecretRedactor redactor = replayRedactor(r.dir());
             int stepCount = 0;
             for (BuildRecord.Module m : r.modules()) {
                 host.send(
@@ -112,7 +116,7 @@ public final class HistoryShowVerb implements HostedVerb {
                 stepCount++;
             }
             for (BuildRecord.Diag d : r.diagnostics()) {
-                host.send(writer, cc.jumpkick.engine.journal.JournalWriter.historyDiagLine(redactDiag(redactor, d)));
+                host.send(writer, JournalWriter.historyDiagLine(redactDiag(redactor, d)));
             }
             host.send(
                     writer,
@@ -131,7 +135,7 @@ public final class HistoryShowVerb implements HostedVerb {
         return null;
     }
 
-    private static String stepLine(cc.jumpkick.config.SecretRedactor r, BuildRecord.Task p, String module) {
+    private static String stepLine(SecretRedactor r, BuildRecord.Task p, String module) {
         return JsonOut.object()
                 .put("type", EngineProtocol.HISTORY_TASK)
                 .put("module", module)
@@ -141,15 +145,15 @@ public final class HistoryShowVerb implements HostedVerb {
                 .toString();
     }
 
-    private static cc.jumpkick.config.SecretRedactor replayRedactor(String dir) {
+    private static SecretRedactor replayRedactor(String dir) {
         try {
-            return cc.jumpkick.engine.listen.EventRedaction.redactorFor(dir);
+            return EventRedaction.redactorFor(dir);
         } catch (RuntimeException e) {
-            return cc.jumpkick.config.SecretRedactor.none();
+            return SecretRedactor.none();
         }
     }
 
-    private static BuildRecord.Diag redactDiag(cc.jumpkick.config.SecretRedactor r, BuildRecord.Diag d) {
+    private static BuildRecord.Diag redactDiag(SecretRedactor r, BuildRecord.Diag d) {
         String message = redactSafe(r, d.message());
         String stack = redactSafe(r, d.stack());
         if (Objects.equals(message, d.message()) && Objects.equals(stack, d.stack())) {
@@ -176,7 +180,7 @@ public final class HistoryShowVerb implements HostedVerb {
                 d.worker());
     }
 
-    private static String redactSafe(cc.jumpkick.config.SecretRedactor r, String text) {
+    private static String redactSafe(SecretRedactor r, String text) {
         if (text == null || text.isEmpty()) return text;
         try {
             return r.redact(text);

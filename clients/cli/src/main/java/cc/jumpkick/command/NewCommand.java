@@ -3,12 +3,32 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
+import cc.jumpkick.cli.tui.Choice;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Interactivity;
+import cc.jumpkick.cli.tui.JdkDownloadBar;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.JdkCatalog;
+import cc.jumpkick.jdk.JdkCatalogClient;
+import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -113,8 +133,7 @@ public final class NewCommand implements CliCommand {
     private static final BuildPlanKey<List> CANDIDATES = BuildPlanKey.of("candidates", List.class);
 
     private static final BuildPlanKey<TerminalSession> TERMINAL = BuildPlanKey.of("terminal", TerminalSession.class);
-    private static final BuildPlanKey<cc.jumpkick.jdk.JdkCatalog> CATALOG =
-            BuildPlanKey.of("catalog", cc.jumpkick.jdk.JdkCatalog.class);
+    private static final BuildPlanKey<JdkCatalog> CATALOG = BuildPlanKey.of("catalog", JdkCatalog.class);
     private static final BuildPlanKey<Answers> ANSWERS = BuildPlanKey.of("answers", Answers.class);
     private static final BuildPlanKey<NewJdkCandidate> PICKED = BuildPlanKey.of("picked", NewJdkCandidate.class);
     private static final BuildPlanKey<NewInputs> INPUTS = BuildPlanKey.of("inputs", NewInputs.class);
@@ -135,7 +154,7 @@ public final class NewCommand implements CliCommand {
     private Optional<String> defaultJdk = Optional.empty();
 
     /** Inherited context from the parent project's identity keys. */
-    record ParentInfo(Path root, cc.jumpkick.engine.protocol.ProjectInfo info) {
+    record ParentInfo(Path root, ProjectInfo info) {
         String displayName() {
             return info.name();
         }
@@ -158,7 +177,7 @@ public final class NewCommand implements CliCommand {
 
         /** The JDK toolchain version (which JDK runs the build). */
         int jdkMajor() {
-            int major = cc.jumpkick.model.JkBuild.Project.majorOf(info.jdk());
+            int major = JkBuild.Project.majorOf(info.jdk());
             return major > 0 ? major : info.javaRelease();
         }
 
@@ -271,14 +290,14 @@ public final class NewCommand implements CliCommand {
      */
     private int runTemplateBuildPlan(Path cwd) {
         if (plugin) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("New", "--template cannot be combined with --plugin");
+            CommandWedge.printFail("New", "--template cannot be combined with --plugin");
             return Exit.USAGE;
         }
         Map<String, String> params = new LinkedHashMap<>();
         for (String p : templateParams) {
             int eq = p.indexOf('=');
             if (eq <= 0) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("New", "--param expects key=value, got: " + p);
+                CommandWedge.printFail("New", "--param expects key=value, got: " + p);
                 return Exit.USAGE;
             }
             params.put(p.substring(0, eq), p.substring(eq + 1));
@@ -300,13 +319,12 @@ public final class NewCommand implements CliCommand {
         Path target = resolveTarget(directory, cwd, resolvedName);
         Path parentDir = target.getParent() == null ? cwd : target.getParent();
         if (officialTemplateShortName(templateRef)) {
-            cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
-                    cc.jumpkick.engine.EnginePaths.current(), "templates", global.offline, null, null);
+            EngineClient.freshenCatalog(EnginePaths.current(), "templates", global.offline, null, null);
         }
         try {
-            var ack = cc.jumpkick.cli.engine.EngineClient.newProject(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.NewProjectRequest(
+            var ack = EngineClient.newProject(
+                    EnginePaths.current(),
+                    new EngineRequests.NewProjectRequest(
                             resolvedName,
                             parentDir.toString(),
                             group,
@@ -327,18 +345,18 @@ public final class NewCommand implements CliCommand {
                             true,
                             target.toString()));
             if (ack.error() != null && !ack.error().isBlank()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("New", ack.error());
+                CommandWedge.printFail("New", ack.error());
                 return ack.error().contains("not found") ? Exit.USAGE : Exit.SOFTWARE;
             }
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(
-                    cc.jumpkick.cli.tui.Glyphs.CHECK,
+            CommandWedge.envelopeStart();
+            CliOutput.out(JkWedge.chipLine(
+                    Glyphs.CHECK,
                     "New Project",
-                    cc.jumpkick.config.GlobalConfig.nerdFont(),
+                    GlobalConfig.nerdFont(),
                     "Applied template (" + ack.filesWritten() + " files) → " + target.getFileName()));
             return Exit.SUCCESS;
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
+            CommandWedge.printFail("New", e.getMessage());
             return Exit.SOFTWARE;
         }
     }
@@ -365,8 +383,8 @@ public final class NewCommand implements CliCommand {
                             jdkOptions,
                             catalog,
                             LATEST_LTS_MAJOR,
-                            cc.jumpkick.jdk.HostPlatform.currentOs(),
-                            cc.jumpkick.jdk.HostPlatform.currentArch());
+                            HostPlatform.currentOs(),
+                            HostPlatform.currentArch());
                     if (candidates.isEmpty()) {
                         ctx.error("no-jdks", "no JDKs found on this system");
                         throw new RuntimeException("no jdks");
@@ -509,11 +527,11 @@ public final class NewCommand implements CliCommand {
         try {
             inputs = fromFlags(cwd);
         } catch (IllegalArgumentException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
+            CommandWedge.printFail("New", e.getMessage());
             return Exit.USAGE;
         }
         if (assembly && inputs.main().isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("New", "--assembly requires --executable");
+            CommandWedge.printFail("New", "--assembly requires --executable");
             return Exit.USAGE;
         }
         if (Files.exists(inputs.directory().resolve("jk.toml"))) {
@@ -558,7 +576,7 @@ public final class NewCommand implements CliCommand {
 
     private static boolean isInteractiveTerminalSession() {
         // Gates the interactive `jk new` wizard — input axis, so key on the controlling terminal.
-        return cc.jumpkick.cli.tui.Interactivity.canPrompt();
+        return Interactivity.canPrompt();
     }
 
     private boolean anyFlagSupplied() {
@@ -585,9 +603,9 @@ public final class NewCommand implements CliCommand {
     private void scaffoldAndRegister(NewInputs inputs) throws IOException {
         Path target = inputs.directory();
         Path parentDir = target.getParent() == null ? target : target.getParent();
-        var ack = cc.jumpkick.cli.engine.EngineClient.newProject(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineRequests.NewProjectRequest(
+        var ack = EngineClient.newProject(
+                EnginePaths.current(),
+                new EngineRequests.NewProjectRequest(
                         inputs.name(),
                         parentDir.toString(),
                         inputs.group(),
@@ -648,8 +666,8 @@ public final class NewCommand implements CliCommand {
         } else if (parent != null && parent.jdkMajor() > 0) {
             int m = parent.jdkMajor();
             jdkSpec = new NewJdkPlan.Spec(m, Integer.toString(m));
-        } else if (defaultJdk.map(cc.jumpkick.model.JkBuild.Project::majorOf).orElse(0) > 0) {
-            int m = cc.jumpkick.model.JkBuild.Project.majorOf(defaultJdk.get());
+        } else if (defaultJdk.map(JkBuild.Project::majorOf).orElse(0) > 0) {
+            int m = JkBuild.Project.majorOf(defaultJdk.get());
             jdkSpec = new NewJdkPlan.Spec(m, Integer.toString(m));
         } else {
             jdkSpec = new NewJdkPlan.Spec(LATEST_LTS_MAJOR, Integer.toString(LATEST_LTS_MAJOR));
@@ -737,7 +755,7 @@ public final class NewCommand implements CliCommand {
     private static void emitProjectExistsError(
             String coord, boolean isModule, boolean isInit, TerminalSession terminal) {
         Theme t = Theme.active();
-        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         String noun = isModule ? "module" : "project";
 
         // Style the coord: group:name in coordGroup/coordName; bare name in coordName.
@@ -759,16 +777,16 @@ public final class NewCommand implements CliCommand {
         String bareName = colon > 0 ? coord.substring(colon + 1) : coord;
         String failTail = "Failed to " + (isInit ? "initialize" : "create") + " " + noun + " " + bareName
                 + ". Project already exists.";
-        String chipLine = cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, chipCommand, nerdFont, failTail);
+        String chipLine = JkWedge.chipLine(Glyphs.CROSS, chipCommand, nerdFont, failTail);
 
         if (terminal != null) {
             var writer = terminal.ttyOut();
-            cc.jumpkick.cli.tui.CommandWedge.markEnvelopeStarted();
+            CommandWedge.markEnvelopeStarted();
             writer.println(warnLine);
             writer.println(chipLine);
             writer.flush();
         } else {
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStartErr();
+            CommandWedge.envelopeStartErr();
             CliOutput.err(warnLine);
             CliOutput.err(chipLine);
         }
@@ -779,7 +797,7 @@ public final class NewCommand implements CliCommand {
         var warn = Theme.active().warning();
         var label = Theme.active().activeStep();
         var body = Theme.active().normalGray();
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStartErr();
+        CommandWedge.envelopeStartErr();
         CliOutput.err(Theme.colorize(Glyphs.BANG, warn)
                 + " "
                 + Theme.colorize("Jk", label)
@@ -808,7 +826,7 @@ public final class NewCommand implements CliCommand {
     /** The user's global default JDK identifier, or empty (best-effort — never throws). */
     private static Optional<String> readDefaultJdk() {
         try {
-            return cc.jumpkick.jdk.JdkInventory.current().defaultId();
+            return JdkInventory.current().defaultId();
         } catch (Exception ignored) {
             return Optional.empty();
         }
@@ -823,12 +841,12 @@ public final class NewCommand implements CliCommand {
      */
     private NewJdkPlan.Spec resolveJdkArg(String arg) {
         String a = arg.trim();
-        if (cc.jumpkick.jdk.JdkKeywords.isKeyword(a) && !"native".equalsIgnoreCase(a)) {
-            String os = cc.jumpkick.jdk.HostPlatform.currentOs();
-            String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
+        if (JdkKeywords.isKeyword(a) && !"native".equalsIgnoreCase(a)) {
+            String os = HostPlatform.currentOs();
+            String arch = HostPlatform.currentArch();
             int major = fetchCatalogQuiet()
-                    .flatMap(c -> cc.jumpkick.jdk.JdkKeywords.resolveToMajorSpec(c, a, os, arch))
-                    .map(cc.jumpkick.model.JkBuild.Project::majorOf)
+                    .flatMap(c -> JdkKeywords.resolveToMajorSpec(c, a, os, arch))
+                    .map(JkBuild.Project::majorOf)
                     .filter(m -> m > 0)
                     .orElse(LATEST_LTS_MAJOR);
             return new NewJdkPlan.Spec(major, Integer.toString(major));
@@ -841,9 +859,9 @@ public final class NewCommand implements CliCommand {
      * 5xx) degrade to an empty optional rather than killing the wizard: the user still sees whatever
      * installs are on disk.
      */
-    private static Optional<cc.jumpkick.jdk.JdkCatalog> fetchCatalogQuiet() {
+    private static Optional<JdkCatalog> fetchCatalogQuiet() {
         try {
-            return Optional.of(new cc.jumpkick.jdk.JdkCatalogClient().fetch());
+            return Optional.of(new JdkCatalogClient().fetch());
         } catch (Exception ignored) {
             return Optional.empty();
         }
@@ -867,7 +885,7 @@ public final class NewCommand implements CliCommand {
         // chosen Java level (sole eligible install, or lts to install).
         int preferred = parent != null
                 ? (parent.jdkMajor() > 0 ? parent.jdkMajor() : parent.javaRelease())
-                : defaultJdk.map(cc.jumpkick.model.JkBuild.Project::majorOf).orElse(0);
+                : defaultJdk.map(JkBuild.Project::majorOf).orElse(0);
         int floor = jdkFloor(answers, parent);
         return NewJdkPlan.autoCandidate(candidates, floor, preferred, LATEST_LTS_MAJOR)
                 .orElseGet(() -> candidates.getFirst());
@@ -884,15 +902,14 @@ public final class NewCommand implements CliCommand {
         }
         try {
             var entry = installable.entry();
-            var installer =
-                    new cc.jumpkick.jdk.JdkInstaller(new cc.jumpkick.http.Http(), new cc.jumpkick.jdk.JdkRegistry());
+            var installer = new JdkInstaller(new Http(), new JdkRegistry());
             // Download (progress bar) then extract (spinner).
             var label = entry.vendor() + " " + entry.product() + " " + entry.majorVersion();
             long total = entry.archiveSize();
-            try (var pb = cc.jumpkick.cli.tui.JdkDownloadBar.show(CliOutput.stdout(), label)) {
+            try (var pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
                 var dl = installer.download(entry, bytes -> pb.update(bytes, total));
                 pb.finish();
-                try (var sp = cc.jumpkick.cli.tui.Spinner.show(CliOutput.stdout(), "Installing " + label + "...")) {
+                try (var sp = Spinner.show(CliOutput.stdout(), "Installing " + label + "...")) {
                     var installed = installer.extractInstalled(entry, dl);
                     CliOutput.out("✓ Installed " + label + " → " + installed.home());
                     var opt = new NewJdkOptions.Option(
@@ -905,7 +922,7 @@ public final class NewCommand implements CliCommand {
                 }
             }
         } catch (Exception e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("New", "failed to install JDK: " + e.getMessage());
+            CommandWedge.printFail("New", "failed to install JDK: " + e.getMessage());
             return Optional.empty();
         }
     }
@@ -931,7 +948,7 @@ public final class NewCommand implements CliCommand {
 
     static Wizard buildWizard(
             List<NewJdkCandidate> candidates,
-            cc.jumpkick.jdk.JdkCatalog catalog,
+            JdkCatalog catalog,
             String groupGuess,
             ParentInfo parent,
             boolean hasDefaultJdk,
@@ -940,11 +957,11 @@ public final class NewCommand implements CliCommand {
     }
 
     /** Curated defaults + host declared-dep frequency for the New wizard library picker. */
-    static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices() {
+    static List<Choice> libraryPickerChoices() {
         return NewWizard.libraryPickerChoices();
     }
 
-    static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices(String lang) {
+    static List<Choice> libraryPickerChoices(String lang) {
         return NewWizard.libraryPickerChoices(lang);
     }
 
@@ -969,7 +986,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /** The newest native-image-capable (GraalVM) Java major, from the catalog or the offline cap. */
-    static int maxNativeMajor(cc.jumpkick.jdk.JdkCatalog catalog) {
+    static int maxNativeMajor(JdkCatalog catalog) {
         return NewWizard.maxNativeMajor(catalog);
     }
 
@@ -997,7 +1014,7 @@ public final class NewCommand implements CliCommand {
             resolvedJdkMajor = parent.jdkMajor() > 0 ? parent.jdkMajor() : parent.javaRelease();
             resolvedJdkIdentifier = Optional.empty(); // modules write no lock
         } else if (defaultJdk.isPresent()) {
-            resolvedJdkMajor = cc.jumpkick.model.JkBuild.Project.majorOf(defaultJdk.get());
+            resolvedJdkMajor = JkBuild.Project.majorOf(defaultJdk.get());
             resolvedJdkIdentifier = defaultJdk;
         } else {
             resolvedJdkMajor = pickedOpt.major();
@@ -1065,30 +1082,29 @@ public final class NewCommand implements CliCommand {
             NewInputs inputs, TerminalSession terminal, Module module, boolean isInit) {
         var writer = terminal.ttyOut();
         // Wizard already opened the envelope (leading blank + closing spacer).
-        cc.jumpkick.cli.tui.CommandWedge.markEnvelopeStarted();
+        CommandWedge.markEnvelopeStarted();
         writer.println(successLine(inputs, module, isInit));
         writer.flush();
     }
 
     private static void emitSuccessPlain(NewInputs inputs, Module module, boolean isInit) {
-        cc.jumpkick.cli.tui.CommandWedge.printLine(successLine(inputs, module, isInit));
+        CommandWedge.printLine(successLine(inputs, module, isInit));
     }
 
     private static String successLine(NewInputs inputs, Module module, boolean isInit) {
-        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Style accent = Theme.active().brightCyan().bold();
         if (module != null) {
             String message = "New module "
                     + Theme.colorize(inputs.name(), accent)
                     + Theme.colorize(" added to project ", Theme.active().normalGray())
                     + Theme.colorize(module.projectName(), accent);
-            return cc.jumpkick.cli.tui.JkWedge.chipLine(
-                    cc.jumpkick.cli.tui.Glyphs.CHECK, "New Module", nerdFont, message);
+            return JkWedge.chipLine(Glyphs.CHECK, "New Module", nerdFont, message);
         }
         String chipCommand = isInit ? "Init" : "New Project";
         String action = isInit ? "Initialized" : "Created new";
         String message = action + " project " + Theme.colorize(inputs.name(), accent);
-        return cc.jumpkick.cli.tui.JkWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, chipCommand, nerdFont, message);
+        return JkWedge.chipLine(Glyphs.CHECK, chipCommand, nerdFont, message);
     }
 
     static final List<String> CURATED_IDS =

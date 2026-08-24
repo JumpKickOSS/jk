@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.command.Exit;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,6 @@ class EnsureFreshLockTest {
 
         int code = EnsureFreshLock.failSoftOrHard(tmp, "Tree", "boom", 0, null);
 
-        assertThat(code).isEqualTo(cc.jumpkick.model.command.Exit.CONFIG);
+        assertThat(code).isEqualTo(Exit.CONFIG);
     }
 }

@@ -4,12 +4,15 @@ package cc.jumpkick.engine.jobs;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.task.IoLedger;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.StringReader;
@@ -156,7 +159,7 @@ class JobEnvelopeTest {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "web");
         JobEnvelope env = new JobEnvelope(host);
-        env.enforceDeadline(7L, cc.jumpkick.config.Session.CancelToken.live(), null, null, 1234L);
+        env.enforceDeadline(7L, Session.CancelToken.live(), null, null, 1234L);
         assertThat(host.accumulator.wasCancelled()).isTrue();
         assertThat(host.accumulator.cancelReason()).contains("1234ms");
     }
@@ -212,7 +215,7 @@ class JobEnvelopeTest {
         }
 
         @Override
-        public void putMode(long id, cc.jumpkick.runtime.progress.ProgressBarMode mode) {}
+        public void putMode(long id, ProgressBarMode mode) {}
 
         @Override
         public void publishRequestStart(long id, String kind, String dir, long buildNumber) {}
@@ -244,8 +247,8 @@ class JobEnvelopeTest {
         public void unbindEventRequestId() {}
 
         @Override
-        public cc.jumpkick.task.IoLedger runIo(long id) {
-            return new cc.jumpkick.task.IoLedger();
+        public IoLedger runIo(long id) {
+            return new IoLedger();
         }
 
         @Override

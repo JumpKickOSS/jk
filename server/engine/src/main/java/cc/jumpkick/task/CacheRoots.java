@@ -2,6 +2,9 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -46,8 +49,8 @@ public final class CacheRoots {
         // A pre-rename repos/local not yet folded into jk-local is the same first-party store
         // under its old name — its memos are roots too until the migration completes.
         List<Path> firstPartyRepos = new ArrayList<>();
-        firstPartyRepos.add(cas.root().resolve("repos").resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL));
-        if (cc.jumpkick.repo.RepoArtifactStore.legacyLocalPending(cas.root())) {
+        firstPartyRepos.add(cas.root().resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL));
+        if (RepoArtifactStore.legacyLocalPending(cas.root())) {
             firstPartyRepos.add(cas.root().resolve("repos").resolve("local"));
         }
         for (Path localRepo : firstPartyRepos) {
@@ -58,9 +61,7 @@ public final class CacheRoots {
                             || !file.getFileName().toString().endsWith(".jk")) {
                         continue;
                     }
-                    cc.jumpkick.repo.ArtifactMemo.read(file)
-                            .map(cc.jumpkick.repo.ArtifactMemo::sha256)
-                            .ifPresent(refs::add);
+                    ArtifactMemo.read(file).map(ArtifactMemo::sha256).ifPresent(refs::add);
                 }
             }
         }

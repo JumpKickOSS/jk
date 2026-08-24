@@ -2,11 +2,15 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.ExplodedArchives;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.ArtifactLocator;
+import cc.jumpkick.repo.M2Dirs;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -66,13 +70,13 @@ public final class ClasspathResolver {
             EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
 
     private final Path storeRoot;
-    private final cc.jumpkick.repo.ArtifactLocator locator;
+    private final ArtifactLocator locator;
 
     /**
      * Store-only locator for a lock that opted out of {@code [m2] integration}, built once so
      * {@link #resolved} keys stay stable across calls.
      */
-    private volatile cc.jumpkick.repo.ArtifactLocator storeOnlyLocator;
+    private volatile ArtifactLocator storeOnlyLocator;
 
     /**
      * Artifact coordinate &rarr; the jar backing it, per locator. A workspace resolves every
@@ -91,16 +95,15 @@ public final class ClasspathResolver {
 
     /** Store-only (no Maven local repo). Tests and callers that already pass a locator. */
     public ClasspathResolver(Path storeRoot) {
-        this(storeRoot, new cc.jumpkick.repo.ArtifactLocator(storeRoot));
+        this(storeRoot, new ArtifactLocator(storeRoot));
     }
 
-    private static cc.jumpkick.repo.ArtifactLocator defaultLocator(Path storeRoot) {
-        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().integration();
-        return new cc.jumpkick.repo.ArtifactLocator(
-                storeRoot, m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
+    private static ArtifactLocator defaultLocator(Path storeRoot) {
+        boolean m2 = JkM2Config.resolve().integration();
+        return new ArtifactLocator(storeRoot, m2 ? M2Dirs.localRepository() : null, m2);
     }
 
-    public ClasspathResolver(Path storeRoot, cc.jumpkick.repo.ArtifactLocator locator) {
+    public ClasspathResolver(Path storeRoot, ArtifactLocator locator) {
         this.storeRoot = Objects.requireNonNull(storeRoot, "storeRoot");
         this.locator = Objects.requireNonNull(locator, "locator");
     }
@@ -210,12 +213,12 @@ public final class ClasspathResolver {
      * locator so {@code ~/.m2} is not consulted for the compile/runtime classpath, matching sync and
      * the reference gate in {@code MavenRepo} (JK-2306). Any module opting out disables it.
      */
-    private cc.jumpkick.repo.ArtifactLocator effectiveLocator(Lockfile lock) {
+    private ArtifactLocator effectiveLocator(Lockfile lock) {
         boolean projectOptOut = lock.modules().stream().anyMatch(m -> Boolean.FALSE.equals(m.m2integration()));
         if (!projectOptOut) return locator;
-        cc.jumpkick.repo.ArtifactLocator storeOnly = storeOnlyLocator;
+        ArtifactLocator storeOnly = storeOnlyLocator;
         if (storeOnly == null) {
-            storeOnly = new cc.jumpkick.repo.ArtifactLocator(storeRoot);
+            storeOnly = new ArtifactLocator(storeRoot);
             storeOnlyLocator = storeOnly;
         }
         return storeOnly;
@@ -293,7 +296,7 @@ public final class ClasspathResolver {
     }
 
     private List<Entry> resolveEntries(
-            List<Lockfile.Artifact> selected, boolean requirePresent, cc.jumpkick.repo.ArtifactLocator locator) {
+            List<Lockfile.Artifact> selected, boolean requirePresent, ArtifactLocator locator) {
         List<Entry> result = new ArrayList<>(selected.size());
         for (Lockfile.Artifact pkg : selected) {
             String checksum = pkg.checksum();
@@ -325,7 +328,7 @@ public final class ClasspathResolver {
             if (pkg.isAar()) {
                 String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
                 try {
-                    Path container = cc.jumpkick.cache.ExplodedArchives.explodeFile(new Cas(storeRoot), jar, hex);
+                    Path container = ExplodedArchives.explodeFile(new Cas(storeRoot), jar, hex);
                     Path classesJar = container.resolve("classes.jar");
                     result.add(new Entry(pkg, Files.isRegularFile(classesJar) ? classesJar : null, container));
                 } catch (IOException e) {
@@ -339,7 +342,7 @@ public final class ClasspathResolver {
     }
 
     /** {@link #resolved}-backed {@code locate}; see that field for why this is worth caching. */
-    private Path locate(cc.jumpkick.repo.ArtifactLocator loc, Lockfile.Artifact pkg) {
+    private Path locate(ArtifactLocator loc, Lockfile.Artifact pkg) {
         String key = (loc == locator ? "m|" : "s|")
                 + pkg.source()
                 + '|'

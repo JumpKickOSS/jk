@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
@@ -122,7 +123,7 @@ public final class JdkInstaller {
                     streamingDownload(entry.url(), entry.sha256(), entry.installFolderName(), archive, onBytesRead);
             keep = true;
             // Metered once off the finished archive, not per chunk (onBytesRead is a progress hook).
-            cc.jumpkick.config.SessionContext.current().io().remoteDown(bytes);
+            SessionContext.current().io().remoteDown(bytes);
             return new DownloadedArchive(archive, bytes);
         } finally {
             if (!keep) Files.deleteIfExists(archive);
@@ -240,7 +241,7 @@ public final class JdkInstaller {
                 }
             }
             Files.write(archive, body);
-            cc.jumpkick.config.SessionContext.current().io().remoteDown(archive);
+            SessionContext.current().io().remoteDown(archive);
 
             // Stage under the jdks root so the final rename is on the same
             // filesystem as the target. Otherwise (/tmp on tmpfs vs. $HOME on
@@ -331,7 +332,7 @@ public final class JdkInstaller {
             }
             throw new IOException("JDK download " + uri + " returned " + response.statusCode());
         }
-        MessageDigest sha = cc.jumpkick.host.Hashing.newSha256();
+        MessageDigest sha = Hashing.newSha256();
         long total = 0;
         try (InputStream body = response.body();
                 OutputStream sink = Files.newOutputStream(archive)) {
@@ -345,7 +346,7 @@ public final class JdkInstaller {
             }
         }
         if (expectedSha256 != null && !expectedSha256.isEmpty()) {
-            String actual = cc.jumpkick.host.Hashing.hex(sha.digest());
+            String actual = Hashing.hex(sha.digest());
             if (!actual.equalsIgnoreCase(expectedSha256)) {
                 throw new IOException(
                         "sha256 mismatch for " + displayName + " — expected " + expectedSha256 + ", got " + actual);

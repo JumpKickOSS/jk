@@ -5,7 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Size;
+import cc.jumpkick.terminal.Width;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -87,7 +93,7 @@ class TestFailureHighlightTest {
     }
 
     private static String plain(String s) {
-        return cc.jumpkick.terminal.Width.stripAnsi(s == null ? "" : s);
+        return Width.stripAnsi(s == null ? "" : s);
     }
 
     /** Text after the rail on the first painted line that contains {@code needle}. Must be ANSI-free. */
@@ -143,7 +149,7 @@ class TestFailureHighlightTest {
         // cc.jumpkick.terminal.Width.stripAnsi leaves OSC-8; visible text is path:line for copy-paste.
         assertThat(painted).contains(Ansi.OSC + "8;;" + expectedUrl);
         assertThat(painted).contains(path);
-        assertThat(cc.jumpkick.cli.tui.RenderContext.stripAnsi(painted)).isEqualTo(path + ":9");
+        assertThat(RenderContext.stripAnsi(painted)).isEqualTo(path + ":9");
         // Full failure block also carries the OSC-8 target on the path line.
         List<String> block;
         try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws"))) {
@@ -286,7 +292,7 @@ class TestFailureHighlightTest {
                 .max()
                 .orElse(0);
         // Terminal defaults to >= 80 in tests; rows must stay within the detected width.
-        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.terminal.Size.columns());
+        assertThat(widest).isLessThanOrEqualTo(Size.columns());
         assertThat(String.join(
                         "\n",
                         painted.stream().map(TestFailureHighlightTest::plain).toList()))
@@ -313,10 +319,10 @@ class TestFailureHighlightTest {
         List<String> painted = TestFailureHighlight.paintLines(raw);
         int widest = painted.stream()
                 .map(TestFailureHighlightTest::plain)
-                .mapToInt(cc.jumpkick.cli.tui.RenderContext::visibleWidth)
+                .mapToInt(RenderContext::visibleWidth)
                 .max()
                 .orElse(0);
-        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.terminal.Size.columns());
+        assertThat(widest).isLessThanOrEqualTo(Size.columns());
         // No lone surrogate survives the cut.
         for (String line : painted) {
             String p = plain(line);
@@ -346,14 +352,13 @@ class TestFailureHighlightTest {
                 "@@src 2*|" + longLine,
                 "@@src-end",
                 "Test Failure end");
-        cc.jumpkick.config.JkConfig noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
-        cc.jumpkick.config.Session original = cc.jumpkick.config.SessionContext.current();
+        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        Session original = SessionContext.current();
         List<String> painted;
         try {
-            painted = cc.jumpkick.config.SessionContext.where(
-                    original.withConfig(noAnsi), () -> TestFailureHighlight.paintLines(raw));
+            painted = SessionContext.where(original.withConfig(noAnsi), () -> TestFailureHighlight.paintLines(raw));
         } finally {
-            cc.jumpkick.config.SessionContext.install(original);
+            SessionContext.install(original);
         }
         String all = String.join("\n", painted);
         assertThat(all.chars().allMatch(c -> c < 128))

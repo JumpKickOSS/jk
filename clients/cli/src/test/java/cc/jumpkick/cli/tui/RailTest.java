@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.theme.Theme;
 import org.junit.jupiter.api.Test;
 
 class RailTest {
@@ -13,7 +14,7 @@ class RailTest {
                 Rail.stepBullet(Rail.StepState.COMPLETED, "Project name:").toAnsi();
         assertThat(rendered).doesNotMatch("(?s).*\\[(?:\\d+;)*9(?:;\\d+)*m.*");
         assertThat(rendered).contains("Project name:");
-        if (cc.jumpkick.cli.theme.Theme.colorEnabled()) {
+        if (Theme.colorEnabled()) {
             assertThat(rendered).contains("38;2;");
         }
     }

@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.GraalResolver;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -38,10 +46,10 @@ public final class TrainCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new ArrayList<Opt>();
         opts.add(Opt.value("<name>", "Train profile name (default: all profiles)", "--profile"));
-        opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
+        opts.add(CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
-        opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
+        opts.add(CommonOpts.skipTests());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -49,7 +57,7 @@ public final class TrainCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         String profile = in.value("profile").orElse(null);
-        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
@@ -58,14 +66,14 @@ public final class TrainCommand implements CliCommand {
         if (proj == null) return Exit.CONFIG;
 
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
-        var session = cc.jumpkick.config.SessionContext.current();
+        var session = SessionContext.current();
         boolean force = session.force() || global.force;
 
         // Prefer a Graal home so the tracing agent is available; fall back to null and let the
         // engine error with a clear message.
         Path graalHome = null;
         try {
-            var graal = new cc.jumpkick.cli.GraalResolver(jdksDir, global.yes);
+            var graal = new GraalResolver(jdksDir, global.yes);
             graalHome = graal.resolve(dir, null).orElse(null);
         } catch (Exception ignored) {
             // train will fail clearly if the agent is missing
@@ -77,9 +85,9 @@ public final class TrainCommand implements CliCommand {
         String target = BuildCommand.buildTarget(proj.buildFile(), dir);
         BuildPlanResult result;
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runTrain(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.TrainRequest(
+            result = EngineClient.runTrain(
+                    EnginePaths.current(),
+                    new EngineRequests.TrainRequest(
                             dir,
                             cache,
                             jdksDir,
@@ -91,7 +99,7 @@ public final class TrainCommand implements CliCommand {
                             global.verbose),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Train", e.getMessage());
+            CommandWedge.printFail("Train", e.getMessage());
             return Exit.SOFTWARE;
         }
         return result.success() ? 0 : 1;

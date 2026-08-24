@@ -11,6 +11,10 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.runtime.RemainingWork;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.task.IoLedger;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -76,7 +80,7 @@ public final class SsePublisher {
         return r == null ? "" : r;
     }
 
-    private cc.jumpkick.runtime.RemainingWork remaining(long id) {
+    private RemainingWork remaining(long id) {
         JobSession s = get(id);
         return s == null ? null : s.remaining();
     }
@@ -89,16 +93,16 @@ public final class SsePublisher {
         return w != null ? w : 0;
     }
 
-    private cc.jumpkick.runtime.WorkspaceProgressTracker tracker(long requestId) {
+    private WorkspaceProgressTracker tracker(long requestId) {
         if (sessions.retired(requestId)) {
-            return new cc.jumpkick.runtime.WorkspaceProgressTracker(null);
+            return new WorkspaceProgressTracker(null);
         }
         JobSession s = open(requestId);
-        if (s == null) return new cc.jumpkick.runtime.WorkspaceProgressTracker(null);
+        if (s == null) return new WorkspaceProgressTracker(null);
         return s.tracker();
     }
 
-    private cc.jumpkick.runtime.WorkspaceProgressTracker trackerOrNull(long requestId) {
+    private WorkspaceProgressTracker trackerOrNull(long requestId) {
         JobSession s = get(requestId);
         return s == null ? null : s.existingTracker();
     }
@@ -123,7 +127,7 @@ public final class SsePublisher {
         return s == null ? null : s.accumulator();
     }
 
-    public void publishEvent(String type, cc.jumpkick.engine.JsonOut payload) {
+    public void publishEvent(String type, JsonOut payload) {
         publishEvent(type, payload, false);
     }
 
@@ -133,7 +137,7 @@ public final class SsePublisher {
      * duplicate {@code request-start} idempotently, but an MCP agent treating it as "job began"
      * would double-count.
      */
-    public void publishEvent(String type, cc.jumpkick.engine.JsonOut payload, boolean dashboardOnly) {
+    public void publishEvent(String type, JsonOut payload, boolean dashboardOnly) {
         sseConnect.readLock().lock();
         try {
             if (events != null && events.hasSubscribers()) {
@@ -156,7 +160,7 @@ public final class SsePublisher {
      * Attach last known <em>workspace aggregate</em> {@code progress} (0–100 or null) from the
      * engine tracker. Never compute from module-local ticks here.
      */
-    public cc.jumpkick.engine.JsonOut withProgress(cc.jumpkick.engine.JsonOut payload, long requestId) {
+    public JsonOut withProgress(JsonOut payload, long requestId) {
         Double p = requestId > 0 ? lastProgress(requestId) : null;
         return payload.putNullable("progress", p);
     }
@@ -165,19 +169,19 @@ public final class SsePublisher {
      * The ambient byte ledger for a request: the journal accumulator's when the kind is journaled,
      * else a throwaway so metering call sites never branch on whether anyone is recording.
      */
-    public cc.jumpkick.task.IoLedger runIo(long requestId) {
+    public IoLedger runIo(long requestId) {
         BuildAccumulator a = accumulator(requestId);
-        return a != null ? a.io() : new cc.jumpkick.task.IoLedger();
+        return a != null ? a.io() : new IoLedger();
     }
 
     /**
      * Add the run's byte counters to a terminal event so a live dashboard card shows them without
      * waiting for the history backfill. Omitted entirely for a run that moved nothing.
      */
-    public cc.jumpkick.engine.JsonOut withIo(cc.jumpkick.engine.JsonOut payload, long requestId) {
+    public JsonOut withIo(JsonOut payload, long requestId) {
         BuildAccumulator a = accumulator(requestId);
         if (a == null) return payload;
-        cc.jumpkick.task.IoLedger.Totals t = a.io().totals();
+        IoLedger.Totals t = a.io().totals();
         if (t.isEmpty()) return payload;
         return payload.put("remoteUpBytes", t.remoteUp())
                 .put("remoteDownBytes", t.remoteDown())
@@ -198,7 +202,7 @@ public final class SsePublisher {
         // Bar: effort-weight slices (plan num/den) + residual annotation for adaptive clock/countdown.
         long slice = weight(requestId, dir);
         tracker(requestId).moduleProgress(dir, slice, view.numerator(), view.denominator());
-        cc.jumpkick.runtime.RemainingWork rw = remaining(requestId);
+        RemainingWork rw = remaining(requestId);
         if (rw != null && dir != null) {
             // Atomic update+recompute+note per request: two scheduler threads interleaving
             // (T1 computes 10s, T2 computes 9s and notes it, T1 notes 10s last) can regress
@@ -214,7 +218,7 @@ public final class SsePublisher {
 
     public void trackModuleComplete(long requestId, String dir, long lastDen, BufferedWriter writer) {
         if (requestId <= 0) return;
-        cc.jumpkick.runtime.RemainingWork rw = remaining(requestId);
+        RemainingWork rw = remaining(requestId);
         if (rw != null && dir != null) {
             synchronized (rw) {
                 rw.moduleComplete(Path.of(dir));
@@ -240,7 +244,7 @@ public final class SsePublisher {
         if (sessions.retired(requestId)) return;
         Object lock = emitLock(requestId);
         synchronized (lock) {
-            cc.jumpkick.runtime.WorkspaceProgressTracker tracker = trackerOrNull(requestId);
+            WorkspaceProgressTracker tracker = trackerOrNull(requestId);
             if (tracker == null) return;
             var snap = tracker.snapshot();
             double heldPct = Double.NaN;
@@ -271,7 +275,7 @@ public final class SsePublisher {
                     dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
             if (writer != null) WireWriter.sendQuiet(writer, line);
             if (eventsWanted()) {
-                var body = cc.jumpkick.engine.JsonOut.object()
+                var body = JsonOut.object()
                         .put("schema", 1)
                         .put("type", "workspace-progress")
                         .put("jid", requestId)
@@ -300,8 +304,7 @@ public final class SsePublisher {
      * frame (80 ms) on UDS+SSE was pure wire cost. {@code force} emits still bypass this (stage
      * boundaries, module complete, finish). {@code JK_WIRE_PROGRESS_MS=0} is unbatched.
      */
-    public boolean shouldEmitWorkspaceProgress(
-            long requestId, cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+    public boolean shouldEmitWorkspaceProgress(long requestId, WorkspaceProgressTracker.Snapshot snap) {
         long cadence = CoalescingBuildPlanListener.cadenceFromEnv();
         if (cadence <= 0) return true;
         long[] prev = emitState(requestId);
@@ -339,14 +342,14 @@ public final class SsePublisher {
         } catch (Exception e) {
             // unparseable/missing jk.toml — the dashboard falls back to showing the dir
         }
-        var payload = cc.jumpkick.engine.JsonOut.object()
+        var payload = JsonOut.object()
                 .put("schema", 1)
                 .put("type", "request-start")
                 .put("jid", requestId)
                 .put("kind", kind)
                 .put("dir", dir)
                 .put("coord", coord)
-                .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(dir));
+                .put("projectId", ProjectIds.idOf(dir));
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
         if (startedAt > 0) {
             payload = payload.put("startedAt", startedAt);
@@ -369,7 +372,7 @@ public final class SsePublisher {
         publishEvent(
                 "task-start",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "task-start")
                                 .put("jid", requestId)
@@ -390,7 +393,7 @@ public final class SsePublisher {
         publishEvent(
                 "task-finish",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "task-finish")
                                 .put("jid", requestId)
@@ -412,7 +415,7 @@ public final class SsePublisher {
         publishEvent(
                 "label",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "label")
                                 .put("jid", requestId)
@@ -432,7 +435,7 @@ public final class SsePublisher {
         publishEvent(
                 "output",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "output")
                                 .put("jid", requestId)
@@ -485,7 +488,7 @@ public final class SsePublisher {
         if (!eventsWanted() || errors.isEmpty()) return;
         for (BuildPlanResult.Diagnostic d : selectPublishedDiagnostics(errors)) {
             // SSE event name equals the payload type ("error"), same as CLI JsonlShape.
-            var o = cc.jumpkick.engine.JsonOut.object()
+            var o = JsonOut.object()
                     .put("schema", 1)
                     .put("type", "error")
                     .put("jid", requestId)
@@ -520,7 +523,7 @@ public final class SsePublisher {
         publishEvent(
                 "error",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "error")
                                 .put("jid", requestId)
@@ -545,7 +548,7 @@ public final class SsePublisher {
         publishEvent(
                 "plan",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "plan")
                                 .put("jid", requestId)
@@ -561,14 +564,14 @@ public final class SsePublisher {
      */
     public void publishPlanProgress(long requestId, String dir, long numerator, long denominator) {
         if (requestId > 0 && trackerOrNull(requestId) == null && denominator > 0) {
-            double p = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(numerator, denominator);
+            double p = WorkspaceProgressTracker.percentOf(numerator, denominator);
             if (!Double.isNaN(p)) setLastProgress(requestId, p);
         }
         if (!eventsWanted()) return;
         publishEvent(
                 "progress",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "progress")
                                 .put("jid", requestId)
@@ -588,7 +591,7 @@ public final class SsePublisher {
         publishEvent(
                 "eta",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "eta")
                                 .put("jid", requestId)
@@ -614,7 +617,7 @@ public final class SsePublisher {
         publishEvent(
                 "module-start",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "module-start")
                                 .put("jid", requestId)
@@ -653,7 +656,7 @@ public final class SsePublisher {
         publishEvent(
                 "module-finish",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "module-finish")
                                 .put("jid", requestId)
@@ -674,7 +677,7 @@ public final class SsePublisher {
         publishEvent(
                 "buildplan-finish",
                 withProgress(
-                        cc.jumpkick.engine.JsonOut.object()
+                        JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "buildplan-finish")
                                 .put("jid", requestId)

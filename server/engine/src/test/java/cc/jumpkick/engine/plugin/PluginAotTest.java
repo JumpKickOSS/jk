@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.JdkVendor;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,7 +34,7 @@ class PluginAotTest {
 
     @Test
     void key_changes_with_gc_and_classpath_but_is_stable_otherwise() throws IOException {
-        PluginAot.JdkId id = new PluginAot.JdkId(tmp.resolve("jdk"), cc.jumpkick.jdk.JdkVendor.TEMURIN, "25.0.3");
+        PluginAot.JdkId id = new PluginAot.JdkId(tmp.resolve("jdk"), JdkVendor.TEMURIN, "25.0.3");
         String base = PluginAot.key(id, "zgc", "");
         assertThat(PluginAot.key(id, "zgc", "")).isEqualTo(base);
         assertThat(PluginAot.key(id, "g1", "")).isNotEqualTo(base);
@@ -59,7 +60,7 @@ class PluginAotTest {
                 graal.resolve("release"),
                 "IMPLEMENTOR=\"Oracle Corporation\"\nIMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\nJAVA_VERSION=\"25\"\n");
         PluginAot.JdkId graalId = PluginAot.jdkId(graal);
-        if (graalId.vendor() == cc.jumpkick.jdk.JdkVendor.ORACLE_GRAALVM) {
+        if (graalId.vendor() == JdkVendor.ORACLE_GRAALVM) {
             assertThat(PluginAot.eligible(graalId)).isFalse();
         }
 

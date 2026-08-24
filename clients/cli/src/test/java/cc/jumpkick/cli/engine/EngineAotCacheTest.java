@@ -3,12 +3,14 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineSpawn.AotMode;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineArtifact;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineJdk;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineTarget;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.util.AotManifest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,7 +65,7 @@ class EngineAotCacheTest {
         EnginePaths.Paths paths = EnginePaths.resolve(dir);
         // Derived AOT state is version-scoped (engine-versioning-plan R3): the sweep covers THIS
         // version's dir only — other versions' caches are the GC's business, not ours.
-        Path versionDir = paths.dir().resolve(cc.jumpkick.cli.Jk.VERSION);
+        Path versionDir = paths.dir().resolve(Jk.VERSION);
         Files.createDirectories(versionDir);
         Path staleAot = versionDir.resolve("engine-deadbeefdeadbeef.aot");
         Path staleMarker = versionDir.resolve("engine-deadbeefdeadbeef.noaot");
@@ -180,7 +182,7 @@ class EngineAotCacheTest {
     }
 
     private static String statusOf(Path aotDir, Path cache) {
-        return cc.jumpkick.util.AotManifest.load(aotDir).stream()
+        return AotManifest.load(aotDir).stream()
                 .filter(e -> e.file().equals(cache.getFileName().toString()))
                 .findFirst()
                 .orElseThrow()

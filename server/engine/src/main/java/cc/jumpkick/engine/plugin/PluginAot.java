@@ -5,6 +5,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AotManifest;
+import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -85,12 +86,12 @@ public final class PluginAot {
     }
 
     static boolean enabled() {
-        return cc.jumpkick.util.AotSettings.workerAotEnabled();
+        return AotSettings.workerAotEnabled();
     }
 
     /** Train-on-miss for workers; see {@link cc.jumpkick.util.AotSettings#trainingEnabled()}. */
     static boolean trainingEnabled() {
-        return cc.jumpkick.util.AotSettings.trainingEnabled();
+        return AotSettings.trainingEnabled();
     }
 
     /** Where plugin AOT caches live: {@code <state>/aot/}. */

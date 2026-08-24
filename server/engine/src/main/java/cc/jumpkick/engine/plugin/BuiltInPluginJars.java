@@ -5,6 +5,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.UserPlugins;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.PluginDescriptorOps;
 import cc.jumpkick.util.JkDirs;
@@ -35,8 +36,7 @@ public final class BuiltInPluginJars {
         for (Located located : locatedTablePlugins()) {
             try {
                 PluginTableRegistry.putBuiltIn(
-                        cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
-                                located.manifestToml(), located.path() + "!jk-plugin.toml"),
+                        PluginDescriptors.parse(located.manifestToml(), located.path() + "!jk-plugin.toml"),
                         located.path());
             } catch (RuntimeException e) {
                 // Store jars are managed artifacts: one garbled or version-incompatible manifest

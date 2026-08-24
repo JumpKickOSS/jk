@@ -2,7 +2,11 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
@@ -10,7 +14,10 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
@@ -42,15 +49,14 @@ public final class CleanCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Delete only build/ intermediates; keep artifacts.", "--keep-artifacts"),
-                cc.jumpkick.cli.CommonOpts.cacheDir());
+                CommonOpts.cacheDir());
     }
 
     @Override
     public int run(Invocation in) throws IOException {
         boolean keepArtifacts = in.isSet("keep-artifacts");
         boolean force = GlobalOptions.from(in).force;
-        Path cacheDirOverride =
-                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        Path cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         Path dir = GlobalOptions.from(in).workingDir();
         Path workspaceRoot = resolveWorkspaceRoot(dir);
         List<String> warnings = new ArrayList<>();
@@ -101,7 +107,7 @@ public final class CleanCommand implements CliCommand {
     static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
             throws IOException {
         for (Path projectDir : projectDirs) {
-            Path layoutTarget = cc.jumpkick.layout.BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
+            Path layoutTarget = BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
             Path legacyTarget = projectDir.resolve("target");
             boolean distinct = !layoutTarget.equals(legacyTarget);
             if (!keepArtifacts) {
@@ -174,23 +180,22 @@ public final class CleanCommand implements CliCommand {
         Path root = CacheCommand.resolveCacheRoot(cacheDirOverride);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(new GlobalOptions());
 
-        var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
+        var summary = new EngineRequests.CacheMaintSummary[1];
         ConsoleSpec spec = CacheCommand.clearSpec(
                 false,
                 () -> summary[0] != null ? summary[0].files() : 0L,
                 () -> summary[0] != null ? summary[0].bytes() : 0L);
         try {
-            var result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
-                            "clear", root, false, false, projectDir),
+            var result = EngineClient.runCacheMaintenance(
+                    EnginePaths.current(),
+                    new EngineRequests.CacheMaintRequest("clear", root, false, false, projectDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,
                     summary);
             return result.success() ? 0 : 1;
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Clean", e.getMessage());
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            CommandWedge.printFail("Clean", e.getMessage());
+            return Exit.SOFTWARE;
         }
     }
 

@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CommandDispatch;
 import cc.jumpkick.engine.EnginePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,7 +37,6 @@ class WebCommandTest {
 
     @Test
     void command_is_registered() {
-        assertThat(cc.jumpkick.cli.CommandDispatch.commands().stream().map(c -> c.name()))
-                .contains("web");
+        assertThat(CommandDispatch.commands().stream().map(c -> c.name())).contains("web");
     }
 }

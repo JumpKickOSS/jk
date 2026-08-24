@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.http.Http;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,7 +44,6 @@ class FileTransportTest {
 
     @Test
     void dispatches_for_file_scheme(@TempDir Path dir) {
-        assertThat(RepoTransports.forUrl(dir.toUri(), new cc.jumpkick.http.Http()))
-                .isInstanceOf(FileTransport.class);
+        assertThat(RepoTransports.forUrl(dir.toUri(), new Http())).isInstanceOf(FileTransport.class);
     }
 }

@@ -4,12 +4,14 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolver;
@@ -64,8 +66,7 @@ public final class GraalResolver {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
 
         // 1. Explicit spec: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
-        String effective = firstNonBlank(
-                cc.jumpkick.config.SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
+        String effective = firstNonBlank(SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
         if (effective != null && !effective.isBlank()) {
             Optional<InstalledJdk> hit = registry.findBySpec(effective);
             if (hit.isPresent() && NativeImageDriver.resolve(hit.get().home()).isPresent()) {
@@ -76,7 +77,7 @@ public final class GraalResolver {
 
         // 2. The `jk jdk graal` default-graal pointer, if one is set and usable.
         try {
-            cc.jumpkick.jdk.JdkInventory gd = cc.jumpkick.jdk.JdkInventory.current();
+            JdkInventory gd = JdkInventory.current();
             Optional<Path> gh = gd.graalHome();
             if (gh.isPresent() && NativeImageDriver.resolve(gh.get()).isPresent()) {
                 return gh.get();

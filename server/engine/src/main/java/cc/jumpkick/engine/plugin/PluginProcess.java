@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.engine.JobWorkers;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -204,7 +205,7 @@ public final class PluginProcess {
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
-        Process process = cc.jumpkick.engine.JobWorkers.start(pb);
+        Process process = JobWorkers.start(pb);
         final AtomicLong lastLineAt = new AtomicLong(System.currentTimeMillis());
         Thread watchdog = null;
         if (idleTimeoutMs > 0) {
@@ -330,7 +331,7 @@ public final class PluginProcess {
                     forceStop(process);
                 }
             } finally {
-                cc.jumpkick.engine.JobWorkers.unregister(process);
+                JobWorkers.unregister(process);
             }
         }
         return process.waitFor();
@@ -348,7 +349,7 @@ public final class PluginProcess {
      * cannot stay blocked on an orphan still holding the write end of the pipe.
      */
     private static void forceStop(Process process) {
-        cc.jumpkick.engine.JobWorkers.destroyTree(process);
+        JobWorkers.destroyTree(process);
         try {
             process.getInputStream().close();
         } catch (IOException ignored) {

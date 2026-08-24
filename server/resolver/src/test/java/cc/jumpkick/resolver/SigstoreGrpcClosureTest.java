@@ -8,6 +8,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
@@ -51,8 +52,7 @@ class SigstoreGrpcClosureTest {
             MavenRepo google =
                     new MavenRepo("google", URI.create("https://dl.google.com/dl/android/maven2/"), http, cas);
             repos = new RepoGroup(
-                    List.of(central, google),
-                    List.of(List.of(), cc.jumpkick.model.RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
+                    List.of(central, google), List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
         } else {
             repos = RepoGroup.of(central);
         }

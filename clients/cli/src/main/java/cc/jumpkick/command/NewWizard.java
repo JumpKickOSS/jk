@@ -7,6 +7,10 @@ import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.Choice;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
+import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.JdkCatalog;
+import cc.jumpkick.jdk.JdkLts;
+import cc.jumpkick.jdk.SupportedJdk;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -103,7 +107,7 @@ public final class NewWizard {
 
     static Wizard buildWizard(
             List<NewJdkCandidate> candidates,
-            cc.jumpkick.jdk.JdkCatalog catalog,
+            JdkCatalog catalog,
             String groupGuess,
             NewCommand.ParentInfo parent,
             boolean hasDefaultJdk,
@@ -180,16 +184,16 @@ public final class NewWizard {
         // no GraalVM ships yet (e.g. 26 today). `targets` (the native choice) is
         // asked before this step, so the choicesFn can read it per render. When
         // the catalog is unavailable (offline) we fall back to constants.
-        String os = cc.jumpkick.jdk.HostPlatform.currentOs();
-        String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
-        List<Integer> standardMajors = orElseList(
-                cc.jumpkick.jdk.SupportedJdk.offerableMajors(catalog, false, os, arch), offlineMajors(false));
+        String os = HostPlatform.currentOs();
+        String arch = HostPlatform.currentArch();
+        List<Integer> standardMajors =
+                orElseList(SupportedJdk.offerableMajors(catalog, false, os, arch), offlineMajors(false));
         List<Integer> nativeMajors =
-                orElseList(cc.jumpkick.jdk.SupportedJdk.offerableMajors(catalog, true, os, arch), offlineMajors(true));
+                orElseList(SupportedJdk.offerableMajors(catalog, true, os, arch), offlineMajors(true));
         var javaVersion = WizardStep.RadioStep.horizontal("javaVersion", "Java Language Version:")
                 .choicesFn(a -> (a.getList("targets").contains("native") ? nativeMajors : standardMajors)
                         .stream()
-                                .map(m -> new cc.jumpkick.cli.tui.Choice(String.valueOf(m), String.valueOf(m)))
+                                .map(m -> new Choice(String.valueOf(m), String.valueOf(m)))
                                 .toList())
                 .defaultChoice(String.valueOf(LATEST_LTS_MAJOR))
                 .when(a -> "java".equals(a.get("lang")) && !module && !hasDefaultJdk)
@@ -222,7 +226,7 @@ public final class NewWizard {
                     }
                     if (filtered.isEmpty()) filtered = candidates;
                     return filtered.stream()
-                            .map(c -> new cc.jumpkick.cli.tui.Choice(c.id(), c.label(), c.hint()))
+                            .map(c -> new Choice(c.id(), c.label(), c.hint()))
                             .toList();
                 })
                 .when(a -> NewJdkPlan.shouldPrompt(module, hasDefaultJdk, candidates, jdkFloor(a, parent)))
@@ -330,24 +334,20 @@ public final class NewWizard {
      */
     static List<Integer> offlineMajors(boolean nativeTrack) {
         List<Integer> out = new ArrayList<>();
-        for (int v = cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS; v >= cc.jumpkick.jdk.SupportedJdk.MIN_MAJOR; v--) {
-            if (cc.jumpkick.jdk.JdkLts.isLtsMajor(v)) out.add(v);
+        for (int v = JdkLts.OFFLINE_LATEST_LTS; v >= SupportedJdk.MIN_MAJOR; v--) {
+            if (JdkLts.isLtsMajor(v)) out.add(v);
         }
-        int latestStable = cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_STABLE;
-        if (!nativeTrack && latestStable > cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS) out.add(latestStable);
+        int latestStable = JdkLts.OFFLINE_LATEST_STABLE;
+        if (!nativeTrack && latestStable > JdkLts.OFFLINE_LATEST_LTS) out.add(latestStable);
         return out;
     }
 
     /** The newest native-image-capable (GraalVM) Java major, from the catalog or the offline cap. */
-    static int maxNativeMajor(cc.jumpkick.jdk.JdkCatalog catalog) {
+    static int maxNativeMajor(JdkCatalog catalog) {
         List<Integer> majors = orElseList(
-                cc.jumpkick.jdk.SupportedJdk.offerableMajors(
-                        catalog,
-                        true,
-                        cc.jumpkick.jdk.HostPlatform.currentOs(),
-                        cc.jumpkick.jdk.HostPlatform.currentArch()),
+                SupportedJdk.offerableMajors(catalog, true, HostPlatform.currentOs(), HostPlatform.currentArch()),
                 offlineMajors(true));
-        return majors.stream().mapToInt(Integer::intValue).max().orElse(cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS);
+        return majors.stream().mapToInt(Integer::intValue).max().orElse(JdkLts.OFFLINE_LATEST_LTS);
     }
 
     static int jdkFloor(Answers answers, NewCommand.ParentInfo parent) {

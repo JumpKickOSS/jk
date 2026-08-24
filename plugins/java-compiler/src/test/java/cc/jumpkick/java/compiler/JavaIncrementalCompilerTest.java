@@ -3,6 +3,9 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -78,20 +81,18 @@ class JavaIncrementalCompilerTest {
         Path spec = dir.resolve("spec.txt");
         Files.write(
                 spec,
-                new cc.jumpkick.plugin.protocol.SpecWriter()
-                        .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                         .configInt("release", 21)
                         .layout(Map.of("classesDir", classOut, "sourceOutput", genOut))
                         .source(src.toAbsolutePath())
-                        .cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE) // resolves @gen.Gen
-                        .cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_PROCESSOR)
+                        .cp(procDir, PluginProtocol.ROLE_COMPILE) // resolves @gen.Gen
+                        .cp(procDir, PluginProtocol.ROLE_PROCESSOR)
                         .lines());
 
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         int code = JavaIncrementalCompiler.compileSpec(
-                spec,
-                new cc.jumpkick.plugin.protocol.ProtocolWriter(
-                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+                spec, new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
         String out = buf.toString(StandardCharsets.UTF_8);
 
         assertThat(code).isZero();
@@ -145,8 +146,8 @@ class JavaIncrementalCompilerTest {
         Path spec = dir.resolve("spec.txt");
         Files.write(
                 spec,
-                new cc.jumpkick.plugin.protocol.SpecWriter()
-                        .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                         .configInt("release", 25)
                         .layout(Map.of("classesDir", classOut, "sourceOutput", dir.resolve("gen"), "workdir", workdir))
                         .source(src.toAbsolutePath())
@@ -154,9 +155,7 @@ class JavaIncrementalCompilerTest {
 
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         int code = JavaIncrementalCompiler.compileSpec(
-                spec,
-                new cc.jumpkick.plugin.protocol.ProtocolWriter(
-                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+                spec, new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
         String out = buf.toString(StandardCharsets.UTF_8);
 
         assertThat(code).isZero();
@@ -248,18 +247,15 @@ class JavaIncrementalCompilerTest {
             ByteArrayOutputStream buf,
             Path... sources)
             throws Exception {
-        var spec = new cc.jumpkick.plugin.protocol.SpecWriter()
-                .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+        var spec = new SpecWriter()
+                .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", 21)
                 .layout(Map.of("classesDir", classOut, "sourceOutput", genOut, "workdir", workdir));
         for (Path s : sources) spec = spec.source(s.toAbsolutePath());
-        spec = spec.cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE)
-                .cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_PROCESSOR);
+        spec = spec.cp(procDir, PluginProtocol.ROLE_COMPILE).cp(procDir, PluginProtocol.ROLE_PROCESSOR);
         Path specFile = Files.createTempFile(dir, "spec", ".txt");
         Files.write(specFile, spec.lines());
         return JavaIncrementalCompiler.compileSpec(
-                specFile,
-                new cc.jumpkick.plugin.protocol.ProtocolWriter(
-                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+                specFile, new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
     }
 }

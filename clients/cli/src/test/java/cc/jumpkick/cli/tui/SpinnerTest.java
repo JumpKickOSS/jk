@@ -4,6 +4,8 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.theme.Rgb;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.Session;
@@ -25,7 +27,7 @@ class SpinnerTest {
         s.step();
         String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         // ANSI: ● Working; plain / CI: * Working
-        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (Theme.active().isAnsi()) {
             assertThat(visible).contains(Spinner.PULSE_GLYPH + " Working");
         } else {
             assertThat(visible).contains(Glyphs.PULSE_PLAIN + " Working");
@@ -40,7 +42,7 @@ class SpinnerTest {
             s.step();
         }
         String raw = buf.toString(StandardCharsets.UTF_8);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             // Plain: single static frame, no multi-frame thrash.
             assertThat(countOccurrences(TestAnsi.strip(raw), Glyphs.PULSE_PLAIN))
                     .isEqualTo(1);
@@ -65,7 +67,7 @@ class SpinnerTest {
 
     @Test
     void shrinking_message_pads_only_the_removed_tail() {
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             // Plain mode does not pad tails (static single frame).
             return;
         }
@@ -108,7 +110,7 @@ class SpinnerTest {
 
     @Test
     void chip_pulse_styles_are_white_at_ends_and_dim_at_midpoint() {
-        var dim = cc.jumpkick.cli.theme.Rgb.hex(0x0F4786); // plan/chip blue
+        var dim = Rgb.hex(0x0F4786); // plan/chip blue
         var colors = Spinner.buildChipPulseStyles(Spinner.PULSE_FRAMES, dim);
         assertThat(colors[0].sgrBody()).isEqualTo("38;2;255;255;255");
         assertThat(colors[colors.length - 1].sgrBody()).isEqualTo("38;2;255;255;255");
@@ -139,7 +141,7 @@ class SpinnerTest {
         buf.reset();
         s.close();
         String out = buf.toString(StandardCharsets.UTF_8);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             // Plain: newline only (no cursor hide / clear sequence).
             assertThat(out).contains("\n");
             return;
@@ -155,7 +157,7 @@ class SpinnerTest {
             Thread.yield();
         }
         String out = buf.toString(StandardCharsets.UTF_8);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             assertThat(out).doesNotContain("\033]9;4;3\007");
             return;
         }
@@ -172,7 +174,7 @@ class SpinnerTest {
         s.step();
         s.step();
         String out = buf.toString(StandardCharsets.UTF_8);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             assertThat(countOccurrences(out, "\033]9;4;3\007")).isZero();
             return;
         }
@@ -188,7 +190,7 @@ class SpinnerTest {
         buf.reset();
         s.close();
         String out = buf.toString(StandardCharsets.UTF_8);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             return;
         }
         assertThat(out.indexOf("\033]9;4;0\007")).isLessThan(out.indexOf("\033[?25h"));
@@ -197,7 +199,7 @@ class SpinnerTest {
     @Test
     void wedge_frame_uses_pulse_glyph_and_command_on_chip() {
         var colors = Spinner.buildChipPulseStyles(
-                Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
+                Spinner.PULSE_FRAMES, Theme.active().planBadgeColor());
         String visible =
                 TestAnsi.strip(Spinner.renderWedgeFrame(0, "Status", "Analyzing status...", NerdFontCaps.NONE, colors));
         assertThat(visible).contains(Spinner.PULSE_GLYPH);
@@ -215,7 +217,7 @@ class SpinnerTest {
         String painted = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(painted).contains("Status");
         assertThat(painted).contains("Analyzing status...");
-        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (Theme.active().isAnsi()) {
             assertThat(painted).contains(Spinner.PULSE_GLYPH);
         } else {
             // Plain multi-line working frame.
@@ -224,7 +226,7 @@ class SpinnerTest {
         buf.reset();
         s.close();
         String closed = buf.toString(StandardCharsets.UTF_8);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             assertThat(TestAnsi.strip(closed).trim()).isEqualTo("jk: * Status > Analyzing status... - done.");
             return;
         }

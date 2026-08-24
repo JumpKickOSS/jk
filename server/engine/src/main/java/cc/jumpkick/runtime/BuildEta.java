@@ -224,7 +224,7 @@ public final class BuildEta {
                 costs.add(EffortWeights.costOf(mdir, prereqs, w, 0));
                 continue;
             }
-            java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+            Map<String, Integer> counts = new java.util.HashMap<>();
             if (m.testCount() > 0) counts.put("run-tests", m.testCount());
             if (m.sourceCount() > 0) {
                 counts.put("compile-java", m.sourceCount());

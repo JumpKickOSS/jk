@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,19 +76,18 @@ public final class EngineMain {
         TerminalSignals.ignoreInterruptAndHangup();
         try {
             EnginePaths.Paths paths = EnginePaths.current();
-            cc.jumpkick.engine.plugin.BuiltInPluginJars.registerMissingBuiltInFetcher();
-            cc.jumpkick.engine.plugin.BuiltInPluginJars.install();
+            BuiltInPluginJars.registerMissingBuiltInFetcher();
+            BuiltInPluginJars.install();
             try {
-                cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
+                BuiltInPluginJars.installUserConfig();
             } catch (RuntimeException badConfig) {
                 // A user-config plugin pin (or config parse) error is explicit user intent we
                 // cannot honor — refuse to start with the message, never a raw stack.
                 System.err.println("jk engine: " + badConfig.getMessage());
                 return 1;
             }
-            cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
-            cc.jumpkick.config.JkHttpConfig httpConfig =
-                    cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);
+            JkEngineConfig config = JkEngineConfig.resolve();
+            JkHttpConfig httpConfig = JkHttpConfig.resolve().orElse(null);
             EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
             // The spawner asks for an AOT cache with -Djk.aot.train.output=<path> when none exists
             // yet (see EngineClient.spawn). The server invokes the factory only after WINNING its
@@ -165,7 +168,7 @@ public final class EngineMain {
     static void promoteTrainedCache(Path tmp, Path finalPath, int exit) {
         try {
             if (exit == 0 && Files.isRegularFile(tmp) && Files.size(tmp) > 0) {
-                cc.jumpkick.util.AtomicWrites.moveInto(tmp, finalPath);
+                AtomicWrites.moveInto(tmp, finalPath);
                 return;
             }
         } catch (IOException e) {
@@ -262,8 +265,8 @@ public final class EngineMain {
         try {
             tmp = Files.createTempDirectory("jk-aot-train-");
             EnginePaths.Paths paths = EnginePaths.resolve(tmp);
-            EngineServer server = new EngineServer(
-                    paths, cc.jumpkick.config.JkEngineConfig.resolve(), null, JkVersion.VERSION, System.err::println);
+            EngineServer server =
+                    new EngineServer(paths, JkEngineConfig.resolve(), null, JkVersion.VERSION, System.err::println);
             Thread serving = new Thread(
                     () -> {
                         try {

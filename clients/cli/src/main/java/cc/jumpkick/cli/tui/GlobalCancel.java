@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Signals;
 import cc.jumpkick.terminal.Terminals;
@@ -36,24 +39,24 @@ public final class GlobalCancel {
             // 1) Cooperative cancel is synchronous (cheap, in-process); the engine RPCs go on a
             // background thread so the user sees the cancelled settle immediately instead of a
             // still-animating spinner while a wedged engine eats socket watchdogs.
-            cc.jumpkick.config.SessionContext.current().cancel().cancel();
+            SessionContext.current().cancel().cancel();
             // The session's working dir honors -C/--dir (the raw process CWD does not),
             // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
             // member dir cancels the covering workspace build.
             Path invocationDir;
             try {
-                invocationDir = cc.jumpkick.config.SessionContext.current().workingDir();
+                invocationDir = SessionContext.current().workingDir();
             } catch (RuntimeException e) {
                 invocationDir = null;
             }
             if (invocationDir == null) {
                 invocationDir = Path.of("").toAbsolutePath().normalize();
             }
-            Path dir = cc.jumpkick.config.WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
+            Path dir = WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
             Thread rpc = Thread.ofPlatform()
                     .daemon(true)
                     .name("jk-sigint-cancel")
-                    .start(() -> cc.jumpkick.cli.engine.EngineClient.cancelBestEffortForInterrupt(dir));
+                    .start(() -> EngineClient.cancelBestEffortForInterrupt(dir));
 
             // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();

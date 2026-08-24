@@ -5,10 +5,17 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.TestSupport;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -44,7 +51,7 @@ public final class TestVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
@@ -63,11 +70,11 @@ public final class TestVerb implements HostedVerb {
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Path buildFile = entryDir.resolve("jk.toml");
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
+            Path lockFile = LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
 
-            boolean compactTests = cc.jumpkick.layout.ModuleLayout.isCompact(entryDir);
-            int estimatedTestCount = cc.jumpkick.runtime.TestSupport.estimateSelectedSuiteTestCount(
+            boolean compactTests = ModuleLayout.isCompact(entryDir);
+            int estimatedTestCount = TestSupport.estimateSelectedSuiteTestCount(
                     entryDir, compactTests, ProtoJobs.testSelectionOf(requestLine));
 
             JkConfig config = new JkConfig(
@@ -93,7 +100,7 @@ public final class TestVerb implements HostedVerb {
                     .withParallelTests(parallelTests)
                     .withTestSelection(ProtoJobs.testSelectionOf(requestLine));
 
-            cc.jumpkick.runtime.BuildPlanner.Inputs inputs = new cc.jumpkick.runtime.BuildPlanner.Inputs(
+            BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                             entryDir,
                             cache,
                             buildFile,
@@ -110,16 +117,14 @@ public final class TestVerb implements HostedVerb {
                             Set.of(),
                             session)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
-            cc.jumpkick.run.BuildPlan plan =
-                    cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs).build();
+            BuildPlan plan = BuildPlanner.coreBuilder(inputs).build();
 
             PlanBurst.announce(host, plan, writer);
-            cc.jumpkick.run.BuildPlanResult result = SessionContext.where(session, plan::run);
+            BuildPlanResult result = SessionContext.where(session, plan::run);
             host.releaseExclusiveSlot();
             host.accTests(
-                    host.eventRequestId(),
-                    plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            return cc.jumpkick.engine.jobs.JobOutcome.of(result.success(), result.success() ? 0 : 1);
+                    host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+            return JobOutcome.of(result.success(), result.success() ? 0 : 1);
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return null;

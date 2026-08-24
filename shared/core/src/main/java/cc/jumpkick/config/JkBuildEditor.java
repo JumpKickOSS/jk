@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
 import java.util.List;
@@ -425,7 +426,7 @@ public final class JkBuildEditor {
         // catalog entry — `picocli = "4.7.7"` reads better in big manifests
         // than the full structured form. Falls back to the structured form
         // otherwise.
-        var hit = cc.jumpkick.library.LibraryCatalog.bundled().lookup(name);
+        var hit = LibraryCatalog.bundled().lookup(name);
         if (hit.isPresent()
                 && hit.get().group().equals(group)
                 && hit.get().artifact().equals(artifact)) {

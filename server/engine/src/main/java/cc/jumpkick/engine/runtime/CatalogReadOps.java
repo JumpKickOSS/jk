@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.runtime;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -55,7 +56,7 @@ public final class CatalogReadOps {
             if (req.includeCached()) {
                 // repos/ lives under the STORE root — the same tree MavenRepo writes through
                 // cas.root() (JK-2176); the cache root never holds repo artifacts.
-                Path store = req.store() != null ? req.store() : cc.jumpkick.cache.JkStores.storeRootFor(cache);
+                Path store = req.store() != null ? req.store() : JkStores.storeRootFor(cache);
                 List<String> versions = new ArrayList<>(RepoArtifactStore.allVersions(
                         store, src.module().group(), src.module().artifact()));
                 versions.sort((a, b) -> Versions.compare(b, a));

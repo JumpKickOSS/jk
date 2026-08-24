@@ -5,12 +5,15 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.runtime.ExplainReport;
+import cc.jumpkick.runtime.TaskForecast;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -44,7 +47,7 @@ public final class ExplainVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -83,12 +86,12 @@ public final class ExplainVerb implements HostedVerb {
                 if (maxModuleConcurrency <= 0 && Jsonl.bool(requestLine, "serial", false)) {
                     maxModuleConcurrency = 1;
                 }
-                cc.jumpkick.runtime.ExplainReport report = cc.jumpkick.runtime.ExplainReport.compute(
+                ExplainReport report = ExplainReport.compute(
                         entryDir,
                         entryBuild,
                         cache,
                         session,
-                        new cc.jumpkick.runtime.ExplainReport.Knobs(
+                        new ExplainReport.Knobs(
                                 etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
                                 Jsonl.str(requestLine, "profile"),
                                 workers,
@@ -105,7 +108,7 @@ public final class ExplainVerb implements HostedVerb {
                     host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
                     return null;
                 }
-                for (cc.jumpkick.runtime.TaskForecast.Module m : plan.modules()) {
+                for (TaskForecast.Module m : plan.modules()) {
                     String dir = m.dir().toString();
                     host.sendQuiet(
                             writer,
@@ -116,7 +119,7 @@ public final class ExplainVerb implements HostedVerb {
                                     m.testCount(),
                                     m.producesJar(),
                                     m.producesImage()));
-                    for (cc.jumpkick.runtime.TaskForecast.Task p : m.steps()) {
+                    for (TaskForecast.Task p : m.steps()) {
                         host.sendQuiet(
                                 writer,
                                 ProtoReads.explainStep(dir, p.name(), p.status().name(), p.text(), p.key()));

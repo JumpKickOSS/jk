@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.PluginModule;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,7 +66,7 @@ public final class BuildLayout {
                 project.project().name(),
                 project.project().version(),
                 hasMain(project),
-                cc.jumpkick.plugin.PluginModule.isWorker(projectDir));
+                PluginModule.isWorker(projectDir));
     }
 
     public static BuildLayout of(Path workspaceRoot, Path moduleRoot, JkBuild project) {
@@ -76,7 +77,7 @@ public final class BuildLayout {
                 project.project().name(),
                 project.project().version(),
                 hasMain(project),
-                cc.jumpkick.plugin.PluginModule.isWorker(moduleRoot));
+                PluginModule.isWorker(moduleRoot));
     }
 
     private static boolean hasMain(JkBuild project) {

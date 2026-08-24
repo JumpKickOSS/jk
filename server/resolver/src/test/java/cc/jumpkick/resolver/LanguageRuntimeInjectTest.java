@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.VersionSelector;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,7 +28,7 @@ class LanguageRuntimeInjectTest {
 
     /** `deps` is keyed the way LockOrchestrator keys it: by packageKey, not by bare GA. */
     private static String key(String ga) {
-        return new Dependency(ga, cc.jumpkick.model.VersionSelector.parse("*")).packageKey();
+        return new Dependency(ga, VersionSelector.parse("*")).packageKey();
     }
 
     private static final String GROOVY = "org.apache.groovy:groovy";
@@ -97,7 +98,7 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.4\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        Dependency user = new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=5.0.7"));
+        Dependency user = new Dependency("org.apache.groovy:groovy", VersionSelector.parse("=5.0.7"));
         deps.put(user.packageKey(), user);
         LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of(), deps);
         assertThat(deps).hasSize(1);
@@ -117,8 +118,7 @@ class LanguageRuntimeInjectTest {
         // No project groovy pin — the inject would otherwise float to the fallback major.
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        Dependency user =
-                new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=4.0.21"));
+        Dependency user = new Dependency("org.apache.groovy:groovy", VersionSelector.parse("=4.0.21"));
         deps.put(user.packageKey(), user);
 
         LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of(), deps);
@@ -133,8 +133,7 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/kotlin/A.kt"), "class A");
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        Dependency user =
-                new Dependency("org.jetbrains.kotlin:kotlin-stdlib", cc.jumpkick.model.VersionSelector.parse("=2.1.0"));
+        Dependency user = new Dependency("org.jetbrains.kotlin:kotlin-stdlib", VersionSelector.parse("=2.1.0"));
         deps.put(user.packageKey(), user);
 
         LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of(), deps);
@@ -151,7 +150,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip =
                 LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
-        assertThat(deps.get(key(GROOVY)).version()).isInstanceOf(cc.jumpkick.model.VersionSelector.Latest.class);
+        assertThat(deps.get(key(GROOVY)).version()).isInstanceOf(VersionSelector.Latest.class);
         assertThat(skipStrip).isEmpty();
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -116,7 +117,7 @@ public final class WorkspaceResolve {
 
     /** True when any declared dependency is a {@code workspace:<name>} sibling placeholder. */
     private static boolean hasWorkspaceDeps(JkBuild module) {
-        for (cc.jumpkick.model.Scope scope : cc.jumpkick.model.Scope.values()) {
+        for (Scope scope : Scope.values()) {
             for (var dep : module.dependencies().of(scope)) {
                 if (dep.isWorkspace()) return true;
             }

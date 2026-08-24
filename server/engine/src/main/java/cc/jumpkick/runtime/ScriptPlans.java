@@ -9,6 +9,7 @@ import cc.jumpkick.compile.JavacRunner;
 import cc.jumpkick.compile.KotlincDriver;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.KotlincResult;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
@@ -31,6 +32,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.tool.JarManifest;
 import java.io.IOException;
 import java.net.URI;
@@ -143,10 +145,8 @@ public final class ScriptPlans {
                 .requires(TaskNames.RESOLVE_DEPS)
                 .ticks(1)
                 .execute(ctx -> {
-                    boolean rerun = forceRecompile
-                            || cc.jumpkick.config.SessionContext.current()
-                                    .config()
-                                    .rebuildOr(false);
+                    boolean rerun =
+                            forceRecompile || SessionContext.current().config().rebuildOr(false);
                     if (!rerun && Files.exists(classesDir.resolve(mainClass.replace('.', '/') + ".class"))) {
                         ctx.label("cache hit (" + mainClass + ".class)");
                         materializeFiles(script, header, classesDir);
@@ -287,10 +287,8 @@ public final class ScriptPlans {
                 .requires(TaskNames.RESOLVE_DEPS, TaskNames.RESOLVE_KOTLINC)
                 .ticks(1)
                 .execute(ctx -> {
-                    boolean rerun = forceRecompile
-                            || cc.jumpkick.config.SessionContext.current()
-                                    .config()
-                                    .rebuildOr(false);
+                    boolean rerun =
+                            forceRecompile || SessionContext.current().config().rebuildOr(false);
                     if (!rerun && Files.exists(classesDir.resolve(mainClass.replace('.', '/') + ".class"))) {
                         ctx.label("cache hit (" + mainClass + ".class)");
                         materializeFiles(script, header, classesDir);
@@ -311,7 +309,7 @@ public final class ScriptPlans {
                     compileCp.add(ctx.require(KT_STDLIB));
                     Path workingDir = cacheDir.resolve("actions")
                             .resolve("incremental-kotlin")
-                            .resolve(cc.jumpkick.task.ActionKey.qualifiedTaskId("script", classesDir));
+                            .resolve(ActionKey.qualifiedTaskId("script", classesDir));
                     @SuppressWarnings("unchecked")
                     List<Path> workerCp = (List<Path>) ctx.require(WORKER_CP);
                     // @file:DependsOn/@file:Repository were resolved by jk (parseKotlin);

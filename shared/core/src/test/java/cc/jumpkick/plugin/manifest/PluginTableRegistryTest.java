@@ -109,7 +109,7 @@ class PluginTableRegistryTest {
                 .hasMessageContaining("templates/<lang>/<framework>/<name>.g8/");
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void shipped_manifest_declares_import_rules() {
         var boot = PluginTableRegistry.manifests().stream()
                 .filter(m -> m.id().equals("spring-boot"))

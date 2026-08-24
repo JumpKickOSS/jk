@@ -5,6 +5,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 
 /**
@@ -92,7 +93,7 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+    public void error(String step, String code, String message, TestFailureInfo failure) {
         a.error(step, code, message, failure);
         b.error(step, code, message, failure);
     }

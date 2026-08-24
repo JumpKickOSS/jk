@@ -3,12 +3,16 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.terminal.Terminals;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -47,8 +51,8 @@ public final class ShellCommand implements CliCommand {
         // is a control pipe) the spawned shell would sit at its prompt forever and
         // waitFor() would block. Fail fast instead. Keyed on the controlling
         // terminal, so `jk shell` under `curl | bash` (piped stdin) still works.
-        if (!cc.jumpkick.cli.tui.Interactivity.canPrompt()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+        if (!Interactivity.canPrompt()) {
+            CommandWedge.printFail(
                     "Shell",
                     "requires an interactive terminal " + "(run it directly from your shell, not piped or scripted)");
             return Exit.CONFIG;
@@ -59,16 +63,16 @@ public final class ShellCommand implements CliCommand {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         var target = new JkEnv(registry, origPath).resolve(dir);
         if (!target.isActive()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Shell",
-                    "no pinned JDK for " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
+                    "no pinned JDK for " + PathDisplay.styledRaw(dir)
                             + " (run `jk new` to scaffold, or stamp `jdk = \"<id>\"` in jk-lock.toml)");
             return Exit.CONFIG;
         }
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");
         ProcessBuilder pb = new ProcessBuilder(shell);
         pb.directory(dir.toFile());
-        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Terminals.restoreForChild();
         pb.inheritIO();
         var env = pb.environment();
         target.vars().forEach(env::put);

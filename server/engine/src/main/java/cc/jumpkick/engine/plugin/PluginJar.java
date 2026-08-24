@@ -11,6 +11,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.JkDirs;
@@ -103,7 +104,7 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
             RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
@@ -135,7 +136,7 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
             var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
             if (result.isPresent()) return result.get();
         }

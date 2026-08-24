@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,11 +72,11 @@ public final class ModuleScopeHint {
         if (names == null || names.isEmpty()) return;
         CommandWedge.envelopeStart();
         String text = line(verb, names);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             String body = text.startsWith(" ") ? text.substring(1) : text;
             text = JkWedge.PLAIN_LINE_PREFIX + body;
         }
-        cc.jumpkick.cli.CliOutput.out(text);
+        CliOutput.out(text);
     }
 
     /** Print the scrollback caption and, when {@code view} is open, pin it above the wedge. */

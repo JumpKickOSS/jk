@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import java.nio.charset.StandardCharsets;
@@ -24,7 +25,7 @@ class KmpRedirectsNonAllowlistedTest {
     @BeforeEach
     void clear() {
         KmpRedirects.clearProcessCache();
-        cc.jumpkick.repo.GradleModuleMetadata.clearParseCache();
+        GradleModuleMetadata.clearParseCache();
         RepoGroup.clearProcessFetchCache();
     }
 

@@ -61,7 +61,7 @@ public final class ExplainCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>();
+        var opts = new ArrayList<Opt>();
         opts.add(Opt.flag("Build the plan instead of printing it", "--run"));
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
@@ -116,7 +116,7 @@ public final class ExplainCommand implements CliCommand {
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
         Path graphDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : startDir;
         if (in.isSet("run") && hasGraph) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", "cannot combine --run with --graph (pick one)");
+            CommandWedge.printFail("Explain", "cannot combine --run with --graph (pick one)");
             return Exit.USAGE;
         }
         if (in.isSet("run")) {
@@ -685,11 +685,11 @@ public final class ExplainCommand implements CliCommand {
             ack = cc.jumpkick.cli.engine.EngineClient.moduleGraph(
                     cc.jumpkick.engine.EnginePaths.current(), startDir, format, modulesSpec, affectedSince);
         } catch (Exception e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", String.valueOf(e.getMessage()));
+            CommandWedge.printFail("Explain", String.valueOf(e.getMessage()));
             return Exit.CONFIG;
         }
         if (ack.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", ack.error());
+            CommandWedge.printFail("Explain", ack.error());
             return Exit.CONFIG;
         }
         String graph = ack.graph();
@@ -700,8 +700,7 @@ public final class ExplainCommand implements CliCommand {
             Path parent = out.getParent();
             if (parent != null) Files.createDirectories(parent);
             Files.writeString(out, graph);
-            cc.jumpkick.cli.tui.CommandWedge.printOk(
-                    "Explain", "wrote " + out.toAbsolutePath().normalize());
+            CommandWedge.printOk("Explain", "wrote " + out.toAbsolutePath().normalize());
         } else {
             CliOutput.out(graph.endsWith("\n") ? graph.substring(0, graph.length() - 1) : graph);
         }

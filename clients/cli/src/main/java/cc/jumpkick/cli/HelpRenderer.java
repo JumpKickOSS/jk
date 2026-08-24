@@ -2,6 +2,7 @@
 package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
 import java.util.LinkedHashMap;
@@ -180,11 +181,7 @@ public final class HelpRenderer {
      * ported.
      */
     public static void printShortHelp(
-            List<cc.jumpkick.model.command.CliCommand> commands,
-            String rootDescription,
-            String qualifiedName,
-            PrintStream out,
-            boolean ansi) {
+            List<CliCommand> commands, String rootDescription, String qualifiedName, PrintStream out, boolean ansi) {
         out.println(rootDescription);
         out.println();
         if (ansi) {
@@ -198,8 +195,8 @@ public final class HelpRenderer {
         out.println();
 
         // Index by name for group lookup
-        Map<String, cc.jumpkick.model.command.CliCommand> byName = new LinkedHashMap<>();
-        for (cc.jumpkick.model.command.CliCommand c : commands) {
+        Map<String, CliCommand> byName = new LinkedHashMap<>();
+        for (CliCommand c : commands) {
             if (!c.hidden()) byName.put(c.name(), c);
         }
         int nameWidth = 0;
@@ -215,7 +212,7 @@ public final class HelpRenderer {
             firstGroup = false;
             out.println(heading(group.heading(), ansi));
             for (String n : group.names()) {
-                cc.jumpkick.model.command.CliCommand sub = byName.get(n);
+                CliCommand sub = byName.get(n);
                 if (sub == null) continue;
                 String padding = " ".repeat(descCol - 2 - n.length());
                 out.println("  " + commandName(n, ansi) + padding + sub.description());

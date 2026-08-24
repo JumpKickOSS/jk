@@ -2,23 +2,39 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cli.BuildOptions;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.GraalResolver;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.ModulePlan;
+import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
+import cc.jumpkick.tool.ToolProvenance;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
@@ -57,7 +73,7 @@ public final class InstallCommand {
     Path libDirOverride;
     Path m2DirOverride;
     URI repoUrl;
-    cc.jumpkick.cli.BuildOptions buildOpts;
+    BuildOptions buildOpts;
     GlobalOptions global;
 
     // --- mode 1: current project -----------------------------------------
@@ -66,8 +82,7 @@ public final class InstallCommand {
         Path projectDir = global.workingDir();
         Path manifest = projectDir.resolve("jk.toml");
         if (!Files.exists(manifest)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Install", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir));
+            CommandWedge.printFail("Install", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
         return runProjectInstallBuildPlan(projectDir, "install");
@@ -84,7 +99,7 @@ public final class InstallCommand {
     /** Package-private: `jk tool install <file> --group/--name/--ver` delegates here. */
     int installFromFile(Path filePath) throws IOException {
         if (!Files.exists(filePath)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", PathDisplay.styled(filePath) + ": no such file");
+            CommandWedge.printFail("Install", PathDisplay.styled(filePath) + ": no such file");
             return Exit.CONFIG;
         }
 
@@ -103,8 +118,7 @@ public final class InstallCommand {
 
         if (group == null || artifact == null || version == null) {
             if (!isJar) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Install", "--group, --name, and --ver are required for non-JAR files");
+                CommandWedge.printFail("Install", "--group, --name, and --ver are required for non-JAR files");
             } else {
                 StringBuilder msg = new StringBuilder("jk install: could not detect");
                 if (group == null) msg.append(" group");
@@ -125,11 +139,10 @@ public final class InstallCommand {
         // File-install writes directly to repos/jk-local/ (the JAR is already on disk, no project
         // metadata for a POM, so ~/.m2 write is not appropriate here). Route to the store root:
         // resolvers read repos/jk-local and the classpath CAS from the store.
-        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(
-                cc.jumpkick.cache.JkStores.storeRootFor(cache), MavenLayout.artifactPath(coord), filePath);
+        RepoArtifactStore.writeToLocalStore(JkStores.storeRootFor(cache), MavenLayout.artifactPath(coord), filePath);
 
         if (!global.outputIsJson()) {
-            CliOutput.out("Installed " + cc.jumpkick.cli.theme.Coords.gav(coord) + " to the local store");
+            CliOutput.out("Installed " + Coords.gav(coord) + " to the local store");
         }
         return 0;
     }
@@ -160,15 +173,15 @@ public final class InstallCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         ToolEnv env;
-        cc.jumpkick.cli.engine.EngineRequests.ToolResolveOutcome outcome;
+        EngineRequests.ToolResolveOutcome outcome;
         try {
-            outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.ToolResolveRequest(
+            outcome = EngineClient.runToolResolve(
+                    EnginePaths.current(),
+                    new EngineRequests.ToolResolveRequest(
                             resolved.coordSpec(), List.of(), bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener("install-maven", steps, mode));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
+            CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) {
@@ -181,7 +194,7 @@ public final class InstallCommand {
                 binDir,
                 JavaHomes.runningJavaHome(),
                 env,
-                new cc.jumpkick.tool.ToolProvenance("gav", coord, env.primary().toGav()),
+                new ToolProvenance("gav", coord, env.primary().toGav()),
                 List.of());
         announceInstall(Coords.gav(env.primary()), launcher, binDir);
         return 0;
@@ -197,22 +210,21 @@ public final class InstallCommand {
         String refStr = split.ref() != null ? split.ref() : "main";
         Path cacheDir = cacheDir();
         Files.createDirectories(cacheDir);
-        boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean refresh = SessionContext.current().config().forceOr(false);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         BuildPlanResult fetchResult;
         Path checkout;
         String sha;
         // Engine-hosted clone: checkout path + sha ride the terminal plan-finish.
-        cc.jumpkick.cli.engine.EngineRequests.GitFetchOutcome outcome;
+        EngineRequests.GitFetchOutcome outcome;
         try {
-            outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.GitFetchRequest(
-                            expanded, canonical, refStr, cacheDir, refresh),
+            outcome = EngineClient.runGitFetch(
+                    EnginePaths.current(),
+                    new EngineRequests.GitFetchRequest(expanded, canonical, refStr, cacheDir, refresh),
                     steps -> BuildPlanConsole.chooseConsoleListener("install-git-fetch", steps, mode));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
+            CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
         fetchResult = outcome.result();
@@ -248,9 +260,9 @@ public final class InstallCommand {
         // projects are exempt — the boot jar carries Start-Class in its manifest (resolved
         // by scan at package time) and the launcher runs it with -jar. Thin client: the
         // parsed summary comes from the engine, never a client-side parse.
-        cc.jumpkick.engine.protocol.ProjectInfo proj = projectInfo(projectDir);
+        ProjectInfo proj = projectInfo(projectDir);
         if (proj.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", proj.error());
+            CommandWedge.printFail("Install", proj.error());
             return Exit.CONFIG;
         }
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, proj);
@@ -261,9 +273,9 @@ public final class InstallCommand {
                 && "DISABLED".equals(proj.nativeMode())
                 && proj.mainClass().isEmpty()
                 && !proj.springBoot()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Install",
-                    "application project at " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
+                    "application project at " + PathDisplay.styledRaw(projectDir)
                             + " has no `main` class set in [application]");
             return Exit.USAGE;
         }
@@ -277,7 +289,7 @@ public final class InstallCommand {
         // never run inside the engine).
         Path graalHome = null;
         if (isNative) {
-            Optional<Path> resolved = new cc.jumpkick.cli.GraalResolver(null, false).resolve(projectDir, proj.graal());
+            Optional<Path> resolved = new GraalResolver(null, false).resolve(projectDir, proj.graal());
             if (resolved.isEmpty()) return 1; // GraalResolver already printed why
             graalHome = resolved.get();
         }
@@ -289,12 +301,12 @@ public final class InstallCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         BuildPlanResult result;
         TestSummary testResult;
-        var session = cc.jumpkick.config.SessionContext.current();
+        var session = SessionContext.current();
         TestSummary[] testResultHolder = new TestSummary[1];
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runInstall(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.InstallRequest(
+            result = EngineClient.runInstall(
+                    EnginePaths.current(),
+                    new EngineRequests.InstallRequest(
                             projectDir,
                             cacheDir,
                             m2Dir(),
@@ -306,7 +318,7 @@ public final class InstallCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener(planName, steps, mode),
                     testResultHolder);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
+            CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
         testResult = testResultHolder[0];
@@ -322,7 +334,7 @@ public final class InstallCommand {
             try {
                 launcher = applyInstallPlan(projectDir, cacheDir);
             } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
+                CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                 return 1;
             }
         }
@@ -333,9 +345,9 @@ public final class InstallCommand {
     private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope, String planName) throws IOException {
         Path cacheDir = cacheDir();
         Path binDir = binDir();
-        cc.jumpkick.engine.protocol.ProjectInfo root = projectInfo(wsRoot);
+        ProjectInfo root = projectInfo(wsRoot);
         if (root.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", root.error());
+            CommandWedge.printFail("Install", root.error());
             return Exit.CONFIG;
         }
         List<Path> moduleDirs = new ArrayList<>();
@@ -347,7 +359,7 @@ public final class InstallCommand {
         for (Path mod : moduleDirs) {
             var info = projectInfo(mod);
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
-            Optional<Path> graal = new cc.jumpkick.cli.GraalResolver(null, false).resolve(mod, info.graal());
+            Optional<Path> graal = new GraalResolver(null, false).resolve(mod, info.graal());
             if (graal.isEmpty()) return 1;
             graalByDir.put(mod, graal.get());
         }
@@ -370,16 +382,15 @@ public final class InstallCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         WorkspaceResult result;
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                    cc.jumpkick.engine.EnginePaths.current(), req, new cc.jumpkick.runtime.WorkspaceBuildListener() {
-                        @Override
-                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            return BuildPlanConsole.chooseConsoleListener(
-                                    planName, m.plan().steps(), mode);
-                        }
-                    });
+            result = EngineClient.buildWorkspace(EnginePaths.current(), req, new WorkspaceBuildListener() {
+                @Override
+                public BuildPlanListener onModuleStart(ModulePlan m) {
+                    return BuildPlanConsole.chooseConsoleListener(
+                            planName, m.plan().steps(), mode);
+                }
+            });
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
+            CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!result.success()) return result.exitCode() == 0 ? 1 : result.exitCode();
@@ -392,7 +403,7 @@ public final class InstallCommand {
                 try {
                     launcher = applyInstallPlan(mod, cacheDir);
                 } catch (IOException e) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
+                    CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                     return 1;
                 }
             }
@@ -401,14 +412,13 @@ public final class InstallCommand {
         return 0;
     }
 
-    private static boolean isPluginWorker(cc.jumpkick.engine.protocol.ProjectInfo proj, Path projectDir) {
-        return cc.jumpkick.plugin.PluginModule.isWorker(projectDir)
-                || "cc.jumpkick.plugin.process.PluginMain".equals(proj.mainClass());
+    private static boolean isPluginWorker(ProjectInfo proj, Path projectDir) {
+        return PluginModule.isWorker(projectDir) || "cc.jumpkick.plugin.process.PluginMain".equals(proj.mainClass());
     }
 
     /** The engine's parsed-project summary. */
-    private cc.jumpkick.engine.protocol.ProjectInfo projectInfo(Path projectDir) throws IOException {
-        return cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), projectDir);
+    private ProjectInfo projectInfo(Path projectDir) throws IOException {
+        return EngineClient.projectInfo(EnginePaths.current(), projectDir);
     }
 
     /**
@@ -417,8 +427,8 @@ public final class InstallCommand {
      * hard-link/copy each pair, write the launcher, mark executables. Returns the launcher path.
      */
     private Path applyInstallPlan(Path projectDir, Path cacheDir) throws IOException {
-        cc.jumpkick.engine.protocol.ExecPlan plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
-                cc.jumpkick.engine.EnginePaths.current(),
+        ExecPlan plan = EngineClient.execPlan(
+                EnginePaths.current(),
                 projectDir,
                 cacheDir,
                 "install",
@@ -446,8 +456,7 @@ public final class InstallCommand {
                     && productLib.equals(parent.getParent())) {
                 Path src = Path.of(plan.linkSrcs().get(i));
                 String version = engineInstallVersion(projectDir, src);
-                new EngineInstall(JkDirs.productLib())
-                        .materializeFromFiles(version, cc.jumpkick.cache.JkStores.cas(cacheDir), src);
+                new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.cas(cacheDir), src);
                 return null; // the engine is a jar the client launches — no launcher/bin to link
             }
         }
@@ -479,7 +488,7 @@ public final class InstallCommand {
      * jk-config.*} system properties. The engine is not this path — it writes {@code jk-engine.toml}
      * beside the jar via {@link EngineInstall}.
      */
-    private void writeAppInstallConfig(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) throws IOException {
+    private void writeAppInstallConfig(Path projectDir, ExecPlan plan) throws IOException {
         if (plan.linkDests().isEmpty()) return;
         Path dest = Path.of(plan.linkDests().get(0));
         Path parent = dest.getParent();

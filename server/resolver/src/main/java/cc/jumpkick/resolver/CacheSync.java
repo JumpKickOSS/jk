@@ -2,11 +2,17 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.ArtifactLocator;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
+import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.net.URI;
@@ -28,36 +34,34 @@ public final class CacheSync {
 
     private final Cas cas;
     private final Http http;
-    private final cc.jumpkick.repo.RepoCredentialResolver creds;
+    private final RepoCredentialResolver creds;
     private final boolean m2integration;
-    private final cc.jumpkick.repo.ArtifactLocator locator;
+    private final ArtifactLocator locator;
 
     public CacheSync(Cas cas, Http http) {
-        this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), true);
+        this(cas, http, new RepoCredentialResolver(), true);
     }
 
     /** As above, with the resolving project's {@code m2integration} value. */
     public CacheSync(Cas cas, Http http, boolean m2integration) {
-        this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), m2integration);
+        this(cas, http, new RepoCredentialResolver(), m2integration);
     }
 
     /** Visible for tests — inject a credential resolver. */
-    public CacheSync(Cas cas, Http http, cc.jumpkick.repo.RepoCredentialResolver creds) {
+    public CacheSync(Cas cas, Http http, RepoCredentialResolver creds) {
         this(cas, http, creds, true);
     }
 
     /** Visible for tests — inject a credential resolver and {@code m2integration} explicitly. */
-    public CacheSync(Cas cas, Http http, cc.jumpkick.repo.RepoCredentialResolver creds, boolean m2integration) {
+    public CacheSync(Cas cas, Http http, RepoCredentialResolver creds, boolean m2integration) {
         this.cas = Objects.requireNonNull(cas, "cas");
         this.http = Objects.requireNonNull(http, "http");
         this.creds = Objects.requireNonNull(creds, "creds");
         // Effective policy is project AND the machine kill switch — mirror MavenRepo, so a global
         // [m2] integration = false is honored here too (JK-2306).
-        boolean effectiveM2 =
-                m2integration && cc.jumpkick.config.JkM2Config.resolve().integration();
+        boolean effectiveM2 = m2integration && JkM2Config.resolve().integration();
         this.m2integration = effectiveM2;
-        this.locator = new cc.jumpkick.repo.ArtifactLocator(
-                cas.root(), effectiveM2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, effectiveM2);
+        this.locator = new ArtifactLocator(cas.root(), effectiveM2 ? M2Dirs.localRepository() : null, effectiveM2);
     }
 
     /**
@@ -109,7 +113,7 @@ public final class CacheSync {
             }
             // First-party store source (jk install <file>, worker JARs) is never fetched from a
             // remote — it lives in repos/jk-local.
-            if (cc.jumpkick.repo.RepoArtifactResolver.isFirstPartySource(pkg.source())) {
+            if (RepoArtifactResolver.isFirstPartySource(pkg.source())) {
                 if (locator.locate(pkg).isPresent()) upToDate++;
                 else skipped++;
                 observer.upToDate(pkg);
@@ -168,8 +172,8 @@ public final class CacheSync {
             String hex = pkg.sourcesChecksumHex();
             Coordinate sourcesCoord =
                     new Coordinate(pkg.moduleGroup(), pkg.moduleArtifact(), pkg.version(), "sources", "jar");
-            String repoName = cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source());
-            String rel = cc.jumpkick.repo.MavenLayout.artifactPath(sourcesCoord);
+            String repoName = RepoArtifactResolver.repoName(pkg.source());
+            String rel = MavenLayout.artifactPath(sourcesCoord);
             if (locator.locate(repoName, rel, hex, sourcesCoord.toGav()).isPresent()) {
                 observer.upToDate(pkg);
                 continue;
@@ -184,7 +188,7 @@ public final class CacheSync {
         int fetched = 0;
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>();
         for (PendingFetch p : pending) {
-            futures.add(CompletableFuture.supplyAsync(() -> fetchSources(p), cc.jumpkick.run.JkThreads.io()));
+            futures.add(CompletableFuture.supplyAsync(() -> fetchSources(p), JkThreads.io()));
         }
         for (int i = 0; i < futures.size(); i++) {
             FetchResult r;
@@ -205,8 +209,8 @@ public final class CacheSync {
     }
 
     private static FetchResult fetchSources(PendingFetch p) {
-        Coordinate sourcesCoord = new cc.jumpkick.model.Coordinate(
-                p.pkg.moduleGroup(), p.pkg.moduleArtifact(), p.pkg.version(), "sources", "jar");
+        Coordinate sourcesCoord =
+                new Coordinate(p.pkg.moduleGroup(), p.pkg.moduleArtifact(), p.pkg.version(), "sources", "jar");
         try {
             MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord);
             if (!f.sha256().equals(p.expectedHex)) {

@@ -3,6 +3,7 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.Scope;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -85,7 +86,7 @@ class LockfileRoundTripTest {
                         "git+https://github.com/acme/widgets",
                         "sha256:abcd",
                         null,
-                        List.of(cc.jumpkick.model.Scope.MAIN),
+                        List.of(Scope.MAIN),
                         List.of(),
                         null,
                         git)));

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import java.util.Map;
@@ -201,18 +202,13 @@ public final class ProtoSession {
      * forks workers, not an arbitrary subset), and an empty envelope leaves the line byte-
      * identical. The splice is validated: {@code request} must be a one-line encoded object.
      */
-    public static String withSession(
-            String request, String variant, Map<String, String> clientEnv, cc.jumpkick.config.PluginTuning t) {
+    public static String withSession(String request, String variant, Map<String, String> clientEnv, PluginTuning t) {
         return withSession(request, variant, clientEnv, t, false, false);
     }
 
     /** As above, additionally carrying the session's {@code rebuild} distrust flag when set. */
     public static String withSession(
-            String request,
-            String variant,
-            Map<String, String> clientEnv,
-            cc.jumpkick.config.PluginTuning t,
-            boolean rebuild) {
+            String request, String variant, Map<String, String> clientEnv, PluginTuning t, boolean rebuild) {
         return withSession(request, variant, clientEnv, t, rebuild, false);
     }
 
@@ -224,7 +220,7 @@ public final class ProtoSession {
             String request,
             String variant,
             Map<String, String> clientEnv,
-            cc.jumpkick.config.PluginTuning t,
+            PluginTuning t,
             boolean rebuild,
             boolean noTimeline) {
         return withSession(request, variant, clientEnv, t, rebuild, noTimeline, null);
@@ -238,7 +234,7 @@ public final class ProtoSession {
             String request,
             String variant,
             Map<String, String> clientEnv,
-            cc.jumpkick.config.PluginTuning t,
+            PluginTuning t,
             boolean rebuild,
             boolean noTimeline,
             String assemblyOverride) {
@@ -317,13 +313,13 @@ public final class ProtoSession {
     }
 
     /** Decode side of {@link #withSession}; NONE when the request carries no tuning fields. */
-    public static cc.jumpkick.config.PluginTuning jvmTuning(String request) {
+    public static PluginTuning jvmTuning(String request) {
         String maxRam = Jsonl.str(request, "jvmMaxRam");
         String gc = Jsonl.str(request, "jvmGc");
         String dedup = Jsonl.str(request, "jvmStringDedup");
         List<String> args = Jsonl.strArray(request, "jvmArgs");
         if (maxRam == null && gc == null && dedup == null && args.isEmpty()) {
-            return cc.jumpkick.config.PluginTuning.NONE;
+            return PluginTuning.NONE;
         }
         Double ram = null;
         try {
@@ -331,7 +327,7 @@ public final class ProtoSession {
         } catch (NumberFormatException ignored) {
             // a malformed number degrades to absent, like every tolerant config read
         }
-        return new cc.jumpkick.config.PluginTuning(ram, gc, dedup == null ? null : Boolean.valueOf(dedup), args);
+        return new PluginTuning(ram, gc, dedup == null ? null : Boolean.valueOf(dedup), args);
     }
 
     /** {@code Jsonl} only reads string arrays; it has no writer half, so this is the encode side. */

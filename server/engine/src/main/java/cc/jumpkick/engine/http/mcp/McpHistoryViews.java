@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.util.DirKeys;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,7 +61,7 @@ public final class McpHistoryViews {
     }
 
     public static String normalizeDir(String dir) {
-        String s = cc.jumpkick.util.DirKeys.key(dir);
+        String s = DirKeys.key(dir);
         while (s.endsWith("/") && s.length() > 1) s = s.substring(0, s.length() - 1);
         return s;
     }

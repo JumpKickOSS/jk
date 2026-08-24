@@ -8,6 +8,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.task.IoLedger;
 import java.io.BufferedWriter;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -110,7 +111,7 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
-    public cc.jumpkick.task.IoLedger runIo(long id) {
+    public IoLedger runIo(long id) {
         return sse.runIo(id);
     }
 

@@ -64,7 +64,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final EngineHttpJobs jobs;
     private final ProgressTokenRegistry progressTokens;
     private final cc.jumpkick.engine.journal.BuildJournal journal;
-    private final Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
+    private final Supplier<List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
     private final LiveVitals liveVitals;
     private final ApiRouter api = new ApiRouter();
@@ -88,7 +88,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * subscription only so a refreshed tab resumes without flooding the bus or blocking live
      * ticks behind a phase-by-phase replay.
      */
-    private volatile java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect = s -> {};
+    private volatile Consumer<HttpEvents.Subscription> onEventsConnect = s -> {};
 
     private volatile HttpServer server;
     private volatile ExecutorService executor;
@@ -101,8 +101,7 @@ public final class HttpEngineServer implements AutoCloseable {
      *     one mid-flight snapshot per running job to that subscription only
      */
     public void setLiveRunSupport(
-            Supplier<List<HttpLive.Run>> liveRuns,
-            java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect) {
+            Supplier<List<HttpLive.Run>> liveRuns, Consumer<HttpEvents.Subscription> onEventsConnect) {
         this.liveRuns = liveRuns != null ? liveRuns : List::of;
         this.onEventsConnect = onEventsConnect != null ? onEventsConnect : s -> {};
     }
@@ -148,7 +147,7 @@ public final class HttpEngineServer implements AutoCloseable {
             HttpEvents events,
             EngineHttpJobs jobs,
             cc.jumpkick.engine.journal.BuildJournal journal,
-            Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics,
+            Supplier<List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics,
             Supplier<CacheSnapshot> cache,
             Consumer<String> log) {
         this.config = config;
@@ -720,7 +719,7 @@ public final class HttpEngineServer implements AutoCloseable {
             out.flush();
             // Batch drain: a full queue of structural+progress frames must not force one
             // write+flush per event (that stalls the socket while the CLI TUI stays smooth).
-            java.util.List<String> batch = new java.util.ArrayList<>(64);
+            List<String> batch = new java.util.ArrayList<>(64);
             byte[] heartbeat = ": heartbeat\n\n".getBytes(StandardCharsets.UTF_8);
             while (true) {
                 String first = subscription.next(heartbeatMillis);
@@ -798,7 +797,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * would un-wedge them). Reacquire is uninterruptible — the balancing {@code release()} in
      * {@link #handle} must never release a permit this thread does not hold.
      */
-    private <T> T yieldingAdmission(java.util.function.Supplier<T> blocking) {
+    private <T> T yieldingAdmission(Supplier<T> blocking) {
         admission.release();
         try {
             return blocking.get();

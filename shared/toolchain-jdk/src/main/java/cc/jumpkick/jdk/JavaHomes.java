@@ -2,6 +2,11 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,7 +21,7 @@ public final class JavaHomes {
 
     public static Path resolveJavaHome(Path projectDir) {
         try {
-            cc.jumpkick.lock.Lockfile lock = readLockSoft(projectDir);
+            Lockfile lock = readLockSoft(projectDir);
             JkBuild build = readBuildSoft(projectDir);
             JdkResolution.Request req = new JdkResolution.Request(
                     projectDir,
@@ -37,10 +42,10 @@ public final class JavaHomes {
         return runningJavaHome();
     }
 
-    private static cc.jumpkick.lock.Lockfile readLockSoft(Path projectDir) {
+    private static Lockfile readLockSoft(Path projectDir) {
         try {
-            Path lock = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
-            return Files.isRegularFile(lock) ? cc.jumpkick.lock.LockfileReader.read(lock) : null;
+            Path lock = LockPaths.lockFile(projectDir);
+            return Files.isRegularFile(lock) ? LockfileReader.read(lock) : null;
         } catch (Exception e) {
             return null;
         }
@@ -51,16 +56,16 @@ public final class JavaHomes {
         try {
             Path toml = projectDir.resolve("jk.toml");
             if (!Files.isRegularFile(toml)) return null;
-            var scan = cc.jumpkick.config.TomlScan.scan(toml, "jdk", "java");
+            var scan = TomlScan.scan(toml, "jdk", "java");
             String jdk = scan.get("jdk");
             String java = scan.get("java");
             if (isBlank(jdk) || isBlank(java)) {
                 // A workspace member auto-inherits jdk/java from its root; the parser this scan
                 // replaced applied that via WorkspaceResolve (JK-2156). Mirror it per key —
                 // same bootstrap pattern as ProjectIdentity.coordOf's group inheritance.
-                var root = cc.jumpkick.config.WorkspaceScan.findRoot(projectDir);
+                var root = WorkspaceScan.findRoot(projectDir);
                 if (root.isPresent()) {
-                    var rootScan = cc.jumpkick.config.TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java");
+                    var rootScan = TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java");
                     if (isBlank(jdk)) jdk = rootScan.get("jdk");
                     if (isBlank(java)) java = rootScan.get("java");
                 }

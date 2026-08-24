@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
@@ -45,11 +47,11 @@ class MavenRepoTest {
     @AfterEach
     void stop() {
         server.stop(0);
-        cc.jumpkick.config.SessionContext.reset();
+        SessionContext.reset();
     }
 
     private static void goOffline() {
-        cc.jumpkick.config.SessionContext.installConfig(JkConfig.empty().withOffline(Optional.of(true)));
+        SessionContext.installConfig(JkConfig.empty().withOffline(Optional.of(true)));
     }
 
     @Test
@@ -104,8 +106,7 @@ class MavenRepoTest {
         String newSha = Hashing.sha256Hex(newBytes);
 
         // m2 off so only the store mirror is in play.
-        MavenRepo repo = new MavenRepo(
-                "test", base, new Http(), new Cas(tempDir), cc.jumpkick.credential.RepoCredential.ANONYMOUS, false);
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false);
 
         // Without the pin: the stale mirror copy is served (the old dead-end behavior).
         assertThat(repo.fetchArtifact(coord).sha256()).isEqualTo(Hashing.sha256Hex(oldBytes));
@@ -159,8 +160,7 @@ class MavenRepoTest {
         try {
             byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
             serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
-            MavenRepo repo = new MavenRepo(
-                    "test", base, new Http(), new Cas(tempDir), cc.jumpkick.credential.RepoCredential.ANONYMOUS, false);
+            MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false);
 
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
             repo.fetchArtifact(coord);
@@ -179,8 +179,7 @@ class MavenRepoTest {
         try {
             byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
             serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
-            MavenRepo repo = new MavenRepo(
-                    "test", base, new Http(), new Cas(tempDir), cc.jumpkick.credential.RepoCredential.ANONYMOUS, true);
+            MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
 
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
             MavenRepo.Fetched fetched = repo.fetchArtifact(coord);

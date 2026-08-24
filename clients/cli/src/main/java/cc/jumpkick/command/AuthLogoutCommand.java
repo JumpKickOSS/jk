@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.forge.AuthException;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeKind;
@@ -68,8 +69,7 @@ public final class AuthLogoutCommand implements CliCommand {
 
         AuthCommand.authFor(credentialsDir).logout(kind, resolvedHost);
         if (!global.quiet) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk(
-                    "Auth", "Logged out of " + kind.displayName() + " (" + resolvedHost + ")");
+            CommandWedge.printOk("Auth", "Logged out of " + kind.displayName() + " (" + resolvedHost + ")");
         }
         return 0;
     }

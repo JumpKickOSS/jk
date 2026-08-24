@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -105,15 +107,15 @@ class PinnedWorkerJarTest {
 
     @Test
     void unsatisfiable_lock_pin_is_loud_not_a_silent_fallback(@TempDir Path tmp) throws Exception {
-        cc.jumpkick.lock.LockfileWriter.write(
-                new cc.jumpkick.lock.Lockfile(
-                        cc.jumpkick.lock.Lockfile.CURRENT_VERSION,
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
                         "test",
-                        cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
+                        Lockfile.RESOLUTION_ALGORITHM,
                         null,
                         null,
                         List.of(),
-                        List.of(new cc.jumpkick.lock.Lockfile.PluginEntry(
+                        List.of(new Lockfile.PluginEntry(
                                 "cc.jumpkick:jk-spring-boot", "0.0.1", "sha256:" + "ee".repeat(32)))),
                 tmp.resolve("jk-lock.toml"));
         String prior = System.getProperty("jk.official.repo.url");
@@ -135,11 +137,11 @@ class PinnedWorkerJarTest {
 
     @Test
     void worker_without_a_pin_returns_null_for_locate_fallback(@TempDir Path tmp) throws Exception {
-        cc.jumpkick.lock.LockfileWriter.write(
-                new cc.jumpkick.lock.Lockfile(
-                        cc.jumpkick.lock.Lockfile.CURRENT_VERSION,
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
                         "test",
-                        cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
+                        Lockfile.RESOLUTION_ALGORITHM,
                         null,
                         null,
                         List.of(),

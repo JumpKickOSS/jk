@@ -6,6 +6,8 @@ import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -203,7 +205,7 @@ class InstallExecCommandTest {
         serveJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
 
         // System global catalog layer (store/libs.global.toml — JK_HOME is redirected in tests).
-        Path libsToml = cc.jumpkick.util.JkDirs.libraryRegistry();
+        Path libsToml = JkDirs.libraryRegistry();
         Files.createDirectories(libsToml.getParent());
         Files.writeString(libsToml, "[libraries]\ntesttool-fixture = \"com.example:widget-cli\"\n");
         try {
@@ -433,8 +435,7 @@ class InstallExecCommandTest {
     void native_classifier_tool_installs_a_direct_exec_launcher(@TempDir Path tempDir) throws Exception {
         // PRD §20.4: a published native binary for this platform beats the JVM path.
         maven.servePom("com.example", "fastcli", "1.0.0");
-        String classifier =
-                "native-" + cc.jumpkick.jdk.HostPlatform.currentArch() + "-" + cc.jumpkick.jdk.HostPlatform.currentOs();
+        String classifier = "native-" + HostPlatform.currentArch() + "-" + HostPlatform.currentOs();
         maven.served()
                 .put(
                         "/com/example/fastcli/1.0.0/fastcli-1.0.0-" + classifier + ".exe",

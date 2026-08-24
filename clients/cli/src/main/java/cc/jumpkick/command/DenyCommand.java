@@ -2,12 +2,16 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.DenyReport;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -44,18 +48,17 @@ public final class DenyCommand implements CliCommand {
         Path projectDir = global.workingDir();
         Path jkBuild = projectDir.resolve("jk.toml");
         if (!Files.exists(jkBuild)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Deny", jkBuild + " not found.");
+            CommandWedge.printFail("Deny", jkBuild + " not found.");
             return Exit.NO_INPUT;
         }
         Path cache = JkDirs.cache();
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(projectDir, cache, global, "Deny");
+        int lockCode = EnsureFreshLock.ensure(projectDir, cache, global, "Deny");
         if (lockCode != 0) return lockCode;
-        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Deny",
-                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                            + " (lock refresh did not produce one).");
+                    "no jk-lock.toml in " + PathDisplay.styledRaw(projectDir) + " (lock refresh did not produce one).");
             return Exit.CONFIG;
         }
 
@@ -77,11 +80,10 @@ public final class DenyCommand implements CliCommand {
         DenyReport report = plan.get(REPORT).orElseThrow();
         if (report.violationCount() == 0) {
             if (!global.outputIsJson())
-                cc.jumpkick.cli.tui.CommandWedge.printOk(
-                        "Deny", report.checked() + " package(s) checked — no violations.");
+                CommandWedge.printOk("Deny", report.checked() + " package(s) checked — no violations.");
             return 0;
         }
-        cc.jumpkick.cli.tui.CommandWedge.printFail("Deny", report.violationCount() + " violation(s):");
+        CommandWedge.printFail("Deny", report.violationCount() + " violation(s):");
         for (int i = 0; i < report.violationCount(); i++) {
             CliOutput.err("  "
                     + Coords.module(report.modules().get(i), report.versions().get(i)) + " — "

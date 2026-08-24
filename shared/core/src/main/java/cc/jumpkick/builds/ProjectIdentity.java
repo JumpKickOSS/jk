@@ -6,6 +6,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -427,7 +428,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
             if (identity.gitRelPath() != null) {
                 b.append("git-rel-path = ").append(q(identity.gitRelPath())).append('\n');
             }
-            cc.jumpkick.util.AtomicWrites.replace(projectHome.resolve(ProjectBuilds.IDENTITY), b.toString());
+            AtomicWrites.replace(projectHome.resolve(ProjectBuilds.IDENTITY), b.toString());
         }
 
         private static String q(String s) {

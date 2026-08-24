@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import java.nio.file.Path;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -66,13 +68,10 @@ class CachedEtaTest {
     }
 
     /** A plan of no-op steps, each carrying a non-trivial estimated weight. */
-    private static cc.jumpkick.run.BuildPlan planOf(String... names) {
-        cc.jumpkick.run.BuildPlan.Builder b = cc.jumpkick.run.BuildPlan.builder("test");
+    private static BuildPlan planOf(String... names) {
+        BuildPlan.Builder b = BuildPlan.builder("test");
         for (String name : names) {
-            b.addTask(cc.jumpkick.run.Task.builder(name)
-                    .weight(10)
-                    .execute(ctx -> {})
-                    .build());
+            b.addTask(Task.builder(name).weight(10).execute(ctx -> {}).build());
         }
         return b.build();
     }

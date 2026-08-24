@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
@@ -63,7 +64,7 @@ public final class ToolInstaller {
                 }
             }
             Files.write(archive, body);
-            cc.jumpkick.config.SessionContext.current().io().remoteDown(archive);
+            SessionContext.current().io().remoteDown(archive);
 
             // Stage NEXT TO the target (same filesystem): the install is then one atomic
             // rename, so a crash or a racing provision never leaves a partial tree at target

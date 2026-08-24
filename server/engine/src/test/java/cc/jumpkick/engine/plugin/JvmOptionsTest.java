@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -243,7 +244,7 @@ class JvmOptionsTest {
                 string-dedup = false
                 args = ["-XX:+AlwaysPreTouch"]
                 """);
-        PluginTuning s = cc.jumpkick.config.PluginTunings.fromToml(toml);
+        PluginTuning s = PluginTunings.fromToml(toml);
         assertThat(s.maxRamPercent()).isEqualTo(33.0);
         assertThat(s.gc()).isEqualTo("g1");
         assertThat(s.stringDedup()).isFalse();
@@ -254,7 +255,7 @@ class JvmOptionsTest {
     void missing_jvm_table_is_empty(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, "group=\"x\"\nname=\"y\"\nversion=\"1\"\n");
-        assertThat(cc.jumpkick.config.PluginTunings.fromToml(toml)).isEqualTo(PluginTuning.NONE);
+        assertThat(PluginTunings.fromToml(toml)).isEqualTo(PluginTuning.NONE);
     }
 
     @Test
@@ -268,7 +269,7 @@ class JvmOptionsTest {
                 """);
         // CLI maxRam is non-null → wins over the toml layer regardless of env.
         PluginTuning cli = new PluginTuning(80.0, null, null, List.of());
-        PluginTuning eff = cc.jumpkick.config.PluginTunings.resolve(cli, dir);
+        PluginTuning eff = PluginTunings.resolve(cli, dir);
         assertThat(eff.maxRamPercent()).isEqualTo(80.0);
     }
 }

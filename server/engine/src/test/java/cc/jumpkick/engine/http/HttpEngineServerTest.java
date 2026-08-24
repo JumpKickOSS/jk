@@ -6,10 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.BuildMetrics;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.Socket;
@@ -83,7 +87,7 @@ class HttpEngineServerTest {
     private final List<String> triggeredDirs = new ArrayList<>();
 
     /** Rows served by {@code GET /api/metrics} — tests seed this list directly. */
-    private final List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new ArrayList<>();
+    private final List<BuildMetrics.Entry> metricsRows = new ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
     private static final CacheSnapshot EMPTY_CACHE =
@@ -105,9 +109,8 @@ class HttpEngineServerTest {
     }
 
     /** A journal rooted under the test's temp state dir — endpoints exist; content is per-test. */
-    private cc.jumpkick.engine.journal.BuildJournal testJournal() {
-        return new cc.jumpkick.engine.journal.BuildJournal(
-                stateDir.resolve("builds").resolve("journal"));
+    private BuildJournal testJournal() {
+        return new BuildJournal(stateDir.resolve("builds").resolve("journal"));
     }
 
     /** Stub {@link EngineHttpJobs}: records the dir, returns a fixed id, rejects "reject me". */
@@ -830,9 +833,8 @@ class HttpEngineServerTest {
             Files.writeString(checkout.resolve("target/report.md"), "# report\n");
             Files.writeString(checkout.resolve("build/Skip.java"), "class Skip {}");
             Files.writeString(checkout.resolve(".env"), "SECRET=1");
-            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
-            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
-                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+            var identity = ProjectIdentity.resolve(checkout);
+            ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
             String id = identity.id();
 
             HttpResponse<String> noToken = client.send(
@@ -1006,9 +1008,8 @@ class HttpEngineServerTest {
             Files.writeString(checkout.resolve("src/A+B.java"), "class APlusB {}\n");
             Files.writeString(checkout.resolve("src/A&B.java"), "class AAmpB {}\n");
             Files.writeString(checkout.resolve("src/A%2.java"), "class APct {}\n");
-            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
-            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
-                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+            var identity = ProjectIdentity.resolve(checkout);
+            ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
             String id = identity.id();
 
             // Exactly what code.js's encodeURIComponent sends for each listed path.
@@ -1041,20 +1042,19 @@ class HttpEngineServerTest {
 
     @Test
     void api_metrics_reports_aggregate_rows_with_the_token() throws Exception {
-        var ok = new cc.jumpkick.runtime.BuildMetrics.Stats(3, 6000, 1000, 3000);
-        var empty = cc.jumpkick.runtime.BuildMetrics.Stats.EMPTY;
-        metricsRows.add(new cc.jumpkick.runtime.BuildMetrics.Entry("build", "", null, null, ok, empty, empty, 5L));
-        metricsRows.add(new cc.jumpkick.runtime.BuildMetrics.Entry("build", "/p", "g:n", null, ok, empty, empty, 5L));
-        metricsRows.add(
-                new cc.jumpkick.runtime.BuildMetrics.Entry(null, "/other", null, "compile-java", ok, empty, empty, 5L));
+        var ok = new BuildMetrics.Stats(3, 6000, 1000, 3000);
+        var empty = BuildMetrics.Stats.EMPTY;
+        metricsRows.add(new BuildMetrics.Entry("build", "", null, null, ok, empty, empty, 5L));
+        metricsRows.add(new BuildMetrics.Entry("build", "/p", "g:n", null, ok, empty, empty, 5L));
+        metricsRows.add(new BuildMetrics.Entry(null, "/other", null, "compile-java", ok, empty, empty, 5L));
 
         HttpResponse<String> resp = get("/api/metrics", "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
-                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL))
-                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT))
-                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT_TASK))
+                .contains(scopeJson(BuildMetrics.SCOPE_GLOBAL))
+                .contains(scopeJson(BuildMetrics.SCOPE_PROJECT))
+                .contains(scopeJson(BuildMetrics.SCOPE_PROJECT_TASK))
                 .contains("\"okCount\":3")
                 .contains("\"okAvgMillis\":2000")
                 .contains("\"coord\":\"g:n\"");
@@ -1062,9 +1062,7 @@ class HttpEngineServerTest {
         // ?dir= keeps the global tiers but drops other projects' rows.
         String filtered =
                 get("/api/metrics?dir=/p", "Authorization", "Bearer " + token()).body();
-        assertThat(filtered)
-                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL))
-                .contains("\"dir\":\"/p\"");
+        assertThat(filtered).contains(scopeJson(BuildMetrics.SCOPE_GLOBAL)).contains("\"dir\":\"/p\"");
         assertThat(filtered).doesNotContain("/other");
     }
 

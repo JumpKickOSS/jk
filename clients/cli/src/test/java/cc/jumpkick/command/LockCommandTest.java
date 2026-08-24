@@ -5,7 +5,9 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -23,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
-@cc.jumpkick.cli.engine.IsolatedStore
+@IsolatedStore
 @Tag("integration")
 class LockCommandTest {
 
@@ -46,7 +48,7 @@ class LockCommandTest {
 
     @AfterEach
     void reset() {
-        cc.jumpkick.config.SessionContext.reset();
+        SessionContext.reset();
         LockfileReader.clearCache();
     }
 

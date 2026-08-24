@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -9,6 +11,7 @@ import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1010,7 +1013,7 @@ public final class Calibration {
             var req = new JdkResolution.Request(
                     null, SessionContext.current().jdkSpec(), System.getenv("JK_JDK"), null, null, 0, System::getenv);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
-            return r.jdk().map(cc.jumpkick.jdk.InstalledJdk::home);
+            return r.jdk().map(InstalledJdk::home);
         } catch (Exception e) {
             return Optional.empty();
         }
@@ -1057,7 +1060,7 @@ public final class Calibration {
                 org.tomlj.TomlTable mean = t.getTable("mean");
                 Map<String, List<Double>> rings = new LinkedHashMap<>(learned.samples());
                 for (String key : mean.keySet()) {
-                    if (!cc.jumpkick.builds.MetricsHarvest.isContinuousMeanKey(key)) continue;
+                    if (!MetricsHarvest.isContinuousMeanKey(key)) continue;
                     Object v = mean.get(key);
                     if (v instanceof Number n && n.doubleValue() > 0) {
                         rings.putIfAbsent(key, List.of(n.doubleValue()));
@@ -1359,7 +1362,7 @@ public final class Calibration {
     }
 
     private static String quote(String s) {
-        return cc.jumpkick.util.MinimalToml.quote(s);
+        return MinimalToml.quote(s);
     }
 
     private static double round3(double v) {

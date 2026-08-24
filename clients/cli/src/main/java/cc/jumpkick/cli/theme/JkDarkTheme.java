@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.theme;
 
 import cc.jumpkick.cli.tui.Rail;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 
@@ -119,7 +120,7 @@ public final class JkDarkTheme implements Theme {
         // No-ANSI mode: explicitly set, dumb terminal, or CI=true/1.
         // NOT gated on colorEnabled() — NO_COLOR / --color never only disables color;
         // it does not disable Unicode glyphs, animations, or other ANSI sequences.
-        if (cc.jumpkick.config.SessionContext.current().config().noAnsiOr(false)) return false;
+        if (SessionContext.current().config().noAnsiOr(false)) return false;
         if ("dumb".equals(System.getenv("TERM"))) return false;
         String ci = System.getenv("CI");
         if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) return false;

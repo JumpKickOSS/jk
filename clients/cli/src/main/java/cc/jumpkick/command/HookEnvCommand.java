@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -49,7 +50,7 @@ public final class HookEnvCommand implements CliCommand {
         String shellName = in.value("shell").orElseThrow();
         var shell = Shell.byName(shellName);
         if (shell.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Hook-env", "unsupported shell `" + shellName + "`");
+            CommandWedge.printFail("Hook-env", "unsupported shell `" + shellName + "`");
             return Exit.USAGE;
         }
         var cwd = new GlobalOptions().workingDir();

@@ -2,12 +2,15 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.compile.WorkerAotBootstrap;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -52,7 +55,7 @@ public final class HostWarmup {
         }
         // [engine] auto-warmup = false
         try {
-            var scan = cc.jumpkick.config.TomlScan.scan(userConfig, "engine.auto-warmup");
+            var scan = TomlScan.scan(userConfig, "engine.auto-warmup");
             String v = scan.get("engine.auto-warmup");
             if (v != null && isOff(v.trim())) return false;
         } catch (RuntimeException ignored) {
@@ -89,7 +92,7 @@ public final class HostWarmup {
     private static Path cachePath(String tool, Path host, PluginJar jar) {
         try {
             Path workerJar = jar.locate();
-            String cp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(workerJar);
+            String cp = WorkerLaunchClasspath.resolve(workerJar);
             return PluginAot.cachePath(tool, host, cp);
         } catch (Exception e) {
             return null;
@@ -141,7 +144,7 @@ public final class HostWarmup {
         } catch (Throwable ignored) {
         }
         try {
-            cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(log);
+            OfficialTemplatesFreshen.refreshQuiet(log);
         } catch (Throwable ignored) {
         }
         if (!enabled() && !forceAot) {

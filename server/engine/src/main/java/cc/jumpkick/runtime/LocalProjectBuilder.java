@@ -10,9 +10,13 @@ import cc.jumpkick.compile.JavacRunner;
 import cc.jumpkick.compile.KotlincDriver;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.KotlincResult;
+import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
@@ -74,7 +78,7 @@ public final class LocalProjectBuilder {
         // 1. Resolve the project's own dependencies and the compile classpath.
         Lockfile lock = new LockOrchestrator(repos)
                 .withProjectDir(projectDir)
-                .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(project, projectDir))
+                .withJvmEnvironment(PluginContributions.jvmEnvironment(project, projectDir))
                 .withPlatformPolicy(project.build().platformPolicy())
                 .withUnmappedPolicy(project.build().unmappedPolicy())
                 .lock(project, jkVersion);
@@ -86,7 +90,7 @@ public final class LocalProjectBuilder {
         Files.createDirectories(classes);
 
         boolean simple = CompileSupport.isSimpleLayout(project.project(), projectDir);
-        cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
+        Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
         Path javaRoot = simple ? projectDir.resolve("src") : projectDir.resolve("src/main/java");
 
         // 2a. Kotlin first — a mixed module's Kotlin reads Java *declarations*
@@ -156,13 +160,13 @@ public final class LocalProjectBuilder {
         Files.createDirectories(jarOut.getParent());
         new JarPackager()
                 .packageJar(new JarPackager.JarRequest(
-                        classes, jarOut, cc.jumpkick.plugin.PluginModule.mainClass(projectDir, project), 0L, Map.of()));
+                        classes, jarOut, PluginModule.mainClass(projectDir, project), 0L, Map.of()));
 
         // 4. Render the POM, stamped with the published coordinate + version.
         String pomXml = PublishablePom.render(
                         withCoordinate(project, group, artifact, version),
                         PublishablePom.Metadata.empty(),
-                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(projectDir))
+                        WorkspaceResolve.siblingCoordinates(projectDir))
                 .xml();
 
         return new Built(group, artifact, version, jarOut, pomXml);

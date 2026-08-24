@@ -1,9 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.resolve.ResolveProcessCacheControl;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.CachePlans;
+import cc.jumpkick.runtime.TestClassWalls;
+import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.CachePruneScheduler;
+import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -71,7 +82,7 @@ public final class IdleHousekeeping {
             pruneJournal();
             pruneMetrics();
             try {
-                cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+                MetricsHarvest.get().awaitIdle(30_000L);
             } catch (RuntimeException ignored) {
             }
             if (activeBuildPlans.get() != 0) return;
@@ -92,8 +103,8 @@ public final class IdleHousekeeping {
 
     public void maybeEnqueuePrune(Path cache) {
         try {
-            var config = cc.jumpkick.config.JkCacheConfig.resolve();
-            if (config.autoPrune() && cc.jumpkick.task.CachePruneScheduler.shouldRun(config, cache)) {
+            var config = JkCacheConfig.resolve();
+            if (config.autoPrune() && CachePruneScheduler.shouldRun(config, cache)) {
                 pendingPruneCache.compareAndSet(null, cache);
             }
         } catch (IOException ignored) {
@@ -104,9 +115,9 @@ public final class IdleHousekeeping {
     /** 12-hour feed-refresh hook. Does not consult {@code .last-pruned}. */
     public void enqueueScheduledCachePrune() {
         if (shuttingDown.getAsBoolean()) return;
-        var config = cc.jumpkick.config.JkCacheConfig.resolve();
+        var config = JkCacheConfig.resolve();
         if (config.autoPrune()) {
-            pendingPruneCache.compareAndSet(null, cc.jumpkick.util.JkDirs.cache());
+            pendingPruneCache.compareAndSet(null, JkDirs.cache());
         }
         if (activeBuildPlans.get() == 0) {
             pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
@@ -158,7 +169,7 @@ public final class IdleHousekeeping {
                         }
                         drainPendingPrune();
                         try {
-                            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+                            MetricsHarvest.get().awaitIdle(30_000L);
                         } catch (RuntimeException ignored) {
                         }
                         HostWarmup.runIdle(force, log);
@@ -191,11 +202,11 @@ public final class IdleHousekeeping {
      */
     private static void dropHeapResidue() {
         try {
-            cc.jumpkick.task.FileHashMemo.clearAllThreadCaches();
-            cc.jumpkick.task.ActionCache.clearStampCache();
-            cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
+            FileHashMemo.clearAllThreadCaches();
+            ActionCache.clearStampCache();
+            ResolveProcessCacheControl.clearAll();
             BuildMetrics.clearSessionAggregatesMemo();
-            cc.jumpkick.runtime.TestClassWalls.takeAll();
+            TestClassWalls.takeAll();
         } catch (RuntimeException ignored) {
             // hygiene, never load-bearing
         }
@@ -217,8 +228,7 @@ public final class IdleHousekeeping {
 
     private void pruneMetrics() {
         try {
-            BuildMetrics.Limits limits =
-                    BuildMetrics.Limits.resolve(cc.jumpkick.util.JkDirs.userConfigFile(), System::getenv);
+            BuildMetrics.Limits limits = BuildMetrics.Limits.resolve(JkDirs.userConfigFile(), System::getenv);
             BuildMetrics.PruneReport r = BuildMetrics.prune(metricsFile.get(), limits, clock.getAsLong(), false);
             if (r.evictedByAge() + r.evictedBySize() > 0) {
                 log.accept("jk engine: build metrics prune removed " + (r.evictedByAge() + r.evictedBySize())
@@ -243,19 +253,18 @@ public final class IdleHousekeeping {
             try {
                 // Scratch is a single ambient directory, not a per-root one: sweeping it while
                 // pruning some other cache root would reach outside the root asked for.
-                boolean ambient = cache.equals(cc.jumpkick.util.JkDirs.cache());
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, false, ambient);
-                cc.jumpkick.run.BuildPlanResult result = plan.run();
+                boolean ambient = cache.equals(JkDirs.cache());
+                BuildPlan plan = CachePlans.pruneBuildPlan(cache, false, ambient);
+                BuildPlanResult result = plan.run();
                 if (result.success()) {
-                    cc.jumpkick.task.CachePruneScheduler.write(
+                    CachePruneScheduler.write(
                             cache,
                             clock.getAsLong(),
-                            plan.get(cc.jumpkick.runtime.CachePlans.FINAL_ACTION_BYTES)
-                                    .orElse(-1L));
+                            plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
                     log.accept("jk engine: idle-boundary cache prune removed "
-                            + plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(0L)
+                            + plan.get(CachePlans.FILES).orElse(0L)
                             + " files ("
-                            + plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(0L)
+                            + plan.get(CachePlans.BYTES).orElse(0L)
                             + " bytes)");
                 } else {
                     log.accept("jk engine: idle-boundary cache prune failed");

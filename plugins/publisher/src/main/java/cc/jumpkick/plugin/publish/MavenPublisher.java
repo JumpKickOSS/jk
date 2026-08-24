@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.publish;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.pom.PomXml;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.RepoTransports;
@@ -33,7 +34,7 @@ public final class MavenPublisher {
 
     /** Authenticate with an explicit credential (anonymous → no auth header). */
     public MavenPublisher(URI repoBase, RepoCredential credential) {
-        this(repoBase, credential, cc.jumpkick.model.ObjectStoreConfig.EMPTY);
+        this(repoBase, credential, ObjectStoreConfig.EMPTY);
     }
 
     /** Convenience for HTTP Basic auth; a blank username means anonymous. */
@@ -52,11 +53,11 @@ public final class MavenPublisher {
      * unambiguous against the Basic-auth constructor.
      */
     public static MavenPublisher withObjectStore(
-            URI repoBase, RepoCredential credential, cc.jumpkick.model.ObjectStoreConfig objectStore) {
+            URI repoBase, RepoCredential credential, ObjectStoreConfig objectStore) {
         return new MavenPublisher(repoBase, credential, objectStore);
     }
 
-    private MavenPublisher(URI repoBase, RepoCredential credential, cc.jumpkick.model.ObjectStoreConfig objectStore) {
+    private MavenPublisher(URI repoBase, RepoCredential credential, ObjectStoreConfig objectStore) {
         this.repoBase = normalize(Objects.requireNonNull(repoBase, "repoBase"));
         this.credential = Objects.requireNonNull(credential, "credential");
         this.transport = RepoTransports.forUrl(this.repoBase, new Http(), objectStore);

@@ -227,7 +227,7 @@ public final class PlannerNative {
                             .resolve(cc.jumpkick.surface.TrainLayout.REACHABILITY);
                     if (Files.isDirectory(trainReach)
                             && Files.isRegularFile(trainReach.resolve("reachability-metadata.json"))) {
-                        java.util.ArrayList<Path> withTrain = new java.util.ArrayList<>(metadataDirs);
+                        ArrayList<Path> withTrain = new ArrayList<>(metadataDirs);
                         withTrain.add(0, trainReach);
                         metadataDirs = withTrain;
                         // Refuse to native-build on stale train outputs when configured.
@@ -239,7 +239,7 @@ public final class PlannerNative {
                                 ctx.error("train-stale", stale);
                                 throw new RuntimeException(stale);
                             }
-                        } catch (java.io.IOException e) {
+                        } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
                     }
@@ -350,7 +350,7 @@ public final class PlannerNative {
                     // plan output channel. The CLI buffers output for Ctrl-O peek (hidden by
                     // default); --verbose streams it live. Do not gate on verbose/failure only —
                     // that left the peek buffer empty during a successful native-image run.
-                    java.util.List<String> niLog = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+                    List<String> niLog = java.util.Collections.synchronizedList(new ArrayList<>());
                     int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, line -> {
                         niLog.add(line);
                         ctx.output(line);
@@ -413,7 +413,7 @@ public final class PlannerNative {
         }
     }
 
-    static Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, cc.jumpkick.layout.BuildLayout layout)
+    static Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, BuildLayout layout)
             throws IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, dir);
         if (active.isEmpty()) return null;

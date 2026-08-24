@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -79,7 +80,7 @@ class JdkFloorTest {
                 }
                 """.formatted(majorStr));
 
-        var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
+        var parsed = JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).
         Session nested = Session.defaults().withCacheDir(cache);
         SessionContext.runWhere(nested, () -> {

@@ -285,3 +285,193 @@ val checkFileSizeCaps by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkFileSizeCaps) }
 tasks.named("jar") { dependsOn(checkFileSizeCaps) }
+
+// ---------------------------------------------------------------------------
+// Guard G11 (JK-2412): a fully-qualified class name in the body of a file is a ratchet, not a rule.
+//
+// `code-as-art.md`'s House rules say "no FQCN except collisions", and until JK-2408 that rule was
+// delegated to a no-op: `jk format`'s `optimize-imports` pass built its OpenRewrite parser with no
+// classpath, so it resolved nothing and shortened nothing. Twelve module audits each filed the same
+// finding. The tree carried 4,306 package-qualified references across 622 files.
+//
+// The sweep removed 3,428 of them. The 878 that remain are not style choices; they are three
+// measured limits, and `fqcn-baseline.txt` names which files each one holds:
+//
+//   1. 108 of 2,063 files fail OpenRewrite's own print-idempotence check — its Javadoc printer
+//      mangles a wrapped `@param` continuation line, so the parser returns a ParseError and the
+//      file is left untouched. Writing the mangled print back is the alternative, so this check
+//      is right to exist and these files simply cannot be shortened by the formatter.
+//   2. The recipe rewrites a `J.FieldAccess` only when it resolves to a top-level class, so a
+//      static member (`ValueLayout.JAVA_INT`) or an annotation (`@NullMarked`) is never shortened.
+//   3. Dependency jars are deliberately off the format classpath (JK-2408 measured 4.6x cost and a
+//      worker SIGSEGV for 1.4% more shortenings), so a third-party type cannot be resolved.
+//
+// The guard therefore counts EVERY package-qualified reference, not only the kinds the recipe can
+// fix. Narrowing it to type references would leave the most common residual shape — a qualified
+// static call — permanently unguarded, and hand-shortening one is a two-line edit that `jk format`
+// will never undo. A genuine collision keeps its FQCN and is listed under `## collisions` with the
+// name it collides with.
+//
+// Three rules, all against the checked-in `fqcn-baseline.txt` at the repo root (see its header):
+//   1. A listed file may only shrink.
+//   2. An unlisted file must have zero.
+//   3. Every entry sits under a `##` section that states why, and a collision names its collision.
+// A shrink passes and prints the tightened line to paste back — the ratchet never blocks progress.
+//
+// Scope is `src/main/java` and `src/test/java`. Unlike the size caps, tests get no discount: an
+// FQCN costs the same to read either side, and `jk format` treats both alike.
+// ---------------------------------------------------------------------------
+
+// A package-qualified reference: two or more all-lowercase dot-separated segments followed by an
+// UpperCamel identifier. Two segments is the floor because `cc.jumpkick.Foo` has exactly two, and
+// requiring two is what keeps `builder.config.Value` — a field chain, not a package — out.
+val fqcnPattern = Regex("""(?<![\w.$])(?:[a-z][a-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]*""")
+
+/**
+ * Blank out comments and string/char/text-block literals, preserving length and line structure, so
+ * a name inside a `{@link}` or a JSONL fixture is not counted. An FQCN in prose is documentation;
+ * only code is in scope.
+ */
+fun blankNonCode(src: String): String {
+    val out = StringBuilder(src.length)
+    var i = 0
+    var line = false
+    var block = false
+    var text = false
+    var str = false
+    var chr = false
+    while (i < src.length) {
+        val c = src[i]
+        val two = if (i + 2 <= src.length) src.substring(i, i + 2) else ""
+        val three = if (i + 3 <= src.length) src.substring(i, i + 3) else ""
+        when {
+            line -> if (c == '\n') { line = false; out.append(c) } else out.append(' ')
+            block -> if (two == "*/") { block = false; out.append("  "); i += 2; continue }
+                    else out.append(if (c == '\n') '\n' else ' ')
+            text -> if (three == "\"\"\"") { text = false; out.append("   "); i += 3; continue }
+                    else out.append(if (c == '\n') '\n' else ' ')
+            str -> {
+                if (c == '\\') { out.append("  "); i += 2; continue }
+                if (c == '"') str = false
+                out.append(' ')
+            }
+            chr -> {
+                if (c == '\\') { out.append("  "); i += 2; continue }
+                if (c == '\'') chr = false
+                out.append(' ')
+            }
+            two == "//" -> { line = true; out.append("  "); i += 2; continue }
+            two == "/*" -> { block = true; out.append("  "); i += 2; continue }
+            three == "\"\"\"" -> { text = true; out.append("   "); i += 3; continue }
+            c == '"' -> { str = true; out.append(' '); i += 1; continue }
+            c == '\'' -> { chr = true; out.append(' '); i += 1; continue }
+            else -> out.append(c)
+        }
+        i++
+    }
+    return out.toString()
+}
+
+/** Package-qualified references in a Java source, excluding its own `import`/`package` lines. */
+fun countFqcns(src: String): Int =
+        blankNonCode(src).lineSequence().sumOf { raw ->
+            val s = raw.trimStart()
+            if (s.startsWith("import ") || s.startsWith("package ")) 0
+            else fqcnPattern.findAll(raw).count()
+        }
+
+val checkNoFqcn by tasks.registering {
+    group = "verification"
+    description = "Fail the build when a file gains a fully-qualified class name (fqcn-baseline.txt)"
+    val sources = fileTree(layout.projectDirectory) {
+        include("src/main/java/**/*.java")
+        include("src/test/java/**/*.java")
+    }
+    inputs.files(sources).withPropertyName("javaSources")
+    val baseline = rootProject.layout.projectDirectory.file("fqcn-baseline.txt")
+    inputs.file(baseline).withPropertyName("fqcnBaseline")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
+    val stamp = layout.buildDirectory.file("guards/no-fqcn.ok")
+    outputs.file(stamp)
+    doLast {
+        // `## <section>` opens a reason; `#` lines are that reason's prose, or — inside the
+        // collisions section — the one entry's named collision. An entry is `<count>  <path>`.
+        val listed = LinkedHashMap<String, Int>()
+        val malformed = mutableListOf<String>()
+        val unexplained = mutableListOf<String>()
+        var section: String? = null
+        var lastWasComment = false
+        baseline.asFile.readLines().forEachIndexed { i, raw ->
+            val line = raw.trim()
+            when {
+                line.startsWith("##") -> { section = line.removePrefix("##").trim(); lastWasComment = true }
+                line.startsWith("#") -> lastWasComment = true
+                line.isEmpty() -> {}
+                else -> {
+                    val parts = line.split(Regex("\\s+"))
+                    val count = if (parts.size == 2) parts[0].toIntOrNull() else null
+                    when {
+                        count == null ->
+                                malformed.add("  fqcn-baseline.txt:${i + 1}: expected `<count>  <path>`, got `$line`")
+                        section == null ->
+                                unexplained.add("  fqcn-baseline.txt:${i + 1}: ${parts[1]} — no `## <reason>` section above it")
+                        section == "collisions" && !lastWasComment ->
+                                unexplained.add("  fqcn-baseline.txt:${i + 1}: ${parts[1]} — a collision must name what it collides with")
+                        else -> listed[parts[1]] = count
+                    }
+                    lastWasComment = false
+                }
+            }
+        }
+
+        val grew = mutableListOf<String>()
+        val unlisted = mutableListOf<String>()
+        val loose = mutableListOf<String>()
+        val present = mutableSetOf<String>()
+        sources.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            val n = countFqcns(f.readText())
+            present.add(rel)
+            val at = listed[rel]
+            when {
+                at == null && n > 0 -> unlisted.add("  %5d  %s".format(n, rel))
+                at != null && n > at -> grew.add("  $rel: $n FQCNs, baseline $at (+${n - at})")
+                at != null && n < at -> loose.add("  %5d  %s   (was %d)".format(n, rel, at))
+            }
+        }
+        listed.forEach { (rel, at) ->
+            if (rel.startsWith(here) && rel !in present) loose.add("  (deleted) $rel   (was $at)")
+        }
+
+        val problems = mutableListOf<String>()
+        if (unlisted.isNotEmpty()) {
+            problems.add("A fully-qualified class name in a method body is banned (JK-2412) —"
+                    + " import the type. These files are not in fqcn-baseline.txt:\n"
+                    + unlisted.joinToString("\n")
+                    + "\n  `jk format` shortens type references for you. A static member, an"
+                    + " annotation or a third-party type it cannot reach is a hand edit."
+                    + " A genuine collision goes under `## collisions` with the name it collides with.")
+        }
+        if (grew.isNotEmpty()) {
+            problems.add("A file in fqcn-baseline.txt may only shrink (JK-2412). These grew:\n"
+                    + grew.joinToString("\n"))
+        }
+        if (unexplained.isNotEmpty()) {
+            problems.add("Every fqcn-baseline.txt entry states why the FQCN survives:\n"
+                    + unexplained.joinToString("\n"))
+        }
+        if (malformed.isNotEmpty()) {
+            problems.add("fqcn-baseline.txt is malformed:\n" + malformed.joinToString("\n"))
+        }
+        if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
+
+        if (loose.isNotEmpty()) {
+            logger.lifecycle("fqcn-baseline.txt is loose (these shrank — tighten it in this commit):")
+            loose.forEach { logger.lifecycle(it) }
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoFqcn) }
+tasks.named("jar") { dependsOn(checkNoFqcn) }

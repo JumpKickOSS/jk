@@ -6,9 +6,11 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildService;
 import java.io.BufferedWriter;
@@ -47,7 +49,7 @@ public final class ForecastVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -92,8 +94,8 @@ public final class ForecastVerb implements HostedVerb {
                     // right after jk clean --force wiped it (JK-2205).
                     for (Path d : BuildService.forecastDirtyDirsReadOnly(graph, cache, skipTests, entryDir))
                         dirty.add(d.toString());
-                    boolean lockStale = BuildService.workspaceLockStale(
-                            entryDir, entryBuild, cc.jumpkick.lock.LockPaths.lockFile(entryDir));
+                    boolean lockStale =
+                            BuildService.workspaceLockStale(entryDir, entryBuild, LockPaths.lockFile(entryDir));
                     host.sendQuiet(writer, ProtoReads.forecastAck(dirty, lockStale, graph.isEmpty(), List.of()));
                     return null;
                 });

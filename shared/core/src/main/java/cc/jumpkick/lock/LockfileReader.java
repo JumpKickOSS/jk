@@ -91,7 +91,7 @@ public final class LockfileReader {
         // jk, and the sha is ignored (a floor needs no engine artifact).
         String jkMin = result.getString("jk-min");
         if (jkMin == null || jkMin.isBlank()) {
-            org.tomlj.TomlTable jkTable = result.getTable("jk");
+            TomlTable jkTable = result.getTable("jk");
             jkMin = jkTable != null ? jkTable.getString("version") : null;
         }
         if (jkMin != null && jkMin.isBlank()) jkMin = null;

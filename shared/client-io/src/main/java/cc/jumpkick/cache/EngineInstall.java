@@ -3,6 +3,7 @@ package cc.jumpkick.cache;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -247,7 +248,7 @@ public final class EngineInstall {
             for (Path p : stream.toList()) {
                 String name = p.getFileName().toString();
                 if (name.endsWith(".lock")) continue;
-                if (name.equals(cc.jumpkick.util.AotManifest.FILE_NAME)) {
+                if (name.equals(AotManifest.FILE_NAME)) {
                     continue;
                 }
                 if (!isAotArtifactName(name)) continue;
@@ -268,12 +269,12 @@ public final class EngineInstall {
             // best-effort
         }
         if (!removedPrimaries.isEmpty()) {
-            cc.jumpkick.util.AotManifest.remove(aotDir, removedPrimaries);
-            cc.jumpkick.util.AotManifest.reconcile(aotDir);
+            AotManifest.remove(aotDir, removedPrimaries);
+            AotManifest.reconcile(aotDir);
         }
         if (!keepAny || !hasPrimaryAot(aotDir)) {
             try {
-                Files.deleteIfExists(aotDir.resolve(cc.jumpkick.util.AotManifest.FILE_NAME));
+                Files.deleteIfExists(aotDir.resolve(AotManifest.FILE_NAME));
             } catch (IOException ignored) {
             }
         }

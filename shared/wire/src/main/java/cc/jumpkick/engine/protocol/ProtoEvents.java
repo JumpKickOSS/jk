@@ -327,23 +327,7 @@ public final class ProtoEvents {
     private static String diagnosticLike(
             String type, String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnosticLike(
-                type,
-                dir,
-                step,
-                code,
-                message,
-                test,
-                exceptionClass,
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                0,
-                0,
-                java.util.List.of(),
-                0);
+                type, dir, step, code, message, test, exceptionClass, "", "", "", "", "", "", 0, 0, List.of(), 0);
     }
 
     /**
@@ -380,7 +364,7 @@ public final class ProtoEvents {
                 "",
                 0,
                 0,
-                java.util.List.of(),
+                List.of(),
                 0);
     }
 
@@ -400,7 +384,7 @@ public final class ProtoEvents {
             String file,
             int line,
             int snippetStart,
-            java.util.List<String> snippet,
+            List<String> snippet,
             int worker) {
         StringBuilder b = new StringBuilder(256);
         b.append("{\"type\":")

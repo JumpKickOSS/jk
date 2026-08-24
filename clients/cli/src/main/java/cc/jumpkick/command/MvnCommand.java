@@ -2,7 +2,10 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.model.command.Arity;
@@ -103,14 +106,13 @@ public final class MvnCommand implements CliCommand {
         String tool = isGradle ? "gradle" : "mvn";
         HostedEvents.Provision p;
         try {
-            p = cc.jumpkick.cli.engine.EngineClient.provision(
-                    cc.jumpkick.engine.EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
+            p = EngineClient.provision(EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(tool, e.getMessage());
+            CommandWedge.printFail(tool, e.getMessage());
             return null;
         }
 
-        if (p.error() != null) cc.jumpkick.cli.tui.CommandWedge.printFail(tool, p.error());
+        if (p.error() != null) CommandWedge.printFail(tool, p.error());
         if ("LINKED".equals(p.source()) || "DOWNLOADED".equals(p.source())) {
             CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " "
                     + p.source().toLowerCase());

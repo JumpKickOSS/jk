@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -274,7 +275,7 @@ class IdeIdeaGenerationTest {
                 """
                 // Digest-stamped so the invisible freshen sees a fresh lock and keeps the
                 // processor row (the fixture manifest never declares it).
-                .formatted(cc.jumpkick.lock.LockManifestDigest.compute(ws), hex));
+                .formatted(LockManifestDigest.compute(ws), hex));
 
         // Stage the processor JAR exactly where a real `jk sync` leaves it: a Maven-layout entry
         // under <store>/repos/<repo>/. That tree — not a bare CAS blob — is what ArtifactLocator

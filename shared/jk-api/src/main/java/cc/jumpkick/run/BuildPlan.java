@@ -562,7 +562,7 @@ public final class BuildPlan {
             }
         }
         if (out.size() != steps.size()) {
-            java.util.Set<String> left = new HashSet<>(byName.keySet());
+            Set<String> left = new HashSet<>(byName.keySet());
             for (Task t : out) left.remove(t.name());
             StringBuilder detail = new StringBuilder("step DAG has a cycle; remaining=");
             for (String n : left) {
@@ -610,7 +610,7 @@ public final class BuildPlan {
          * semantics.
          */
         public Builder addAllTasks(java.util.Collection<Task> more) {
-            java.util.Set<String> existing = new java.util.HashSet<>();
+            Set<String> existing = new HashSet<>();
             for (Task p : steps) existing.add(p.name());
             for (Task p : more) {
                 if (existing.add(p.name())) steps.add(p);

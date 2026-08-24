@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceLocator;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,7 +64,7 @@ public final class ModuleLayout {
         Boolean local = explicitLayout(moduleDir);
         if (local != null) return local;
         try {
-            Optional<Path> root = cc.jumpkick.config.WorkspaceLocator.findRoot(moduleDir);
+            Optional<Path> root = WorkspaceLocator.findRoot(moduleDir);
             if (root.isPresent() && !root.get().equals(moduleDir)) {
                 Boolean inherited = explicitLayout(root.get());
                 if (inherited != null) return inherited;
@@ -103,7 +105,7 @@ public final class ModuleLayout {
     }
 
     private static Boolean scanLayout(Path toml) {
-        String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
+        String layout = TomlScan.scan(toml, "layout").get("layout");
         if (layout == null) return null;
         if ("traditional".equalsIgnoreCase(layout)) return Boolean.FALSE;
         if ("simple".equalsIgnoreCase(layout)) return Boolean.TRUE;

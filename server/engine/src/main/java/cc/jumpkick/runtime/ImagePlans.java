@@ -131,7 +131,7 @@ public final class ImagePlans {
                 false,
                 false,
                 java.util.Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         if (decorate != null) inputs = decorate.apply(inputs);
 
         Task imagePlan = Task.builder(TaskNames.IMAGE_PLAN)
@@ -431,10 +431,10 @@ public final class ImagePlans {
         sw.artifact(layout.mainJar());
         // Name each jar by its coordinate. The path is a CAS digest, so shipping that name
         // into the image leaves a lib/ directory neither a human nor a scanner can read.
-        java.util.Map<Path, String> names = casJarNames(layout.moduleRoot(), cache);
+        Map<Path, String> names = casJarNames(layout.moduleRoot(), cache);
         for (Path dep : depJars) sw.entry(jarName(names, dep), dep, false, null);
         for (Path dep : snapshotJars) sw.entry(jarName(names, dep), dep, true, null);
-        if (classesDir != null) sw.layout(java.util.Map.of("classesDir", classesDir));
+        if (classesDir != null) sw.layout(Map.of("classesDir", classesDir));
         // A packager that produced a complete runnable tree: ship that, not a lock-derived
         // classpath. Declared but missing is a hard error — falling back to the lock classpath
         // is exactly the broken image  fixed (Quarkus needs quarkus-run.jar, not
@@ -734,12 +734,12 @@ public final class ImagePlans {
      * must land as distinct file names, or the tar layer silently keeps only the last one.
      * Colliding names are qualified with the group; a residual collision fails the build.
      */
-    private static java.util.Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
-        java.util.Map<Path, String> names = new java.util.LinkedHashMap<>();
+    private static Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
+        Map<Path, String> names = new java.util.LinkedHashMap<>();
         Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return names;
         Cas cas = JkStores.cas(cache);
-        java.util.Map<Path, Lockfile.Artifact> rows = new java.util.LinkedHashMap<>();
+        Map<Path, Lockfile.Artifact> rows = new java.util.LinkedHashMap<>();
         for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
             if (pkg.checksum() == null) continue;
             String hex = pkg.checksum().startsWith("sha256:")
@@ -752,9 +752,9 @@ public final class ImagePlans {
     }
 
     /** Pure naming half of {@link #casJarNames}. Package-visible for tests. */
-    static java.util.Map<Path, String> jarNames(java.util.Map<Path, Lockfile.Artifact> rows) throws IOException {
-        java.util.Map<Path, String> names = new java.util.LinkedHashMap<>();
-        java.util.Map<String, java.util.Set<Path>> byName = new java.util.LinkedHashMap<>();
+    static Map<Path, String> jarNames(Map<Path, Lockfile.Artifact> rows) throws IOException {
+        Map<Path, String> names = new java.util.LinkedHashMap<>();
+        Map<String, java.util.Set<Path>> byName = new java.util.LinkedHashMap<>();
         for (var row : rows.entrySet()) {
             String base = coordinateJarName(row.getValue());
             names.put(row.getKey(), base);
@@ -784,7 +784,7 @@ public final class ImagePlans {
         return pkg.moduleArtifact() + "-" + pkg.version() + (classifier.isEmpty() ? "" : "-" + classifier) + ".jar";
     }
 
-    private static String jarName(java.util.Map<Path, String> names, Path jar) {
+    private static String jarName(Map<Path, String> names, Path jar) {
         String named = names.get(jar);
         return named != null ? named : jar.getFileName().toString();
     }

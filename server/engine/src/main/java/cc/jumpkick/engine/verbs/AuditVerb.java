@@ -3,10 +3,14 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.AuditPlans;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -40,7 +44,7 @@ public final class AuditVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -55,8 +59,8 @@ public final class AuditVerb implements HostedVerb {
                         .withCancel(cancelToken)
                         .withJvm(ProtoSession.jvmTuning(requestLine));
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.AuditPlans.auditBuildPlan(
-                        cc.jumpkick.lock.LockPaths.lockFile(entryDir),
+                BuildPlan plan = AuditPlans.auditBuildPlan(
+                        LockPaths.lockFile(entryDir),
                         cache,
                         severity,
                         batch != null ? URI.create(batch) : null,

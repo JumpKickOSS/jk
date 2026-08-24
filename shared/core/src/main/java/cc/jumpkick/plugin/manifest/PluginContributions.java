@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
@@ -325,8 +326,7 @@ public final class PluginContributions {
         if ("android".equals(selected)) return selected;
         if (build.isWorkspaceRoot()) {
             try {
-                for (var entry : cc.jumpkick.config.WorkspaceLoader.loadModules(moduleDir, build)
-                        .entrySet()) {
+                for (var entry : WorkspaceLoader.loadModules(moduleDir, build).entrySet()) {
                     if ("android".equals(jvmEnvironmentLocal(entry.getValue(), entry.getKey()))) {
                         return "android";
                     }

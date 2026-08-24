@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
@@ -39,8 +40,7 @@ final class EngineResolveAdapter {
      * carrying the {@link cc.jumpkick.engine.protocol.OutdatedReport} back. Read-only — no cascade,
      * no plan stream.
      */
-    static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
-            EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
+    static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
         return EngineBuildListenerAdapter.request(
                 paths,
                 ProtoReads.outdatedRequest(
@@ -51,7 +51,7 @@ final class EngineResolveAdapter {
                         req.force()),
                 EngineProtocol.OUTDATED_ACK,
                 "outdated request",
-                cc.jumpkick.engine.protocol.OutdatedReport::decode);
+                OutdatedReport::decode);
     }
 
     /** Run {@code jk lock}'s cascade against the engine, driving {@code handler}. */
@@ -123,7 +123,7 @@ final class EngineResolveAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
@@ -186,7 +186,7 @@ final class EngineResolveAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);

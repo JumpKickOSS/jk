@@ -8,15 +8,23 @@ import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.ImageConfigParser;
 import cc.jumpkick.config.ModuleOrder;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -111,8 +119,8 @@ public final class TaskForecaster {
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
         // predicts a full rebuild — a self-contradiction).
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false)
-                || cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
+        boolean force = SessionContext.current().config().forceOr(false)
+                || SessionContext.current().config().rebuildOr(false);
         // Dirs whose *main output* will change this build — seeds downstream and
         // cross-module dirtiness. Filled as we walk in dependency order.
         Set<Path> dirty = new HashSet<>();
@@ -274,7 +282,7 @@ public final class TaskForecaster {
             Set<Path> projectModules,
             boolean testOnly) {
         Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockFile = LockPaths.lockFile(dir);
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
         int workerCount = workers > 0 ? workers : 1;
         // testOnly still runs tests (never skip).
@@ -296,7 +304,7 @@ public final class TaskForecaster {
                         testOnly,
                         false,
                         Set.of(),
-                        cc.jumpkick.config.SessionContext.current())
+                        SessionContext.current())
                 .withProjectModules(projectModules);
     }
 
@@ -319,7 +327,7 @@ public final class TaskForecaster {
         JkBuild project = u.manifest();
         Path dir = u.dir();
         List<TaskForecast.Task> steps = new ArrayList<>();
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockFile = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
             steps.add(new TaskForecast.Task(
                     "compile-main", TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
@@ -327,7 +335,7 @@ public final class TaskForecaster {
         }
         // Digest-only staleness — the same predicate the build's freshen uses, so the
         // forecast and the live build agree on whether a lock update runs.
-        if (cc.jumpkick.runtime.AutoLock.isStale(dir, lockFile)) {
+        if (AutoLock.isStale(dir, lockFile)) {
             steps.add(new TaskForecast.Task(
                     "compile-main", TaskForecast.Status.RUN, "jk.toml changed — lock update needed", null));
             return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
@@ -343,8 +351,7 @@ public final class TaskForecaster {
             // lock — forecast action keys must match the keys the build will actually use.
             List<String> javacArgs = JavacLint.effectiveArgs(
                     project.build().lint(),
-                    cc.jumpkick.plugin.manifest.PluginContributions.javacArgs(
-                            project, dir, BuildPlanner.lockModules(lock)),
+                    PluginContributions.javacArgs(project, dir, BuildPlanner.lockModules(lock)),
                     List.of());
             // Must mirror BuildPlanner' processor classpath exactly — workspace siblings
             // included — or the forecast hashes a different -processorpath than the
@@ -452,9 +459,7 @@ public final class TaskForecaster {
                         && !force
                         && !classesDirHasContent(layout.classesDir())
                         && stampLangActionPresent(
-                                actionCache,
-                                ActionKey.qualifiedTaskId(
-                                        cc.jumpkick.run.TaskNames.COMPILE_KOTLIN, layout.classesDir()));
+                                actionCache, ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir()));
                 if (fresh || restoreHit) {
                     steps.add(new TaskForecast.Task("compile-kotlin", TaskForecast.Status.CACHED, "", null));
                 } else {
@@ -478,9 +483,7 @@ public final class TaskForecaster {
                         && !force
                         && !classesDirHasContent(layout.classesDir())
                         && stampLangActionPresent(
-                                actionCache,
-                                ActionKey.qualifiedTaskId(
-                                        cc.jumpkick.run.TaskNames.COMPILE_GROOVY, layout.classesDir()));
+                                actionCache, ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir()));
                 if (fresh || restoreHit) {
                     steps.add(new TaskForecast.Task("compile-groovy", TaskForecast.Status.CACHED, "", null));
                 } else {
@@ -617,7 +620,7 @@ public final class TaskForecaster {
                 mainResourceDrift = mainResourcesOutOfSync(dir, compact, layout.classesDir());
                 knownResourceDrift = mainResourceDrift;
                 if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
-                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
+                    Path resTest = ModuleLayout.testResourcesDir(dir, compact);
                     if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
                         testResourceDrift = true;
                     }
@@ -643,7 +646,7 @@ public final class TaskForecaster {
                         "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));
             } else {
                 Path jar = layout.mainJar();
-                String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(dir, project);
+                String mainClass = PluginModule.mainClass(dir, project);
                 long tp = Perf.start();
                 byte[] sbom = null;
                 if (project.isApplication()) {
@@ -723,7 +726,7 @@ public final class TaskForecaster {
             // ---- native-image — [native] enabled = "always" (same opt-in as jk build) ----
             // Hard cascade: jar dirty ⇒ native dirty. Never forecast package-jar RUN +
             // native-image CACHED (binary mtime vs pre-build jar is not an independent skip).
-            boolean nativeOnBuild = project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS;
+            boolean nativeOnBuild = project.nativeMode() == JkBuild.NativeMode.ALWAYS;
             // Membership in the resolved terminal set — NOT project.nativeImage(). Re-deriving
             // eligibility from the [native] table made fallback (table-less unique-main) modules
             // invisible (jar clean + binary missing ⇒ skipped ⇒ "success" with no binary) and
@@ -740,8 +743,7 @@ public final class TaskForecaster {
                         && !jarDirty
                         && !compileDirty
                         && stampLangActionPresent(
-                                actionCache,
-                                ActionKey.qualifiedTaskId(cc.jumpkick.run.TaskNames.NATIVE_IMAGE, nativeOut));
+                                actionCache, ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, nativeOut));
                 if (jarDirty || compileDirty || (!binaryPresent && !nativeRestoreHit)) {
                     String why = jarDirty || compileDirty ? "rebuild · compile changed" : "native-image";
                     steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.RUN, why, null));
@@ -757,19 +759,16 @@ public final class TaskForecaster {
             // jk image reported success having pushed nothing (JK-2084).
             if (target == WorkspaceTarget.IMAGE && terminalDirs.contains(dir)) {
                 steps.add(new TaskForecast.Task(
-                        cc.jumpkick.run.TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
+                        TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
             }
 
             // ---- cache-install — jk install terminal. Skip when repos/jk-local already has this
             // jar (matching SHA) and its POM. A packaged-but-never-installed module still runs.
             if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
-                boolean jarDirty = steps.stream()
-                        .anyMatch(s -> cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
-                boolean skip = !jarDirty
-                        && InstallPlans.alreadyInstalled(
-                                project, cc.jumpkick.layout.BuildLayout.of(dir, project), cache);
+                boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
+                boolean skip = !jarDirty && InstallPlans.alreadyInstalled(project, BuildLayout.of(dir, project), cache);
                 steps.add(new TaskForecast.Task(
-                        cc.jumpkick.run.TaskNames.CACHE_INSTALL,
+                        TaskNames.CACHE_INSTALL,
                         skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,
                         skip ? "" : "install to local repo",
                         null));
@@ -880,7 +879,7 @@ public final class TaskForecaster {
     /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
     static boolean mainResourcesOutOfSync(Path dir, boolean compact, Path classesDir) {
         if (flattenedPluginCatalogPresent(classesDir)) return true;
-        if (resourcesOutOfSync(cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
+        if (resourcesOutOfSync(ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
             return true;
         }
         return pluginManifestOutOfSync(dir, classesDir);
@@ -896,7 +895,7 @@ public final class TaskForecaster {
     static boolean flattenedPluginCatalogPresent(Path classesDir) {
         Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
         if (!Files.isDirectory(catalog)) return false;
-        var builtIn = cc.jumpkick.plugin.manifest.PluginTableRegistry.builtInManifestNames();
+        var builtIn = PluginTableRegistry.builtInManifestNames();
         try (var stream = Files.list(catalog)) {
             return stream.anyMatch(p ->
                     Files.isRegularFile(p) && builtIn.contains(p.getFileName().toString()));
@@ -920,9 +919,9 @@ public final class TaskForecaster {
     /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin). */
     static List<Path> packageResourceRoots(Path dir, boolean compact) {
         List<Path> resDirs = new ArrayList<>();
-        Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact);
+        Path resMain = ModuleLayout.mainResourcesDir(dir, compact);
         if (Files.isDirectory(resMain)) resDirs.add(resMain);
-        for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(dir)) {
+        for (var root : ModuleLayoutPlugins.pluginContributedRoots(dir)) {
             if (!root.resource()) continue;
             Path r = dir.resolve(root.relative());
             if (Files.isDirectory(r)) resDirs.add(r);
@@ -981,7 +980,7 @@ public final class TaskForecaster {
         }
         List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
         String contribTok = BuildPlanner.contributionsToken(contributed);
-        String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(dir, project);
+        String mainClass = PluginModule.mainClass(dir, project);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "contrib:" + contribTok,

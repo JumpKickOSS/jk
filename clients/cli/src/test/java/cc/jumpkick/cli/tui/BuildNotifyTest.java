@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -71,13 +73,12 @@ class BuildNotifyTest {
 
     @Test
     void desktopNotify_empty_when_no_osc() {
-        var noOsc = cc.jumpkick.config.JkConfig.empty().withNoOsc(Optional.of(true));
-        cc.jumpkick.config.SessionContext.runWhere(
-                cc.jumpkick.config.Session.defaults().withConfig(noOsc), () -> {
-                    assertThat(Osc.oscEnabled()).isFalse();
-                    assertThat(Osc.desktopNotify("JumpKick Build", "hello")).isEmpty();
-                    assertThat(Osc.windowTitle("x")).isEmpty();
-                    assertThat(Osc.taskbarIndeterminate()).isEmpty();
-                });
+        var noOsc = JkConfig.empty().withNoOsc(Optional.of(true));
+        SessionContext.runWhere(Session.defaults().withConfig(noOsc), () -> {
+            assertThat(Osc.oscEnabled()).isFalse();
+            assertThat(Osc.desktopNotify("JumpKick Build", "hello")).isEmpty();
+            assertThat(Osc.windowTitle("x")).isEmpty();
+            assertThat(Osc.taskbarIndeterminate()).isEmpty();
+        });
     }
 }

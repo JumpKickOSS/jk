@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.docs.JkManual;
+import cc.jumpkick.engine.http.mcp.McpDetails;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
@@ -9,8 +10,11 @@ import cc.jumpkick.engine.http.mcp.McpMachine;
 import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpProjectCards;
 import cc.jumpkick.engine.http.mcp.McpReads;
+import cc.jumpkick.engine.http.mcp.McpResults;
+import cc.jumpkick.engine.http.mcp.McpScaffold;
 import cc.jumpkick.engine.http.mcp.McpSession;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
@@ -700,22 +704,19 @@ public final class McpHandler {
             case "jk_publish" -> runResult(withKind(args, "publish"), progressToken);
             case "jk_install" ->
                 "list".equalsIgnoreCase(string(args.get("action")))
-                        ? ok(McpEnvelope.of("tools", cc.jumpkick.engine.http.mcp.McpMachine.tools()), "installed tools")
+                        ? ok(McpEnvelope.of("tools", McpMachine.tools()), "installed tools")
                         : runResult(withKind(args, "install"), progressToken);
             case "jk_import" -> runResult(withKind(args, "import"), progressToken);
             case "jk_export" ->
                 ok(
-                        McpEnvelope.of(
-                                "export",
-                                cc.jumpkick.engine.http.mcp.McpReads.export(
-                                        resolveDir(args, true), string(args.get("format")))),
+                        McpEnvelope.of("export", McpReads.export(resolveDir(args, true), string(args.get("format")))),
                         "export");
             case "jk_details" -> detailsResult(args);
             case "jk_graph" ->
                 ok(
                         McpEnvelope.of(
                                 "graph",
-                                cc.jumpkick.engine.http.mcp.McpReads.graph(
+                                McpReads.graph(
                                         resolveDir(args, true),
                                         string(args.get("scopes")),
                                         Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("transitive"))))),
@@ -735,11 +736,9 @@ public final class McpHandler {
     private Map<String, Object> newResult(Map<String, Object> args) {
         String action = string(args.get("action"));
         if ("templates".equalsIgnoreCase(action)) {
-            return ok(
-                    McpEnvelope.of("templates", cc.jumpkick.engine.http.mcp.McpScaffold.templates()),
-                    "template catalog");
+            return ok(McpEnvelope.of("templates", McpScaffold.templates()), "template catalog");
         }
-        var req = new cc.jumpkick.engine.runtime.NewProjectOps.Request(
+        var req = new NewProjectOps.Request(
                 string(args.get("name")),
                 newParentDir(args),
                 string(args.get("group")),
@@ -754,13 +753,13 @@ public final class McpHandler {
                 return ok(
                         McpEnvelope.of(
                                 "new-preview",
-                                cc.jumpkick.engine.http.mcp.McpScaffold.preview(req),
+                                McpScaffold.preview(req),
                                 false,
                                 null,
                                 "Nothing was written — call again without preview to create"),
                         "new preview");
             }
-            Map<String, Object> created = cc.jumpkick.engine.http.mcp.McpScaffold.create(req);
+            Map<String, Object> created = McpScaffold.create(req);
             return ok(
                     McpEnvelope.of("created", created, false, null, "jk_bind {dir: " + created.get("path") + "} next"),
                     "created " + created.get("path"));
@@ -788,15 +787,11 @@ public final class McpHandler {
     private Map<String, Object> detailsResult(Map<String, Object> args) {
         Map<String, Object> rec =
                 McpDiagnostics.findRun(historyRaw.get(), string(args.get("run")), resolveDir(args, false));
-        Map<String, Object> fields = cc.jumpkick.engine.http.mcp.McpDetails.tail(
+        Map<String, Object> fields = McpDetails.tail(
                 rec,
                 detailsFileResolver,
                 stringList(args.get("types")),
-                intArg(
-                        args.get("tail"),
-                        cc.jumpkick.engine.http.mcp.McpDetails.DEFAULT_TAIL,
-                        1,
-                        cc.jumpkick.engine.http.mcp.McpDetails.MAX_TAIL),
+                intArg(args.get("tail"), McpDetails.DEFAULT_TAIL, 1, McpDetails.MAX_TAIL),
                 intArg(args.get("next"), 0, 0, Integer.MAX_VALUE));
         boolean truncated = Boolean.TRUE.equals(fields.remove("truncatedTail"));
         Object next = fields.remove("nextCursor");
@@ -819,7 +814,7 @@ public final class McpHandler {
         } else {
             rec = McpDiagnostics.findRun(historyRaw.get(), run, dir);
         }
-        Map<String, Object> fields = cc.jumpkick.engine.http.mcp.McpResults.read(rec, detailsFileResolver);
+        Map<String, Object> fields = McpResults.read(rec, detailsFileResolver);
         String md = fields.get("markdown") instanceof String s ? s : "";
         String summary = !md.isBlank() ? md : String.valueOf(fields.getOrDefault("error", "results"));
         return ok(McpEnvelope.of("results", fields, false, null, "details.jsonl for step-by-step"), summary);
@@ -889,11 +884,11 @@ public final class McpHandler {
         return out;
     }
 
-    private @org.jspecify.annotations.Nullable Map<String, Object> lastFinished(String boundDir) {
+    private @Nullable Map<String, Object> lastFinished(String boundDir) {
         return summarizeJob(McpDiagnostics.findNewest(historyRaw.get(), boundDir));
     }
 
-    private @org.jspecify.annotations.Nullable Map<String, Object> finishedJob(long jid, String dir, long triggeredAt) {
+    private @Nullable Map<String, Object> finishedJob(long jid, String dir, long triggeredAt) {
         Map<String, Object> rec = waitForJournal(jid);
         if (rec == null) {
             // Newest-row fallback covers records written without a requestId stamp. A row that
@@ -918,7 +913,7 @@ public final class McpHandler {
         this.journalSettleMs = ms;
     }
 
-    private @org.jspecify.annotations.Nullable Map<String, Object> waitForJournal(long jid) {
+    private @Nullable Map<String, Object> waitForJournal(long jid) {
         long deadline = System.currentTimeMillis() + journalSettleMs;
         while (true) {
             String raw = finishedRecords.apply(jid);
@@ -933,8 +928,7 @@ public final class McpHandler {
         }
     }
 
-    private static @org.jspecify.annotations.Nullable Map<String, Object> summarizeJob(
-            @org.jspecify.annotations.Nullable Map<String, Object> rec) {
+    private static @Nullable Map<String, Object> summarizeJob(@Nullable Map<String, Object> rec) {
         if (rec == null) return null;
         Map<String, Object> sum = McpHistoryViews.summarize(rec);
         Map<String, Object> one = new LinkedHashMap<>();
@@ -1454,7 +1448,7 @@ public final class McpHandler {
     private Map<String, Object> resultsResource() {
         Map<String, Object> rec = McpDiagnostics.findNewest(historyRaw.get(), session.dir());
         String id = rec == null ? null : McpHistoryViews.str(rec, "id");
-        Path file = cc.jumpkick.engine.http.mcp.McpResults.locate(rec, id, detailsFileResolver);
+        Path file = McpResults.locate(rec, id, detailsFileResolver);
         Map<String, Object> text = new LinkedHashMap<>();
         text.put("uri", "jk://runs/latest/results");
         if (file != null && Files.isRegularFile(file)) {
@@ -1475,8 +1469,7 @@ public final class McpHandler {
 
     private Map<String, Object> detailsResource() {
         Map<String, Object> rec = McpDiagnostics.findNewest(historyRaw.get(), session.dir());
-        Map<String, Object> fields = cc.jumpkick.engine.http.mcp.McpDetails.tail(
-                rec, detailsFileResolver, List.of(), cc.jumpkick.engine.http.mcp.McpDetails.DEFAULT_TAIL, 0);
+        Map<String, Object> fields = McpDetails.tail(rec, detailsFileResolver, List.of(), McpDetails.DEFAULT_TAIL, 0);
         Map<String, Object> text = new LinkedHashMap<>();
         text.put("uri", "jk://runs/latest/details");
         text.put("mimeType", "application/json");

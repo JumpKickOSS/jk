@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -128,7 +129,7 @@ public final class JdkEnsure {
         // jk-lock.toml / project.jdk / project.java-floor / default / env / PATH).
         JdkResolution.Request req = new JdkResolution.Request(
                 projectDir,
-                cc.jumpkick.config.SessionContext.current().jdkSpec(),
+                SessionContext.current().jdkSpec(),
                 System.getenv("JK_JDK"),
                 (lockJdkId == null || lockJdkId.isEmpty()) ? null : lockJdkId,
                 (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,

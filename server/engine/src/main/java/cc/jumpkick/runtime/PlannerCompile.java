@@ -7,6 +7,8 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildStage;
@@ -15,6 +17,10 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.GroovyCompile;
+import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KotlinCompile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -135,12 +141,8 @@ public final class PlannerCompile {
                         stampInputs.addAll(scalaSetup.libraryJars());
                     }
                     if (!rerun
-                            && cc.jumpkick.task.FreshnessStamp.isFresh(
-                                    javaOut,
-                                    cc.jumpkick.task.FreshnessStamp.JAVA_STAMP,
-                                    sources,
-                                    stampInputs,
-                                    ctx.require(RELEASE))) {
+                            && FreshnessStamp.isFresh(
+                                    javaOut, FreshnessStamp.JAVA_STAMP, sources, stampInputs, ctx.require(RELEASE))) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
@@ -197,8 +199,7 @@ public final class PlannerCompile {
                     if (!rerun) {
                         try {
                             boolean restores = actionCache
-                                    .lookup(ActionKey.forJavac(
-                                            taskId, request, cc.jumpkick.model.BuildIdentity.cacheKeyVersion()))
+                                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion()))
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
@@ -210,10 +211,10 @@ public final class PlannerCompile {
                     Files.createDirectories(genDir);
                     Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
                     ctx.label("compiling " + sources.size() + " sources");
-                    cc.jumpkick.task.JavaCompile.Result r = cc.jumpkick.task.JavaCompile.run(
+                    JavaCompile.Result r = JavaCompile.run(
                             taskId,
                             request,
-                            cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                            BuildIdentity.cacheKeyVersion(),
                             !rerun,
                             !in.ephemeralActions(), // verify-scratch: no persistent residue
                             actionCache.cas(),
@@ -292,8 +293,7 @@ public final class PlannerCompile {
 
     /** True when the module declares {@code [processor-dependencies]} entries. */
     static boolean hasProcessorDeps(JkBuild build) {
-        List<cc.jumpkick.model.Dependency> procs =
-                build.dependencies().byScope().get(Scope.PROCESSOR);
+        List<Dependency> procs = build.dependencies().byScope().get(Scope.PROCESSOR);
         return procs != null && !procs.isEmpty();
     }
 
@@ -376,16 +376,15 @@ public final class PlannerCompile {
                     // prunes its own dir, but the assemble merge into classes/ is additive.
                     // Start the merged tree clean — both stamps die with it, so javac re-runs
                     // too (rare: only on source removals).
-                    if (cc.jumpkick.task.FreshnessStamp.hasRemovedSources(
-                            classes, cc.jumpkick.task.FreshnessStamp.KOTLIN_STAMP, freshInputs)) {
+                    if (FreshnessStamp.hasRemovedSources(classes, FreshnessStamp.KOTLIN_STAMP, freshInputs)) {
                         cc.jumpkick.host.PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
                     if (!rerun
-                            && cc.jumpkick.task.FreshnessStamp.isFresh(
+                            && FreshnessStamp.isFresh(
                                     classes,
-                                    cc.jumpkick.task.FreshnessStamp.KOTLIN_STAMP,
+                                    FreshnessStamp.KOTLIN_STAMP,
                                     freshInputs,
                                     classpath,
                                     ctx.require(RELEASE))) {
@@ -409,7 +408,7 @@ public final class PlannerCompile {
                             .resolve(taskId);
                     // Mixed module: Kotlin reads the Java declarations from source
                     // (analysis only — it emits no Java bytecode; javac does next).
-                    cc.jumpkick.task.KotlinCompile.Result kr = compileKotlinSources(
+                    KotlinCompile.Result kr = compileKotlinSources(
                             ctx,
                             in,
                             cas,
@@ -500,16 +499,15 @@ public final class PlannerCompile {
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
                     // A shrunken Groovy source set must not leave dropped classes in the merged
                     // output (the assemble merge into classes/ is additive).
-                    if (cc.jumpkick.task.FreshnessStamp.hasRemovedSources(
-                            classes, cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP, freshInputs)) {
+                    if (FreshnessStamp.hasRemovedSources(classes, FreshnessStamp.GROOVY_STAMP, freshInputs)) {
                         cc.jumpkick.host.PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
                     if (!rerun
-                            && cc.jumpkick.task.FreshnessStamp.isFresh(
+                            && FreshnessStamp.isFresh(
                                     classes,
-                                    cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
+                                    FreshnessStamp.GROOVY_STAMP,
                                     freshInputs,
                                     classpath,
                                     ctx.require(RELEASE))) {
@@ -529,7 +527,7 @@ public final class PlannerCompile {
                     // Mixed module: joint mode sweeps the Java roots for resolution only
                     // stubs are retained for javac's sourcepath; jk's javac worker stays
                     // authoritative for the real Java outputs.
-                    cc.jumpkick.task.GroovyCompile.Result gr = compileGroovySources(
+                    GroovyCompile.Result gr = compileGroovySources(
                             ctx,
                             in,
                             cas,

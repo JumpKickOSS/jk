@@ -4,14 +4,22 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.KspProcessors;
+import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.FreshnessStamp;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -90,7 +98,7 @@ public final class PlannerKsp {
 
     /** The provided-classpath contribution (platform jars), re-read for the test step. */
     @SuppressWarnings("unchecked")
-    static List<Path> contributedProvidedFor(cc.jumpkick.run.TaskContext ctx) {
+    static List<Path> contributedProvidedFor(TaskContext ctx) {
         return (List<Path>) ctx.get(PROVIDED_CP).orElse(List.of());
     }
 
@@ -178,7 +186,7 @@ public final class PlannerKsp {
                 .execute(ctx -> {
                     @SuppressWarnings("unchecked")
                     List<Path> processorCp = (List<Path>) ctx.require(PROCESSOR_CP);
-                    var split = cc.jumpkick.compile.KspProcessors.split(processorCp);
+                    var split = KspProcessors.split(processorCp);
                     ctx.put(JAVAC_PROCESSOR_CP, split.javac());
                     if (split.ksp().isEmpty()) {
                         ctx.label("no KSP processors");
@@ -201,8 +209,7 @@ public final class PlannerKsp {
                     stampCp.addAll(split.ksp());
                     boolean rerun = in.session().config().rebuildOr(false);
                     if (!rerun
-                            && cc.jumpkick.task.FreshnessStamp.isFresh(
-                                    outBase, KSP_STAMP, stampInputs, stampCp, ctx.require(RELEASE))) {
+                            && FreshnessStamp.isFresh(outBase, KSP_STAMP, stampInputs, stampCp, ctx.require(RELEASE))) {
                         ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
                         ctx.label("up to date");
                         ctx.progress(1);
@@ -213,12 +220,12 @@ public final class PlannerKsp {
                     JkBuild project = ctx.require(PROJECT);
                     String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), project);
                     if (kotlinVersion == null || kotlinVersion.isBlank()) {
-                        kotlinVersion = cc.jumpkick.kotlin.KotlinResolver.DEFAULT_VERSION;
+                        kotlinVersion = KotlinResolver.DEFAULT_VERSION;
                     }
                     List<Path> kspClasspath;
                     Path stdlib;
                     try {
-                        cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
+                        RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
                         String kspVersion = KspResolver.discoverVersion(repos);
                         kspClasspath = KspResolver.resolveClasspath(repos, cas, kspVersion);
                         stdlib = KotlinBtaResolver.resolveStdlib(repos, cas, kotlinVersion);
@@ -260,7 +267,7 @@ public final class PlannerKsp {
                     Path javaHome = ctx.require(JAVA_HOME);
                     List<String> cmd = new ArrayList<>();
                     cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
-                    cmd.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
+                    cmd.addAll(JvmOptions.batchFlags(1));
                     cmd.add("-cp");
                     cmd.add(joinPaths(kspClasspath, sep));
                     cmd.add(KspResolver.KSP_MAIN);
@@ -286,9 +293,8 @@ public final class PlannerKsp {
                     // KSP's map syntax joins entries with the platform path separator, same as
                     // its list args; relative option paths resolve against the module dir (the
                     // KSP process CWD).
-                    List<String> kspOptions =
-                            new ArrayList<>(cc.jumpkick.plugin.manifest.PluginContributions.kspOptions(
-                                    project, in.dir(), lockModules(ctx.require(LOCKFILE))));
+                    List<String> kspOptions = new ArrayList<>(
+                            PluginContributions.kspOptions(project, in.dir(), lockModules(ctx.require(LOCKFILE))));
                     kspOptions.addAll(project.build().kspOptions());
                     if (!kspOptions.isEmpty()) {
                         cmd.add("-processor-options=" + String.join(sep, kspOptions));
@@ -299,7 +305,7 @@ public final class PlannerKsp {
 
                     ProcessBuilder pb =
                             new ProcessBuilder(cmd).directory(in.dir().toFile()).redirectErrorStream(true);
-                    Process proc = cc.jumpkick.engine.JobWorkers.start(pb);
+                    Process proc = JobWorkers.start(pb);
                     // Read on a drainer thread and bound the wait: on an internal error KSP's JVM
                     // can linger (non-daemon compiler pools survive the main thread's exception),
                     // which would hang a plain readAllBytes forever.
@@ -344,8 +350,7 @@ public final class PlannerKsp {
                     for (BuildPlanner.KspDiagnostic diagnostic : kspDiagnostics(output)) {
                         ctx.warn(diagnostic.severity(), diagnostic.message());
                     }
-                    cc.jumpkick.task.FreshnessStamp.write(
-                            outBase, KSP_STAMP, "ksp", "", stampInputs, stampCp, ctx.require(RELEASE));
+                    FreshnessStamp.write(outBase, KSP_STAMP, "ksp", "", stampInputs, stampCp, ctx.require(RELEASE));
                     ctx.progress(1);
                 })
                 .build();

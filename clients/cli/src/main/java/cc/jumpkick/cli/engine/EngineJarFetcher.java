@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -37,35 +43,19 @@ final class EngineJarFetcher {
      * Unverified/partial jars are never left launchable.
      */
     static Path fetch(URI releasesBase, String version) throws IOException {
-        return fetch(
-                releasesBase,
-                version,
-                cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()),
-                cc.jumpkick.cache.EngineInstall.current());
+        return fetch(releasesBase, version, JkStores.cas(JkDirs.cache()), EngineInstall.current());
     }
 
     /** Root-injected variant — the testable seam. */
-    static Path fetch(
-            URI releasesBase, String version, cc.jumpkick.cache.Cas cas, cc.jumpkick.cache.EngineInstall install)
-            throws IOException {
-        return fetch(
-                releasesBase,
-                version,
-                cas,
-                install,
-                cc.jumpkick.repo.ReleaseVerifier.current(cc.jumpkick.config.GlobalConfig.releaseTrustedKeys()));
+    static Path fetch(URI releasesBase, String version, Cas cas, EngineInstall install) throws IOException {
+        return fetch(releasesBase, version, cas, install, ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()));
     }
 
     /**
      * Fully injected variant for tests: pass {@link cc.jumpkick.repo.ReleaseVerifier#of} with no
      * keys to exercise the checksum-only path without the baked-in release key.
      */
-    static Path fetch(
-            URI releasesBase,
-            String version,
-            cc.jumpkick.cache.Cas cas,
-            cc.jumpkick.cache.EngineInstall install,
-            cc.jumpkick.repo.ReleaseVerifier verifier)
+    static Path fetch(URI releasesBase, String version, Cas cas, EngineInstall install, ReleaseVerifier verifier)
             throws IOException {
         String jarName = "jk-engine-" + version + ".jar";
         URI versionDir = URI.create(releasesBase.toString() + "/" + version + "/");

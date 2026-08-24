@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.EngineTransport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
@@ -67,10 +69,9 @@ public final class EngineWire {
      * without needing its own knowledge of the transport.
      */
     static SocketChannel connect(Path socket) throws IOException {
-        if (cc.jumpkick.engine.EngineTransport.useLoopbackTcp()) {
+        if (EngineTransport.useLoopbackTcp()) {
             int port = Integer.parseInt(Files.readString(socket).trim());
-            String token = Files.readString(cc.jumpkick.engine.EnginePaths.tokenFor(socket))
-                    .trim();
+            String token = Files.readString(EnginePaths.tokenFor(socket)).trim();
             SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             BufferedWriter authWriter =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));

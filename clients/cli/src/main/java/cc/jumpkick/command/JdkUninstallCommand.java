@@ -8,13 +8,16 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkToolUninstaller;
@@ -145,7 +148,7 @@ public final class JdkUninstallCommand implements CliCommand {
             return runSingle(registry, defaults);
         }
         if (!isInteractiveTerminalSession()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "stdin is not a TTY — pass a spec "
                             + "(e.g. `jk jdk uninstall temurin-21.0.5`) or run interactively.");
@@ -164,7 +167,7 @@ public final class JdkUninstallCommand implements CliCommand {
         String source = slash < 0 ? null : argument.substring(0, slash);
         String spec = slash < 0 ? argument : argument.substring(slash + 1);
         if (slash == 0 || slash == argument.length() - 1) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "argument must be `<spec>` or `<source>/<spec>` " + "(got `"
                             + argument
@@ -179,7 +182,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 return Exit.USAGE;
             }
             if (!KNOWN_SOURCES.contains(source)) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                CommandWedge.printFail(
                         "JDK",
                         "unknown source `" + source
                                 + "` "
@@ -191,16 +194,15 @@ public final class JdkUninstallCommand implements CliCommand {
             }
         }
         // Keyword specs (lts, stable, latest) → resolve to best installed match.
-        if (cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)) {
+        if (JdkKeywords.isKeyword(spec)) {
             var hits = source != null
                     ? registry.listHits().stream()
                             .filter(h -> source.equals(h.source()))
                             .toList()
                     : registry.listHits();
-            var kw = cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, hits);
+            var kw = JdkKeywords.bestInstalledMatch(spec, hits);
             if (kw.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "JDK", "no installed JDK matches `" + spec + "` (try `jk jdk list`).");
+                CommandWedge.printFail("JDK", "no installed JDK matches `" + spec + "` (try `jk jdk list`).");
                 return 1;
             }
             spec = JdkRegistry.identifierFor(kw.get().home());
@@ -213,7 +215,7 @@ public final class JdkUninstallCommand implements CliCommand {
             String where = source != null
                     ? "no `" + source + "` install matches `" + spec + "`"
                     : "no install matches `" + spec + "`";
-            cc.jumpkick.cli.tui.CommandWedge.printFail("JDK", where + " (try `jk jdk list`).");
+            CommandWedge.printFail("JDK", where + " (try `jk jdk list`).");
             return 1;
         }
 
@@ -244,7 +246,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 .filter(h -> !UNINSTALL_FORBIDDEN_SOURCES.contains(h.source()))
                 .toList();
         if (installed.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "no removable JDKs installed " + "(system- and IDE-managed installs aren't removable here).");
             return 0;
@@ -378,7 +380,7 @@ public final class JdkUninstallCommand implements CliCommand {
             throw e;
         }
         CommandWedge.envelopeStart();
-        CliOutput.out(JdkRender.removed(hit.source(), identifier, cc.jumpkick.config.GlobalConfig.nerdFont()));
+        CliOutput.out(JdkRender.removed(hit.source(), identifier, GlobalConfig.nerdFont()));
     }
 
     /**
@@ -493,6 +495,6 @@ public final class JdkUninstallCommand implements CliCommand {
     }
 
     private static boolean isInteractiveTerminalSession() {
-        return cc.jumpkick.cli.tui.Interactivity.canPrompt();
+        return Interactivity.canPrompt();
     }
 }

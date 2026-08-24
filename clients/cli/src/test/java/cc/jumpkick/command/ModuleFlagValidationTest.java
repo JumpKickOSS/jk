@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.EngineTestSupport;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -24,7 +25,7 @@ class ModuleFlagValidationTest {
 
     @BeforeAll
     static void materializeEngine() {
-        cc.jumpkick.cli.engine.EngineTestSupport.ensureEngineMaterialized();
+        EngineTestSupport.ensureEngineMaterialized();
     }
 
     private static void workspace(Path dir) throws Exception {

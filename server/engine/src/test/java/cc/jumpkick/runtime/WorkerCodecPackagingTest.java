@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -40,8 +41,7 @@ class WorkerCodecPackagingTest {
 
         // parse() rewrites workspace: → cc.jumpkick:jk-plugin-sdk before packaging.
         JkBuild project = JkBuildParser.parse(worker.resolve("jk.toml"));
-        assertThat(project.dependencies().of(cc.jumpkick.model.Scope.MAIN))
-                .anyMatch(d -> "cc.jumpkick:jk-plugin-sdk".equals(d.module()));
+        assertThat(project.dependencies().of(Scope.MAIN)).anyMatch(d -> "cc.jumpkick:jk-plugin-sdk".equals(d.module()));
 
         List<Path> codec = PlannerSupport.workerCodecClassDirs(worker, project).stream()
                 .map(p -> p.toAbsolutePath().normalize())
@@ -60,7 +60,7 @@ class WorkerCodecPackagingTest {
 
         JkBuild project = JkBuildParser.parse(worker.resolve("jk.toml"));
         JkBuild forPom = InstallPlans.omitVendoredWorkerSiblings(project, worker);
-        assertThat(forPom.dependencies().of(cc.jumpkick.model.Scope.MAIN))
+        assertThat(forPom.dependencies().of(Scope.MAIN))
                 .noneMatch(d -> d.module().contains("jk-plugin-sdk"))
                 .anyMatch(d -> "org.scala-sbt:zinc_3".equals(d.module()));
     }

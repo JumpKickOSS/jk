@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.JkThreads;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
@@ -104,13 +105,13 @@ class NativeWeightDirtyJarTest {
 
         // The production path (BuildPlan.estimatedTotalWeight) evaluates weight suppliers on
         // JkThreads.io() workers — the flag must survive that hop.
-        int reservedViaPool = EffortWeights.withOverReserveTails(() -> CompletableFuture.supplyAsync(
-                        () -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
-                .join());
+        int reservedViaPool = EffortWeights.withOverReserveTails(
+                () -> CompletableFuture.supplyAsync(() -> EffortWeights.nativeWeight(dir), JkThreads.io())
+                        .join());
         assertThat(reservedViaPool).isGreaterThanOrEqualTo(100);
 
         // And a worker outside the scope must NOT see the flag (no leak into pooled threads).
-        boolean leaked = CompletableFuture.supplyAsync(EffortWeights::overReserveTails, cc.jumpkick.run.JkThreads.io())
+        boolean leaked = CompletableFuture.supplyAsync(EffortWeights::overReserveTails, JkThreads.io())
                 .join();
         assertThat(leaked).isFalse();
     }

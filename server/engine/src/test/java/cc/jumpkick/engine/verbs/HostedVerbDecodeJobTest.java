@@ -4,9 +4,16 @@ package cc.jumpkick.engine.verbs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,7 +64,7 @@ class HostedVerbDecodeJobTest {
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(null);
         String line = verb.decodeJob(
                 new JobSpec("test", dir.toString(), List.of(), List.of("fast"), List.of("slow"), List.of(), false));
-        var sel = cc.jumpkick.engine.protocol.ProtoJobs.testSelectionOf(line);
+        var sel = ProtoJobs.testSelectionOf(line);
         assertThat(sel.includeTags()).containsExactly("fast");
         assertThat(sel.excludeTags()).containsExactly("slow");
         assertThat(sel.tagsResolved()).isTrue();
@@ -152,19 +159,17 @@ class HostedVerbDecodeJobTest {
         public void putProgressRoot(long rid, String dir) {}
 
         @Override
-        public cc.jumpkick.runtime.WorkspaceBuildListener workspaceListener(BufferedWriter w, String dir) {
+        public WorkspaceBuildListener workspaceListener(BufferedWriter w, String dir) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public cc.jumpkick.run.BuildPlanListener planListener(
-                String dir, BufferedWriter w, cc.jumpkick.run.BuildPlan plan) {
+        public BuildPlanListener planListener(String dir, BufferedWriter w, BuildPlan plan) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public cc.jumpkick.run.BuildPlanListener planListener(
-                String dir, BufferedWriter w, Function<cc.jumpkick.run.BuildPlanResult, String> enc) {
+        public BuildPlanListener planListener(String dir, BufferedWriter w, Function<BuildPlanResult, String> enc) {
             throw new UnsupportedOperationException();
         }
 
@@ -177,7 +182,7 @@ class HostedVerbDecodeJobTest {
         }
 
         @Override
-        public void accTests(long rid, cc.jumpkick.run.TestSummary tests) {}
+        public void accTests(long rid, TestSummary tests) {}
 
         @Override
         public void finishProgress(long rid) {}
@@ -208,9 +213,8 @@ class HostedVerbDecodeJobTest {
         public void publishRequestError(long rid, String dir, String message) {}
 
         @Override
-        public cc.jumpkick.config.Session resolveSession(
-                String requestLine, cc.jumpkick.config.Session.CancelToken cancel, boolean refresh) {
-            return cc.jumpkick.config.Session.defaults();
+        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
+            return Session.defaults();
         }
 
         @Override

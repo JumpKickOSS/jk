@@ -3,9 +3,11 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.GraphOps;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -39,13 +41,13 @@ public final class TreeVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String error = null;
             String rendered = null;
             try {
-                rendered = cc.jumpkick.runtime.GraphOps.treeRender(
+                rendered = GraphOps.treeRender(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Jsonl.intValue(requestLine, "maxDepth", Integer.MAX_VALUE),
                         Jsonl.bool(requestLine, "flatten", false),

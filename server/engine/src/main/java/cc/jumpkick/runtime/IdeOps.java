@@ -4,10 +4,12 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -15,13 +17,18 @@ import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.ArtifactLocator;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.resolver.CacheSync;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -295,7 +302,7 @@ public final class IdeOps {
 
     /** The resolved JDK identifier stamped in a module's {@code jk-lock.toml}, or null. */
     private static String readLockJdk(Path moduleDir) {
-        Path lf = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lf = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lf)) return null;
         try {
             return LockfileReader.read(lf).jdk();
@@ -322,14 +329,13 @@ public final class IdeOps {
             Map<String, String[]> allLibs,
             boolean fetchMissing)
             throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return;
         Lockfile lock = LockfileReader.read(lockFile);
 
         if (fetchMissing) {
             try {
-                new cc.jumpkick.resolver.CacheSync(cas, new cc.jumpkick.http.Http())
-                        .sync(lock, cc.jumpkick.resolver.CacheSync.ProgressObserver.NOOP);
+                new CacheSync(cas, new Http()).sync(lock, CacheSync.ProgressObserver.NOOP);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception ignored) {
@@ -338,9 +344,8 @@ public final class IdeOps {
         }
 
         Set<String> siblingCoords = siblingCoordinates(module, modules);
-        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().integration();
-        cc.jumpkick.repo.ArtifactLocator locator = new cc.jumpkick.repo.ArtifactLocator(
-                cas.root(), m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
+        boolean m2 = JkM2Config.resolve().integration();
+        ArtifactLocator locator = new ArtifactLocator(cas.root(), m2 ? M2Dirs.localRepository() : null, m2);
 
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue; // path/git dep
@@ -358,7 +363,7 @@ public final class IdeOps {
                 Coordinate srcCoord =
                         new Coordinate(coord.group(), coord.artifact(), coord.version(), "sources", "jar");
                 sourcesPath = locator.locate(
-                                cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source()),
+                                RepoArtifactResolver.repoName(pkg.source()),
                                 MavenLayout.artifactPath(srcCoord),
                                 pkg.sourcesChecksumHex(),
                                 srcCoord.toGav())
@@ -467,7 +472,7 @@ public final class IdeOps {
     private static List<String[]> moduleLibEntries(
             Path moduleDir, JkBuild module, Map<Path, JkBuild> allModules, Map<String, String[]> allLibs)
             throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
         Lockfile lock = LockfileReader.read(lockFile);
         Set<String> siblingCoords = siblingCoordinates(module, allModules);
@@ -494,7 +499,7 @@ public final class IdeOps {
     private static List<String> processorLibFiles(
             Path moduleDir, JkBuild module, Map<Path, JkBuild> modules, Map<String, String[]> allLibs)
             throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
         Lockfile lock = LockfileReader.read(lockFile);
         Set<String> siblingCoords = siblingCoordinates(module, modules);

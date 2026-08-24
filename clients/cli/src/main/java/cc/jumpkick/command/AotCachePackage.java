@@ -2,8 +2,15 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.model.command.Exit;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -51,12 +58,12 @@ final class AotCachePackage {
         try {
             return runInner(projectDir, cacheDir);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Build", e.getMessage());
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            CommandWedge.printFail("Build", e.getMessage());
+            return Exit.SOFTWARE;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Build", "interrupted");
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            CommandWedge.printFail("Build", "interrupted");
+            return Exit.SOFTWARE;
         }
     }
 
@@ -64,11 +71,10 @@ final class AotCachePackage {
         // Thin client: the engine computes the layout inputs (boot-ness, tier, main jar,
         // coordinate-named libs, main class); this process does the file assembly + the
         // training fork it owns.
-        cc.jumpkick.engine.protocol.ExecPlan plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
-                cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir, "aot-cache", null, null);
+        ExecPlan plan = EngineClient.execPlan(EnginePaths.current(), projectDir, cacheDir, "aot-cache", null, null);
         if (plan.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Build", plan.error());
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            CommandWedge.printFail("Build", plan.error());
+            return Exit.SOFTWARE;
         }
 
         // target/aot-cache next to the built artifact (mainJar sits in target/ or target/lib/).
@@ -126,26 +132,26 @@ final class AotCachePackage {
         });
         if (!process.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly();
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Build",
                     "the training run did not exit within " + TRAINING_TIMEOUT_SECONDS
                             + "s. Training needs one run that terminates — Spring Boot apps exit automatically;"
                             + " other apps must exit on their own (a server main loop can't be trained this way yet).");
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            return Exit.SOFTWARE;
         }
         reader.join(5_000);
         if (process.exitValue() != 0) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Build", "training run failed (exit " + process.exitValue() + "):\n" + tail(output.toString()));
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            return Exit.SOFTWARE;
         }
         // JEP 514's one-step flow assembles the cache in a child JVM at exit; it is written
         // before the parent's waitFor returns. Verify the artifact exists either way.
         Path cachePath = outDir.resolve(cacheFile);
         if (!Files.isRegularFile(cachePath)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Build", "training completed but no " + cacheFile + " was produced:\n" + tail(output.toString()));
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            return Exit.SOFTWARE;
         }
 
         String runFlag = aotTier ? "-XX:AOTCache=" + cacheFile : "-XX:SharedArchiveFile=" + cacheFile;
@@ -155,21 +161,20 @@ final class AotCachePackage {
         // artifact is indistinguishable from a working one until someone measures.
         String rejection = verifyLoads(java, outDir, runFlag, appJarName, springBoot);
         if (rejection != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Build", "the AOT cache was written but the JVM refused it:\n  " + rejection);
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            CommandWedge.printFail("Build", "the AOT cache was written but the JVM refused it:\n  " + rejection);
+            return Exit.SOFTWARE;
         }
 
         String jvmIdent = jvmIdentity(java);
         writeManifest(outDir, Path.of(plan.mainJar()), projectDir, java, jvmIdent, cacheFile, runFlag, appJarName);
         Path launcher = writeLauncher(outDir, java, runFlag, appJarName);
 
-        CliOutput.err("jk: wrote " + cc.jumpkick.cli.PathDisplay.styledRaw(outDir) + " ("
-                + Files.size(cachePath) / (1024 * 1024) + " MiB cache, verified)");
+        CliOutput.err("jk: wrote " + PathDisplay.styledRaw(outDir) + " (" + Files.size(cachePath) / (1024 * 1024)
+                + " MiB cache, verified)");
         // The cache is keyed to the exact JVM build AND to these absolute paths. A different
         // vendor at the same version, or the same files moved elsewhere, falls back to a cold
         // start without saying so — hence the launcher, which pins both.
-        CliOutput.err("jk: run it with:  " + cc.jumpkick.cli.PathDisplay.styledRaw(launcher));
+        CliOutput.err("jk: run it with:  " + PathDisplay.styledRaw(launcher));
         CliOutput.err("jk:   pinned to " + jvmIdent);
         CliOutput.err(
                 "jk:   the cache is void if this directory moves, the jars change, or another" + " JVM build runs it");
@@ -264,8 +269,8 @@ final class AotCachePackage {
             boolean lockFresh = valueOf(text, "lock-sha256").equals(currentLockSha(projectDir));
             if (recorded.equals(actual) && lockFresh) return;
             PathUtil.deleteRecursively(outDir);
-            CliOutput.err("jk: the AOT cache no longer matches this build — removed "
-                    + cc.jumpkick.cli.PathDisplay.styledRaw(outDir) + " (re-run with --aot-cache)");
+            CliOutput.err("jk: the AOT cache no longer matches this build — removed " + PathDisplay.styledRaw(outDir)
+                    + " (re-run with --aot-cache)");
         } catch (IOException | RuntimeException ignored) {
             // Best effort: never fail a build over a cache that was only ever an optimisation.
         }
@@ -273,7 +278,7 @@ final class AotCachePackage {
 
     /** sha256 of the module's lockfile, or empty when there is none. */
     private static String currentLockSha(Path projectDir) throws IOException {
-        Path lock = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        Path lock = LockPaths.lockFile(projectDir);
         return Files.isRegularFile(lock) ? cc.jumpkick.host.Hashing.sha256Hex(lock) : "";
     }
 
@@ -414,8 +419,7 @@ final class AotCachePackage {
      * under their original {@code artifact-version.jar} names (both straight from the engine's
      * plan). The Class-Path manifest entry lets training and runtime both use plain {@code -jar}.
      */
-    private static String assemblePlainLayout(cc.jumpkick.engine.protocol.ExecPlan plan, Path outDir)
-            throws IOException {
+    private static String assemblePlainLayout(ExecPlan plan, Path outDir) throws IOException {
         Path mainJar = Path.of(plan.mainJar());
         Path libDir = Files.createDirectories(outDir.resolve("lib"));
         for (int i = 0; i < plan.libNames().size(); i++) {

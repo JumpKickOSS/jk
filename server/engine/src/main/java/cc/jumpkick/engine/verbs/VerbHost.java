@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.engine.InFlightBuilds;
+import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
@@ -31,9 +37,7 @@ public interface VerbHost {
     BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan);
 
     BuildPlanListener planListener(
-            String dir,
-            @Nullable BufferedWriter writer,
-            Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder);
+            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder);
 
     void releaseExclusiveSlot();
 
@@ -84,13 +88,13 @@ public interface VerbHost {
      * parses {@code .env}.
      */
     default List<Redacted> redactErrors(@Nullable String dir, List<String> errors) {
-        return cc.jumpkick.engine.listen.EventRedaction.redactErrors(dir, errors);
+        return EventRedaction.redactErrors(dir, errors);
     }
 
     String requestFailedLine(@Nullable String dir, Throwable e);
 
     default String requestFailedLine(@Nullable String dir, String message) {
-        return cc.jumpkick.engine.protocol.ProtoLifecycle.requestFailed(redactEnv(dir, message));
+        return ProtoLifecycle.requestFailed(redactEnv(dir, message));
     }
 
     void publishRequestError(long rid, @Nullable String dir, String message);
@@ -103,7 +107,7 @@ public interface VerbHost {
             BuildPlan plan,
             Session session,
             @Nullable BufferedWriter writer,
-            Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder)
+            Function<BuildPlanResult, String> finishEncoder)
             throws Exception {
         PlanBurst.stream(this, plan, session, writer, finishEncoder);
     }
@@ -124,11 +128,11 @@ public interface VerbHost {
         return false;
     }
 
-    default cc.jumpkick.engine.journal.BuildJournal journal() {
+    default BuildJournal journal() {
         throw new UnsupportedOperationException("journal");
     }
 
-    default cc.jumpkick.config.JkHistoryConfig historyConfig() {
+    default JkHistoryConfig historyConfig() {
         throw new UnsupportedOperationException("historyConfig");
     }
 
@@ -136,7 +140,7 @@ public interface VerbHost {
         throw new UnsupportedOperationException("metricsFile");
     }
 
-    default cc.jumpkick.engine.InFlightBuilds inFlightBuilds() {
+    default InFlightBuilds inFlightBuilds() {
         throw new UnsupportedOperationException("inFlightBuilds");
     }
 

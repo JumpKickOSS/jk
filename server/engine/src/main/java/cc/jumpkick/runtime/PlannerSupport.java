@@ -4,21 +4,40 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.engine.EngineMain;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,9 +65,8 @@ public final class PlannerSupport {
      * The resolved paths of {@code [[contribute.provided-classpath]]} entries — declared
      * step-dependency artifacts (an SDK platform jar) that join the COMPILE classpaths only.
      */
-    static List<Path> contributedProvidedClasspath(
-            cc.jumpkick.model.JkBuild project, BuildPlanner.Inputs in, cc.jumpkick.cache.Cas cas) {
-        List<String> names = cc.jumpkick.plugin.manifest.PluginContributions.providedClasspath(project, in.dir());
+    static List<Path> contributedProvidedClasspath(JkBuild project, BuildPlanner.Inputs in, Cas cas) {
+        List<String> names = PluginContributions.providedClasspath(project, in.dir());
         if (names.isEmpty()) return List.of();
         try {
             Map<String, Path> fetched =
@@ -125,7 +143,7 @@ public final class PlannerSupport {
             siblings.addAll(processorSiblings.siblingCoords());
         }
         List<String> missing = new ArrayList<>();
-        for (cc.jumpkick.model.Dependency dep : project.dependencies().of(Scope.PROCESSOR)) {
+        for (Dependency dep : project.dependencies().of(Scope.PROCESSOR)) {
             if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
             if (siblings.contains(dep.module())) continue;
             if (!locked.contains(dep.module())) missing.add(dep.module());
@@ -226,7 +244,7 @@ public final class PlannerSupport {
     static Path groovyCompileJar(TaskContext ctx, Cas cas) throws IOException {
         String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
             return GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -243,10 +261,10 @@ public final class PlannerSupport {
     static List<Path> groovyRuntime(TaskContext ctx, Cas cas) throws IOException {
         String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         if (groovyVersion == null || groovyVersion.isBlank()) {
-            groovyVersion = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
+            groovyVersion = GroovyResolver.DEFAULT_VERSION;
         }
         try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
             return GroovyToolResolver.resolveRuntime(repos, cas, groovyVersion);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -276,7 +294,7 @@ public final class PlannerSupport {
     static Path kotlinStdlib(TaskContext ctx, Cas cas) throws IOException {
         String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
             return KotlinPluginSetup.prepare(repos, cas, kotlinVersion).stdlib();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -304,7 +322,7 @@ public final class PlannerSupport {
      */
     static Map<String, Path> siblingMainJars(Path moduleDir) throws IOException {
         Map<String, Path> out = new LinkedHashMap<>();
-        var rootOpt = cc.jumpkick.config.WorkspaceLocator.findRoot(moduleDir);
+        var rootOpt = WorkspaceLocator.findRoot(moduleDir);
         if (rootOpt.isEmpty()) return out;
         Path root = rootOpt.get();
         JkBuild rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
@@ -357,7 +375,7 @@ public final class PlannerSupport {
      */
     static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
         // rebuildOr already subsumes force (JkConfig: force implies rebuild).
-        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) {
+        if (SessionContext.current().config().rebuildOr(false)) {
             return false;
         }
         ActionCache ac = packagingActionCache(cacheRoot);
@@ -411,8 +429,8 @@ public final class PlannerSupport {
         Map<String, Path> jarByModule = siblingMainJars(moduleDir);
         for (String module : modules) {
             // Accept short names (test-runner), artifact ids (jk-test-runner), or either already.
-            var wj = cc.jumpkick.engine.plugin.PluginJar.byArtifactId(module);
-            if (wj.isEmpty()) wj = cc.jumpkick.engine.plugin.PluginJar.byArtifactId("jk-" + module);
+            var wj = PluginJar.byArtifactId(module);
+            if (wj.isEmpty()) wj = PluginJar.byArtifactId("jk-" + module);
             if (wj.isEmpty()) continue;
             Path jar = jarByModule.get(module);
             if (jar == null) jar = jarByModule.get(wj.get().artifactId());
@@ -422,7 +440,7 @@ public final class PlannerSupport {
             } else {
                 // Not a built sibling — self-host by reusing the running jk's plugin
                 // jar (located via its sha resource + CAS, or a -D override).
-                Path located = wj.get().locateStored(cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = wj.get().locateStored(JkStores.cas(JkDirs.cache()));
                 if (located != null) props.put(wj.get().jarProperty(), located.toString());
             }
         }
@@ -465,7 +483,7 @@ public final class PlannerSupport {
             if (jar != null && Files.isRegularFile(jar)) {
                 props.put(w.jarProperty(), jar.toAbsolutePath().toString());
             } else {
-                Path located = w.locateStored(JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = w.locateStored(JkStores.cas(JkDirs.cache()));
                 if (located != null) props.put(w.jarProperty(), located.toString());
             }
         }
@@ -498,7 +516,7 @@ public final class PlannerSupport {
         Path override = BuildPlanner.hostEngineSearchOverride;
         if (override != null) return findMonorepoEngineJar(override);
         try {
-            var cs = cc.jumpkick.engine.EngineMain.class.getProtectionDomain().getCodeSource();
+            var cs = EngineMain.class.getProtectionDomain().getCodeSource();
             if (cs != null && cs.getLocation() != null) {
                 Path p = Path.of(cs.getLocation().toURI());
                 if (Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jar")) {
@@ -520,7 +538,7 @@ public final class PlannerSupport {
             }
         }
         try {
-            var mat = cc.jumpkick.cache.EngineInstall.current().resolve(cc.jumpkick.model.JkVersion.VERSION);
+            var mat = EngineInstall.current().resolve(JkVersion.VERSION);
             if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
@@ -536,7 +554,7 @@ public final class PlannerSupport {
 
     /** Prefer fat assembly, then dist/shadow, then thin main jar under known layout roots. */
     static Path findMonorepoEngineJar(Path start) {
-        String ver = cc.jumpkick.model.JkVersion.VERSION;
+        String ver = JkVersion.VERSION;
         Path walk = start;
         for (int up = 0; up < 5 && walk != null; up++, walk = walk.getParent()) {
             for (String rel : List.of(
@@ -598,15 +616,14 @@ public final class PlannerSupport {
      * build / BSP without data). {@code jk test} resolves tags CLI-side and its selection already
      * carries them.
      */
-    static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
+    static TestSelection effectiveSelection(TestSelection sel, Path moduleDir) {
         // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
         // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
         if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        var fromToml = cc.jumpkick.config.JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
+        var fromToml = JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
         if (fromToml.isEmpty()) return sel;
-        return cc.jumpkick.config.TestSelection.of(
-                sel.suites(), sel.allSuites(), fromToml.includeTags(), fromToml.excludeTags());
+        return TestSelection.of(sel.suites(), sel.allSuites(), fromToml.includeTags(), fromToml.excludeTags());
     }
 
     /**
@@ -636,7 +653,7 @@ public final class PlannerSupport {
         // workspace short-circuits to "up to date" without running the widened tier (JK-2203).
         return testStampExtras(
                 testStampWorkerJars(dir, project),
-                effectiveSelection(cc.jumpkick.config.SessionContext.current().testSelection(), dir),
+                effectiveSelection(SessionContext.current().testSelection(), dir),
                 project.build().testEnv(),
                 dir);
     }
@@ -666,21 +683,20 @@ public final class PlannerSupport {
             Path lockFile,
             List<Path> testRuntimeCp)
             throws IOException {
-        List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
+        List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps (JK-2203).
-        var resolved =
-                cc.jumpkick.config.SessionContext.current().testSelection().resolve(discovered);
-        List<String> suites = resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
+        var resolved = SessionContext.current().testSelection().resolve(discovered);
+        List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         List<Path> stampSrcs = new ArrayList<>();
-        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));
-        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(dir, compact, suites));
-        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(dir, compact, suites));
-        return cc.jumpkick.task.TestStamp.computeKey(
+        stampSrcs.addAll(TestSuites.collectJavaSources(dir, compact, suites));
+        stampSrcs.addAll(TestSuites.collectKotlinSources(dir, compact, suites));
+        stampSrcs.addAll(TestSuites.collectGroovySources(dir, compact, suites));
+        return TestStamp.computeKey(
                 stampSrcs,
                 mainClasses,
                 mainClassesFingerprint,
-                cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(dir, compact, suites),
+                ModuleLayout.suiteResourceDirs(dir, compact, suites),
                 lockFile,
                 testRuntimeCp,
                 testStampExtras(dir, project));
@@ -692,13 +708,9 @@ public final class PlannerSupport {
      * produce a key that disagrees with this one.
      */
     static List<String> testStampExtras(
-            Map<String, String> workerJars,
-            cc.jumpkick.config.TestSelection selection,
-            Map<String, String> testEnv,
-            Path moduleDir) {
-        cc.jumpkick.config.EnvLookup lookup =
-                cc.jumpkick.config.BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
-        return testStampExtras(workerJars, selection, testEnv, cc.jumpkick.config.SecretRedactor.from(lookup), lookup);
+            Map<String, String> workerJars, TestSelection selection, Map<String, String> testEnv, Path moduleDir) {
+        EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
+        return testStampExtras(workerJars, selection, testEnv, SecretRedactor.from(lookup), lookup);
     }
 
     /**
@@ -707,12 +719,12 @@ public final class PlannerSupport {
      */
     static List<String> testStampExtras(
             Map<String, String> workerJars,
-            cc.jumpkick.config.TestSelection selection,
+            TestSelection selection,
             Map<String, String> testEnv,
-            cc.jumpkick.config.SecretRedactor redactor,
-            cc.jumpkick.config.EnvLookup lookup) {
+            SecretRedactor redactor,
+            EnvLookup lookup) {
         List<String> extras = new ArrayList<>();
-        extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
+        extras.add("jk:" + BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
@@ -730,7 +742,7 @@ public final class PlannerSupport {
         for (Map.Entry<String, String> e : workerJars.entrySet()) {
             String fp;
             try {
-                fp = cc.jumpkick.task.ClasspathFingerprint.entry(Path.of(e.getValue()));
+                fp = ClasspathFingerprint.entry(Path.of(e.getValue()));
             } catch (IOException ex) {
                 fp = "err";
             }
@@ -774,7 +786,7 @@ public final class PlannerSupport {
      * lookup must accept both forms.
      */
     static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project) {
-        if (moduleDir == null || project == null || !cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
+        if (moduleDir == null || project == null || !PluginModule.isWorker(moduleDir)) {
             return List.of();
         }
         Path root;
@@ -865,7 +877,7 @@ public final class PlannerSupport {
         if (contributed == null || contributed.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (Path dir : contributed) {
-            sb.append(cc.jumpkick.task.ClasspathFingerprint.entry(dir)).append('\n');
+            sb.append(ClasspathFingerprint.entry(dir)).append('\n');
         }
         return cc.jumpkick.host.Hashing.sha256Hex(sb.toString());
     }
@@ -880,11 +892,11 @@ public final class PlannerSupport {
      * staging at all, in which case assembly stages for itself.
      */
     // Package-private for BuildPlannerStagedClassesTest.
-    static Path stageClassesWithContributions(
-            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout) throws IOException {
+    static Path stageClassesWithContributions(TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout)
+            throws IOException {
         if (extra.isEmpty()) return classes;
         Path stage = layout.moduleTargetDir().resolve("package-classes");
-        String inputs = cc.jumpkick.task.ClasspathFingerprint.entry(classes) + "|" + contributionsToken(extra);
+        String inputs = ClasspathFingerprint.entry(classes) + "|" + contributionsToken(extra);
         if (ctx != null && inputs.equals(ctx.get(STAGED_CLASSES_INPUTS).orElse(null)) && Files.isDirectory(stage)) {
             return stage;
         }
@@ -921,13 +933,10 @@ public final class PlannerSupport {
      * parsing and CLI snippets, instead of one joined blob whose first header wins.
      */
     static void forwardWorkerDiagnostics(
-            cc.jumpkick.run.TaskContext ctx,
-            String code,
-            List<cc.jumpkick.compile.CompileResult.Diagnostic> diagnostics,
-            String emptyFallback) {
+            TaskContext ctx, String code, List<CompileResult.Diagnostic> diagnostics, String emptyFallback) {
         boolean errored = false;
-        for (cc.jumpkick.compile.CompileResult.Diagnostic d : diagnostics) {
-            if (d.severity() == cc.jumpkick.compile.CompileResult.Severity.ERROR) {
+        for (CompileResult.Diagnostic d : diagnostics) {
+            if (d.severity() == CompileResult.Severity.ERROR) {
                 ctx.error(code, d.describe());
                 errored = true;
             } else {

@@ -3,9 +3,17 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.repo.LibraryRegistryClient;
+import cc.jumpkick.repo.LibraryRegistrySync;
+import cc.jumpkick.templates.OfficialTemplatesFreshen;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -40,7 +48,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String catalog = Jsonl.str(requestLine, "catalog");
@@ -52,30 +60,30 @@ public final class FreshenCatalogVerb implements HostedVerb {
                 switch (String.valueOf(catalog)) {
                     case "templates" -> {
                         if (!offline) {
-                            cc.jumpkick.templates.OfficialTemplatesFreshen.refreshNow(msg -> {});
-                            cc.jumpkick.giter8.Giter8TemplateIndex.invalidate();
+                            OfficialTemplatesFreshen.refreshNow(msg -> {});
+                            Giter8TemplateIndex.invalidate();
                         }
                     }
                     case "libraries" -> {
-                        URI src = url != null ? URI.create(url) : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE;
-                        Path dest = cacheFile != null ? Path.of(cacheFile) : cc.jumpkick.util.JkDirs.libraryRegistry();
+                        URI src = url != null ? URI.create(url) : LibraryRegistryClient.DEFAULT_SOURCE;
+                        Path dest = cacheFile != null ? Path.of(cacheFile) : JkDirs.libraryRegistry();
                         if (Jsonl.bool(requestLine, "force", false)) {
-                            cc.jumpkick.repo.LibraryRegistrySync.refreshNow(src, dest);
+                            LibraryRegistrySync.refreshNow(src, dest);
                         } else {
-                            cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(offline, src, dest);
+                            LibraryRegistrySync.ensurePresent(offline, src, dest);
                         }
                     }
                     case "jdks" -> {
                         if (!offline) {
-                            cc.jumpkick.jdk.JdkCatalogClient client = url != null
-                                    ? new cc.jumpkick.jdk.JdkCatalogClient(
-                                            new cc.jumpkick.http.Http(),
+                            JdkCatalogClient client = url != null
+                                    ? new JdkCatalogClient(
+                                            new Http(),
                                             URI.create(url),
                                             cacheFile != null
                                                     ? Path.of(cacheFile)
-                                                    : cc.jumpkick.jdk.JdkCatalogClient.defaultCachePath(),
+                                                    : JdkCatalogClient.defaultCachePath(),
                                             Duration.ZERO)
-                                    : new cc.jumpkick.jdk.JdkCatalogClient();
+                                    : new JdkCatalogClient();
                             client.onWarning(msg -> {}).fetch(true);
                         }
                     }

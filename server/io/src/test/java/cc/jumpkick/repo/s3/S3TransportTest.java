@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.model.ObjectStoreConfig;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -144,7 +145,7 @@ class S3TransportTest {
             ex.close();
         });
 
-        var cfg = new cc.jumpkick.model.ObjectStoreConfig("eu-central-1", endpoint.toString(), "CFGAK", "cfgsk", null);
+        var cfg = new ObjectStoreConfig("eu-central-1", endpoint.toString(), "CFGAK", "cfgsk", null);
         // Empty chain + empty env: config must supply region/endpoint/creds.
         var chain = new AwsCredentialChain(k -> null, Path.of("/nonexistent"));
         S3Transport t = S3Transport.forS3(new Http(), URI.create("s3://cfg-bucket/x.jar"), cfg, chain, k -> null);

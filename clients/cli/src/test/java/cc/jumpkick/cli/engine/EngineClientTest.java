@@ -3,9 +3,15 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.EngineServer;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.StandardProtocolFamily;
@@ -47,7 +53,7 @@ class EngineClientTest {
         // Every test that gets a real EngineServer to run triggers planSharedWorkerMemoryOnce,
         // which mutates JvmOptions' process-wide static heap plan — reset it so it doesn't leak into
         // unrelated tests sharing this test JVM.
-        cc.jumpkick.engine.plugin.JvmOptions.resetSharedPlanForTests();
+        JvmOptions.resetSharedPlanForTests();
         for (Path dir : tempDirs) {
             try (var walk = Files.walk(dir)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {
@@ -264,7 +270,7 @@ class EngineClientTest {
     void engine_artifact_resolution_prefers_override_then_product_lib() throws IOException {
         Path dir = shortTempDir();
         // Pointer lives beside the jars under this isolated product lib — no ambient JK_HOME involved.
-        cc.jumpkick.cache.EngineInstall install = new cc.jumpkick.cache.EngineInstall(dir.resolve("lib"));
+        EngineInstall install = new EngineInstall(dir.resolve("lib"));
 
         // no override, nothing materialized: empty (caller must materialize or set JK_ENGINE_EXE)
         assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
@@ -294,11 +300,10 @@ class EngineClientTest {
     }
 
     /** Materialize a fake engine jar for {@code version} into the isolated product lib. */
-    private static Path materialize(cc.jumpkick.cache.EngineInstall install, Path dir, String version)
-            throws IOException {
+    private static Path materialize(EngineInstall install, Path dir, String version) throws IOException {
         Path jar = dir.resolve("jk-engine-" + version + "-src.jar");
         Files.writeString(jar, "fake engine " + version);
-        cc.jumpkick.cache.Cas cas = new cc.jumpkick.cache.Cas(dir.resolve("cache"));
+        Cas cas = new Cas(dir.resolve("cache"));
         return install.materializeFromFiles(version, cas, jar).engineJar();
     }
 
@@ -308,7 +313,7 @@ class EngineClientTest {
         // path: Ctrl-C's dir-scoped cancel can never match it and the jid from job-start is the
         // only handle that reaches the job. Same for jk tool resolve and jk tool run <script>.
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.cli.Jk.VERSION, null);
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, Jk.VERSION, null);
         startInBackground(server);
         waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
         EngineClient.ActiveJobs.forgetAll();
@@ -316,12 +321,12 @@ class EngineClientTest {
         Path cache = Files.createDirectories(shortTempDir().resolve("cache"));
         List<Long> liveWhileRunning = new ArrayList<>();
         EngineRequests.CacheMaintSummary[] summary = new EngineRequests.CacheMaintSummary[1];
-        cc.jumpkick.run.BuildPlanResult result = EngineClient.runCacheMaintenance(
+        BuildPlanResult result = EngineClient.runCacheMaintenance(
                 p,
                 new EngineRequests.CacheMaintRequest("prune", cache, true, false, cache),
                 steps -> {
                     liveWhileRunning.addAll(EngineClient.ActiveJobs.snapshot());
-                    return new cc.jumpkick.run.BuildPlanListener() {};
+                    return new BuildPlanListener() {};
                 },
                 (external, plans) -> {},
                 summary);

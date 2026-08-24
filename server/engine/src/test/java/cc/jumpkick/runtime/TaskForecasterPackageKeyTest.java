@@ -3,7 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.charset.StandardCharsets;
@@ -66,8 +68,7 @@ class TaskForecasterPackageKeyTest {
         byte[] bytes = "sibling-jar-bytes".getBytes(StandardCharsets.UTF_8);
         String sha = cc.jumpkick.host.Hashing.sha256Hex(bytes);
         Path cacheRoot = tmp.resolve("cache");
-        var actionCache = new cc.jumpkick.task.ActionCache(
-                cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        var actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         actionCache.cas().put(bytes, sha);
 
         Path wiped = tmp.resolve("target/sibling.jar"); // does not exist (post-clean)
@@ -87,8 +88,7 @@ class TaskForecasterPackageKeyTest {
         // CAS, a hand-deleted blob). A record whose blobs are gone cannot restore, so the forecast
         // must report RUN, not CACHED.
         Path cacheRoot = tmp.resolve("cache");
-        var ac = new cc.jumpkick.task.ActionCache(
-                cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        var ac = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
         String sha = cc.jumpkick.host.Hashing.sha256Hex(bytes);
         Path blob = ac.cas().put(bytes, sha);

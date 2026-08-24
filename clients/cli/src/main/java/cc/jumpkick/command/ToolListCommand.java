@@ -2,6 +2,8 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -70,9 +72,8 @@ public final class ToolListCommand implements CliCommand {
                     : "";
             rows.add(List.of(bin, coord, source, Files.exists(launcher) ? launcher.toString() : "(not on PATH)"));
         }
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        for (String line :
-                cc.jumpkick.cli.tui.Table.render("Tools", List.of("Tool", "Coordinates", "Source", "Launcher"), rows)) {
+        CommandWedge.envelopeStart();
+        for (String line : Table.render("Tools", List.of("Tool", "Coordinates", "Source", "Launcher"), rows)) {
             CliOutput.out(line);
         }
         return 0;

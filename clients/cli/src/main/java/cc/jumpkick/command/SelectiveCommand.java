@@ -3,7 +3,9 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -93,7 +95,7 @@ public final class SelectiveCommand implements CliCommand {
         if (proj == null) return Exit.CONFIG;
 
         if (in.positionals().isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "expected resolve | prepare | run");
+            CommandWedge.printFail("Selective", "expected resolve | prepare | run");
             return Exit.USAGE;
         }
         String action = action(in);
@@ -107,8 +109,7 @@ public final class SelectiveCommand implements CliCommand {
             case "prepare" -> prepare(dir, proj.buildFile(), since, modules, planPath);
             case "run" -> runVerb(in, dir, proj.buildFile(), since, modules, planPath);
             default -> {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Selective", "unknown action `" + action + "` (resolve | prepare | run)");
+                CommandWedge.printFail("Selective", "unknown action `" + action + "` (resolve | prepare | run)");
                 yield Exit.USAGE;
             }
         };
@@ -117,12 +118,12 @@ public final class SelectiveCommand implements CliCommand {
     private static int resolve(Path dir, Path buildFile, String since, String modules, boolean json, Set<Path> into)
             throws Exception {
         if ((since == null || since.isBlank()) && (modules == null || modules.isBlank())) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "pass --since=<ref> and/or --modules=<sel>");
+            CommandWedge.printFail("Selective", "pass --since=<ref> and/or --modules=<sel>");
             return Exit.USAGE;
         }
         var selected = BuildCommand.projectInfoOrError(dir, modules, since);
         if (selected.error() != null && !selected.error().isBlank()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", selected.error());
+            CommandWedge.printFail("Selective", selected.error());
             return Exit.CONFIG;
         }
         Set<Path> selectedDirs = new LinkedHashSet<>();
@@ -173,7 +174,7 @@ public final class SelectiveCommand implements CliCommand {
         Path parent = planPath.getParent();
         if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replace(planPath, body);
-        cc.jumpkick.cli.tui.CommandWedge.printOk(
+        CommandWedge.printOk(
                 "Selective",
                 "Wrote "
                         + planPath
@@ -188,12 +189,12 @@ public final class SelectiveCommand implements CliCommand {
     private static int runVerb(Invocation in, Path dir, Path buildFile, String since, String modules, Path planPath)
             throws Exception {
         if (in.positionals().size() < 2) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "expected build | test");
+            CommandWedge.printFail("Selective", "expected build | test");
             return Exit.USAGE;
         }
         String verb = in.positionals().get(1).trim().toLowerCase(Locale.ROOT);
         if (!verb.equals("build") && !verb.equals("test")) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "expected build | test (got " + verb + ")");
+            CommandWedge.printFail("Selective", "expected build | test (got " + verb + ")");
             return Exit.USAGE;
         }
 
@@ -207,7 +208,7 @@ public final class SelectiveCommand implements CliCommand {
             if (plan.modules.isEmpty()
                     && (plan.since == null || plan.since.isBlank())
                     && (plan.modulesSpec == null || plan.modulesSpec.isBlank())) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "plan " + planPath + " has no modules");
+                CommandWedge.printFail("Selective", "plan " + planPath + " has no modules");
                 return Exit.CONFIG;
             }
             // Prefer plan modules as an explicit --modules list of relative paths.
@@ -221,8 +222,7 @@ public final class SelectiveCommand implements CliCommand {
 
         if ((effectiveSince == null || effectiveSince.isBlank())
                 && (effectiveModules == null || effectiveModules.isBlank())) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Selective", "pass --since / --modules, or run `jk selective prepare` first");
+            CommandWedge.printFail("Selective", "pass --since / --modules, or run `jk selective prepare` first");
             return Exit.USAGE;
         }
 
@@ -249,7 +249,7 @@ public final class SelectiveCommand implements CliCommand {
                 if (prev == null || cur == null || !prev.equals(cur)) dirty.add(m);
             }
             if (dirty.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk(
+                CommandWedge.printOk(
                         "Selective",
                         "content hashes match plan — nothing changed (" + plannedClean.size()
                                 + " module"
@@ -259,7 +259,7 @@ public final class SelectiveCommand implements CliCommand {
             }
             effectiveModules = String.join(",", dirty);
             effectiveSince = null; // modules list is authoritative
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "content-hash dirty modules: " + effectiveModules);
+            CommandWedge.printFail("Selective", "content-hash dirty modules: " + effectiveModules);
         }
 
         List<String> args = new ArrayList<>();
@@ -280,7 +280,7 @@ public final class SelectiveCommand implements CliCommand {
         if (g.force) args.add("--force");
         if (g.rebuild) args.add("--redo");
 
-        return cc.jumpkick.cli.Jk.execute(args.toArray(String[]::new));
+        return Jk.execute(args.toArray(String[]::new));
     }
 
     private record Plan(String since, String modulesSpec, List<String> modules, Map<String, String> contentHashes) {}

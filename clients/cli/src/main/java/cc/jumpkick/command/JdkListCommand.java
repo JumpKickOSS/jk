@@ -2,11 +2,15 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.ActiveJavac;
 import cc.jumpkick.jdk.HostPlatform;
@@ -133,8 +137,7 @@ public final class JdkListCommand implements CliCommand {
         this.all = in.isSet("all");
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile =
-                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheFile = in.value("cache-file").map(CliPaths::abs).orElse(null);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         Path jdksRoot = registry.jdksRoot();
         List<JdkHit> installed = registry.listHits();
@@ -173,7 +176,7 @@ public final class JdkListCommand implements CliCommand {
         }
 
         String title = all ? "All OpenJDKs" : "Installed OpenJDKs";
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+        CommandWedge.envelopeStart();
         for (String line : renderTable(rows, title)) {
             CliOutput.out(line);
         }
@@ -268,7 +271,7 @@ public final class JdkListCommand implements CliCommand {
         // but outside every manager's root). Synthesize an ACTIVE row so the
         // JDK this shell actually uses is never absent from the list.
         if (currentHome != null && !currentShown) {
-            cc.jumpkick.discovery.ProbeSupport.discoverJdk(currentHome, "path").ifPresent(hit -> {
+            ProbeSupport.discoverJdk(currentHome, "path").ifPresent(hit -> {
                 String id =
                         IntellijJdkDir.installDirOf(hit.home()).getFileName().toString();
                 String vendor = hit.vendor() != JdkVendor.UNKNOWN ? hit.vendor().displayName() : "";
@@ -531,8 +534,7 @@ public final class JdkListCommand implements CliCommand {
     private JdkCatalog fetchCatalogOrNull() {
         if (!HostPlatform.supported()) return null;
         try {
-            boolean refresh =
-                    cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+            boolean refresh = SessionContext.current().config().forceOr(false);
             JdkCatalogClient client = (feedUrl != null
                             ? new JdkCatalogClient(
                                     new Http(),
@@ -546,7 +548,7 @@ public final class JdkListCommand implements CliCommand {
             return client.fetch(refresh, /* firstClassOnly= */ false);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK", "JetBrains feed unreachable (" + e.getMessage() + "); showing installed JDKs only.");
             return null;
         }

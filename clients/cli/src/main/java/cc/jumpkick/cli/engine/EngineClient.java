@@ -1,12 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import cc.jumpkick.engine.protocol.CatalogReadAck;
+import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.engine.protocol.GeneratedFiles;
+import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.engine.protocol.ModuleGraphAck;
+import cc.jumpkick.engine.protocol.NewProjectAck;
+import cc.jumpkick.engine.protocol.OutdatedReport;
+import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.BuildForecast;
 import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.runtime.HostedEvents;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
@@ -134,9 +154,7 @@ public final class EngineClient {
     /** Connect and request a status snapshot; empty if no engine is reachable. */
     public static Optional<Status> status(Path socket) {
         try (SocketChannel ch = connect(socket)) {
-            exchange(
-                    ch,
-                    ProtoLifecycle.hello(cc.jumpkick.cli.Jk.VERSION, "probe")); // handshake first, response discarded
+            exchange(ch, ProtoLifecycle.hello(Jk.VERSION, "probe")); // handshake first, response discarded
             String ack = exchange(ch, ProtoLifecycle.statusRequest());
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             String httpUrl = Jsonl.str(ack, "httpUrl");
@@ -327,7 +345,7 @@ public final class EngineClient {
      * engine is unreachable. Idempotent: already-finished jids yield {@code cancelled=false}.
      */
     public static Optional<String> cancel(EnginePaths.Paths paths, long jid) throws IOException {
-        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        ensureRunning(paths, Jk.VERSION);
         return cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequest(jid), jid);
     }
 
@@ -335,7 +353,7 @@ public final class EngineClient {
      * Cancel every live job under {@code dir}. Used by bare {@code jk cancel} and Ctrl-C.
      */
     public static Optional<String> cancelForDir(EnginePaths.Paths paths, String dir) throws IOException {
-        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        ensureRunning(paths, Jk.VERSION);
         Optional<String> ack = cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequestForDir(dir), -1);
         if (ack.isPresent()) ActiveJobs.forgetAll();
         return ack;
@@ -466,7 +484,7 @@ public final class EngineClient {
 
     public static Optional<String> calibrate(
             EnginePaths.Paths paths, boolean force, long engineColdStartMs, boolean allowNetwork) throws IOException {
-        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        ensureRunning(paths, Jk.VERSION);
         try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
@@ -486,7 +504,7 @@ public final class EngineClient {
 
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
     private static List<String> streamHistory(EnginePaths.Paths paths, String request) throws IOException {
-        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        ensureRunning(paths, Jk.VERSION);
         List<String> out = new ArrayList<>();
         try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
@@ -547,11 +565,11 @@ public final class EngineClient {
      * Run a single project's test plan against the engine (Task 3) — see {@link
      * EngineBuildListenerAdapter#runTest} for the exact contract.
      */
-    public static cc.jumpkick.run.BuildPlanResult runTest(
+    public static BuildPlanResult runTest(
             EnginePaths.Paths paths,
             EngineRequests.TestRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut)
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            TestSummary[] testResultOut)
             throws IOException {
         return EngineBuildListenerAdapter.runTest(paths, req, listenerFactory, testResultOut);
     }
@@ -561,29 +579,28 @@ public final class EngineClient {
      * {@code BuildCommand.runForDir}'s {@code agg == null} branch — see {@link
      * EngineBuildListenerAdapter#runSingleBuild} for the exact contract.
      */
-    public static cc.jumpkick.run.BuildPlanResult runSingleBuild(
+    public static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
             EngineRequests.SingleBuildRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
         return EngineBuildListenerAdapter.runSingleBuild(paths, req, listenerFactory, testResultOut, buildOutcomeOut);
     }
 
     /** One engine-hosted jk.toml edit (EDIT_REQUEST): returns changed; throws on error. */
-    public static boolean edit(cc.jumpkick.engine.EnginePaths.Paths paths, Path file, String op, List<String> args)
-            throws IOException {
+    public static boolean edit(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
         return EngineBuildListenerAdapter.edit(paths, file, op, args);
     }
 
-    public static String editDetail(cc.jumpkick.engine.EnginePaths.Paths paths, Path file, String op, List<String> args)
+    public static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args)
             throws IOException {
         return EngineBuildListenerAdapter.editDetail(paths, file, op, args);
     }
 
-    public static cc.jumpkick.engine.protocol.CacheInventoryAck cacheInventory(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
+    public static CacheInventoryAck cacheInventory(
+            EnginePaths.Paths paths,
             String query,
             Path cache,
             Path store,
@@ -595,8 +612,8 @@ public final class EngineClient {
     }
 
     /** Engine-hosted {@code jk new} / init scaffold. */
-    public static cc.jumpkick.engine.protocol.NewProjectAck newProject(
-            cc.jumpkick.engine.EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
+    public static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req)
+            throws IOException {
         return EngineBuildListenerAdapter.newProject(paths, req);
     }
 
@@ -613,10 +630,10 @@ public final class EngineClient {
      * #freshenCatalogIfRunning} instead, which never starts an engine.
      */
     public static void freshenCatalog(
-            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, boolean offline, String url, Path cacheFile) {
+            EnginePaths.Paths paths, String catalog, boolean offline, String url, Path cacheFile) {
         if (offline) return; // nothing to freshen without a network
         try {
-            ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+            ensureRunning(paths, Jk.VERSION);
         } catch (IOException e) {
             return; // no engine to host the freshen — local resolution proceeds against the cache
         }
@@ -628,9 +645,9 @@ public final class EngineClient {
      * As {@link #freshenCatalog} but always hits the network and returns the engine error (or
      * {@code null} on success). Used by {@code jk library update}.
      */
-    public static String freshenCatalogNow(
-            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, String url, Path cacheFile) throws IOException {
-        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+    public static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, Path cacheFile)
+            throws IOException {
+        ensureRunning(paths, Jk.VERSION);
         return EngineBuildListenerAdapter.freshenCatalogNow(
                 paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
     }
@@ -647,24 +664,22 @@ public final class EngineClient {
      * installs through it the same way the web dashboard and MCP always do, so there is one place
      * that actually touches the JDK feed's network when the engine is available.
      */
-    public static boolean freshenCatalogIfRunning(
-            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, String url, Path cacheFile) {
-        if (!reachable(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) return false;
+    public static boolean freshenCatalogIfRunning(EnginePaths.Paths paths, String catalog, String url, Path cacheFile) {
+        if (!reachable(EnginePaths.activeSocket(paths))) return false;
         EngineBuildListenerAdapter.freshenCatalog(
                 paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
         return true;
     }
 
     /** Module DAG for {@code jk explain --graph}. */
-    public static cc.jumpkick.engine.protocol.ModuleGraphAck moduleGraph(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince)
-            throws IOException {
+    public static ModuleGraphAck moduleGraph(
+            EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
         return EngineBuildListenerAdapter.moduleGraph(paths, dir, format, modules, affectedSince);
     }
 
     /** Layered library catalog (list / search / wizard picker). */
-    public static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
+    public static CatalogReadAck catalogRead(
+            EnginePaths.Paths paths,
             Path dir,
             Path cache,
             String query,
@@ -681,20 +696,18 @@ public final class EngineClient {
      * Project summary (PROJECT_INFO) — replaces client-side project-file peeks.
      * In-process twin under test/no-engine.
      */
-    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir) throws IOException {
+    public static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
         return projectInfo(paths, dir, null, null);
     }
 
-    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
+    public static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
             throws IOException {
         return projectInfo(paths, dir, modules, affectedSince, false);
     }
 
     /** {@code counts=true} adds the source/test tree-walk counts — jk status only (JK-2162). */
-    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
+    public static ProjectInfo projectInfo(
+            EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
             throws IOException {
         return EngineBuildListenerAdapter.projectInfo(paths, dir, modules, affectedSince, counts);
     }
@@ -704,51 +717,41 @@ public final class EngineClient {
      * engine-side only; one synchronous DENY_CHECK round trip returns the violations.
      */
     /** Thin-client IDE model: engine computes the workspace model, client generates the files. */
-    public static cc.jumpkick.engine.protocol.IdeWireModel ideModel(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
+    public static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir)
+            throws IOException {
         return EngineBuildListenerAdapter.ideModel(paths, dir, cache, jdksDir);
     }
 
     /** A plugin-declared command, worker-executed engine-side (found=false → normal help). */
-    public static cc.jumpkick.engine.protocol.PluginCommandReport pluginCommand(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args)
-            throws IOException {
+    public static PluginCommandReport pluginCommand(
+            EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args) throws IOException {
         return EngineBuildListenerAdapter.pluginCommand(paths, dir, cache, command, args);
     }
 
     /** Thin-client generator run: engine renders content, client guards/writes/prints. */
-    public static cc.jumpkick.engine.protocol.GeneratedFiles generate(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String kind) throws IOException {
+    public static GeneratedFiles generate(EnginePaths.Paths paths, Path dir, String kind) throws IOException {
         return EngineBuildListenerAdapter.generate(paths, dir, kind, Map.of());
     }
 
     /** As above with generator parameters (scaffold inputs etc.). */
-    public static cc.jumpkick.engine.protocol.GeneratedFiles generate(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params)
+    public static GeneratedFiles generate(EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params)
             throws IOException {
         return EngineBuildListenerAdapter.generate(paths, dir, kind, params);
     }
 
     /** Thin-client tree render: engine walks the graph, client substitutes its Theme into the tags. */
     public static String treeRender(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
-            Path dir,
-            int maxDepth,
-            boolean flatten,
-            boolean stack,
-            List<String> scopes)
+            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
             throws IOException {
         return EngineBuildListenerAdapter.treeRender(paths, dir, maxDepth, flatten, stack, scopes);
     }
 
     /** Thin-client why lookup: lock matching + provenance paths, engine-side. */
-    public static cc.jumpkick.engine.protocol.WhyReport why(
-            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String query) throws IOException {
+    public static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
         return EngineBuildListenerAdapter.why(paths, dir, query);
     }
 
-    public static cc.jumpkick.engine.protocol.DenyReport denyCheck(cc.jumpkick.engine.EnginePaths.Paths paths, Path dir)
-            throws IOException {
+    public static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
         return EngineBuildListenerAdapter.denyCheck(paths, dir);
     }
 
@@ -756,20 +759,15 @@ public final class EngineClient {
      * Execution plan: engine decides run/dev argv, install layout, or aot-cache layout; caller
      * executes.
      */
-    public static cc.jumpkick.engine.protocol.ExecPlan execPlan(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
-            Path dir,
-            Path cache,
-            String kind,
-            String mainOverride,
-            String binName)
+    public static ExecPlan execPlan(
+            EnginePaths.Paths paths, Path dir, Path cache, String kind, String mainOverride, String binName)
             throws IOException {
         return EngineBuildListenerAdapter.execPlan(paths, dir, cache, kind, mainOverride, binName, null, null);
     }
 
     /** As above with install-destination overrides ({@code --bin-dir}/{@code --lib-dir}). */
-    public static cc.jumpkick.engine.protocol.ExecPlan execPlan(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
+    public static ExecPlan execPlan(
+            EnginePaths.Paths paths,
             Path dir,
             Path cache,
             String kind,
@@ -785,8 +783,8 @@ public final class EngineClient {
      * Pre-flight a build's dirty forecast against the engine — {@code jk build}'s fully-cached
      * shortcut and dirty hint (see {@link EngineBuildListenerAdapter#forecast}).
      */
-    public static cc.jumpkick.runtime.BuildForecast forecast(
-            EnginePaths.Paths paths, Path entryDir, Path cache, boolean skipTests) throws IOException {
+    public static BuildForecast forecast(EnginePaths.Paths paths, Path entryDir, Path cache, boolean skipTests)
+            throws IOException {
         return EngineBuildListenerAdapter.forecast(paths, entryDir, cache, skipTests);
     }
 
@@ -838,10 +836,10 @@ public final class EngineClient {
      * EngineResolveAdapter#runSync} for the exact contract (the {@code jk test} listener-factory
      * shape, plus fetched/up-to-date count holders for the summary line).
      */
-    public static cc.jumpkick.run.BuildPlanResult runSync(
+    public static BuildPlanResult runSync(
             EnginePaths.Paths paths,
             EngineRequests.SyncRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             long[] fetchedOut,
             long[] upToDateOut)
             throws IOException {
@@ -853,16 +851,16 @@ public final class EngineClient {
      * outdated}) — one synchronous request, one {@link cc.jumpkick.engine.protocol.OutdatedReport}
      * back. Read-only: the engine enumerates versions and writes nothing.
      */
-    public static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
-            EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
+    public static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req)
+            throws IOException {
         return EngineResolveAdapter.runOutdated(paths, req);
     }
 
-    public static cc.jumpkick.run.BuildPlanResult runAudit(
+    public static BuildPlanResult runAudit(
             EnginePaths.Paths paths,
             EngineRequests.AuditRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            cc.jumpkick.runtime.HostedEvents.FindingObserver findings)
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            HostedEvents.FindingObserver findings)
             throws IOException {
         return EngineHosted.runAudit(paths, req, listenerFactory, findings);
     }
@@ -870,8 +868,8 @@ public final class EngineClient {
     public static EngineRequests.FormatOutcome runFormat(
             EnginePaths.Paths paths,
             EngineRequests.FormatRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            cc.jumpkick.runtime.HostedEvents.FileObserver files)
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            HostedEvents.FileObserver files)
             throws IOException {
         return EngineHosted.runFormat(paths, req, listenerFactory, files);
     }
@@ -879,15 +877,15 @@ public final class EngineClient {
     public static EngineRequests.PublishOutcome runPublish(
             EnginePaths.Paths paths,
             EngineRequests.PublishRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runPublish(paths, req, listenerFactory);
     }
 
-    public static cc.jumpkick.run.BuildPlanResult runImage(
+    public static BuildPlanResult runImage(
             EnginePaths.Paths paths,
             EngineRequests.ImageRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             EngineRequests.ImageSummary[] summaryOut)
             throws IOException {
         return EngineHosted.runImage(paths, req, listenerFactory, summaryOut);
@@ -896,30 +894,30 @@ public final class EngineClient {
     public static EngineRequests.ImportOutcome runImport(
             EnginePaths.Paths paths,
             EngineRequests.ImportRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            cc.jumpkick.runtime.HostedEvents.NoteObserver notes)
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            HostedEvents.NoteObserver notes)
             throws IOException {
         return EngineHosted.runImport(paths, req, listenerFactory, notes);
     }
 
-    public static cc.jumpkick.runtime.HostedEvents.Provision provision(
+    public static HostedEvents.Provision provision(
             EnginePaths.Paths paths, Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
             throws IOException {
         return EngineHosted.provision(paths, cache, projectDir, toolsRoot, noDiscover, gradle);
     }
 
-    public static cc.jumpkick.run.BuildPlanResult runCompile(
+    public static BuildPlanResult runCompile(
             EnginePaths.Paths paths,
             EngineRequests.CompileRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runCompile(paths, req, listenerFactory);
     }
 
-    public static cc.jumpkick.run.BuildPlanResult runTrain(
+    public static BuildPlanResult runTrain(
             EnginePaths.Paths paths,
             EngineRequests.TrainRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runTrain(paths, req, listenerFactory);
     }
@@ -930,11 +928,11 @@ public final class EngineClient {
         return EngineHosted.runNative(paths, req, listener);
     }
 
-    public static cc.jumpkick.run.BuildPlanResult runInstall(
+    public static BuildPlanResult runInstall(
             EnginePaths.Paths paths,
             EngineRequests.InstallRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            cc.jumpkick.run.TestSummary[] testResultOut)
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            TestSummary[] testResultOut)
             throws IOException {
         return EngineHosted.runInstall(paths, req, listenerFactory, testResultOut);
     }
@@ -942,7 +940,7 @@ public final class EngineClient {
     public static EngineRequests.GitFetchOutcome runGitFetch(
             EnginePaths.Paths paths,
             EngineRequests.GitFetchRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runGitFetch(paths, req, listenerFactory);
     }
@@ -950,7 +948,7 @@ public final class EngineClient {
     public static EngineRequests.ToolResolveOutcome runToolResolve(
             EnginePaths.Paths paths,
             EngineRequests.ToolResolveRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runToolResolve(paths, req, listenerFactory);
     }
@@ -958,15 +956,15 @@ public final class EngineClient {
     public static EngineRequests.ScriptPrepareOutcome runScriptPrepare(
             EnginePaths.Paths paths,
             EngineRequests.ScriptPrepareRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runScriptPrepare(paths, req, listenerFactory);
     }
 
-    public static cc.jumpkick.run.BuildPlanResult runCacheMaintenance(
+    public static BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
             EngineRequests.CacheMaintRequest req,
-            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)
             throws IOException {
@@ -990,7 +988,7 @@ public final class EngineClient {
     }
 
     static Optional<EngineSpawn.EngineArtifact> resolveEngineArtifact(
-            String envOverride, String version, cc.jumpkick.cache.EngineInstall install) {
+            String envOverride, String version, EngineInstall install) {
         return EngineSpawn.resolveEngineArtifact(envOverride, version, install);
     }
 

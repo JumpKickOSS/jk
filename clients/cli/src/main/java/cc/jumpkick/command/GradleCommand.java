@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
@@ -79,7 +80,7 @@ public final class GradleCommand implements CliCommand {
         Process p = pb.start();
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
-        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
+        CliOutput.skipTrailingBlank();
         return p.waitFor();
     }
 }

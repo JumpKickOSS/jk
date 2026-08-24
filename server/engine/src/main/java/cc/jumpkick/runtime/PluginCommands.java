@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Variants;
+import cc.jumpkick.plugin.manifest.VariantApply;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,8 +45,7 @@ public final class PluginCommands {
             if (!project.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(dir, cache)) {
                 project = JkBuildParser.reparse(buildFile);
             }
-            project = cc.jumpkick.plugin.manifest.VariantApply.applyLenient(
-                            project, dir, cc.jumpkick.model.Variants.Selection.parse(variant), clientEnv)
+            project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
                     .build();
             var active = PluginBuild.activeCodePlugin(project, dir).orElse(null);
             if (active == null) return PluginCommandReport.notFound();
@@ -52,11 +57,8 @@ public final class PluginCommands {
 
             Path scratch = layout.moduleTargetDir().resolve("plugin").resolve("command-" + command);
             Files.createDirectories(scratch);
-            cc.jumpkick.plugin.protocol.SpecWriter specWriter = new cc.jumpkick.plugin.protocol.SpecWriter()
-                    .op(
-                            cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMMAND,
-                            command,
-                            active.manifest().id())
+            SpecWriter specWriter = new SpecWriter()
+                    .op(PluginProtocol.OP_COMMAND, command, active.manifest().id())
                     .configValues(active.config().values())
                     .project(PluginBuild.facts(project, project.mainClass()))
                     .layout(layout.classesDir(), dir, scratch)
@@ -66,11 +68,7 @@ public final class PluginCommands {
             // best-effort: `jk android licenses` must run BEFORE licenses gate provisioning, so
             // an unprovisionable tool is absent and only a command that needs it complains.
             for (var tool : PluginBuild.fetchStepDependencies(
-                            project,
-                            dir,
-                            cc.jumpkick.cache.JkStores.cas(cache),
-                            PluginBuild.sdkPins(cc.jumpkick.lock.LockPaths.lockFile(dir)),
-                            true)
+                            project, dir, JkStores.cas(cache), PluginBuild.sdkPins(LockPaths.lockFile(dir)), true)
                     .entrySet()) {
                 specWriter.extra(tool.getKey(), tool.getValue());
             }
@@ -80,9 +78,7 @@ public final class PluginCommands {
                 List<String> output = new ArrayList<>();
                 String[] error = new String[1];
                 PluginClient client = new PluginClient(active.manifest().code().protocolPrefix())
-                        .on(
-                                cc.jumpkick.plugin.protocol.PluginProtocol.COMMAND_OUT,
-                                line -> output.add(Jsonl.str(line, "line")))
+                        .on(PluginProtocol.COMMAND_OUT, line -> output.add(Jsonl.str(line, "line")))
                         .on("error", line -> error[0] = Jsonl.str(line, "message"))
                         .onOther(line -> {
                             // labels/done — not part of the command's user-facing output

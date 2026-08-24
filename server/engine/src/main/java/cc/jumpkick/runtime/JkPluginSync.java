@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.File;
 import java.io.IOException;
@@ -42,9 +44,9 @@ public final class JkPluginSync {
     private JkPluginSync() {}
 
     public static Result ensureInCas(Cas cas, Observer obs) throws IOException, InterruptedException {
-        Path m2 = cc.jumpkick.repo.M2Dirs.localRepository();
+        Path m2 = M2Dirs.localRepository();
         Path cacheRoot = cas.root();
-        RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+        RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, RepoArtifactResolver.JK_LOCAL);
         RepoArtifactStore centralStore = new RepoArtifactStore(cacheRoot, "central");
         int present = 0;
         int fetched = 0;

@@ -3,6 +3,8 @@ package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Osc;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -74,7 +76,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     static boolean shouldAnimate() {
         if (!Theme.active().isAnsi()) return false;
         if (SessionContext.current().config().noProgressOr(false)) return false;
-        return cc.jumpkick.cli.run.BuildPlanConsole.isInteractiveTerminal();
+        return BuildPlanConsole.isInteractiveTerminal();
     }
 
     /** Replace the live wedge message. Does not start a new chip. */
@@ -159,7 +161,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
 
     /** {@code BSP: Wrote .bsp/jk.json} — workspace-relative, never absolute. */
     public static RichText bspWrote(Path connectionFile, Path relativeTo) {
-        String rel = cc.jumpkick.cli.PathDisplay.of(connectionFile, relativeTo);
+        String rel = PathDisplay.of(connectionFile, relativeTo);
         return RichText.parse("BSP: Wrote [path]" + RichText.escape(rel) + "[/]");
     }
 

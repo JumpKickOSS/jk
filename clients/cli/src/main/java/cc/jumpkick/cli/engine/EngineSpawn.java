@@ -1,16 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.util.AotManifest;
+import cc.jumpkick.util.AotSettings;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
@@ -46,9 +57,7 @@ public final class EngineSpawn {
 
     private static boolean buildIdCurrent(EngineClient.Handshake hs, String clientVersion) {
         if (hs.buildId().isEmpty()) return true;
-        String expected = cc.jumpkick.cache.EngineInstall.current()
-                .engineSha(clientVersion)
-                .orElse("");
+        String expected = EngineInstall.current().engineSha(clientVersion).orElse("");
         if (expected.isEmpty()) return true;
         return expected.startsWith(hs.buildId());
     }
@@ -213,7 +222,7 @@ public final class EngineSpawn {
     record EngineTarget(EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache, boolean noAotMarker) {}
 
     /** A host JDK for the engine: home, vendor, and version (from its {@code release} file). */
-    record EngineJdk(Path home, cc.jumpkick.jdk.JdkVendor vendor, String version) {}
+    record EngineJdk(Path home, JdkVendor vendor, String version) {}
 
     /** Resolve everything the spawn/mode decision needs, self-healing a missing/skewed engine jar. */
     private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
@@ -223,9 +232,7 @@ public final class EngineSpawn {
         // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
         if (resolved.isEmpty()
                 && EngineJarFetcher.applicable(
-                        clientVersion,
-                        isNativeImage(),
-                        cc.jumpkick.config.SessionContext.current().offline())) {
+                        clientVersion, isNativeImage(), SessionContext.current().offline())) {
             CliOutput.err("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
             EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
@@ -256,7 +263,7 @@ public final class EngineSpawn {
         if (t.noAotMarker()) return AotMode.NONE;
         if (usableAotCache(t.aotCache())) return AotMode.USE;
         deleteIfEmptyCache(t.aotCache()); // torn/zero-byte leftover: treat as missing so it retrains
-        if (!cc.jumpkick.util.AotSettings.trainingEnabled()) return AotMode.NONE;
+        if (!AotSettings.trainingEnabled()) return AotMode.NONE;
         return AotMode.TRAIN;
     }
 
@@ -298,7 +305,7 @@ public final class EngineSpawn {
 
     private static EngineJdk resolveEngineJdk() throws IOException {
         int floor = Runtime.version().feature();
-        String pin = cc.jumpkick.config.GlobalConfig.engineJdkPin().orElse("temurin-" + floor);
+        String pin = GlobalConfig.engineJdkPin().orElse("temurin-" + floor);
         Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
         if (installed.isPresent()) return installed.get();
         CliOutput.err("jk: installing the build engine's JDK (" + pin + ") ...");
@@ -325,7 +332,7 @@ public final class EngineSpawn {
             // No running JVM home (native client) — the registry scan below still covers installs.
         }
         try {
-            for (cc.jumpkick.jdk.JdkHit hit : new cc.jumpkick.jdk.JdkRegistry().listHits()) homes.add(hit.home());
+            for (JdkHit hit : new JdkRegistry().listHits()) homes.add(hit.home());
         } catch (RuntimeException ignored) {
             // Registry probe failure is non-fatal — fall through to install.
         }
@@ -341,12 +348,11 @@ public final class EngineSpawn {
     }
 
     private static Optional<EngineJdk> probeEngineJdk(Path home) {
-        return cc.jumpkick.discovery.ProbeSupport.discoverJdk(home, "engine-host")
-                .map(h -> new EngineJdk(h.home(), h.vendor(), h.version()));
+        return ProbeSupport.discoverJdk(home, "engine-host").map(h -> new EngineJdk(h.home(), h.vendor(), h.version()));
     }
 
     /** A parsed engine-JDK pin, e.g. {@code "temurin-25"} → (TEMURIN, 25). */
-    private record Pin(cc.jumpkick.jdk.JdkVendor vendor, int major) {}
+    private record Pin(JdkVendor vendor, int major) {}
 
     private static Optional<Pin> parsePin(String spec) {
         int dash = spec.lastIndexOf('-');
@@ -357,16 +363,16 @@ public final class EngineSpawn {
         } catch (NumberFormatException e) {
             return Optional.empty();
         }
-        cc.jumpkick.jdk.JdkVendor vendor = vendorFromToken(spec.substring(0, dash));
-        return vendor == cc.jumpkick.jdk.JdkVendor.UNKNOWN ? Optional.empty() : Optional.of(new Pin(vendor, major));
+        JdkVendor vendor = vendorFromToken(spec.substring(0, dash));
+        return vendor == JdkVendor.UNKNOWN ? Optional.empty() : Optional.of(new Pin(vendor, major));
     }
 
     /** Map a spec vendor token (a {@code jbPrefix} like {@code "temurin"}/{@code "graalvm"}) to a vendor. */
-    private static cc.jumpkick.jdk.JdkVendor vendorFromToken(String token) {
-        for (cc.jumpkick.jdk.JdkVendor v : cc.jumpkick.jdk.JdkVendor.values()) {
+    private static JdkVendor vendorFromToken(String token) {
+        for (JdkVendor v : JdkVendor.values()) {
             if (v.jbPrefix().map(p -> p.equalsIgnoreCase(token)).orElse(false)) return v;
         }
-        return cc.jumpkick.jdk.JdkVendor.UNKNOWN;
+        return JdkVendor.UNKNOWN;
     }
 
     private static int majorOf(String version) {
@@ -379,8 +385,8 @@ public final class EngineSpawn {
     }
 
     /** HotSpot/C2 JVMs (everything except GraalVM) produce a stable, mappable AOT cache. */
-    private static boolean isHotSpot(cc.jumpkick.jdk.JdkVendor vendor) {
-        return vendor != cc.jumpkick.jdk.JdkVendor.ORACLE_GRAALVM && vendor != cc.jumpkick.jdk.JdkVendor.GRAALVM_CE;
+    private static boolean isHotSpot(JdkVendor vendor) {
+        return vendor != JdkVendor.ORACLE_GRAALVM && vendor != JdkVendor.GRAALVM_CE;
     }
 
     /**
@@ -405,12 +411,11 @@ public final class EngineSpawn {
      * may download / materialize, then retry).
      */
     static Optional<EngineArtifact> resolveEngineArtifact(String envOverride, String version) {
-        return resolveEngineArtifact(envOverride, version, cc.jumpkick.cache.EngineInstall.current());
+        return resolveEngineArtifact(envOverride, version, EngineInstall.current());
     }
 
     /** Root-injected variant — the testable seam. */
-    static Optional<EngineArtifact> resolveEngineArtifact(
-            String envOverride, String version, cc.jumpkick.cache.EngineInstall install) {
+    static Optional<EngineArtifact> resolveEngineArtifact(String envOverride, String version, EngineInstall install) {
         if (envOverride != null && !envOverride.isBlank()) {
             return Optional.of(new EngineArtifact(EngineArtifact.Kind.EXE, envOverride, "JK_ENGINE_EXE"));
         }
@@ -430,7 +435,7 @@ public final class EngineSpawn {
      * Stale {@code.aot}/{@code.noaot} files from previous keys are deleted best-effort here.
      */
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
-        return aotCachePath(paths, engineJar, jdk, cc.jumpkick.cli.Jk.VERSION);
+        return aotCachePath(paths, engineJar, jdk, Jk.VERSION);
     }
 
     /** As above, version-scoped under {@code state/engine/<v>/} so engines never share AOT state. */
@@ -460,7 +465,7 @@ public final class EngineSpawn {
         // version-scoped: a new primary reaps other versions' engine AOT. The sweep below stays
         // within one version so side-by-side keys for the same version never thrash each other.
         // Worker caches (kotlinc-/java-compiler-) have no version dimension.
-        Path aotDir = cc.jumpkick.util.JkDirs.state().resolve("aot");
+        Path aotDir = JkDirs.state().resolve("aot");
         try {
             Files.createDirectories(aotDir);
         } catch (IOException ignored) {
@@ -492,8 +497,8 @@ public final class EngineSpawn {
             // Cleanup is opportunistic; a leftover cache costs disk, not correctness.
         }
         if (!swept.isEmpty()) {
-            cc.jumpkick.util.AotManifest.remove(aotDir, swept);
-            cc.jumpkick.util.AotManifest.reconcile(aotDir);
+            AotManifest.remove(aotDir, swept);
+            AotManifest.reconcile(aotDir);
         }
         recordEngineAotManifest(cache, engineJar, jdk, version, hash);
         // Drop leftover per-version cache under engine-state so it is not confused with the
@@ -517,7 +522,7 @@ public final class EngineSpawn {
             boolean ready = Files.isRegularFile(cache) && Files.size(cache) > 0;
             boolean noaot = Files.exists(noAotMarkerPath(cache));
             String status = ready ? "ready" : (noaot ? "noaot" : "pending");
-            var b = cc.jumpkick.util.AotManifest.Entry.builder(name)
+            var b = AotManifest.Entry.builder(name)
                     .tool("engine")
                     .key(hash)
                     .jkVersion(version)
@@ -529,7 +534,7 @@ public final class EngineSpawn {
                             "-XX:-ShrinkHeapInSteps",
                             "--enable-native-access=ALL-UNNAMED"));
             if (ready) {
-                b.sizeBytes(Files.size(cache)).lastUsed(cc.jumpkick.util.AotManifest.nowIso());
+                b.sizeBytes(Files.size(cache)).lastUsed(AotManifest.nowIso());
             }
             if (jdk != null) {
                 b.jdkHome(jdk.home().toString())
@@ -547,7 +552,7 @@ public final class EngineSpawn {
                     // identity without size/mtime still documents the name
                 }
             }
-            cc.jumpkick.util.AotManifest.upsert(aotDir, b.build());
+            AotManifest.upsert(aotDir, b.build());
         } catch (Exception ignored) {
             // never fail engine start for a human index
         }

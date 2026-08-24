@@ -69,7 +69,7 @@ class TrainConfigParserTest {
         assertThat(c.effectiveProfiles().getFirst().name()).isEqualTo("default");
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void profiles_token_is_order_independent_for_env_and_properties() {
         var a = new TrainConfig(
                 null,

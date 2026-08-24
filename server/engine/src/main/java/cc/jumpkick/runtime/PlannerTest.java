@@ -4,6 +4,9 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -12,6 +15,9 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.GroovyCompile;
+import cc.jumpkick.task.KotlinCompile;
+import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
@@ -58,9 +64,9 @@ public final class PlannerTest {
                 .ticks(1)
                 .execute(ctx -> {
                     var sel = in.session() == null
-                            ? cc.jumpkick.config.TestSelection.DEFAULT
+                            ? TestSelection.DEFAULT
                             : in.session().testSelection();
-                    List<String> discovered = cc.jumpkick.layout.TestSuites.discover(in.dir(), compact);
+                    List<String> discovered = TestSuites.discover(in.dir(), compact);
                     var resolved = sel.resolve(discovered);
                     if (!resolved.ok()) {
                         // Workspace run: a named suite need not exist in EVERY module — the
@@ -77,15 +83,11 @@ public final class PlannerTest {
                         throw new IllegalArgumentException(resolved.missingMessage());
                     }
                     List<String> suiteNames = resolved.suites();
-                    Path javaTestSrc = cc.jumpkick.layout.TestSuites.primaryJavaRoot(in.dir(), compact, suiteNames);
-                    List<Path> javaTest =
-                            cc.jumpkick.layout.TestSuites.collectJavaSources(in.dir(), compact, suiteNames);
-                    List<Path> ktTest =
-                            cc.jumpkick.layout.TestSuites.collectKotlinSources(in.dir(), compact, suiteNames);
-                    List<Path> gvTest =
-                            cc.jumpkick.layout.TestSuites.collectGroovySources(in.dir(), compact, suiteNames);
-                    List<Path> scTest =
-                            cc.jumpkick.layout.TestSuites.collectScalaSources(in.dir(), compact, suiteNames);
+                    Path javaTestSrc = TestSuites.primaryJavaRoot(in.dir(), compact, suiteNames);
+                    List<Path> javaTest = TestSuites.collectJavaSources(in.dir(), compact, suiteNames);
+                    List<Path> ktTest = TestSuites.collectKotlinSources(in.dir(), compact, suiteNames);
+                    List<Path> gvTest = TestSuites.collectGroovySources(in.dir(), compact, suiteNames);
+                    List<Path> scTest = TestSuites.collectScalaSources(in.dir(), compact, suiteNames);
                     if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty() && scTest.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
@@ -146,12 +148,12 @@ public final class PlannerTest {
                         if (mixedTestGv) {
                             gvJavaRoots = new ArrayList<>();
                             for (String suite : suiteNames) {
-                                for (Path root : cc.jumpkick.layout.TestSuites.javaRoots(in.dir(), compact, suite)) {
+                                for (Path root : TestSuites.javaRoots(in.dir(), compact, suite)) {
                                     if (Files.isDirectory(root)) gvJavaRoots.add(root);
                                 }
                             }
                         }
-                        cc.jumpkick.task.GroovyCompile.Result gr = compileGroovySources(
+                        GroovyCompile.Result gr = compileGroovySources(
                                 ctx, in, cas, actionCache, gvTest, baseCp, gvTestOut, gvTaskId, gvJavaRoots, null);
                         if (!gr.success()) {
                             PlannerSupport.forwardWorkerDiagnostics(
@@ -171,7 +173,7 @@ public final class PlannerTest {
                                 .resolve("actions")
                                 .resolve("incremental-kotlin")
                                 .resolve(ktTaskId);
-                        cc.jumpkick.task.KotlinCompile.Result kr = compileKotlinSources(
+                        KotlinCompile.Result kr = compileKotlinSources(
                                 ctx,
                                 in,
                                 cas,
@@ -249,8 +251,7 @@ public final class PlannerTest {
                     // self-host.
                     // copy resources for every suite in this run's selection
                     // (default test/resources/ + e.g. integration/resources/).
-                    List<Path> suiteResDirs =
-                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames);
+                    List<Path> suiteResDirs = ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames);
                     for (Path resTest : suiteResDirs) {
                         Files.createDirectories(testClasses);
                         copyResources(resTest, testClasses);
@@ -343,7 +344,7 @@ public final class PlannerTest {
                     // when the session selection carries no tags at all, apply this module's
                     // own config here. The effective selection feeds BOTH the stamp and the runner.
                     var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
-                    String stampKey = cc.jumpkick.task.TestStamp.computeKey(
+                    String stampKey = TestStamp.computeKey(
                             testSrcs,
                             ctx.require(MAIN_CLASSES),
                             testResDirs,
@@ -377,7 +378,7 @@ public final class PlannerTest {
                             // legitimate skip was indistinguishable from a module with no test
                             // sources. Markers written before counts were stored replay nothing;
                             // the next real run upgrades them.
-                            cc.jumpkick.run.TestSummary previous = stampedSummary(greenRecord.get());
+                            TestSummary previous = stampedSummary(greenRecord.get());
                             if (previous != null) ctx.put(TEST_RESULT, previous);
                             return; // skip — nothing changed since last green run
                         }
@@ -498,13 +499,13 @@ public final class PlannerTest {
 
     /** The green run's counts replayed off a run-tests marker; {@code null} for markers written
      * before counts were stored (or with unparseable ones) — the caller then replays nothing. */
-    static cc.jumpkick.run.TestSummary stampedSummary(cc.jumpkick.task.ActionCache.ActionRecord record) {
+    static TestSummary stampedSummary(ActionCache.ActionRecord record) {
         try {
             String total = record.outputs().get("tests.total");
             if (total == null) return null;
             long succeeded = Long.parseLong(record.outputs().getOrDefault("tests.succeeded", total));
             long skipped = Long.parseLong(record.outputs().getOrDefault("tests.skipped", "0"));
-            return new cc.jumpkick.run.TestSummary(Long.parseLong(total), succeeded, 0, skipped, List.of());
+            return new TestSummary(Long.parseLong(total), succeeded, 0, skipped, List.of());
         } catch (NumberFormatException e) {
             return null;
         }

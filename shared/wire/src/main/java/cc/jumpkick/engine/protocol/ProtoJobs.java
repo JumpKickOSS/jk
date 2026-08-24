@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.progress.ProgressBarMode;
 import java.util.List;
 
 /**
@@ -142,7 +144,7 @@ public final class ProtoJobs {
             boolean ephemeralActions,
             boolean testOnly,
             List<String> dirtyHint,
-            cc.jumpkick.config.TestSelection selection) {
+            TestSelection selection) {
         return buildRequest(
                 dir,
                 cache,
@@ -183,7 +185,7 @@ public final class ProtoJobs {
             boolean ephemeralActions,
             boolean testOnly,
             List<String> dirtyHint,
-            cc.jumpkick.config.TestSelection selection,
+            TestSelection selection,
             List<String> modules) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
@@ -216,9 +218,7 @@ public final class ProtoJobs {
                 + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
                 + (testOnly ? ",\"testOnly\":true" : "")
                 + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + jsonStringArray(dirtyHint) : "")
-                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
-                        ? testSelectionFields(selection)
-                        : "")
+                + (selection != null && !selection.equals(TestSelection.DEFAULT) ? testSelectionFields(selection) : "")
                 + (modules != null && !modules.isEmpty() ? ",\"modules\":" + jsonStringArray(modules) : "")
                 + triggerJsonSuffix()
                 + progressModeJsonSuffix()
@@ -231,16 +231,16 @@ public final class ProtoJobs {
      * Emitted only when non-AUTO so older engines see an unchanged request.
      */
     static String progressModeJsonSuffix() {
-        var mode = cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
-        if (mode == cc.jumpkick.runtime.progress.ProgressBarMode.AUTO) return "";
+        var mode = ProgressBarMode.fromEnvironment();
+        if (mode == ProgressBarMode.AUTO) return "";
         return ",\"progressMode\":" + Jsonl.quote(mode.wireName());
     }
 
     /** Per-request progress mode; engine-env fallback when the client sent none. */
-    public static cc.jumpkick.runtime.progress.ProgressBarMode progressModeOf(String json) {
+    public static ProgressBarMode progressModeOf(String json) {
         String raw = Jsonl.str(json, "progressMode");
-        if (raw == null || raw.isBlank()) return cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
-        return cc.jumpkick.runtime.progress.ProgressBarMode.parse(raw);
+        if (raw == null || raw.isBlank()) return ProgressBarMode.fromEnvironment();
+        return ProgressBarMode.parse(raw);
     }
 
     /**
@@ -314,7 +314,7 @@ public final class ProtoJobs {
             boolean offline,
             boolean force,
             boolean parallelTests,
-            cc.jumpkick.config.TestSelection selection) {
+            TestSelection selection) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"type\":\""
                 + EngineProtocol.TEST_REQUEST
@@ -343,8 +343,8 @@ public final class ProtoJobs {
     }
 
     /** Encode suite/tag fields for {@link EngineProtocol#TEST_REQUEST} (and siblings that carry the same shape). */
-    public static String testSelectionFields(cc.jumpkick.config.TestSelection selection) {
-        cc.jumpkick.config.TestSelection s = selection == null ? cc.jumpkick.config.TestSelection.DEFAULT : selection;
+    public static String testSelectionFields(TestSelection selection) {
+        TestSelection s = selection == null ? TestSelection.DEFAULT : selection;
         StringBuilder sb = new StringBuilder();
         sb.append(",\"allSuites\":").append(s.allSuites());
         sb.append(",\"suites\":").append(jsonStringArray(s.suites()));
@@ -355,13 +355,13 @@ public final class ProtoJobs {
     }
 
     /** Parse suite/tag selection from a test/build request line. */
-    public static cc.jumpkick.config.TestSelection testSelectionOf(String json) {
+    public static TestSelection testSelectionOf(String json) {
         boolean all = Jsonl.bool(json, "allSuites", false);
         List<String> suites = stringArrayField(json, "suites");
         List<String> include = stringArrayField(json, "includeTags");
         List<String> exclude = stringArrayField(json, "excludeTags");
         boolean tagsResolved = Jsonl.bool(json, "tagsResolved", false);
-        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude, tagsResolved);
+        return TestSelection.of(suites, all, include, exclude, tagsResolved);
     }
 
     private static String jsonStringArray(List<String> values) {
@@ -410,7 +410,7 @@ public final class ProtoJobs {
             boolean verbose,
             boolean offline,
             boolean force,
-            cc.jumpkick.config.TestSelection selection) {
+            TestSelection selection) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"type\":\""
                 + EngineProtocol.SINGLE_BUILD_REQUEST
@@ -432,9 +432,7 @@ public final class ProtoJobs {
                 + offline
                 + ",\"force\":"
                 + force
-                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
-                        ? testSelectionFields(selection)
-                        : "")
+                + (selection != null && !selection.equals(TestSelection.DEFAULT) ? testSelectionFields(selection) : "")
                 + "}";
     }
 

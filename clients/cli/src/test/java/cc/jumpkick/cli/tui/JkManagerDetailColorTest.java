@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import org.junit.jupiter.api.Test;
 
@@ -93,8 +94,7 @@ class JkManagerDetailColorTest {
                 "Resolve", "fetched com.fasterxml.jackson.core:jackson-core:2.18.0", Theme.active());
         assertThat(TestAnsi.strip(painted)).isEqualTo("fetched com.fasterxml.jackson.core:jackson-core:2.18.0");
         // Coords.gav splits group / artifact / version with their theme roles.
-        assertThat(painted)
-                .contains(cc.jumpkick.cli.theme.Coords.gav("com.fasterxml.jackson.core", "jackson-core", "2.18.0"));
+        assertThat(painted).contains(Coords.gav("com.fasterxml.jackson.core", "jackson-core", "2.18.0"));
     }
 
     @Test
@@ -126,7 +126,7 @@ class JkManagerDetailColorTest {
     void fetch_detail_colors_library_short_name() {
         String painted = JkManager.colorDetail("Resolve", "fetched jackson-core", Theme.active());
         assertThat(TestAnsi.strip(painted)).isEqualTo("fetched jackson-core");
-        assertThat(painted).contains(cc.jumpkick.cli.theme.Coords.shortName("jackson-core"));
+        assertThat(painted).contains(Coords.shortName("jackson-core"));
     }
 
     @Test
@@ -198,7 +198,6 @@ class JkManagerDetailColorTest {
         String painted = JkManager.colorDetail(
                 "Resolve", "fetched org.jetbrains.kotlin:kotlin-build-tools-api:2.1.10", Theme.active());
         assertThat(TestAnsi.strip(painted)).isEqualTo("fetched org.jetbrains.kotlin:kotlin-build-tools-api:2.1.10");
-        assertThat(painted)
-                .contains(cc.jumpkick.cli.theme.Coords.gav("org.jetbrains.kotlin", "kotlin-build-tools-api", "2.1.10"));
+        assertThat(painted).contains(Coords.gav("org.jetbrains.kotlin", "kotlin-build-tools-api", "2.1.10"));
     }
 }

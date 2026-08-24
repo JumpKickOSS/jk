@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.MavenPackaging;
 import java.nio.file.Path;
 
 /**
@@ -53,7 +54,7 @@ public final class MavenLayout {
      * {@code artifact-version-tests.jar}.
      */
     public static String artifactPath(Coordinate coord) {
-        return basePath(coord) + filename(coord, cc.jumpkick.model.MavenPackaging.extensionOf(coord.type()), true);
+        return basePath(coord) + filename(coord, MavenPackaging.extensionOf(coord.type()), true);
     }
 
     /**

@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import com.sun.net.httpserver.HttpServer;
@@ -431,8 +432,8 @@ class MavenPackageSourceExclusionTest {
      */
     @Test
     void registered_exclusions_intersect_across_paths(@TempDir Path tempDir) {
-        MavenPackageSource src = new MavenPackageSource(
-                repoGroup(tempDir), new cc.jumpkick.repo.EffectivePomBuilder(repoGroup(tempDir)));
+        MavenPackageSource src =
+                new MavenPackageSource(repoGroup(tempDir), new EffectivePomBuilder(repoGroup(tempDir)));
 
         src.registerExclusions("com.foo:target", Set.of("com.foo:leaf", "com.foo:other"));
         assertThat(src.exclusionsFor("com.foo:target")).containsExactlyInAnyOrder("com.foo:leaf", "com.foo:other");
@@ -498,7 +499,7 @@ class MavenPackageSourceExclusionTest {
         servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
 
         RepoGroup repos = repoGroup(tempDir);
-        cc.jumpkick.repo.EffectivePomBuilder pomBuilder = new cc.jumpkick.repo.EffectivePomBuilder(repos);
+        EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         MavenPackageSource shared = new MavenPackageSource(repos, pomBuilder);
 
         // Main scope: the only path to target is clean, so leaf stays (and target's exclusion

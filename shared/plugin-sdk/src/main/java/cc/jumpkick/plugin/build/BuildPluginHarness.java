@@ -462,7 +462,7 @@ public final class BuildPluginHarness {
         }
 
         @Override
-        public cc.jumpkick.plugin.PluginConfig config() {
+        public PluginConfig config() {
             return spec.config();
         }
 
@@ -477,14 +477,14 @@ public final class BuildPluginHarness {
         }
 
         @Override
-        public java.util.Optional<Path> extra(String name) {
-            return java.util.Optional.ofNullable(spec.extras().get(name));
+        public Optional<Path> extra(String name) {
+            return Optional.ofNullable(spec.extras().get(name));
         }
 
         @Override
-        public java.util.Optional<Path> mainArtifact() {
-            return java.util.Optional.ofNullable(spec.artifactPath())
-                    .filter(java.nio.file.Files::isRegularFile);
+        public Optional<Path> mainArtifact() {
+            return Optional.ofNullable(spec.artifactPath())
+                    .filter(Files::isRegularFile);
         }
 
         @Override

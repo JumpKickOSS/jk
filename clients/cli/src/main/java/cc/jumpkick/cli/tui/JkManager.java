@@ -2,13 +2,17 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Osc;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.runtime.progress.HeaderProgressState;
 import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.runtime.progress.SharedPeak;
 import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
@@ -193,7 +197,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     final ProgressBarMode progressMode = ProgressBarMode.fromEnvironment();
     /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
-    final cc.jumpkick.runtime.progress.SharedPeak displayedPeak = new cc.jumpkick.runtime.progress.SharedPeak();
+    final SharedPeak displayedPeak = new SharedPeak();
 
     final ClockProgressStrategy clockProgress = new ClockProgressStrategy(displayedPeak);
     final WeightedProgressStrategy weightedProgress = new WeightedProgressStrategy(displayedPeak);
@@ -306,7 +310,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         LiveRegion.setActive(cm);
         cm.ensureLeadingBlank(); // blank line before human chrome
         // config.build-output / JK_BUILD_OUTPUT: start with the process-output peek open.
-        if (cc.jumpkick.config.SessionContext.current().config().buildOutputOr(false)) {
+        if (SessionContext.current().config().buildOutputOr(false)) {
             cm.outputWindow.show();
         }
         if (animate && Theme.active().isAnsi()) {
@@ -343,7 +347,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 paintBuildPlan();
                 out.flush();
             } else if (!Theme.active().isAnsi()
-                    && !cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) {
+                    && !SessionContext.current().config().verboseOr(false)) {
                 // Plain mode buffers tool stdout (suppressed unless -v); a crash is the one
                 // moment it must surface — verbose already printed it live (JK-2163).
                 view.dumpPlainProcessOutput();
@@ -524,8 +528,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     public void notePlainTestTick(String module, String stepKey, int delta) {
         if (!animate || Theme.active().isAnsi()) return;
-        if (stepKey == null
-                || !(stepKey.equals(cc.jumpkick.run.TaskNames.RUN_TESTS) || stepKey.startsWith("run-tests"))) {
+        if (stepKey == null || !(stepKey.equals(TaskNames.RUN_TESTS) || stepKey.startsWith("run-tests"))) {
             return;
         }
         synchronized (lock) {
@@ -954,7 +957,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public static boolean forceShowOnStepFailure(String step, String group) {
         // Only the test-runner step uses curated failure chrome; everything else is a tool/worker.
         if (step == null) return true;
-        return !step.equals(cc.jumpkick.run.TaskNames.RUN_TESTS) && !step.startsWith("run-tests");
+        return !step.equals(TaskNames.RUN_TESTS) && !step.startsWith("run-tests");
     }
 
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
@@ -1007,7 +1010,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                     printPlainDone();
                 }
                 // Ctrl-C: "by user" + took duration.
-                String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(elapsedMillis()));
+                String took = ConsoleSpec.took(Duration.ofMillis(elapsedMillis()));
                 out.println(JkWedge.cancelled(planName(), true, took).renderLine(headerContext()));
                 out.flush();
                 return true;

@@ -35,7 +35,7 @@ class BspCommandTest {
                 .contains("\"name\": \"jk\"")
                 .contains("\"bspVersion\": \"2.1.0\"")
                 .contains("\"languages\": [\"java\", \"kotlin\", \"groovy\"]")
-                .contains("\"version\": " + quoted(cc.jumpkick.cli.Jk.VERSION))
+                .contains("\"version\": " + quoted(Jk.VERSION))
                 .contains("\"bsp\", \"serve\"");
     }
 

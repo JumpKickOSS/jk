@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
@@ -13,6 +14,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
@@ -243,8 +245,7 @@ public class IdeEngineClient {
      * Run tests with optional suite/tag selection BSP {@code data} / CLI TestSelection).
      * {@code selection} null → session default (usually suite {@code test} only).
      */
-    public BuildOutcome testModule(Path moduleDir, BuildListener listener, cc.jumpkick.config.TestSelection selection)
-            throws IOException {
+    public BuildOutcome testModule(Path moduleDir, BuildListener listener, TestSelection selection) throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         if (moduleDir == null) {
             ProjectInfo info = projectInfo();
@@ -260,8 +261,7 @@ public class IdeEngineClient {
     }
 
     /** Sequential per-module {@code jk test} for a workspace root. */
-    private BuildOutcome testWorkspace(BuildListener progress, cc.jumpkick.config.TestSelection selection)
-            throws IOException {
+    private BuildOutcome testWorkspace(BuildListener progress, TestSelection selection) throws IOException {
         IdeWireModel model = ideModel();
         List<String> dirs = model != null && model.moduleDirs() != null ? model.moduleDirs() : List.of();
         if (dirs.isEmpty()) {
@@ -284,12 +284,11 @@ public class IdeEngineClient {
         return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors));
     }
 
-    private BuildOutcome testOneModule(Path mod, BuildListener progress, cc.jumpkick.config.TestSelection selection)
-            throws IOException {
+    private BuildOutcome testOneModule(Path mod, BuildListener progress, TestSelection selection) throws IOException {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord, mod);
         List<String> errors = new ArrayList<>();
-        cc.jumpkick.run.TestSummary[] testOut = new cc.jumpkick.run.TestSummary[1];
+        TestSummary[] testOut = new TestSummary[1];
         var session = SessionContext.current();
         var sel = selection != null ? selection : session.testSelection();
         BuildPlanResult r = EngineClient.runTest(

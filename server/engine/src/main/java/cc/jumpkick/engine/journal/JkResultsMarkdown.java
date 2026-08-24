@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.DirKeys;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -607,7 +608,7 @@ public final class JkResultsMarkdown {
     private static String pathOr(@Nullable Path path, String fallback) {
         // Forward slashes in the markdown report so display paths match across OSes; a POSIX
         // backslash name renders verbatim (DirKeys rewrites only real Windows paths).
-        return path == null ? fallback : cc.jumpkick.util.DirKeys.slashes(path.toString());
+        return path == null ? fallback : DirKeys.slashes(path.toString());
     }
 
     private static String leaf(String dir) {

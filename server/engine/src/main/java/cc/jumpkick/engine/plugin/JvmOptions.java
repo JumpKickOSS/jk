@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import java.io.IOException;
 import java.io.InputStream;
@@ -97,11 +98,11 @@ public final class JvmOptions {
     private static PluginTuning tuning() {
         var session = SessionContext.current();
         PluginTuning t = session.jvm();
-        PluginTuning base = (t == null || t == PluginTuning.NONE) ? cc.jumpkick.config.PluginTunings.fromEnv() : t;
+        PluginTuning base = (t == null || t == PluginTuning.NONE) ? PluginTunings.fromEnv() : t;
         // The jk.toml [jvm] table overlays here, at fork time, engine-side (thin-client contract):
         // the session carries only the client's flag/env layers, so a client of any age gets
         // current-engine [jvm] interpretation.
-        return cc.jumpkick.config.PluginTunings.overlayProject(base, session.workingDir());
+        return PluginTunings.overlayProject(base, session.workingDir());
     }
 
     /**

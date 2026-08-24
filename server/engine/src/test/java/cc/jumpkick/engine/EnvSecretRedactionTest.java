@@ -3,10 +3,12 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.run.TestFailureInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -85,7 +87,7 @@ class EnvSecretRedactionTest {
         // printStackTrace text repeats the raw message on its first line, so masking message
         // alone still leaks the secret through the stack field.
         Files.writeString(tmp.resolve(".env"), "TOKEN=" + SECRET + "\n");
-        var f = new cc.jumpkick.run.TestFailureInfo(
+        var f = new TestFailureInfo(
                 "g:a",
                 "junit-jupiter",
                 "FooTest",
@@ -102,7 +104,7 @@ class EnvSecretRedactionTest {
         assertThat(red.exceptionClass()).isEqualTo(f.exceptionClass());
 
         // A failure with nothing to mask comes back as the same instance (no copy churn).
-        var clean = new cc.jumpkick.run.TestFailureInfo("g:a", "junit-jupiter", "FooTest", "bar()", "E", "m", "s");
+        var clean = new TestFailureInfo("g:a", "junit-jupiter", "FooTest", "bar()", "E", "m", "s");
         assertThat(EventRedaction.redactFailure(tmp.toString(), clean)).isSameAs(clean);
     }
 
@@ -111,7 +113,7 @@ class EnvSecretRedactionTest {
         // Source-based masking: a real env var that shadows.env is not a secret.
         Files.writeString(tmp.resolve(".env"), "MODE=from-file\n");
         // Simulate via SecretRedactor directly (same rule as BuildEnv when the shell wins).
-        var env = cc.jumpkick.config.EnvLookup.forModule(tmp, name -> "MODE".equals(name) ? "from-shell" : null);
+        var env = EnvLookup.forModule(tmp, name -> "MODE".equals(name) ? "from-shell" : null);
         var r = SecretRedactor.from(env);
         assertThat(r.redact("mode=from-shell")).isEqualTo("mode=from-shell");
         assertThat(r.redact("mode=from-file")).isEqualTo("mode=from-file");

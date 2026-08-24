@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -94,7 +95,7 @@ class CoalescingBuildPlanListenerTest {
             }
 
             @Override
-            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
                 events.add("finish:" + step);
             }
         };
@@ -105,7 +106,7 @@ class CoalescingBuildPlanListenerTest {
             c.output("run-tests", "  at FooTest.bar(FooTest.java:42)");
             c.output("compile", "warning: deprecated");
             assertThat(events).isEmpty();
-            c.stepFinish("run-tests", "test", cc.jumpkick.run.TaskStatus.FAIL, Duration.ofMillis(10));
+            c.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(10));
             assertThat(events)
                     .containsExactly(
                             "o:run-tests:FooTest.bar FAILED",

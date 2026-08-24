@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -59,24 +62,23 @@ class OutputWindowTest {
     void no_ansi_plan_animate_prints_plainly_hidden_or_visible() {
         // JK-2091: --no-ansi TTY animate mode has no live region — the ANSI path leaked raw
         // escapes when the peek was visible and swallowed tool output entirely when hidden.
-        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
-        cc.jumpkick.config.SessionContext.runWhere(
-                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
-                    CliOutput.beginCommand(false);
-                    var buf = new ByteArrayOutputStream();
-                    var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
-                    cm.name = "Build";
-                    cm.startNanos = System.nanoTime();
+        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
+            CliOutput.beginCommand(false);
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
 
-                    cm.writeAbove("hidden-tool-line");
-                    cm.outputWindow().show();
-                    cm.writeAbove("visible-tool-line");
+            cm.writeAbove("hidden-tool-line");
+            cm.outputWindow().show();
+            cm.writeAbove("visible-tool-line");
 
-                    String out = buf.toString(StandardCharsets.UTF_8);
-                    assertThat(out).contains("hidden-tool-line").contains("visible-tool-line");
-                    assertThat(out).doesNotContain("\u001b");
-                    cm.close();
-                });
+            String out = buf.toString(StandardCharsets.UTF_8);
+            assertThat(out).contains("hidden-tool-line").contains("visible-tool-line");
+            assertThat(out).doesNotContain("\u001b");
+            cm.close();
+        });
     }
 
     @Test
@@ -220,10 +222,9 @@ class OutputWindowTest {
     @Test
     void plan_opens_peek_when_config_build_output_true() {
         CliOutput.beginCommand(false);
-        var prev = cc.jumpkick.config.SessionContext.current();
+        var prev = SessionContext.current();
         try {
-            cc.jumpkick.config.SessionContext.installConfig(
-                    cc.jumpkick.config.JkConfig.empty().withBuildOutput(Optional.of(true)));
+            SessionContext.installConfig(JkConfig.empty().withBuildOutput(Optional.of(true)));
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
             assertThat(cm.outputWindow().visible()).isTrue();
@@ -231,22 +232,22 @@ class OutputWindowTest {
             assertThat(TestAnsi.strip(lines.get(0))).contains("output");
             cm.close();
         } finally {
-            cc.jumpkick.config.SessionContext.install(prev);
+            SessionContext.install(prev);
         }
     }
 
     @Test
     void plan_keeps_peek_closed_by_default() {
         CliOutput.beginCommand(false);
-        var prev = cc.jumpkick.config.SessionContext.current();
+        var prev = SessionContext.current();
         try {
-            cc.jumpkick.config.SessionContext.installConfig(cc.jumpkick.config.JkConfig.empty());
+            SessionContext.installConfig(JkConfig.empty());
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
             assertThat(cm.outputWindow().visible()).isFalse();
             cm.close();
         } finally {
-            cc.jumpkick.config.SessionContext.install(prev);
+            SessionContext.install(prev);
         }
     }
 

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.engine.CoalescingBuildPlanListener;
+import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -62,10 +63,10 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     @Override
     public void onPreflight(String stage, int done, int total, String label) {
         sink.emit(new EngineEvent.Preflight(stage, done, total, label));
-        cc.jumpkick.plugin.build.InvocationPhase inv =
+        InvocationPhase inv =
                 switch (stage == null ? "" : stage) {
-                    case "lock", "graph" -> cc.jumpkick.plugin.build.InvocationPhase.RESOLVE;
-                    case "checking", "plan", "prepare", "calibrate" -> cc.jumpkick.plugin.build.InvocationPhase.PLAN;
+                    case "lock", "graph" -> InvocationPhase.RESOLVE;
+                    case "checking", "plan", "prepare", "calibrate" -> InvocationPhase.PLAN;
                     default -> null;
                 };
         if (inv != null) {

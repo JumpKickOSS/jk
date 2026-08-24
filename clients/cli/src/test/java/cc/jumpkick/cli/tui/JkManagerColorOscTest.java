@@ -119,7 +119,7 @@ class JkManagerColorOscTest {
         assertThat(count).isEqualTo(1);
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void non_sgr_csi_is_dropped_but_sgr_passes() {
         // JK-2109: cursor motion / erase CSI from raw tool output must never reach the live
         // region; SGR coloring stays.

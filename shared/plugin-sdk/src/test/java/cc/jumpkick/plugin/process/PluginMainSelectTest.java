@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +17,7 @@ class PluginMainSelectTest {
 
     private record Fake(PluginManifest manifest) implements Plugin {
         @Override
-        public int run(List<String> args, cc.jumpkick.plugin.protocol.ProtocolWriter writer) {
+        public int run(List<String> args, ProtocolWriter writer) {
             return 0;
         }
     }

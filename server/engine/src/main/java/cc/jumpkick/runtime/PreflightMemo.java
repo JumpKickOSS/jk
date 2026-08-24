@@ -3,9 +3,15 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -71,7 +77,7 @@ public final class PreflightMemo {
 
     static Path durablePreflightDir(Path entryDir) {
         String key = workspaceKey(entryDir);
-        return cc.jumpkick.util.JkDirs.cache().resolve("projects").resolve(key).resolve("preflight");
+        return JkDirs.cache().resolve("projects").resolve(key).resolve("preflight");
     }
 
     static String workspaceKey(Path entryDir) {
@@ -420,8 +426,7 @@ public final class PreflightMemo {
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
             feedFile(md, root.resolve("jk.toml"));
-            Path rootLock =
-                    cc.jumpkick.lock.LockPaths.lockFile(root).toAbsolutePath().normalize();
+            Path rootLock = LockPaths.lockFile(root).toAbsolutePath().normalize();
             feedFile(md, rootLock);
             for (Path dir : unitDirs) {
                 Path d = dir.toAbsolutePath().normalize();
@@ -431,8 +436,7 @@ public final class PreflightMemo {
                 // above; re-reading a monorepo-sized lock once per module scaled the key cost by
                 // modules × lock size. A marker keeps the structural position; a module
                 // with a genuinely distinct lock (standalone unit) still digests its own.
-                Path lock =
-                        cc.jumpkick.lock.LockPaths.lockFile(d).toAbsolutePath().normalize();
+                Path lock = LockPaths.lockFile(d).toAbsolutePath().normalize();
                 if (lock.equals(rootLock)) {
                     feed(md, "lock=root");
                 } else {
@@ -479,7 +483,7 @@ public final class PreflightMemo {
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, BuildIdentity.cacheKeyVersion());
             feedFile(md, moduleDir.resolve("jk.toml"));
-            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
+            feedFile(md, LockPaths.lockFile(moduleDir));
             return HexFormat.of().formatHex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
@@ -598,7 +602,7 @@ public final class PreflightMemo {
     }
 
     /** Build a {@link BuildPlanShape} from an assembled plan (weights + step outline). */
-    public static BuildPlanShape shapeOf(cc.jumpkick.run.BuildPlan plan, int weight) {
+    public static BuildPlanShape shapeOf(BuildPlan plan, int weight) {
         List<BuildPlanShape.StepShape> steps = new ArrayList<>();
         int testWeight = 0;
         for (var s : plan.steps()) {
@@ -628,14 +632,14 @@ public final class PreflightMemo {
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
             feedFile(md, moduleDir.resolve("jk.toml"));
-            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
+            feedFile(md, LockPaths.lockFile(moduleDir));
             // Plugin workers keep jk-plugin.toml at the module root (copied onto the jar root).
-            if (cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
+            if (PluginModule.isWorker(moduleDir)) {
                 feedFile(md, moduleDir.resolve("jk-plugin.toml"));
             }
             boolean mtimeMode = useMtimeMode();
-            List<Path> roots = new ArrayList<>(cc.jumpkick.layout.ModuleLayout.fingerprintDirs(moduleDir, skipTests));
-            for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(moduleDir)) {
+            List<Path> roots = new ArrayList<>(ModuleLayout.fingerprintDirs(moduleDir, skipTests));
+            for (var root : ModuleLayoutPlugins.pluginContributedRoots(moduleDir)) {
                 Path p = moduleDir.resolve(root.relative());
                 if (Files.isDirectory(p)) roots.add(p.toAbsolutePath().normalize());
             }

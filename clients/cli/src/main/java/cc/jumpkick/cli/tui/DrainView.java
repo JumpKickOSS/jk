@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
@@ -245,8 +246,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
 
     private static boolean interactive() {
         // Output axis (live drain region) — stdout must be a tty; also honor --no-progress.
-        return Interactivity.stdoutIsTty()
-                && !cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
+        return Interactivity.stdoutIsTty() && !SessionContext.current().config().noProgressOr(false);
     }
 
     /** {@code 14s} / {@code 1m 02s} / {@code 1h 05m 09s}. */

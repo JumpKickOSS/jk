@@ -10,6 +10,7 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.PackageSource;
 import cc.jumpkick.resolver.pubgrub.PubGrubSolver;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -46,7 +47,7 @@ class QuarkusJunit5ResolveTest {
         AtomicInteger versions = new AtomicInteger();
         AtomicInteger deps = new AtomicInteger();
         MavenPackageSource inner = new MavenPackageSource(repos, pomBuilder, bom);
-        var src = new cc.jumpkick.resolver.pubgrub.PackageSource() {
+        var src = new PackageSource() {
             @Override
             public List<String> versions(String pkg) throws IOException, InterruptedException {
                 versions.incrementAndGet();

@@ -3,6 +3,7 @@ package cc.jumpkick.tool;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.ToolCoordSpec;
@@ -144,10 +145,9 @@ public final class ToolResolver {
      * {@code <os>-<arch>} classifiers (type {@code exe}). Empty → fall through to jar path.
      */
     private Optional<Path> fetchNativeBinary(Coordinate primary) throws IOException, InterruptedException {
-        String os = cc.jumpkick.jdk.HostPlatform.currentOs();
-        String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
-        if (cc.jumpkick.jdk.HostPlatform.UNSUPPORTED.equals(os)
-                || cc.jumpkick.jdk.HostPlatform.UNSUPPORTED.equals(arch)) {
+        String os = HostPlatform.currentOs();
+        String arch = HostPlatform.currentArch();
+        if (HostPlatform.UNSUPPORTED.equals(os) || HostPlatform.UNSUPPORTED.equals(arch)) {
             return Optional.empty();
         }
         String protocOs = "macos".equals(os) ? "osx" : os;

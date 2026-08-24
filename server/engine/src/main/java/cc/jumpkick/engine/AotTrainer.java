@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.util.AotSettings;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -57,7 +58,7 @@ public final class AotTrainer {
      * process cannot refill {@code state/aot}. Idempotent.
      */
     public void stopQuietly() {
-        cc.jumpkick.util.AotSettings.suppressTraining();
+        AotSettings.suppressTraining();
         spawner = null;
         Process p = process;
         process = null;

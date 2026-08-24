@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -68,7 +69,7 @@ import org.junit.jupiter.api.Tag;
                 }
                 """);
 
-        var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
+        var parsed = JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session: under `jk test` the ambient SessionContext is the monorepo (jdk 25).
         // Nested fixture plans must not inherit that pin or they skip the first-install path.
         Session nested = Session.defaults().withCacheDir(cache).withJdksDir(freshJdks);

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.TrainPlans;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -40,7 +44,7 @@ public final class TrainVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
@@ -55,10 +59,9 @@ public final class TrainVerb implements HostedVerb {
                 Path graalHome = graalHomeStr != null && !graalHomeStr.isBlank() ? Path.of(graalHomeStr) : null;
                 Path jdksDir = jdksDirStr != null && !jdksDirStr.isBlank() ? Path.of(jdksDirStr) : null;
                 Path javaHome = Path.of(System.getProperty("java.home"));
-                cc.jumpkick.run.BuildPlan plan = SessionContext.where(session, () -> {
-                    JkBuild module = cc.jumpkick.config.JkBuildParser.parse(
-                            session.workingDir().resolve("jk.toml"));
-                    return cc.jumpkick.runtime.TrainPlans.moduleBuildPlan(
+                BuildPlan plan = SessionContext.where(session, () -> {
+                    JkBuild module = JkBuildParser.parse(session.workingDir().resolve("jk.toml"));
+                    return TrainPlans.moduleBuildPlan(
                             session.workingDir(),
                             module,
                             session.cacheDir(),

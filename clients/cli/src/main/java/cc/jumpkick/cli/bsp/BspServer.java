@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.bsp;
 
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ide.IdeEngineClient;
+import cc.jumpkick.command.ide.IdeSourceRoots;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.jsonl.Jsonl;
@@ -89,7 +92,7 @@ public final class BspServer {
                     respond(
                             id,
                             "{\"displayName\":\"jk\",\"version\":"
-                                    + q(cc.jumpkick.cli.Jk.VERSION)
+                                    + q(Jk.VERSION)
                                     + ",\"bspVersion\":\"2.1.0\","
                                     + "\"capabilities\":{"
                                     + "\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"
@@ -308,7 +311,7 @@ public final class BspServer {
     private static String sourcesItem(String tid, Path mod, IdeWireModel model, int moduleIndex) {
         List<String> srcs = new ArrayList<>();
         // same roots as jk ide (all TestSuites + main + resources).
-        for (cc.jumpkick.command.ide.IdeSourceRoots.Root root : cc.jumpkick.command.ide.IdeSourceRoots.of(mod)) {
+        for (IdeSourceRoots.Root root : IdeSourceRoots.of(mod)) {
             // BSP SourceItemKind: 1 = file/normal source, 2 = test (see BSP protocol).
             int kind = root.test() ? 2 : 1;
             Path s = mod.resolve(root.relative());
@@ -531,28 +534,28 @@ public final class BspServer {
      * Parse optional {@code data} object on a BSP test request into {@link
      * cc.jumpkick.config.TestSelection}. Missing/empty → DEFAULT.
      */
-    static cc.jumpkick.config.TestSelection parseTestSelectionData(String requestJson) {
+    static TestSelection parseTestSelectionData(String requestJson) {
         if (requestJson == null || requestJson.isBlank()) {
-            return cc.jumpkick.config.TestSelection.DEFAULT;
+            return TestSelection.DEFAULT;
         }
         // Structural parse — the old needle/brace-slicing degraded silently on
         // pretty-printed payloads ("suites": [...]) and non-object data values.
         try {
             Object parsed = cc.jumpkick.jsonl.MiniJson.parse(requestJson);
             if (!(parsed instanceof Map<?, ?> outer)) {
-                return cc.jumpkick.config.TestSelection.DEFAULT;
+                return TestSelection.DEFAULT;
             }
             // Full request envelope or bare params object — unwrap either.
             Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
             Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;
             boolean all = Boolean.TRUE.equals(src.get("allSuites"));
-            return cc.jumpkick.config.TestSelection.of(
+            return TestSelection.of(
                     stringList(src.get("suites")),
                     all,
                     stringList(src.get("includeTags")),
                     stringList(src.get("excludeTags")));
         } catch (RuntimeException e) {
-            return cc.jumpkick.config.TestSelection.DEFAULT;
+            return TestSelection.DEFAULT;
         }
     }
 

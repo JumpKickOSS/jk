@@ -4,6 +4,8 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.Width;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -109,13 +111,13 @@ public final class RichText {
     private static String paint(Span span, RenderContext ctx) {
         String text = span.text;
         if (span.prestyled) {
-            if (!ctx.ansi()) return PlainAscii.transform(cc.jumpkick.terminal.Width.stripAnsi(text));
+            if (!ctx.ansi()) return PlainAscii.transform(Width.stripAnsi(text));
             return text;
         }
         if (!ctx.ansi()) {
             return PlainAscii.transform(text);
         }
-        cc.jumpkick.terminal.Style style = span.style.toAttributed(ctx.theme());
+        Style style = span.style.toAttributed(ctx.theme());
         String painted = Theme.colorize(text, style);
         if (span.linkUrl != null && !span.linkUrl.isBlank()) {
             return Ansi.hyperlink(span.linkUrl, painted);
@@ -282,12 +284,12 @@ public final class RichText {
                     strike || over.strike);
         }
 
-        cc.jumpkick.terminal.Style toAttributed(Theme theme) {
-            cc.jumpkick.terminal.Style s =
+        Style toAttributed(Theme theme) {
+            Style s =
                     switch (fg) {
                         case HexColor(int rgb) -> theme.bright(Rgb.hex(rgb));
                         case NamedColor(String token) -> theme.styleNamed(token);
-                        case null -> cc.jumpkick.terminal.Style.EMPTY;
+                        case null -> Style.EMPTY;
                     };
             if (bold) s = s.bold();
             if (italic) s = s.italic();

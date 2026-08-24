@@ -6,9 +6,16 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.kotlin.KotlinResolver;
+import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.GroovyCompile;
+import cc.jumpkick.task.KotlinCompile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,7 +32,7 @@ public final class PlannerLang {
 
     private PlannerLang() {}
 
-    static cc.jumpkick.task.KotlinCompile.Result compileKotlinSources(
+    static KotlinCompile.Result compileKotlinSources(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
@@ -46,17 +53,15 @@ public final class PlannerLang {
         Set<String> lockModules = lockModules(ctx.require(LOCKFILE));
         List<KotlincRequest.Plugin> ktPlugins = new ArrayList<>();
         try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
             kt = KotlinPluginSetup.prepare(repos, cas, kotlinVersion);
             // Same null-defaulting as KotlinPluginSetup.prepare — a contributed plugin must
             // match the compiler actually used.
-            String pluginVersion = (kotlinVersion == null || kotlinVersion.isBlank())
-                    ? cc.jumpkick.kotlin.KotlinResolver.DEFAULT_VERSION
-                    : kotlinVersion;
-            for (var use : cc.jumpkick.plugin.manifest.PluginContributions.kotlinPlugins(
-                    ctx.require(PROJECT), workingDir, pluginVersion, lockModules)) {
-                Path jar = repos.tryFetchArtifact(
-                                cc.jumpkick.model.Coordinate.of(use.group(), use.artifact(), use.version()))
+            String pluginVersion =
+                    (kotlinVersion == null || kotlinVersion.isBlank()) ? KotlinResolver.DEFAULT_VERSION : kotlinVersion;
+            for (var use :
+                    PluginContributions.kotlinPlugins(ctx.require(PROJECT), workingDir, pluginVersion, lockModules)) {
+                Path jar = repos.tryFetchArtifact(Coordinate.of(use.group(), use.artifact(), use.version()))
                         .map(hit -> hit.fetched().cachePath())
                         .orElseThrow(() -> new RuntimeException("cannot fetch the " + use.id()
                                 + " Kotlin compiler plugin (" + use.group() + ":" + use.artifact() + ":"
@@ -69,7 +74,7 @@ public final class PlannerLang {
             for (var decl : ctx.require(PROJECT).build().kotlinPlugins()) {
                 String[] parts = decl.coordinate().split(":");
                 String version = parts.length == 3 ? parts[2] : pluginVersion;
-                Path jar = repos.tryFetchArtifact(cc.jumpkick.model.Coordinate.of(parts[0], parts[1], version))
+                Path jar = repos.tryFetchArtifact(Coordinate.of(parts[0], parts[1], version))
                         .map(hit -> hit.fetched().cachePath())
                         .orElseThrow(() -> new RuntimeException("cannot fetch the " + decl.id()
                                 + " Kotlin compiler plugin (" + parts[0] + ":" + parts[1] + ":" + version
@@ -89,8 +94,7 @@ public final class PlannerLang {
         // Contributed kotlinc args (e.g. spring-boot's -java-parameters, mirroring its javac
         // -parameters — Boot reflects on parameter names). User-position args still win: these
         // sit before extraArgs additions exactly where the hard-coded flag used to.
-        for (String arg : cc.jumpkick.plugin.manifest.PluginContributions.kotlinArgs(
-                ctx.require(PROJECT), workingDir, lockModules)) {
+        for (String arg : PluginContributions.kotlinArgs(ctx.require(PROJECT), workingDir, lockModules)) {
             if (!ktArgs.contains(arg)) ktArgs.add(arg);
         }
         // Compiler plugins ride the typed BTA COMPILER_PLUGINS argument — raw -Xplugin/-P
@@ -140,17 +144,17 @@ public final class PlannerLang {
         if (!rerun) {
             try {
                 boolean restores = actionCache
-                        .lookup(ActionKey.forKotlinc(taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion()))
+                        .lookup(ActionKey.forKotlinc(taskId, req, BuildIdentity.cacheKeyVersion()))
                         .isPresent();
                 ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
             } catch (Exception ignored) {
                 /* keep the up-front estimate */
             }
         }
-        return cc.jumpkick.task.KotlinCompile.run(
+        return KotlinCompile.run(
                 taskId,
                 req,
-                cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                BuildIdentity.cacheKeyVersion(),
                 !rerun,
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
                 actionCache.cas(),
@@ -167,7 +171,7 @@ public final class PlannerLang {
      * for resolution only (jk's javac worker owns the real Java outputs)
      * @param stubsOut when non-null, Java-visible stubs are retained there for javac's sourcepath
      */
-    static cc.jumpkick.task.GroovyCompile.Result compileGroovySources(
+    static GroovyCompile.Result compileGroovySources(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
@@ -182,7 +186,7 @@ public final class PlannerLang {
         String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         GroovyPluginSetup.Prepared gv;
         try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
             gv = GroovyPluginSetup.prepare(repos, cas, groovyVersion);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -197,8 +201,8 @@ public final class PlannerLang {
         // Contributed groovyc args (e.g. grails' --parameters — data binding reflects on
         // parameter names), deduped; mirrors the javac/kotlinc lanes.
         List<String> gvArgs = new ArrayList<>();
-        for (String arg : cc.jumpkick.plugin.manifest.PluginContributions.groovyArgs(
-                ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
+        for (String arg :
+                PluginContributions.groovyArgs(ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
             if (!gvArgs.contains(arg)) gvArgs.add(arg);
         }
         // Joint mode sweeps.java sources through a real javac pass — annotation processors
@@ -224,17 +228,17 @@ public final class PlannerLang {
         if (!rerun) {
             try {
                 boolean restores = actionCache
-                        .lookup(ActionKey.forGroovyc(taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion()))
+                        .lookup(ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion()))
                         .isPresent();
                 ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
             } catch (Exception ignored) {
                 /* keep the up-front estimate */
             }
         }
-        return cc.jumpkick.task.GroovyCompile.run(
+        return GroovyCompile.run(
                 taskId,
                 req,
-                cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                BuildIdentity.cacheKeyVersion(),
                 !rerun,
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
                 actionCache.cas(),

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
@@ -12,6 +13,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.HostedEvents;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -78,14 +80,14 @@ final class EnginePluginAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
             // The session envelope — variant selection, client env, and worker-JVM tuning —
             // rides EVERY hosted-plan request line (compile/image/native/publish/install/...).
             // An empty envelope attaches nothing, so unadorned plans are byte-identical.
-            var session = cc.jumpkick.config.SessionContext.current();
+            var session = SessionContext.current();
             send(
                     writer,
                     ProtoSession.withSession(
@@ -142,18 +144,17 @@ final class EnginePluginAdapter {
      * events stream (see the protocol docs); the worker may still take a while (a distribution
      * download), which is fine on this blocking read.
      */
-    static cc.jumpkick.runtime.HostedEvents.Provision provision(EnginePaths.Paths paths, String requestLine)
-            throws IOException {
+    static HostedEvents.Provision provision(EnginePaths.Paths paths, String requestLine) throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
             // The session envelope — variant selection, client env, and worker-JVM tuning —
             // rides EVERY hosted-plan request line (compile/image/native/publish/install/...).
             // An empty envelope attaches nothing, so unadorned plans are byte-identical.
-            var session = cc.jumpkick.config.SessionContext.current();
+            var session = SessionContext.current();
             send(
                     writer,
                     ProtoSession.withSession(
@@ -165,7 +166,7 @@ final class EnginePluginAdapter {
 
             return WireStream.pumpJob(reader, ch, (type, line) -> switch (type) {
                 case EngineProtocol.PROVISION_RESULT ->
-                    new cc.jumpkick.runtime.HostedEvents.Provision(
+                    new HostedEvents.Provision(
                             Jsonl.str(line, "bin"),
                             Jsonl.str(line, "version"),
                             Jsonl.str(line, "source"),

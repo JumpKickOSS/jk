@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.ByteArrayOutputStream;
@@ -322,10 +323,10 @@ final class SourceProjectBuilder {
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         if (!captureStdout) {
             pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            Process p = cc.jumpkick.engine.JobWorkers.start(pb);
+            Process p = JobWorkers.start(pb);
             return new RunResult(p.waitFor(), "");
         }
-        Process p = cc.jumpkick.engine.JobWorkers.start(pb);
+        Process p = JobWorkers.start(pb);
         // Drain stdout fully before waitFor() to avoid a pipe-buffer deadlock.
         String out;
         try (InputStream in = p.getInputStream()) {

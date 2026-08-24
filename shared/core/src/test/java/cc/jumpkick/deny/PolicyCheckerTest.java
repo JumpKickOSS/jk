@@ -4,6 +4,7 @@ package cc.jumpkick.deny;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.DenyPolicyParser;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.DenyPolicy;
 import cc.jumpkick.model.Scope;
@@ -79,8 +80,7 @@ class PolicyCheckerTest {
 
     @Test
     void toml_parser_rejects_unenforced_licenses() {
-        org.junit.jupiter.api.Assertions.assertThrows(
-                cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
+        org.junit.jupiter.api.Assertions.assertThrows(JkBuildParseException.class, () -> DenyPolicyParser.parse("""
                         group = "g"
                         name = "a"
                         version = "1"
@@ -92,8 +92,7 @@ class PolicyCheckerTest {
 
     @Test
     void toml_parser_rejects_unenforced_yanked_deny() {
-        org.junit.jupiter.api.Assertions.assertThrows(
-                cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
+        org.junit.jupiter.api.Assertions.assertThrows(JkBuildParseException.class, () -> DenyPolicyParser.parse("""
                         group = "g"
                         name = "a"
                         version = "1"

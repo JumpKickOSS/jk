@@ -2,15 +2,21 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.WhyReport;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,28 +48,26 @@ public final class WhyCommand implements CliCommand {
         Path dir = global.workingDir();
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Why", "project must have jk.toml (run `jk init` first)");
+            CommandWedge.printFail("Why", "project must have jk.toml (run `jk init` first)");
             return Exit.CONFIG;
         }
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Why");
+        int lockCode = EnsureFreshLock.ensure(dir, JkDirs.cache(), global, "Why");
         if (lockCode != 0) return lockCode;
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockFile = LockPaths.lockFile(dir);
         if (!Files.exists(lockFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Why", "project must have jk-lock.toml (lock refresh did not produce one)");
+            CommandWedge.printFail("Why", "project must have jk-lock.toml (lock refresh did not produce one)");
             return Exit.CONFIG;
         }
 
         String query = moduleOnly(in.positionals().get(0));
         // The graph reasoning is engine-side (thin client): matching + provenance ride WHY_ACK.
-        WhyReport report =
-                cc.jumpkick.cli.engine.EngineClient.why(cc.jumpkick.engine.EnginePaths.current(), dir, query);
+        WhyReport report = EngineClient.why(EnginePaths.current(), dir, query);
         if (report.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Why", report.error());
+            CommandWedge.printFail("Why", report.error());
             return Exit.CONFIG;
         }
         if (report.matchNames().isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Why", query + " is not in jk-lock.toml");
+            CommandWedge.printFail("Why", query + " is not in jk-lock.toml");
             return 1;
         }
 

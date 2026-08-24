@@ -2,19 +2,44 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.ExplodedArchives;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.repo.EffectivePom;
+import cc.jumpkick.repo.EffectivePomBuilder;
+import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.Pom;
+import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.NaiveResolver;
+import cc.jumpkick.resolver.PlatformBomVersions;
+import cc.jumpkick.resolver.PubGrubResolver;
+import cc.jumpkick.resolver.Resolution;
+import cc.jumpkick.tool.TrustedPlugins;
+import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,18 +70,14 @@ public final class PluginBuild {
      * null for built-ins — it carries the coordinate the trust gate and jar lookup key on.
      */
     public record Active(
-            PluginDescriptor manifest,
-            PluginConfig config,
-            Path moduleDir,
-            cc.jumpkick.model.PluginDeclaration declaration) {}
+            PluginDescriptor manifest, PluginConfig config, Path moduleDir, PluginDeclaration declaration) {}
 
     public static Optional<Active> activeCodePlugin(JkBuild project, Path moduleDir) {
         for (PluginDescriptor m : PluginTableRegistry.manifestsFor(moduleDir, project.plugins())) {
             if (m.code() == null) continue;
             Optional<PluginConfig> config = project.pluginConfig(m.id());
             if (config.isPresent()) {
-                cc.jumpkick.model.PluginDeclaration declaration = PluginDescriptorOps.declarationOf(
-                                moduleDir, project, m.id())
+                PluginDeclaration declaration = PluginDescriptorOps.declarationOf(moduleDir, project, m.id())
                         .orElse(null);
                 return Optional.of(new Active(m, config.get(), moduleDir, declaration));
             }
@@ -183,11 +204,8 @@ public final class PluginBuild {
         if (Files.isRegularFile(cacheFile)) {
             lines = Files.readAllLines(cacheFile, StandardCharsets.UTF_8);
         } else {
-            Path spec = new cc.jumpkick.plugin.protocol.SpecWriter()
-                    .op(
-                            cc.jumpkick.plugin.protocol.PluginProtocol.OP_DESCRIBE,
-                            null,
-                            active.manifest().id())
+            Path spec = new SpecWriter()
+                    .op(PluginProtocol.OP_DESCRIBE, null, active.manifest().id())
                     .configValues(active.config().values())
                     .project(facts(project, project.mainClass()))
                     .writeTempSpec();
@@ -278,7 +296,7 @@ public final class PluginBuild {
         Map<String, Path> out = new LinkedHashMap<>();
         List<PluginContributions.PackagerDep> deps = PluginContributions.packagerDependencies(project, moduleDir);
         if (deps.isEmpty()) return out;
-        cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
+        RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         for (PluginContributions.PackagerDep dep : deps) {
             // ${config.version} may be a caret floor ("4"); resolve to a concrete release.
             String version = resolveToolVersion(repos, dep.module(), dep.version());
@@ -310,7 +328,7 @@ public final class PluginBuild {
         Map<String, Path> out = new LinkedHashMap<>();
         List<PluginContributions.StepDep> deps = PluginContributions.stepDependencies(project, moduleDir);
         if (deps.isEmpty()) return out;
-        cc.jumpkick.repo.RepoGroup repos = null;
+        RepoGroup repos = null;
         for (PluginContributions.StepDep dep : deps) {
             try {
                 if (dep.sdkComponent() != null) {
@@ -324,7 +342,7 @@ public final class PluginBuild {
                     out.put(dep.artifact(), toolClosureDir(dep, repos, cas));
                     continue;
                 }
-                cc.jumpkick.model.Coordinate coord = resolveCoordinate(repos, dep.coordinateSpec());
+                Coordinate coord = resolveCoordinate(repos, dep.coordinateSpec());
                 out.put(
                         dep.artifact(),
                         repos.tryFetchArtifact(coord)
@@ -347,17 +365,17 @@ public final class PluginBuild {
      * <p>When {@code managed-by} and/or {@code with} are set, roots resolve as <em>one</em> graph
      * under BOM pins (PubGrub) — Maven-like tool classpath alignment, not freestyle dual trees.
      */
-    private static Path toolClosureDir(PluginContributions.StepDep dep, cc.jumpkick.repo.RepoGroup repos, Cas cas)
+    private static Path toolClosureDir(PluginContributions.StepDep dep, RepoGroup repos, Cas cas)
             throws IOException, InterruptedException {
         // Resolve floating ${config.version} segments first so the CAS key tracks the concrete line.
-        List<cc.jumpkick.model.Coordinate> roots = new ArrayList<>();
+        List<Coordinate> roots = new ArrayList<>();
         roots.add(resolveCoordinate(repos, dep.coordinateSpec()));
         for (String w : dep.with()) {
             roots.add(resolveCoordinate(repos, w));
         }
         String managedByResolved = null;
         if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
-            cc.jumpkick.model.Coordinate bom = resolveCoordinate(repos, dep.managedBy());
+            Coordinate bom = resolveCoordinate(repos, dep.managedBy());
             managedByResolved = bom.group() + ":" + bom.artifact() + ":" + bom.version();
         }
 
@@ -369,11 +387,10 @@ public final class PluginBuild {
             }
         }
 
-        List<cc.jumpkick.model.Dependency> declared = new ArrayList<>();
-        for (cc.jumpkick.model.Coordinate root : roots) {
-            declared.add(new cc.jumpkick.model.Dependency(
-                    root.group() + ":" + root.artifact(),
-                    cc.jumpkick.model.VersionSelector.parse("=" + root.version())));
+        List<Dependency> declared = new ArrayList<>();
+        for (Coordinate root : roots) {
+            declared.add(
+                    new Dependency(root.group() + ":" + root.artifact(), VersionSelector.parse("=" + root.version())));
         }
 
         Map<String, String> bomConstraints = Map.of();
@@ -381,20 +398,19 @@ public final class PluginBuild {
             bomConstraints = loadBomConstraints(repos, managedByResolved);
         }
 
-        cc.jumpkick.resolver.Resolution resolution;
+        Resolution resolution;
         if (!bomConstraints.isEmpty() || !dep.with().isEmpty()) {
             // One graph, BOM-aligned (or multi-root highest-wins under PubGrub).
-            resolution = new cc.jumpkick.resolver.PubGrubResolver(repos, bomConstraints).resolve(declared);
+            resolution = new PubGrubResolver(repos, bomConstraints).resolve(declared);
         } else {
-            resolution = new cc.jumpkick.resolver.NaiveResolver(new cc.jumpkick.repo.EffectivePomBuilder(repos))
-                    .resolve(declared);
+            resolution = new NaiveResolver(new EffectivePomBuilder(repos)).resolve(declared);
         }
 
         Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
         // Dedupe by GAV so package-id keys (g:a:type:classifier) don't double-link the same jar.
         LinkedHashSet<String> seenGav = new LinkedHashSet<>();
         for (var resolved : resolution.modules().values()) {
-            cc.jumpkick.model.Coordinate coord = resolved.coordinate();
+            Coordinate coord = resolved.coordinate();
             if (!seenGav.add(coord.toGav())) continue;
             Path jar = repos.tryFetchArtifact(coord)
                     .orElseThrow(() -> new IOException("cannot fetch " + coord
@@ -409,7 +425,7 @@ public final class PluginBuild {
             }
         }
         // Ensure declared roots are present even if the solver key form differed.
-        for (cc.jumpkick.model.Coordinate root : roots) {
+        for (Coordinate root : roots) {
             if (!seenGav.add(root.toGav())) continue;
             Path jar = repos.tryFetchArtifact(root)
                     .orElseThrow(() -> new IOException("cannot fetch " + root
@@ -424,7 +440,7 @@ public final class PluginBuild {
             }
         }
         try {
-            cc.jumpkick.util.AtomicWrites.publishDir(staging, dir);
+            AtomicWrites.publishDir(staging, dir);
         } catch (IOException e) {
             if (!Files.isDirectory(dir)) throw e; // lost a race → the winner's dir serves
         }
@@ -436,7 +452,7 @@ public final class PluginBuild {
      * readable; long ones hash.
      */
     // Package-private for ToolClosureCacheKeyTest.
-    static String toolClosureCacheKey(List<cc.jumpkick.model.Coordinate> roots, String managedByResolved) {
+    static String toolClosureCacheKey(List<Coordinate> roots, String managedByResolved) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < roots.size(); i++) {
             if (i > 0) sb.append("__");
@@ -461,14 +477,14 @@ public final class PluginBuild {
      * Load {@code group:artifact → version} pins from a BOM POM (and its imported BOMs via
      * EffectivePom expansion).
      */
-    private static Map<String, String> loadBomConstraints(cc.jumpkick.repo.RepoGroup repos, String bomGav)
+    private static Map<String, String> loadBomConstraints(RepoGroup repos, String bomGav)
             throws IOException, InterruptedException {
         // BOM coordinates are type=pom (default parse is jar).
         String spec = bomGav.contains("!") ? bomGav : bomGav + "!pom";
-        cc.jumpkick.model.Coordinate bom = cc.jumpkick.model.Coordinate.parse(spec);
-        cc.jumpkick.repo.EffectivePom bomPom = new cc.jumpkick.repo.EffectivePomBuilder(repos).build(bom);
+        Coordinate bom = Coordinate.parse(spec);
+        EffectivePom bomPom = new EffectivePomBuilder(repos).build(bom);
         Map<String, String> constraints = new LinkedHashMap<>();
-        for (cc.jumpkick.repo.Pom.Dep m : bomPom.managedDependencies()) {
+        for (Pom.Dep m : bomPom.managedDependencies()) {
             if (m.version() == null || m.version().isBlank()) continue;
             constraints.putIfAbsent(m.module(), m.version());
         }
@@ -501,7 +517,7 @@ public final class PluginBuild {
         if (lockFile == null || !Files.isRegularFile(lockFile)) return Map.of();
         try {
             Map<String, String> pins = new LinkedHashMap<>();
-            for (var e : cc.jumpkick.lock.LockfileReader.read(lockFile).sdk()) {
+            for (var e : LockfileReader.read(lockFile).sdk()) {
                 pins.put(e.component(), e.revision());
             }
             return pins;
@@ -520,7 +536,7 @@ public final class PluginBuild {
      * exact spec costs no network at all. This is the opposite of the {@code jk.toml} dependency
      * convention on purpose.
      */
-    static String resolveToolVersion(cc.jumpkick.repo.RepoGroup repos, String module, String versionSpec)
+    static String resolveToolVersion(RepoGroup repos, String module, String versionSpec)
             throws IOException, InterruptedException {
         if (versionSpec == null || versionSpec.isBlank()) {
             throw new IllegalArgumentException("tool version is blank for " + module);
@@ -529,31 +545,26 @@ public final class PluginBuild {
         if (colon <= 0 || colon != module.lastIndexOf(':')) {
             throw new IllegalArgumentException("tool module must be group:artifact — got " + module);
         }
-        return cc.jumpkick.resolver.PlatformBomVersions.resolve(
-                repos,
-                module.substring(0, colon),
-                module.substring(colon + 1),
-                cc.jumpkick.model.VersionSelector.parse(versionSpec));
+        return PlatformBomVersions.resolve(
+                repos, module.substring(0, colon), module.substring(colon + 1), VersionSelector.parse(versionSpec));
     }
 
     /**
      * {@code group:artifact:version[:classifier]} where the version segment may float. Bare is
      * exact — see {@link #resolveToolVersion} for why.
      */
-    static cc.jumpkick.model.Coordinate resolveCoordinate(cc.jumpkick.repo.RepoGroup repos, String gav)
-            throws IOException, InterruptedException {
-        cc.jumpkick.model.Coordinate raw = cc.jumpkick.model.Coordinate.parse(gav);
+    static Coordinate resolveCoordinate(RepoGroup repos, String gav) throws IOException, InterruptedException {
+        Coordinate raw = Coordinate.parse(gav);
         String resolved = resolveToolVersion(repos, raw.module(), raw.version());
         if (resolved.equals(raw.version())) return raw;
-        return new cc.jumpkick.model.Coordinate(raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());
+        return new Coordinate(raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());
     }
 
     /** Fetch one {@code module:version} jar into the CAS and return its path. */
-    private static Path fetchArtifact(cc.jumpkick.repo.RepoGroup repos, String module, String version)
+    private static Path fetchArtifact(RepoGroup repos, String module, String version)
             throws IOException, InterruptedException {
         int colon = module.indexOf(':');
-        cc.jumpkick.model.Coordinate coord =
-                cc.jumpkick.model.Coordinate.of(module.substring(0, colon), module.substring(colon + 1), version);
+        Coordinate coord = Coordinate.of(module.substring(0, colon), module.substring(colon + 1), version);
         return repos.tryFetchArtifact(coord)
                 .orElseThrow(() -> new IOException("cannot fetch " + coord
                         + " — the version a plugin's packager-dependency names must exist in a declared repo"))
@@ -570,21 +581,19 @@ public final class PluginBuild {
             throws IOException {
         List<Path> classpath = new ArrayList<>();
         if (Files.exists(lockFile)) {
-            var resolver = new cc.jumpkick.compile.ClasspathResolver(JkStores.cas(cache));
-            classpath.addAll(resolver.classpathFor(
-                    cc.jumpkick.lock.LockfileReader.read(lockFile), cc.jumpkick.compile.ClasspathResolver.RUNTIME));
+            var resolver = new ClasspathResolver(JkStores.cas(cache));
+            classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME));
         }
         try {
-            var siblings = cc.jumpkick.config.WorkspaceClasspath.resolve(
-                    projectDir, project, Set.of(cc.jumpkick.model.Scope.EXPORT, cc.jumpkick.model.Scope.MAIN));
+            var siblings = WorkspaceClasspath.resolve(projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
             for (Path jar : siblings.jars()) {
                 if (!classpath.contains(jar)) classpath.add(jar);
             }
             for (Path sibLock : siblings.siblingLockfiles()) {
                 try {
-                    var sib = cc.jumpkick.lock.LockfileReader.read(sibLock);
-                    for (Path pth : new cc.jumpkick.compile.ClasspathResolver(JkStores.cas(cache))
-                            .classpathFor(sib, cc.jumpkick.compile.ClasspathResolver.RUNTIME)) {
+                    var sib = LockfileReader.read(sibLock);
+                    for (Path pth :
+                            new ClasspathResolver(JkStores.cas(cache)).classpathFor(sib, ClasspathResolver.RUNTIME)) {
                         if (!classpath.contains(pth)) classpath.add(pth);
                     }
                 } catch (Exception ignored) {
@@ -629,9 +638,8 @@ public final class PluginBuild {
         List<ProdEntry> out = new ArrayList<>();
         Cas cas = JkStores.cas(cache);
         if (Files.exists(lockFile)) {
-            var resolver = new cc.jumpkick.compile.ClasspathResolver(cas);
-            for (var entry : resolver.entriesFor(
-                    cc.jumpkick.lock.LockfileReader.read(lockFile), cc.jumpkick.compile.ClasspathResolver.RUNTIME)) {
+            var resolver = new ClasspathResolver(cas);
+            for (var entry : resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME)) {
                 var a = entry.artifact();
                 String ext = entry.container() != null ? ".aar" : ".jar";
                 out.add(new ProdEntry(
@@ -645,14 +653,13 @@ public final class PluginBuild {
             }
         }
         try {
-            var siblings = cc.jumpkick.config.WorkspaceClasspath.resolve(
-                    projectDir, project, Set.of(cc.jumpkick.model.Scope.EXPORT, cc.jumpkick.model.Scope.MAIN));
+            var siblings = WorkspaceClasspath.resolve(projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
             for (Path jar : siblings.jars()) {
                 Path container = null;
                 String name = jar.getFileName().toString();
                 Path aar = jar.resolveSibling(name.substring(0, name.length() - ".jar".length()) + ".aar");
                 if (Files.isRegularFile(aar)) {
-                    container = cc.jumpkick.cache.ExplodedArchives.explodeFile(cas, aar);
+                    container = ExplodedArchives.explodeFile(cas, aar);
                     name = aar.getFileName().toString();
                 }
                 out.add(new ProdEntry(name, Files.isRegularFile(jar) ? jar : null, true, container));
@@ -667,7 +674,7 @@ public final class PluginBuild {
      * The main artifact's path under the packager's declared extension ({@code
      * target/lib/<name>-<version>.apk}) — the one place the extension swap lives.
      */
-    public static Path mainArtifactPath(cc.jumpkick.layout.BuildLayout layout, Active active) {
+    public static Path mainArtifactPath(BuildLayout layout, Active active) {
         Path jarPath = layout.mainJar();
         var packaging = active.manifest().packaging();
         if (packaging != null) packaging = packaging.resolve(active.config());
@@ -699,14 +706,14 @@ public final class PluginBuild {
      * the engine refuses untrusted third-party code with the {@code jk trust plugin} remediation).
      */
     static Path workerJarFor(Active active, Path cache) throws IOException {
-        cc.jumpkick.model.PluginDeclaration declaration = active.declaration();
+        PluginDeclaration declaration = active.declaration();
         if (declaration != null) {
             if (!"cc.jumpkick".equals(declaration.group())) {
                 String stateOverride = System.getProperty("jk.trust.state.dir");
-                Path stateDir = stateOverride != null ? Path.of(stateOverride) : cc.jumpkick.util.JkDirs.state();
-                cc.jumpkick.tool.TrustedPlugins trust;
+                Path stateDir = stateOverride != null ? Path.of(stateOverride) : JkDirs.state();
+                TrustedPlugins trust;
                 try {
-                    trust = cc.jumpkick.tool.TrustedPlugins.load(stateDir);
+                    trust = TrustedPlugins.load(stateDir);
                 } catch (IOException e) {
                     trust = null;
                 }
@@ -741,11 +748,11 @@ public final class PluginBuild {
      * {@code locate()} finds, which would run different bytes than the lock recorded.
      */
     static Path lockedFirstPartyJar(Path moduleDir, String workerArtifact, Path cache) throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lockFile)) return null;
-        cc.jumpkick.lock.Lockfile lock;
+        Lockfile lock;
         try {
-            lock = cc.jumpkick.lock.LockfileReader.read(lockFile);
+            lock = LockfileReader.read(lockFile);
         } catch (Exception e) {
             throw new IOException("cannot read " + lockFile + ": " + e.getMessage(), e);
         }
@@ -757,10 +764,9 @@ public final class PluginBuild {
             if (pinned.isPresent()) return pinned.get();
             String fetchFailure = null;
             try {
-                cc.jumpkick.engine.plugin.PluginJar.fetchOfficial(
+                PluginJar.fetchOfficial(
                         JkStores.cas(cache),
-                        cc.jumpkick.repo.MavenLayout.artifactPath(
-                                cc.jumpkick.model.Coordinate.ofModule(e.coordinate(), e.version())));
+                        MavenLayout.artifactPath(Coordinate.ofModule(e.coordinate(), e.version())));
                 pinned = PluginDescriptorOps.pinnedLayoutJar(
                         JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex());
                 if (pinned.isPresent()) return pinned.get();

@@ -412,10 +412,8 @@ public final class ImageBuilder {
      * filtered out — build-host metadata, never image content. Files sorted for deterministic
      * layer bytes.
      */
-    private static com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer classesLayer(Path classesDir)
-            throws IOException {
-        var layer = com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer.builder()
-                .setName("classes");
+    private static FileEntriesLayer classesLayer(Path classesDir) throws IOException {
+        var layer = FileEntriesLayer.builder().setName("classes");
         AbsoluteUnixPath target = AbsoluteUnixPath.get("/app/classes");
         List<Path> files = new ArrayList<>();
         try (var stream = Files.walk(classesDir)) {

@@ -4,11 +4,13 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.resolver.pubgrub.PackageSource;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -52,7 +54,7 @@ public final class MavenPackageSource implements PackageSource {
     private final EffectivePomBuilder pomBuilder;
     private final Map<String, String> bomConstraints;
     private final PlatformPolicy platformPolicy;
-    private final cc.jumpkick.model.UnmappedPolicy unmappedPolicy;
+    private final UnmappedPolicy unmappedPolicy;
     private final KmpRedirects kmp;
 
     /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
@@ -156,14 +158,14 @@ public final class MavenPackageSource implements PackageSource {
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp,
             PlatformPolicy platformPolicy,
-            cc.jumpkick.model.UnmappedPolicy unmappedPolicy) {
+            UnmappedPolicy unmappedPolicy) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.pomBuilder = Objects.requireNonNull(pomBuilder, "pomBuilder");
         this.bomConstraints = Map.copyOf(Objects.requireNonNull(bomConstraints, "bomConstraints"));
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(lockedVersionPrefs, "lockedVersionPrefs"));
         this.kmp = Objects.requireNonNull(kmp, "kmp");
         this.platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
-        this.unmappedPolicy = unmappedPolicy == null ? cc.jumpkick.model.UnmappedPolicy.MEDIATE : unmappedPolicy;
+        this.unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
     }
 
     public PlatformPolicy platformPolicy() {
@@ -259,7 +261,7 @@ public final class MavenPackageSource implements PackageSource {
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
 
-        long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
+        long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         // highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
         // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
         List<String> ordered = orderedVersions(pkg);
@@ -267,8 +269,8 @@ public final class MavenPackageSource implements PackageSource {
         List<String> result =
                 List.copyOf(isSnapshotPackage(pkg) ? compactHighest(ordered) : compactVersionCandidates(ordered));
         versionCache.put(pkg, result);
-        if (cc.jumpkick.resolve.ResolveProfile.on()) {
-            cc.jumpkick.resolve.ResolveProfile.versions(System.nanoTime() - t0);
+        if (ResolveProfile.on()) {
+            ResolveProfile.versions(System.nanoTime() - t0);
         }
         return result;
     }
@@ -426,7 +428,7 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
-        long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
+        long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         Set<String> excl = exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
         List<RawEdge> raw = rawEdges(pkg, version);
         List<Term> out = new ArrayList<>(raw.size());
@@ -456,8 +458,8 @@ public final class MavenPackageSource implements PackageSource {
         }
         List<Term> immutable = List.copyOf(out);
         prefetchTransitiveAsync(immutable);
-        if (cc.jumpkick.resolve.ResolveProfile.on()) {
-            cc.jumpkick.resolve.ResolveProfile.deps(System.nanoTime() - t0);
+        if (ResolveProfile.on()) {
+            ResolveProfile.deps(System.nanoTime() - t0);
         }
         return immutable;
     }
@@ -647,7 +649,7 @@ public final class MavenPackageSource implements PackageSource {
             }
             return VersionSet.exact(bomPin);
         }
-        if (!bomConstraints.isEmpty() && unmappedPolicy == cc.jumpkick.model.UnmappedPolicy.STRICT) {
+        if (!bomConstraints.isEmpty() && unmappedPolicy == UnmappedPolicy.STRICT) {
             // [resolve] unmapped = "strict": exact fills for unmanaged GAs — every diamond on
             // them is a hard error (maximum reproducibility). Default is MEDIATE
             // fall through to highest-wins, Maven/Gradle parity; the named-locks hazard class

@@ -2,9 +2,12 @@
 package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.command.*;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.terminal.Terminals;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -19,7 +22,7 @@ import java.util.Set;
 public final class Jk {
 
     /** Alias of {@link cc.jumpkick.model.JkVersion#VERSION} for CLI-side callers. */
-    public static final String VERSION = cc.jumpkick.model.JkVersion.VERSION;
+    public static final String VERSION = JkVersion.VERSION;
 
     /** Top-line blurb on bare {@code jk} and {@code jk --help}. */
     static final String HELP_TAGLINE = "JumpKick - The best damn build system for the JVM";
@@ -62,7 +65,7 @@ public final class Jk {
             System.exit(70);
             return;
         }
-        cc.jumpkick.cli.tui.GlobalCancel.install();
+        GlobalCancel.install();
         int code;
         try {
             code = execute(args);
@@ -90,7 +93,7 @@ public final class Jk {
         applyCliOverrides(args);
         // -q/--quiet must take effect before any println happens. Apply it now
         // based on the resolved config (which already knows about env/file/CLI layers).
-        Quietable.applyIfQuiet(cc.jumpkick.config.SessionContext.current().config());
+        Quietable.applyIfQuiet(SessionContext.current().config());
         String[] rewritten = rewriteAlias(args);
         // Every command is now on the CliCommand model; CommandDispatch handles all
         // dispatch. The fallback below handles bare `jk` + --help + --version.
@@ -254,8 +257,7 @@ public final class Jk {
                 noOsc,
                 notify,
                 Optional.empty()); // build-output: config/env only
-        cc.jumpkick.config.SessionContext.installConfig(
-                cc.jumpkick.config.SessionContext.current().config().mergedWith(cli));
+        SessionContext.installConfig(SessionContext.current().config().mergedWith(cli));
     }
 
     /**
@@ -282,11 +284,11 @@ public final class Jk {
         }
         try {
             JkConfig resolved = JkConfigLoader.load(Path.of("").toAbsolutePath(), noConfig, explicit);
-            cc.jumpkick.config.SessionContext.installConfig(resolved);
+            SessionContext.installConfig(resolved);
         } catch (IOException e) {
             // Best-effort — a broken user/project config shouldn't kill the CLI.
             System.err.println("jk: warning: could not load config (" + e.getMessage() + "); using defaults.");
-            cc.jumpkick.config.SessionContext.installConfig(JkConfig.empty());
+            SessionContext.installConfig(JkConfig.empty());
         }
     }
 

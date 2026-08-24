@@ -7,9 +7,12 @@ import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolInstaller;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.kotlin.KotlinResolver;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -42,11 +45,11 @@ public final class CompileToolchain {
      * by {@code jk lock}) if present, else an exact {@code kotlin} pin, else {@code null}
      * which falls back to the bundled default distribution.
      */
-    public static String kotlinVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
+    public static String kotlinVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null && lock.kotlin() != null && !lock.kotlin().isBlank()) {
             return lock.kotlin();
         }
-        if (project != null && project.project().kotlin() instanceof cc.jumpkick.model.VersionSelector.Exact exact) {
+        if (project != null && project.project().kotlin() instanceof VersionSelector.Exact exact) {
             return exact.version();
         }
         return null;
@@ -58,16 +61,16 @@ public final class CompileToolchain {
      * actually ships (caret/tilde pins and BOM-managed grails floats resolve here,
      * else an exact {@code groovy} pin, else {@code null} (bundled default).
      */
-    public static String groovyVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
+    public static String groovyVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null) {
-            for (cc.jumpkick.lock.Lockfile.Artifact a : lock.artifacts()) {
+            for (Lockfile.Artifact a : lock.artifacts()) {
                 String name = a.name();
                 if (name.equals("org.apache.groovy:groovy") || name.startsWith("org.apache.groovy:groovy:")) {
                     return a.version();
                 }
             }
         }
-        if (project != null && project.project().groovy() instanceof cc.jumpkick.model.VersionSelector.Exact exact) {
+        if (project != null && project.project().groovy() instanceof VersionSelector.Exact exact) {
             return exact.version();
         }
         return null;
@@ -77,12 +80,12 @@ public final class CompileToolchain {
      * Pick the Scala 3 compiler version: lock pin first, else the locked {@code scala3-library_3}
      * artifact, else an exact {@code scala} pin, else {@code null} (bundled default).
      */
-    public static String scalaVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
+    public static String scalaVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null && lock.scala() != null && !lock.scala().isBlank()) {
             return lock.scala();
         }
         if (lock != null) {
-            for (cc.jumpkick.lock.Lockfile.Artifact a : lock.artifacts()) {
+            for (Lockfile.Artifact a : lock.artifacts()) {
                 String name = a.name();
                 if (name.equals("org.scala-lang:scala3-library_3")
                         || name.startsWith("org.scala-lang:scala3-library_3:")) {
@@ -90,7 +93,7 @@ public final class CompileToolchain {
                 }
             }
         }
-        if (project != null && project.project().scala() instanceof cc.jumpkick.model.VersionSelector.Exact exact) {
+        if (project != null && project.project().scala() instanceof VersionSelector.Exact exact) {
             return exact.version();
         }
         return null;
@@ -130,8 +133,7 @@ public final class CompileToolchain {
             dist = new ToolDistribution(BuildTool.KOTLIN, versionOverride, uri, "zip");
         }
         try {
-            boolean refresh =
-                    cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+            boolean refresh = SessionContext.current().config().forceOr(false);
             ToolProvisioning.Result result =
                     ToolProvisioning.provision(dist, registry, new Http(), /* noDiscover= */ false, refresh);
             switch (result.source()) {

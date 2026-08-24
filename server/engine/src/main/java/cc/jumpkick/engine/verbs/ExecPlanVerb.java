@@ -3,9 +3,12 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.ExecPlans;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -38,14 +41,14 @@ public final class ExecPlanVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.ExecPlan plan;
+            ExecPlan plan;
             try {
                 String binDir = Jsonl.str(requestLine, "binDir");
                 String libDir = Jsonl.str(requestLine, "libDir");
-                plan = cc.jumpkick.runtime.ExecPlans.execPlan(
+                plan = ExecPlans.execPlan(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Path.of(Jsonl.str(requestLine, "cache")),
                         Jsonl.str(requestLine, "kind"),
@@ -56,7 +59,7 @@ public final class ExecPlanVerb implements HostedVerb {
                         ProtoSession.variantOf(requestLine),
                         ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
-                plan = cc.jumpkick.engine.protocol.ExecPlan.error("unknown", cc.jumpkick.host.Errors.text(e));
+                plan = ExecPlan.error("unknown", cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, plan.encode());
 

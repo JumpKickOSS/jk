@@ -8,7 +8,9 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,7 +78,7 @@ class JkBuildParserTest {
                 coordinate = "org.jetbrains.kotlin:kotlin-serialization"
                 """);
         assertThat(parsed.build().kotlinPlugins()).hasSize(1);
-        assertThat(parsed.build().platformPolicy()).isEqualTo(cc.jumpkick.model.PlatformPolicy.FLOOR);
+        assertThat(parsed.build().platformPolicy()).isEqualTo(PlatformPolicy.FLOOR);
     }
 
     @Test
@@ -90,10 +92,9 @@ class JkBuildParserTest {
                 [[kotlin-plugins]]
                 coordinate = "org.jetbrains.kotlin:kotlin-serialization"
                 """);
-        assertThat(parsed.build().unmappedPolicy()).isEqualTo(cc.jumpkick.model.UnmappedPolicy.STRICT);
+        assertThat(parsed.build().unmappedPolicy()).isEqualTo(UnmappedPolicy.STRICT);
         // Default is mediate.
-        assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy())
-                .isEqualTo(cc.jumpkick.model.UnmappedPolicy.MEDIATE);
+        assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy()).isEqualTo(UnmappedPolicy.MEDIATE);
     }
 
     @Test
@@ -989,8 +990,7 @@ class JkBuildParserTest {
                 [dependencies]
                 widget = { group = "com.example" }
                 """);
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.MAIN).get(0).isPlatformManaged())
-                .isTrue();
+        assertThat(b.dependencies().of(Scope.MAIN).get(0).isPlatformManaged()).isTrue();
     }
 
     @Test
@@ -1748,7 +1748,7 @@ class JkBuildParserTest {
                 guava = { group = "com.google.guava", name = "guava", version = "33.0.0-jre", optional = true }
                 jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.18.2" }
                 """);
-        var deps = parsed.dependencies().of(cc.jumpkick.model.Scope.MAIN);
+        var deps = parsed.dependencies().of(Scope.MAIN);
         assertThat(deps)
                 .filteredOn(d -> d.library().equals("guava"))
                 .singleElement()
@@ -1988,16 +1988,15 @@ class JkBuildParserTest {
 
     @Test
     void sources_mode_parsed() {
-        assertThat(JkBuildParser.parse(PROJECT).project().sourcesMode())
-                .isEqualTo(cc.jumpkick.model.JkBuild.SourcesMode.DISABLED);
+        assertThat(JkBuildParser.parse(PROJECT).project().sourcesMode()).isEqualTo(JkBuild.SourcesMode.DISABLED);
         assertThat(JkBuildParser.parse(PROJECT + "sources = true\n").project().sourcesMode())
-                .isEqualTo(cc.jumpkick.model.JkBuild.SourcesMode.PUBLISH);
+                .isEqualTo(JkBuild.SourcesMode.PUBLISH);
         assertThat(JkBuildParser.parse(PROJECT + "sources = \"always\"\n")
                         .project()
                         .sourcesMode())
-                .isEqualTo(cc.jumpkick.model.JkBuild.SourcesMode.ALWAYS);
+                .isEqualTo(JkBuild.SourcesMode.ALWAYS);
         assertThat(JkBuildParser.parse(PROJECT + "sources = false\n").project().sourcesMode())
-                .isEqualTo(cc.jumpkick.model.JkBuild.SourcesMode.DISABLED);
+                .isEqualTo(JkBuild.SourcesMode.DISABLED);
     }
 
     @Test
@@ -2104,10 +2103,10 @@ class JkBuildParserTest {
                 [test-dev-dependencies]
                 testcontainers = { group = "org.springframework.boot", name = "spring-boot-testcontainers", version = "4.0.0" }
                 """);
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.DEV)).hasSize(1);
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.DEV).get(0).module())
+        assertThat(b.dependencies().of(Scope.DEV)).hasSize(1);
+        assertThat(b.dependencies().of(Scope.DEV).get(0).module())
                 .isEqualTo("org.springframework.boot:spring-boot-devtools");
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.TEST_DEV)).hasSize(1);
+        assertThat(b.dependencies().of(Scope.TEST_DEV)).hasSize(1);
     }
 
     @Test
@@ -2123,7 +2122,7 @@ class JkBuildParserTest {
                 [dependencies]
                 starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
                 """);
-        var dep = b.dependencies().of(cc.jumpkick.model.Scope.MAIN).get(0);
+        var dep = b.dependencies().of(Scope.MAIN).get(0);
         assertThat(dep.isPlatformManaged()).isTrue();
         assertThat(dep.module()).isEqualTo("org.springframework.boot:spring-boot-starter-webmvc");
     }
@@ -2155,8 +2154,8 @@ class JkBuildParserTest {
                 [runtime-dependencies]
                 postgres-jdbc = { group = "org.postgresql", name = "postgresql", version = "42.7.4" }
                 """);
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.PLATFORM)).hasSize(1);
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.RUNTIME)).hasSize(1);
+        assertThat(b.dependencies().of(Scope.PLATFORM)).hasSize(1);
+        assertThat(b.dependencies().of(Scope.RUNTIME)).hasSize(1);
     }
 
     @Test
@@ -2179,14 +2178,13 @@ class JkBuildParserTest {
         assertThat(sb.bool("include-tools", true)).isTrue();
         assertThat(sb.bool("aot")).isEmpty(); // unset aot = tri-state auto (follows [native] presence)
         // version = "4.0.0" alone imports the BOM — no [platform-dependencies] boilerplate.
-        var platform = b.dependencies().of(cc.jumpkick.model.Scope.PLATFORM);
+        var platform = b.dependencies().of(Scope.PLATFORM);
         assertThat(platform).hasSize(1);
         assertThat(platform.get(0).module()).isEqualTo("org.springframework.boot:spring-boot-dependencies");
         assertThat(platform.get(0).version().raw()).isEqualTo("4.0.0");
-        assertThat(platform.get(0).version()).isInstanceOf(cc.jumpkick.model.VersionSelector.Caret.class);
+        assertThat(platform.get(0).version()).isInstanceOf(VersionSelector.Caret.class);
         // ...which makes the versionless starter platform-managed.
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.MAIN).get(0).isPlatformManaged())
-                .isTrue();
+        assertThat(b.dependencies().of(Scope.MAIN).get(0).isPlatformManaged()).isTrue();
     }
 
     @Test
@@ -2229,7 +2227,7 @@ class JkBuildParserTest {
                 [platform-dependencies]
                 spring-boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "4.0.1" }
                 """);
-        var platform = b.dependencies().of(cc.jumpkick.model.Scope.PLATFORM);
+        var platform = b.dependencies().of(Scope.PLATFORM);
         assertThat(platform).hasSize(1);
         assertThat(platform.get(0).version().raw()).isEqualTo("4.0.1");
     }
@@ -2242,8 +2240,7 @@ class JkBuildParserTest {
      * grow the cache, not that size is exactly 1.
      */
     @Test
-    void parse_memo_replaces_the_entry_for_a_rewritten_file(@org.junit.jupiter.api.io.TempDir Path tmp)
-            throws Exception {
+    void parse_memo_replaces_the_entry_for_a_rewritten_file(@TempDir Path tmp) throws Exception {
         Path file = tmp.resolve("jk.toml");
         Files.writeString(file, PROJECT);
         JkBuild first = JkBuildParser.parseLocal(file);
@@ -2260,7 +2257,7 @@ class JkBuildParserTest {
     }
 
     @Test
-    void parse_memo_does_not_reuse_a_same_length_rewrite(@org.junit.jupiter.api.io.TempDir Path tmp) throws Exception {
+    void parse_memo_does_not_reuse_a_same_length_rewrite(@TempDir Path tmp) throws Exception {
         // Size+mtime stamps miss this on Windows: same length, same tick, different bytes.
         Path file = tmp.resolve("jk.toml");
         Files.writeString(file, PROJECT + "description = \"a\"\n");
@@ -2281,12 +2278,11 @@ class JkBuildParserTest {
                 micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
                 """);
         assertThat(b.isMicronaut()).isTrue();
-        var platform = b.dependencies().of(cc.jumpkick.model.Scope.PLATFORM);
+        var platform = b.dependencies().of(Scope.PLATFORM);
         assertThat(platform).hasSize(1);
         assertThat(platform.get(0).module()).isEqualTo("io.micronaut.platform:micronaut-platform");
         assertThat(platform.get(0).version().raw()).isEqualTo("5");
-        assertThat(platform.get(0).version()).isInstanceOf(cc.jumpkick.model.VersionSelector.Caret.class);
-        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.MAIN).get(0).isPlatformManaged())
-                .isTrue();
+        assertThat(platform.get(0).version()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(b.dependencies().of(Scope.MAIN).get(0).isPlatformManaged()).isTrue();
     }
 }

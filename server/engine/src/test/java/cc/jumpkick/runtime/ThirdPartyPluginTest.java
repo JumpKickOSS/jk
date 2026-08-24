@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.Lockfile;
@@ -130,7 +131,7 @@ class ThirdPartyPluginTest {
         // JkStores.cas ignores the temp cache path and uses the ambient product store (same
         // root PluginDescriptorOps.ensureMaterialized reads). Fetch into that store, then put the
         // jar into the CAS blob pool — matching SyncPlans.syncPlugins.
-        Cas cas = cc.jumpkick.cache.JkStores.cas(cache);
+        Cas cas = JkStores.cas(cache);
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
         Coordinate jarCoord = Coordinate.of(GROUP, ARTIFACT, VERSION);
         var fetched = repos.tryFetchArtifact(jarCoord).orElseThrow();
@@ -218,7 +219,7 @@ class ThirdPartyPluginTest {
                 fixture = "%s"
                 """.formatted(repo.toUri()));
         JkBuild build = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        Cas cas = cc.jumpkick.cache.JkStores.cas(tmp.resolve("cache"));
+        Cas cas = JkStores.cas(tmp.resolve("cache"));
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
         Coordinate coord = Coordinate.of(GROUP, ARTIFACT, version);
 

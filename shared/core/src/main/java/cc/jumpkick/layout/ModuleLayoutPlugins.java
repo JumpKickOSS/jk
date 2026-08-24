@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,8 +20,7 @@ public final class ModuleLayoutPlugins {
         try {
             JkBuild build = JkBuildParser.parse(toml);
             List<ModuleLayout.Root> out = new ArrayList<>();
-            for (cc.jumpkick.plugin.manifest.PluginContributions.SourceRoot root :
-                    cc.jumpkick.plugin.manifest.PluginContributions.sourceRoots(build, moduleDir)) {
+            for (PluginContributions.SourceRoot root : PluginContributions.sourceRoots(build, moduleDir)) {
                 out.add(new ModuleLayout.Root(
                         root.dir(), root.resource() ? ModuleLayout.Kind.RESOURCE : ModuleLayout.Kind.SOURCE));
             }

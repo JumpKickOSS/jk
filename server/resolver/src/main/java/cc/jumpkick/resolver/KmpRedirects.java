@@ -5,6 +5,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolve.ResolveProfile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -96,13 +97,13 @@ public final class KmpRedirects {
         }
         String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + gaKey;
         // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
-        long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
+        long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         Optional<Selection> found = processMemoized(processKey, module, version);
         cache.put(gaKey, found);
         found.ifPresent(this::rememberDropped);
-        if (cc.jumpkick.resolve.ResolveProfile.on() && t0 != 0L) {
+        if (ResolveProfile.on() && t0 != 0L) {
             // Count wall only when we may have done work (process miss is still inside computeIfAbsent).
-            cc.jumpkick.resolve.ResolveProfile.kmp(System.nanoTime() - t0);
+            ResolveProfile.kmp(System.nanoTime() - t0);
         }
         return found;
     }

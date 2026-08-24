@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.test.TestWorkers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -23,8 +25,8 @@ class ExplainBuildEtaParityTest {
         int explainDefaultWorkers = 0; // ExplainCommand.orElse(0)
         assertThat(explainDefaultWorkers).isEqualTo(buildDefaultWorkers);
         // Auto resolution must not force serial tests when classes > 1.
-        int auto = cc.jumpkick.test.TestWorkers.resolve(0, 24, 8);
-        int forcedOne = cc.jumpkick.test.TestWorkers.resolve(1, 24, 8);
+        int auto = TestWorkers.resolve(0, 24, 8);
+        int forcedOne = TestWorkers.resolve(1, 24, 8);
         assertThat(auto).isGreaterThan(forcedOne);
         assertThat(forcedOne).isEqualTo(1);
     }
@@ -74,7 +76,7 @@ class ExplainBuildEtaParityTest {
                 [workspace]
                 modules = ["m"]
                 """);
-        var graph = BuildGraph.resolve(tmp, cc.jumpkick.config.JkBuildParser.parse(tmp.resolve("jk.toml")));
+        var graph = BuildGraph.resolve(tmp, JkBuildParser.parse(tmp.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
         ExplainPlan plan = BuildService.fullyCachedExplainPlan(graph);
         assertThat(plan.modules()).isNotEmpty();

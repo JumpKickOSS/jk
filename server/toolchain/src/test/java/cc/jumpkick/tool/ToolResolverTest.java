@@ -6,7 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.ToolCoordSpec;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import com.sun.net.httpserver.HttpServer;
@@ -38,7 +41,7 @@ class ToolResolverTest {
     void start() throws IOException {
         // Tests re-publish different POMs under the same GAV (immutability broken on purpose).
         // Drop the process-wide effective-POM memo so suite order cannot leak empty-deps POMs.
-        cc.jumpkick.repo.EffectivePomBuilder.clearProcessCache();
+        EffectivePomBuilder.clearProcessCache();
         served.clear();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
@@ -133,8 +136,7 @@ class ToolResolverTest {
         servePomAndJar("com.example", "widget-cli", "1.1.0", "com.example.Main");
 
         ToolResolver resolver = resolver(tempDir);
-        ToolEnv env = resolver.resolve(
-                cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli"), "widget", null, List.of());
+        ToolEnv env = resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli"), "widget", null, List.of());
 
         assertThat(env.primary().toGav()).isEqualTo("com.example:widget-cli:1.1.0");
         assertThat(env.mainClass()).isEqualTo("com.example.Main");
@@ -146,8 +148,7 @@ class ToolResolverTest {
         servePomAndJar("com.example", "widget-cli", "1.4.2", "com.example.Main");
 
         ToolResolver resolver = resolver(tempDir);
-        ToolEnv env = resolver.resolve(
-                cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli@1.0"), "widget", null, List.of());
+        ToolEnv env = resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli@1.0"), "widget", null, List.of());
 
         // Caret ^1.0 — highest within the 1.x line, not 2.1.0.
         assertThat(env.primary().toGav()).isEqualTo("com.example:widget-cli:1.4.2");
@@ -157,11 +158,8 @@ class ToolResolverTest {
     void unmatched_selector_reports_the_available_versions(@TempDir Path tempDir) {
         serveMetadata("com.example", "widget-cli", "1.0.0", "1.1.0");
         ToolResolver resolver = resolver(tempDir);
-        assertThatThrownBy(() -> resolver.resolve(
-                        cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli@^3.0"),
-                        "widget",
-                        null,
-                        List.of()))
+        assertThatThrownBy(() ->
+                        resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli@^3.0"), "widget", null, List.of()))
                 .hasMessageContaining("no version of com.example:widget-cli matches")
                 .hasMessageContaining("1.1.0");
     }
@@ -173,10 +171,10 @@ class ToolResolverTest {
 
         ToolResolver resolver = resolver(tempDir);
         ToolEnv env = resolver.resolve(
-                cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli:1.0.0"),
+                ToolCoordSpec.parse("com.example:widget-cli:1.0.0"),
                 "widget",
                 null,
-                List.of(cc.jumpkick.model.ToolCoordSpec.parse("com.example:extra:2.0.0")));
+                List.of(ToolCoordSpec.parse("com.example:extra:2.0.0")));
 
         assertThat(env.classpath()).hasSize(2);
         assertThat(env.classpath().getFirst().toString()).isNotEmpty();
@@ -185,8 +183,7 @@ class ToolResolverTest {
     @Test
     void native_classifier_binary_wins_over_the_jar(@TempDir Path tempDir) throws Exception {
         servePomAndJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
-        String classifier =
-                "native-" + cc.jumpkick.jdk.HostPlatform.currentArch() + "-" + cc.jumpkick.jdk.HostPlatform.currentOs();
+        String classifier = "native-" + HostPlatform.currentArch() + "-" + HostPlatform.currentOs();
         served.put(
                 "/com/example/widget-cli/1.0.0/widget-cli-1.0.0-" + classifier + ".exe",
                 "#!/bin/sh\nexit 0\n".getBytes());
@@ -201,8 +198,7 @@ class ToolResolverTest {
     @Test
     void main_override_skips_the_native_probe(@TempDir Path tempDir) throws Exception {
         servePomAndJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
-        String classifier =
-                "native-" + cc.jumpkick.jdk.HostPlatform.currentArch() + "-" + cc.jumpkick.jdk.HostPlatform.currentOs();
+        String classifier = "native-" + HostPlatform.currentArch() + "-" + HostPlatform.currentOs();
         served.put(
                 "/com/example/widget-cli/1.0.0/widget-cli-1.0.0-" + classifier + ".exe",
                 "#!/bin/sh\nexit 0\n".getBytes());

@@ -6,6 +6,7 @@ import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
@@ -41,7 +42,7 @@ public final class HistoryListVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));

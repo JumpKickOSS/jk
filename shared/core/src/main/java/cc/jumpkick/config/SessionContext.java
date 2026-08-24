@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.run.ContextPropagator;
 import java.util.concurrent.Callable;
 
 /**
@@ -24,7 +25,7 @@ public final class SessionContext {
     static {
         // Propagate where()-bound sessions (and their cancel tokens) onto JkThreads pool workers;
         // ScopedValue does not reach pre-existing shared executors without this.
-        cc.jumpkick.run.ContextPropagator.bind(new cc.jumpkick.run.ContextPropagator.Propagator() {
+        ContextPropagator.bind(new ContextPropagator.Propagator() {
             @Override
             public Runnable wrapRunnable(Runnable r) {
                 Session s = current();

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
 import cc.jumpkick.config.TrainConfigParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
@@ -32,8 +35,8 @@ public final class TrainPlans {
             boolean skipTests,
             boolean verbose) {
         Path buildFile = moduleDir.resolve("jk.toml");
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
-        boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
+        boolean compact = ModuleLayout.isCompact(moduleDir);
         int estimatedTests = TestSupport.estimateAllSuiteTestCount(moduleDir, compact);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 moduleDir,
@@ -50,7 +53,7 @@ public final class TrainPlans {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // No assembly/native/minified tails — train only needs a runnable package.
         builder.addTask(trainStep(moduleDir, module, cache, lockFile, graalHome, javaHome, profileFilter, force));

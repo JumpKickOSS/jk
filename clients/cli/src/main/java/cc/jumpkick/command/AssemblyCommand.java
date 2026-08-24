@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -58,7 +59,7 @@ public final class AssemblyCommand implements CliCommand {
         Path dir = global.workingDir();
         Path toml = dir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", "no jk.toml in " + PathDisplay.styledRaw(dir));
+            CommandWedge.printFail("Assemble", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
 
@@ -66,11 +67,11 @@ public final class AssemblyCommand implements CliCommand {
         boolean minified = in.isSet("minified");
         boolean writeConfig = in.isSet("write-config");
         if (fat && minified) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", "choose one of --fat or --minified (not both)");
+            CommandWedge.printFail("Assemble", "choose one of --fat or --minified (not both)");
             return Exit.USAGE;
         }
         if (writeConfig && !fat && !minified) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", "--write-config requires --fat or --minified");
+            CommandWedge.printFail("Assemble", "--write-config requires --fat or --minified");
             return Exit.USAGE;
         }
 
@@ -88,7 +89,7 @@ public final class AssemblyCommand implements CliCommand {
                     CliOutput.err("jk assemble: jk.toml already has " + overrideLabel + " = true");
                 }
             } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", e.getMessage());
+                CommandWedge.printFail("Assemble", e.getMessage());
                 return Exit.SOFTWARE;
             }
         }

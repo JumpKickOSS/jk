@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.cli.run.TimelineOpts;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.Jobs;
+import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.PluginTunings;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
@@ -111,10 +118,7 @@ public final class GlobalOptions {
     public Path workingDir() {
         Path raw = directory;
         if (raw == null) {
-            raw = cc.jumpkick.config.SessionContext.current()
-                    .config()
-                    .directory()
-                    .orElse(Path.of(""));
+            raw = SessionContext.current().config().directory().orElse(Path.of(""));
         }
         // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
         // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir
@@ -149,8 +153,8 @@ public final class GlobalOptions {
      * layer. {@code gc} / {@code string-dedup} are left unset here — those come from env / {@code
      * jk.toml}; the CLI exposes only the two most common knobs.
      */
-    public cc.jumpkick.config.PluginTuning jvmCli() {
-        return new cc.jumpkick.config.PluginTuning(maxRamPercent, null, null, jvmArgs);
+    public PluginTuning jvmCli() {
+        return new PluginTuning(maxRamPercent, null, null, jvmArgs);
     }
 
     /**
@@ -161,7 +165,7 @@ public final class GlobalOptions {
      */
     public static GlobalOptions from(Invocation in) {
         // Session already holds file+env layers (and any early CLI overlays from Jk.applyCliOverrides).
-        JkConfig cfg = cc.jumpkick.config.SessionContext.current().config();
+        JkConfig cfg = SessionContext.current().config();
 
         GlobalOptions g = new GlobalOptions();
         // Boolean flags: CLI set wins; otherwise inherit true from config/env when present.
@@ -171,7 +175,7 @@ public final class GlobalOptions {
         g.offline = in.isSet("offline") || cfg.offlineOr(false);
         g.yes = in.isSet("yes");
         // Confirm prompts read this for the rest of the command.
-        cc.jumpkick.cli.tui.Confirm.setAssumeYes(g.yes);
+        Confirm.setAssumeYes(g.yes);
         g.force = in.isSet("force") || cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
         g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
@@ -207,9 +211,9 @@ public final class GlobalOptions {
                 g.noOsc ? Optional.of(true) : Optional.empty(),
                 Optional.of(g.notify),
                 Optional.empty()); // build-output: config/env only (no CLI flag)
-        cc.jumpkick.config.SessionContext.installConfig(cfg.mergedWith(cliOverlay));
+        SessionContext.installConfig(cfg.mergedWith(cliOverlay));
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
-        cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(g.noTimeline);
+        TimelineOpts.setNoTimeline(g.noTimeline);
         g.output = in.value("output").orElse(null);
         g.configFile = in.value("config-file").map(Path::of).orElse(null);
         g.noConfig = in.isSet("no-config");
@@ -241,10 +245,10 @@ public final class GlobalOptions {
         // / static channels. Only the flag/env layers resolve here — the jk.toml [jvm] table is
         // engine-read at worker-fork time (thin client; keeps tomlj off the client). The working
         // dir rides along so the in-process seam overlays the same project's table.
-        cc.jumpkick.config.SessionContext.install(cc.jumpkick.config.SessionContext.current()
+        SessionContext.install(SessionContext.current()
                 .withToolchainSpecs(g.jdk, g.graal)
                 .withWorkingDir(g.workingDir())
-                .withJvm(cc.jumpkick.config.PluginTunings.resolveClient(g.jvmCli())));
+                .withJvm(PluginTunings.resolveClient(g.jvmCli())));
         return g;
     }
 
@@ -291,7 +295,6 @@ public final class GlobalOptions {
      * cores. Always ≥ 1.
      */
     public int jobsEffective() {
-        return cc.jumpkick.config.Jobs.resolve(
-                Optional.ofNullable(jobs), cc.jumpkick.config.JkEngineConfig.resolve(), System::getenv);
+        return Jobs.resolve(Optional.ofNullable(jobs), JkEngineConfig.resolve(), System::getenv);
     }
 }

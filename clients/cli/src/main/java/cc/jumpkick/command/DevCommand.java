@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -38,8 +39,7 @@ public final class DevCommand implements CliCommand {
     @Override
     public List<Param> parameters() {
         // App args only — verb is fixed to run.
-        return List.of(cc.jumpkick.model.command.Param.of(
-                "args", cc.jumpkick.model.command.Arity.ZERO_OR_MORE, "Arguments passed to the application."));
+        return List.of(Param.of("args", Arity.ZERO_OR_MORE, "Arguments passed to the application."));
     }
 
     @Override

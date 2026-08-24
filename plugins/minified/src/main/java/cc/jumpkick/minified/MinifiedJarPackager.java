@@ -3,6 +3,10 @@ package cc.jumpkick.minified;
 
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
+import cc.jumpkick.surface.DynamicSurface;
+import cc.jumpkick.surface.DynamicSurfaceIo;
+import cc.jumpkick.surface.KeepRuleEmitter;
+import cc.jumpkick.surface.TrainLayout;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -121,25 +125,24 @@ final class MinifiedJarPackager {
             // Libraries describe their own reflective surface in META-INF/native-image for
             // native-image, which reads it unaided. R8 has no equivalent, so the same facts reach
             // it as keep rules. Free: the data is already in the jars, no run involved.
-            cc.jumpkick.surface.DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
-            cc.jumpkick.surface.DynamicSurface surface =
-                    ByNameIndex.surface(derived).merge(composed);
+            DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
+            DynamicSurface surface = ByNameIndex.surface(derived).merge(composed);
             // Optional train observations from `jk train` (target/train/merged/dynamic-surface.json).
             Path trainSurface = io.artifactPath()
                     .getParent()
-                    .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                    .resolve(TrainLayout.ROOT)
                     .resolve("merged")
-                    .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
-            cc.jumpkick.surface.DynamicSurface trained = cc.jumpkick.surface.DynamicSurface.empty();
+                    .resolve(TrainLayout.SURFACE_JSON);
+            DynamicSurface trained = DynamicSurface.empty();
             if (Files.isRegularFile(trainSurface)) {
-                trained = cc.jumpkick.surface.DynamicSurfaceIo.readJson(trainSurface);
+                trained = DynamicSurfaceIo.readJson(trainSurface);
                 surface = surface.merge(trained);
             }
             if (!surface.entries().isEmpty()) {
                 pro.append("\n# Derived from by-name indexes, library native-image metadata")
                         .append(trained.entries().isEmpty() ? "" : ", and train observations")
                         .append(".\n")
-                        .append(cc.jumpkick.surface.KeepRuleEmitter.emit(surface));
+                        .append(KeepRuleEmitter.emit(surface));
                 io.label("keep rules: " + derived.size() + " from by-name indexes, "
                         + composed.entries().size() + " from library metadata"
                         + (trained.entries().isEmpty()
@@ -256,7 +259,7 @@ final class MinifiedJarPackager {
             message.append("  ").append(name).append('\n');
         }
         message.append("\nKeep them with [minified] keep, or a keep-files rule file:\n")
-                .append(cc.jumpkick.surface.KeepRuleEmitter.emit(
+                .append(KeepRuleEmitter.emit(
                         ByNameIndex.surface(expected.stream().limit(3).toList())));
         if (expected.size() > 3) message.append("  …\n");
         throw new IllegalStateException(message.toString());

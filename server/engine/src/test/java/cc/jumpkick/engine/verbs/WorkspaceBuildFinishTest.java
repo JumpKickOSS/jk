@@ -14,6 +14,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceResult;
@@ -243,7 +244,7 @@ class WorkspaceBuildFinishTest {
 
         @Override
         public BuildPlanListener planListener(
-                String dir, BufferedWriter writer, Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder) {
+                String dir, BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
             return new BuildPlanListener() {};
         }
 

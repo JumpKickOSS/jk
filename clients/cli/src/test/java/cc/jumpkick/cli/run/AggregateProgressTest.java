@@ -4,6 +4,8 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -40,12 +42,11 @@ class AggregateProgressTest {
         LiveProgress.get().setPercent(70.0); // engine snapshot already applied
         var lis = new CommandManagerListener(
                 new PrintStream(new ByteArrayOutputStream()), (ConsoleSpec) null, "g:a", List.of(), false, false);
-        lis.planStart(new cc.jumpkick.run.BuildPlanView("build", 1, 10, 1, 0, false));
-        lis.progress("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 2, 10, 1, 0, false));
-        lis.tickUpdate("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 3, 10, 1, 0, false));
+        lis.planStart(new BuildPlanView("build", 1, 10, 1, 0, false));
+        lis.progress("compile", 1, new BuildPlanView("build", 2, 10, 1, 0, false));
+        lis.tickUpdate("compile", 1, new BuildPlanView("build", 3, 10, 1, 0, false));
         assertThat(LiveProgress.get().percent()).isEqualTo(70.0);
-        lis.planFinish(new cc.jumpkick.run.BuildPlanResult(
-                "build", true, Duration.ZERO, List.of(), List.of(), List.of(), false));
+        lis.planFinish(new BuildPlanResult("build", true, Duration.ZERO, List.of(), List.of(), List.of(), false));
     }
 
     @Test

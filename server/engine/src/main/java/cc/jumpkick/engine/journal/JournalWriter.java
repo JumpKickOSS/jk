@@ -8,6 +8,7 @@ import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildMetrics;
@@ -145,7 +146,7 @@ public final class JournalWriter {
             if (historyConfig.enabled()) {
                 Path dir = Path.of(a.dir());
                 BuildJournal.Snapshot snapshot =
-                        new BuildJournal.Snapshot(null, cc.jumpkick.lock.LockPaths.lockFile(dir), a.diagnosticsText());
+                        new BuildJournal.Snapshot(null, LockPaths.lockFile(dir), a.diagnosticsText());
                 String jid = a.journalId();
                 String locator;
                 if (jid != null && !jid.isBlank()) {

@@ -5,12 +5,26 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineSpawn;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontDetect;
+import cc.jumpkick.config.NerdFontMode;
+import cc.jumpkick.config.UserConfigEditor;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
+import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -78,23 +92,22 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws Exception {
-            var detected = cc.jumpkick.config.NerdFontDetect.detect();
+            var detected = NerdFontDetect.detect();
             if (in.isSet("explain")) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Self", explain(detected));
+                CommandWedge.printOk("Self", explain(detected));
                 return 0;
             }
             String raw = in.value("mode").orElse("auto");
             var mode = parseMode(raw);
             if (mode.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Self", "unknown --mode " + raw + " (expected auto|on|off|wedge|pill)");
+                CommandWedge.printFail("Self", "unknown --mode " + raw + " (expected auto|on|off|wedge|pill)");
                 return Exit.USAGE;
             }
             Path cfg = JkDirs.userConfigFile();
-            cc.jumpkick.config.UserConfigEditor.setNerdFont(cfg, mode.get());
+            UserConfigEditor.setNerdFont(cfg, mode.get());
             String msg = "nerd-font = " + mode.get().toToml() + " → " + cfg;
-            if (mode.get() == cc.jumpkick.config.NerdFontMode.AUTO) msg += "\n  " + explain(detected);
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Self", msg);
+            if (mode.get() == NerdFontMode.AUTO) msg += "\n  " + explain(detected);
+            CommandWedge.printOk("Self", msg);
             return 0;
         }
 
@@ -103,11 +116,11 @@ public final class SelfCommand extends GroupCommand {
          * CLI invites, which {@link cc.jumpkick.config.NerdFontMode#parse} already covers via the
          * jk-wide boolean truth set.
          */
-        private static Optional<cc.jumpkick.config.NerdFontMode> parseMode(String raw) {
-            return cc.jumpkick.config.NerdFontMode.parse(raw);
+        private static Optional<NerdFontMode> parseMode(String raw) {
+            return NerdFontMode.parse(raw);
         }
 
-        private static String explain(cc.jumpkick.config.NerdFontDetect.Result r) {
+        private static String explain(NerdFontDetect.Result r) {
             var caps = r.caps();
             String granted =
                     !caps.any() ? "none" : caps.wedge() && caps.pill() ? "wedge+pill" : caps.wedge() ? "wedge" : "pill";
@@ -139,33 +152,30 @@ public final class SelfCommand extends GroupCommand {
         }
 
         @Override
-        public List<cc.jumpkick.model.command.Param> parameters() {
+        public List<Param> parameters() {
             return List.of(
-                    cc.jumpkick.model.command.Param.of(
-                            "client-bin", cc.jumpkick.model.command.Arity.ONE, "The jk client binary."),
-                    cc.jumpkick.model.command.Param.of(
-                            "engine-jar", cc.jumpkick.model.command.Arity.ONE, "The matching jk-engine jar."));
+                    Param.of("client-bin", Arity.ONE, "The jk client binary."),
+                    Param.of("engine-jar", Arity.ONE, "The matching jk-engine jar."));
         }
 
         @Override
         public int run(Invocation in) throws Exception {
             Path engineJar = Path.of(in.positionals().get(1));
             if (!Files.isRegularFile(engineJar)) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Self", "engine jar not found: " + engineJar);
+                CommandWedge.printFail("Self", "engine jar not found: " + engineJar);
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();
             EngineInstall.Materialized m =
-                    install.materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar);
-            EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), cc.jumpkick.cli.Jk.VERSION);
+                    install.materializeFromFiles(Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar);
+            EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), Jk.VERSION);
             install.gc();
             try {
-                cc.jumpkick.config.UserConfigEditor.setNerdFont(
-                        JkDirs.userConfigFile(), cc.jumpkick.config.NerdFontMode.AUTO);
+                UserConfigEditor.setNerdFont(JkDirs.userConfigFile(), NerdFontMode.AUTO);
             } catch (Exception ignored) {
                 // Best-effort nerd-font seed; never fail materialize.
             }
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Self", "Materialized JumpKick " + m.version());
+            CommandWedge.printOk("Self", "Materialized JumpKick " + m.version());
             return 0;
         }
     }
@@ -190,18 +200,16 @@ public final class SelfCommand extends GroupCommand {
         }
 
         @Override
-        public List<cc.jumpkick.model.command.Param> parameters() {
-            return List.of(cc.jumpkick.model.command.Param.of(
-                    "version",
-                    cc.jumpkick.model.command.Arity.ZERO_OR_ONE,
-                    "Target version x.y.z. Default: the latest release."));
+        public List<Param> parameters() {
+            return List.of(
+                    Param.of("version", Arity.ZERO_OR_ONE, "Target version x.y.z. Default: the latest release."));
         }
 
         @Override
         public int run(Invocation in) throws Exception {
             URI base = releasesBase();
             String target = in.positionals().isEmpty() ? null : in.positionals().get(0);
-            cc.jumpkick.http.Http http = new cc.jumpkick.http.Http();
+            Http http = new Http();
             if (target == null) {
                 target = new String(
                                 get(http, URI.create(base + "/latest/VERSION"), "latest version pointer"),
@@ -209,27 +217,27 @@ public final class SelfCommand extends GroupCommand {
                         .trim();
             }
             if (target.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Self", "could not resolve a target version");
+                CommandWedge.printFail("Self", "could not resolve a target version");
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();
             Cas cas = JkStores.cas(JkDirs.cache());
-            String running = cc.jumpkick.cli.Jk.VERSION;
+            String running = Jk.VERSION;
             if (target.equals(running) && install.resolve(target).isPresent()) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Self", target + " is already current");
+                CommandWedge.printOk("Self", target + " is already current");
                 return 0;
             }
 
             Fetched fetched = fetchAndMaterialize(http, base, target, install, cas);
             EngineInstall.installBinaries(cas.pathFor(fetched.clientSha()), JkDirs.binDir());
-            cc.jumpkick.cli.tui.CommandWedge.printOk(
+            CommandWedge.printOk(
                     "Self", target + " installed (" + fetched.engine().engineJar() + ")");
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
             // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.
-            var paths = cc.jumpkick.engine.EnginePaths.current();
+            var paths = EnginePaths.current();
             if (in.isSet("now")) {
-                cc.jumpkick.cli.engine.EngineClient.forceStop(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+                EngineClient.forceStop(EnginePaths.activeSocket(paths));
             }
             Path newJk = pathClient(JkDirs.binDir());
             if (Files.isRegularFile(newJk)) {
@@ -251,13 +259,11 @@ public final class SelfCommand extends GroupCommand {
             return binDir.resolve("jk");
         }
 
-        static Fetched fetchAndMaterialize(
-                cc.jumpkick.http.Http http, URI base, String version, EngineInstall install, Cas cas)
+        static Fetched fetchAndMaterialize(Http http, URI base, String version, EngineInstall install, Cas cas)
                 throws IOException, InterruptedException {
             URI dir = URI.create(base + "/" + version + "/");
             byte[] sums = get(http, dir.resolve("SHA256SUMS"), "release checksums");
-            var verifier =
-                    cc.jumpkick.repo.ReleaseVerifier.current(cc.jumpkick.config.GlobalConfig.releaseTrustedKeys());
+            var verifier = ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys());
             if (verifier.available()) {
                 byte[] sig = get(http, dir.resolve("SHA256SUMS.sig"), "release signature");
                 verifier.verify(sums, new String(sig, StandardCharsets.UTF_8));
@@ -301,8 +307,8 @@ public final class SelfCommand extends GroupCommand {
          * Unix releases do not ship a zip.
          */
         static String pickClientArtifact(byte[] sums) throws IOException {
-            String os = cc.jumpkick.jdk.HostPlatform.currentOs().toLowerCase(Locale.ROOT);
-            String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
+            String os = HostPlatform.currentOs().toLowerCase(Locale.ROOT);
+            String arch = HostPlatform.currentArch();
             return pickClientArtifact(new String(sums, StandardCharsets.UTF_8), os, arch);
         }
 
@@ -339,7 +345,7 @@ public final class SelfCommand extends GroupCommand {
             try {
                 Path inflater = inflaterEngineJar(engineJar, engineTmp);
                 Files.write(xzTmp, xz);
-                Path java = cc.jumpkick.cli.engine.EngineSpawn.engineJava();
+                Path java = EngineSpawn.engineJava();
                 Process p = new ProcessBuilder(
                                 java.toString(),
                                 "-cp",
@@ -381,7 +387,7 @@ public final class SelfCommand extends GroupCommand {
         private static Path inflaterEngineJar(byte[] downloadedJar, Path downloadedTmp) throws IOException {
             Files.write(downloadedTmp, downloadedJar);
             if (hasInflateXz(downloadedTmp)) return downloadedTmp;
-            var current = EngineInstall.current().resolve(cc.jumpkick.cli.Jk.VERSION);
+            var current = EngineInstall.current().resolve(Jk.VERSION);
             if (current.isPresent()) {
                 Path jar = current.get().engineJar();
                 if (Files.isRegularFile(jar) && hasInflateXz(jar)) return jar;
@@ -425,8 +431,7 @@ public final class SelfCommand extends GroupCommand {
             return body;
         }
 
-        private static byte[] get(cc.jumpkick.http.Http http, URI uri, String what)
-                throws IOException, InterruptedException {
+        private static byte[] get(Http http, URI uri, String what) throws IOException, InterruptedException {
             HttpResponse<byte[]> response = http.get(uri);
             if (response.statusCode() != 200) {
                 throw new IOException(

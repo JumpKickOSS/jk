@@ -83,8 +83,8 @@ public final class TestSupport {
      */
     public static int estimateSelectedSuiteTestCount(
             Path moduleDir, boolean compact, cc.jumpkick.config.TestSelection selection) {
-        java.util.List<String> discovered = cc.jumpkick.layout.TestSuites.discover(moduleDir, compact);
-        java.util.List<String> suites = discovered;
+        List<String> discovered = cc.jumpkick.layout.TestSuites.discover(moduleDir, compact);
+        List<String> suites = discovered;
         if (selection != null) {
             var resolved = selection.resolve(discovered);
             if (resolved.ok()) suites = resolved.suites();
@@ -152,7 +152,7 @@ public final class TestSupport {
         out.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(moduleDir, compact, suites));
         out.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(moduleDir, compact, suites));
         out.addAll(cc.jumpkick.layout.TestSuites.collectScalaSources(moduleDir, compact, suites));
-        return new java.util.ArrayList<>(out);
+        return new ArrayList<>(out);
     }
 
     /**
@@ -474,7 +474,7 @@ public final class TestSupport {
                 String file = "";
                 int line = 0;
                 int snippetStart = 0;
-                java.util.List<String> snippetLines = java.util.List.of();
+                List<String> snippetLines = List.of();
                 if (dir != null) {
                     var snip = snippets.resolve(dir, className, stack);
                     if (snip.isPresent()) {
@@ -666,8 +666,7 @@ public final class TestSupport {
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
-        java.nio.file.Path stateDir =
-                cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);
+        Path stateDir = cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
         // restore (3), else a full compile. Same key JavaCompile uses.

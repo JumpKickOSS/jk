@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.manifest;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.PluginDeclaration;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -185,7 +186,7 @@ public final class PluginTableRegistry {
      * engine materializes (sync/lock/build pre-flight). An explicit declaration may <em>replace</em>
      * a built-in with the same id or table; two declarations colliding with each other is an error.
      */
-    public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<cc.jumpkick.model.PluginDeclaration> decls) {
+    public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<PluginDeclaration> decls) {
         if (decls == null || decls.isEmpty()) return manifests();
         List<PluginDescriptor> out = new ArrayList<>(manifests());
         Set<String> ids = new HashSet<>();
@@ -196,7 +197,7 @@ public final class PluginTableRegistry {
         }
         Set<String> declaredIds = new HashSet<>();
         Set<String> declaredTables = new HashSet<>();
-        for (cc.jumpkick.model.PluginDeclaration decl : decls) {
+        for (PluginDeclaration decl : decls) {
             PluginDescriptor m =
                     PluginDescriptorStore.manifestFor(moduleDir, decl).orElse(null);
             if (m == null) continue;

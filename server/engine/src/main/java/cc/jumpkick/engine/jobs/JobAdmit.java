@@ -6,6 +6,8 @@ import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.runtime.BuildNumberAllocator;
+import cc.jumpkick.runtime.ProjectIds;
 import java.nio.file.Path;
 
 /** Exclusive fingerprint + start-time journal stub for one job. */
@@ -30,10 +32,10 @@ public final class JobAdmit {
         String coord = host.coordOf(dir);
         long buildNumber = 0L;
         if (BuildHistoryKinds.isBuildLike(kind) && canonDir != null && !canonDir.isBlank()) {
-            buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
+            buildNumber = BuildNumberAllocator.allocate(canonDir, coord);
         }
         long startedAt = host.nowMillis();
-        String projectId = cc.jumpkick.runtime.ProjectIds.refresh(canonDir != null ? canonDir : dir);
+        String projectId = ProjectIds.refresh(canonDir != null ? canonDir : dir);
         String journalId = null;
         if (host.historyConfig().enabled() && canonDir != null && !canonDir.isBlank()) {
             journalId = host.journal()

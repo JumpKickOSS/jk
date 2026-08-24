@@ -6,6 +6,7 @@ import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import java.io.IOException;
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Exercises the full plan: init -> add -> lock -> tree / why / sync. */
-@cc.jumpkick.cli.engine.IsolatedStore
+@IsolatedStore
 @Tag("integration")
 class ReadSideIntegrationTest {
 

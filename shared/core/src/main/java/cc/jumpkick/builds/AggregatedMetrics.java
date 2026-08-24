@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.util.DirKeys;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -250,7 +251,7 @@ public final class AggregatedMetrics {
         if (s == null) return "unknown";
         // Forward slashes first so Windows paths stay one key family with Unix; a POSIX
         // backslash name is NOT a separator and folds to '_' like any other odd character.
-        return cc.jumpkick.util.DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/-]+", "_");
+        return DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/-]+", "_");
     }
 
     private static void parseProjectFile(

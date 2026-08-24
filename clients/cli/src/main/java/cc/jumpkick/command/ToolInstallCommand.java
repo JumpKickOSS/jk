@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.BuildOptions;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Arity;
@@ -13,8 +20,14 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
+import cc.jumpkick.tool.ToolProvenance;
+import cc.jumpkick.tool.ToolTarget;
+import cc.jumpkick.tool.TrustedSources;
+import cc.jumpkick.tool.UrlRewriter;
+import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -100,8 +113,7 @@ public final class ToolInstallCommand implements CliCommand {
     public int run(Invocation in) throws IOException, InterruptedException {
         this.binName = in.value("bin").orElse(null);
         this.mainClass = in.value("main").orElse(null);
-        this.cacheDirOverride =
-                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.stateDirOverride = in.value("state-dir").map(Path::of).orElse(null);
         this.binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
         this.groupFlag = in.value("group").orElse(null);
@@ -118,7 +130,7 @@ public final class ToolInstallCommand implements CliCommand {
             if (Files.isRegularFile(base.resolve("jk.toml"))) {
                 return appInstallDelegate().runProjectInstallBuildPlan(base, "install");
             }
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Install",
                     "no target specified — pass a coordinate, catalog name, path, or git URL, or run inside a directory with jk.toml");
             return Exit.USAGE;
@@ -127,19 +139,19 @@ public final class ToolInstallCommand implements CliCommand {
         // A local script/jar installs as a snapshot env (launcher must not depend on the source
         // path). Project dirs and git URLs delegate to InstallCommand. Local paths resolve
         // against -C/--dir, not the process cwd.
-        cc.jumpkick.tool.ToolTarget classified = cc.jumpkick.tool.ToolTarget.classify(coord);
+        ToolTarget classified = ToolTarget.classify(coord);
         boolean m2Intent = groupFlag != null || nameFlag != null || verFlag != null;
-        if (m2Intent && classified instanceof cc.jumpkick.tool.ToolTarget.RunnableFile file) {
+        if (m2Intent && classified instanceof ToolTarget.RunnableFile file) {
             // Coordinate flags = "store this artifact in the local cache" (the mvn install
             // equivalent), not "give me a launcher".
             return appInstallDelegate()
                     .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
         }
-        if (m2Intent && classified instanceof cc.jumpkick.tool.ToolTarget.UnsupportedFile file) {
+        if (m2Intent && classified instanceof ToolTarget.UnsupportedFile file) {
             return appInstallDelegate()
                     .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
         }
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.RunnableFile file) {
+        if (classified instanceof ToolTarget.RunnableFile file) {
             Path resolved = base.resolve(file.path()).normalize();
             List<String> fileWith;
             try {
@@ -150,30 +162,29 @@ public final class ToolInstallCommand implements CliCommand {
             }
             return installFile(
                     resolved,
-                    new cc.jumpkick.tool.ToolProvenance(
-                            "file", coord, resolved.toAbsolutePath().toString()),
+                    new ToolProvenance("file", coord, resolved.toAbsolutePath().toString()),
                     fileWith,
                     List.of());
         }
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.Directory dir) {
+        if (classified instanceof ToolTarget.Directory dir) {
             Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
             if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                CommandWedge.printFail(
                         "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
                 return Exit.CONFIG;
             }
             return appInstallDelegate().runProjectInstallBuildPlan(projectDir, "install");
         }
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.Git git) {
+        if (classified instanceof ToolTarget.Git git) {
             String raw = git.raw().startsWith("git+") ? git.raw().substring("git+".length()) : git.raw();
-            String canonical = cc.jumpkick.util.GitUrl.canonicalize(
-                    InstallCommand.splitUrlRef(raw).url());
+            String canonical =
+                    GitUrl.canonicalize(InstallCommand.splitUrlRef(raw).url());
             Path stateDirForGit = stateDirOverride != null ? stateDirOverride : JkDirs.state();
             Integer gitGate = UrlToolSource.gate(UrlToolSource.gitTrustUrl(canonical), stateDirForGit, "jk install");
             if (gitGate != null) return gitGate;
             return appInstallDelegate().installFromGit(raw);
         }
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.Url u) {
+        if (classified instanceof ToolTarget.Url u) {
             Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
             Integer gated = UrlToolSource.gate(u.raw(), stateDirForTrust, "jk tool install");
             if (gated != null) return gated;
@@ -182,15 +193,13 @@ public final class ToolInstallCommand implements CliCommand {
                 fetched = UrlToolSource.fetch(
                         u.raw(), cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), false);
             } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+                CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.SOFTWARE;
             }
-            return installFile(
-                    fetched,
-                    new cc.jumpkick.tool.ToolProvenance("url", coord, cc.jumpkick.tool.UrlRewriter.rewrite(u.raw())));
+            return installFile(fetched, new ToolProvenance("url", coord, UrlRewriter.rewrite(u.raw())));
         }
 
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.JBangAlias) {
+        if (classified instanceof ToolTarget.JBangAlias) {
             Integer aliasExit = resolveJBangAliasForInstall();
             if (aliasExit != null) return aliasExit;
             // A GAV script-ref fell through: `coord` (and the default --bin) were rewritten.
@@ -217,15 +226,15 @@ public final class ToolInstallCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         ToolEnv env;
-        cc.jumpkick.cli.engine.EngineRequests.ToolResolveOutcome outcome;
+        EngineRequests.ToolResolveOutcome outcome;
         try {
-            outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.ToolResolveRequest(
+            outcome = EngineClient.runToolResolve(
+                    EnginePaths.current(),
+                    new EngineRequests.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, mode));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;
@@ -233,18 +242,17 @@ public final class ToolInstallCommand implements CliCommand {
 
         // The "make install" half stays client-side: the launcher into the user-owned bin dir.
         Path javaHome = JavaHomes.runningJavaHome();
-        String kind = classified instanceof cc.jumpkick.tool.ToolTarget.CatalogName ? "catalog" : "gav";
+        String kind = classified instanceof ToolTarget.CatalogName ? "catalog" : "gav";
         Path launcher = ToolLauncher.install(
                 envsRoot,
                 binDir,
                 javaHome,
                 env,
-                new cc.jumpkick.tool.ToolProvenance(kind, coord, env.primary().toGav()),
+                new ToolProvenance(kind, coord, env.primary().toGav()),
                 aliasJavaOptions);
 
         if (!global.outputIsJson()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk(
-                    "Tool", "Installed " + Coords.gav(env.primary()) + " → " + launcher);
+            CommandWedge.printOk("Tool", "Installed " + Coords.gav(env.primary()) + " → " + launcher);
             CliOutput.out("Add to PATH if needed:");
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }
@@ -260,7 +268,7 @@ public final class ToolInstallCommand implements CliCommand {
         Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         // Trust decides BEFORE any fetch — same rule as tool run: no request leaves the machine
         // for an origin the user never allowed.
-        var trust = cc.jumpkick.tool.TrustedSources.load(stateDirForTrust);
+        var trust = TrustedSources.load(stateDirForTrust);
         List<String> origins = JBangCatalog.origins(coord);
         boolean preTrusted = origins.stream().anyMatch(trust::isTrusted);
         if (!preTrusted) {
@@ -269,9 +277,9 @@ public final class ToolInstallCommand implements CliCommand {
         }
         JBangCatalog.Resolved r;
         try {
-            r = JBangCatalog.resolve(coord, new cc.jumpkick.http.Http(), preTrusted ? trust::isTrusted : o -> true);
+            r = JBangCatalog.resolve(coord, new Http(), preTrusted ? trust::isTrusted : o -> true);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!r.pageOrigin().equals(origins.get(0)) && !trust.isTrusted(r.pageOrigin())) {
@@ -281,7 +289,7 @@ public final class ToolInstallCommand implements CliCommand {
         }
         if (!r.arguments().isEmpty()) {
             // Default arguments can't ride a launcher's "$@" cleanly yet.
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Tool",
                     "warning — this alias declares default arguments,"
                             + " which installed launchers do not honor yet.");
@@ -303,32 +311,26 @@ public final class ToolInstallCommand implements CliCommand {
         try {
             fetched = UrlToolSource.fetch(url, cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), false);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
-        return installFile(
-                fetched,
-                new cc.jumpkick.tool.ToolProvenance("jbang-alias", coord, url),
-                r.dependencies(),
-                r.javaOptions());
+        return installFile(fetched, new ToolProvenance("jbang-alias", coord, url), r.dependencies(), r.javaOptions());
     }
 
     /**
      * Install a local {@code .java}/{@code .kt}/{@code .jar}: engine script-prepare, then snapshot
      * into the env dir and write a launcher (independent of the source path).
      */
-    private int installFile(Path file, cc.jumpkick.tool.ToolProvenance provenance)
-            throws IOException, InterruptedException {
+    private int installFile(Path file, ToolProvenance provenance) throws IOException, InterruptedException {
         return installFile(file, provenance, List.of(), List.of());
     }
 
-    private int installFile(
-            Path file, cc.jumpkick.tool.ToolProvenance provenance, List<String> with, List<String> jvmArgs)
+    private int installFile(Path file, ToolProvenance provenance, List<String> with, List<String> jvmArgs)
             throws IOException, InterruptedException {
         String name = file.getFileName().toString();
         String lower = name.toLowerCase(Locale.ROOT);
         if (!Files.isRegularFile(file)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "file not found: " + file);
+            CommandWedge.printFail("Tool", "file not found: " + file);
             return Exit.NO_INPUT;
         }
         String mode =
@@ -344,15 +346,15 @@ public final class ToolInstallCommand implements CliCommand {
         Files.createDirectories(cacheDir);
         BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
 
-        cc.jumpkick.cli.engine.EngineRequests.ScriptPrepareOutcome prep;
+        EngineRequests.ScriptPrepareOutcome prep;
         try {
-            prep = cc.jumpkick.cli.engine.EngineClient.runScriptPrepare(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.ScriptPrepareRequest(
+            prep = EngineClient.runScriptPrepare(
+                    EnginePaths.current(),
+                    new EngineRequests.ScriptPrepareRequest(
                             mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, consoleMode));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
 
@@ -367,15 +369,14 @@ public final class ToolInstallCommand implements CliCommand {
             if (prep.kotlincBin() == null) return 1;
             Files.createDirectories(envDir);
             String source = Files.readString(file, StandardCharsets.UTF_8);
-            String neutralized = cc.jumpkick.script.ScriptHeaderParser.neutralizeKotlinAnnotations(source);
+            String neutralized = ScriptHeaderParser.neutralizeKotlinAnnotations(source);
             Path scriptCopy = envDir.resolve(name);
             Files.writeString(scriptCopy, neutralized != null ? neutralized : source);
             ToolEnv ktsEnv = new ToolEnv(bin, Coordinate.of("script", bin, "local"), "kotlin-script", prep.classpath());
             Path ktsLauncher = ToolLauncher.installKotlinScript(
                     envsRoot, binDir, JavaHomes.runningJavaHome(), prep.kotlincBin(), scriptCopy, ktsEnv, provenance);
             if (!global.outputIsJson()) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk(
-                        "Tool", "Installed " + file.getFileName() + " → " + ktsLauncher);
+                CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + ktsLauncher);
                 CliOutput.out("Add to PATH if needed:");
                 CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
             }
@@ -399,7 +400,7 @@ public final class ToolInstallCommand implements CliCommand {
         ToolEnv env = new ToolEnv(bin, Coordinate.of("script", bin, "local"), prep.mainClass(), classpath);
         Path launcher = ToolLauncher.install(envsRoot, binDir, JavaHomes.runningJavaHome(), env, provenance, jvmArgs);
         if (!global.outputIsJson()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + launcher);
+            CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + launcher);
             CliOutput.out("Add to PATH if needed:");
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }
@@ -420,7 +421,7 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.libDirOverride = libDirOverride;
         delegate.m2DirOverride = m2DirOverride;
         delegate.repoUrl = repoUrl;
-        delegate.buildOpts = new cc.jumpkick.cli.BuildOptions();
+        delegate.buildOpts = new BuildOptions();
         delegate.buildOpts.skipTests = skipTests;
         delegate.global = global;
         return delegate;

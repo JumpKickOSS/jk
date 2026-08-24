@@ -7,6 +7,8 @@ import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.GitRefSpec;
+import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
@@ -199,10 +201,8 @@ class JkBuildRendererTest {
         // JkBuildParser rejects `group`/`name` alongside `git` — the coordinate is pure
         // discovery from the cloned repo's own jk.toml — so the renderer must never emit them there.
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        cc.jumpkick.model.GitSource git = cc.jumpkick.model.GitSource.of(
-                "github.com/acme/widgets",
-                "https://github.com/acme/widgets",
-                new cc.jumpkick.model.GitRefSpec.Tag("v1.0.0"));
+        GitSource git = GitSource.of(
+                "github.com/acme/widgets", "https://github.com/acme/widgets", new GitRefSpec.Tag("v1.0.0"));
         byScope.put(Scope.MAIN, List.of(Dependency.git("widgets", "git:widgets", git)));
 
         JkBuild model = new JkBuild(

@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.runtime;
 
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
+import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.giter8.PluginTemplates;
+import cc.jumpkick.giter8.TemplateSpec;
+import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
+import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -152,10 +160,9 @@ public final class NewProjectOps {
         Result result = create(req);
         String projectId = null;
         try {
-            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
-            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
-                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
-            cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
+            var identity = ProjectIdentity.resolve(result.path());
+            ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
+            ProjectIds.refresh(result.path().toString());
             projectId = identity.id();
         } catch (RuntimeException | IOException e) {
             // best-effort — see javadoc
@@ -176,7 +183,7 @@ public final class NewProjectOps {
      */
     public static Preview preview(Request req) throws IOException {
         Prepared prep = prepare(req);
-        Path tmpRoot = cc.jumpkick.util.JkDirs.tmp();
+        Path tmpRoot = JkDirs.tmp();
         Files.createDirectories(tmpRoot);
         Path scratch = Files.createTempDirectory(tmpRoot, "jk-new-preview-");
         Path probe = scratch.resolve(prep.name());
@@ -206,8 +213,7 @@ public final class NewProjectOps {
             if (prep.group() != null && !prep.group().isBlank()) {
                 params.putIfAbsent("group", prep.group());
             }
-            boolean offline =
-                    cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
+            boolean offline = SessionContext.current().config().offlineOr(false);
             Path templateRoot;
             Path extracted = null;
             // Resolution lang stays null unless the user asked: parseLang's java default is a
@@ -216,12 +222,9 @@ public final class NewProjectOps {
                     ? null
                     : prep.lang().hoconValue();
             var spec = resolveIndexed(prep.template(), langName, prep.parent());
-            if (spec.isPresent()
-                    && cc.jumpkick.giter8.TemplateSpec.SOURCE_PLUGIN.equals(
-                            spec.get().source())) {
+            if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
                 var s = spec.get();
-                extracted = cc.jumpkick.giter8.PluginTemplates.materialize(
-                        s.pluginId(), s.language(), s.framework(), s.name());
+                extracted = PluginTemplates.materialize(s.pluginId(), s.language(), s.framework(), s.name());
                 templateRoot = extracted;
             } else if (spec.isPresent() && spec.get().root() != null) {
                 templateRoot = spec.get().root();
@@ -234,7 +237,7 @@ public final class NewProjectOps {
                 }
             }
             if ("simple".equalsIgnoreCase(prep.layout())) {
-                if (spec.isPresent() && !spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
+                if (spec.isPresent() && !spec.get().supportsLayout(Giter8ShortNames.LAYOUT_SIMPLE)) {
                     throw new IOException(
                             "template " + prep.template() + " does not support --layout simple" + " (declared layouts: "
                                     + String.join(", ", spec.get().layouts()) + ")");
@@ -366,7 +369,7 @@ public final class NewProjectOps {
         }
     }
 
-    private static Optional<cc.jumpkick.giter8.TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
+    private static Optional<TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
         try {
             return Giter8TemplateIndex.resolve(ref, lang, Giter8TemplateIndex.searchRoots(cwd));
         } catch (IllegalArgumentException e) {
@@ -375,10 +378,10 @@ public final class NewProjectOps {
     }
 
     private static Optional<Path> indexedRoot(String ref, String lang, Path cwd) throws IOException {
-        Optional<cc.jumpkick.giter8.TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
+        Optional<TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
         if (spec.isEmpty()) {
             try {
-                cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(s -> {});
+                OfficialTemplatesFreshen.refreshQuiet(s -> {});
             } catch (Throwable ignored) {
                 // best-effort
             }
@@ -386,7 +389,7 @@ public final class NewProjectOps {
             spec = resolveIndexed(ref, lang, cwd);
         }
         if (spec.isEmpty()) return Optional.empty();
-        cc.jumpkick.giter8.TemplateSpec s = spec.get();
+        TemplateSpec s = spec.get();
         if (s.root() != null) return Optional.of(s.root());
         return Optional.empty();
     }

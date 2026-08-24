@@ -3,10 +3,13 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.engine.runtime.CacheInventoryOps;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -39,7 +42,7 @@ public final class CacheInventoryVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+    public @org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             CacheInventoryAck ack;
@@ -56,15 +59,13 @@ public final class CacheInventoryVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "dryRun", false));
                 boolean write = "wipe-store".equals(query) || "repo-refresh".equals(query);
                 if (write) {
-                    Path lockRoot = req.cache() != null ? req.cache() : cc.jumpkick.util.JkDirs.cache();
+                    Path lockRoot = req.cache() != null ? req.cache() : JkDirs.cache();
                     CacheInventoryAck[] box = new CacheInventoryAck[1];
                     CacheMaintenanceLocks.exclusively(
                             host.cacheGate(),
                             lockRoot,
-                            () -> host.sendQuiet(
-                                    writer,
-                                    cc.jumpkick.engine.protocol.ProtoSession.pruneWait(host.activePlanCount(), false)),
-                            () -> host.sendQuiet(writer, cc.jumpkick.engine.protocol.ProtoSession.pruneWait(0, true)),
+                            () -> host.sendQuiet(writer, ProtoSession.pruneWait(host.activePlanCount(), false)),
+                            () -> host.sendQuiet(writer, ProtoSession.pruneWait(0, true)),
                             () -> box[0] = CacheInventoryOps.run(req));
                     ack = box[0];
                 } else {
