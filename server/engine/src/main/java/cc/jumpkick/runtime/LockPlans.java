@@ -1,47 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.model.PlatformPolicy;
-import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.resolver.LockOrchestrator;
+import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.resolver.VersionSelectors;
-import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
-import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -49,18 +37,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
+import java.util.function.IntUnaryOperator;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Resolve → write {@code jk-lock.toml} for {@code jk lock}/{@code jk update}. Progress via plan
- * listeners and {@link ResolveObserver}; diagnostics are plain (client themes). Engine passes
- * {@code coordLabel=null} and streams structured package events.
+ * {@link LockPipeline} as a {@link BuildPlan} for {@code jk lock} / {@code jk update}: the same
+ * five stages, wrapped in steps so the bar and {@link ResolveObserver} can report them. Progress
+ * comes from plan listeners; diagnostics are plain (client themes). Engine passes {@code
+ * coordLabel=null} and streams structured package events.
  */
 public final class LockPlans {
 
     private LockPlans() {}
-
-    /** Cross-step key: the effective (workspace-merged) manifest the resolve step reads. */
-    public static final BuildPlanKey<JkBuild> EFFECTIVE = BuildPlanKey.of("effective-build", JkBuild.class);
 
     /** Cross-step key: the lockfile as it accumulates through resolve → lock-plugins → write. */
     public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
@@ -73,10 +61,10 @@ public final class LockPlans {
 
     /**
      * Build the {@code jk lock} plan for one project directory: {@code parse-build} → {@code
-     * resolve} (offline-aware, git-source materialization, PubGrub solve, kotlin pin) → {@code
-     * lock-plugins} → {@code write-lockfile}. The offline flag is read off the ambient {@link
-     * SessionContext} at step-run time, so both the CLI (which installs the session from its
-     * global flags) and the engine (which reconstructs it from the wire request) behave alike.
+     * resolve} → {@code lock-plugins} → {@code lock-sdk} → {@code write-lockfile}. The offline flag
+     * is read off the ambient {@link SessionContext} at step-run time, so both the CLI (which
+     * installs the session from its global flags) and the engine (which reconstructs it from the
+     * wire request) behave alike.
      *
      * @param observer per-package resolution events (never {@code null}; use {@link
      * ResolveObserver#NOOP})
@@ -88,12 +76,12 @@ public final class LockPlans {
             Path dir,
             JkBuild effective,
             Path cache,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaultFeatures,
             boolean sources,
             ResolveObserver observer,
-            BiFunction<String, String, String> coordLabel) {
+            @Nullable BiFunction<String, String, String> coordLabel) {
         return lockBuildPlan(
                 dir, effective, cache, repoUrl, features, withDefaultFeatures, sources, false, observer, coordLabel);
     }
@@ -109,183 +97,107 @@ public final class LockPlans {
             Path dir,
             JkBuild effective,
             Path cache,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaultFeatures,
             boolean sources,
             boolean conservative,
             ResolveObserver observer,
-            BiFunction<String, String, String> coordLabel) {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+            @Nullable BiFunction<String, String, String> coordLabel) {
+        LockMode mode = conservative && !sources ? new LockMode.Freshen() : new LockMode.Explicit(sources);
+        return plan(dir, effective, cache, repoUrl, features, withDefaultFeatures, mode, observer, coordLabel);
+    }
+
+    /**
+     * {@code jk update}: as {@link #lockBuildPlan} but always resolves fresh, past the
+     * maven-metadata TTL. {@code platformOverride} is the CLI {@code --platform}
+     * ({@code enforced}|{@code floor}). Preflight (parse) owns ~10% of the bar; resolve owns the
+     * rest via per-package graph/materialize ticks so the last dep lands near 100%.
+     */
+    public static BuildPlan updateBuildPlan(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            @Nullable URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            @Nullable String platformOverride,
+            ResolveObserver observer) {
+        return plan(
+                dir,
+                effective,
+                cache,
+                repoUrl,
+                features,
+                withDefaultFeatures,
+                new LockMode.Update(platformOverride),
+                observer,
+                null);
+    }
+
+    /** Plan name, resolve wording and preflight budget — the only things a mode changes here. */
+    private record PlanShape(String planName, String resolveLabel, IntUnaryOperator preflightTicks) {}
+
+    private static PlanShape shapeFor(LockMode mode) {
+        return switch (mode) {
+            // A single preflight tick; resolve owns the whole bar.
+            case LockMode.Explicit ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
+            case LockMode.Freshen ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
+            // ~10% of the bar for parse/preflight, so the last resolve tick lands near 100% rather
+            // than stuck at an equal split.
+            case LockMode.Update ignored ->
+                new PlanShape(
+                        "update",
+                        "re-resolve dependencies",
+                        resolveTicks -> Math.max(1, (int) Math.round(resolveTicks / 9.0)));
+        };
+    }
+
+    private static BuildPlan plan(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            @Nullable URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            LockMode mode,
+            ResolveObserver observer,
+            @Nullable BiFunction<String, String, String> coordLabel) {
+        LockPipeline pipeline = new LockPipeline(
+                dir, effective, cache, repoUrl, features, withDefaultFeatures, mode, JkVersion.VERSION);
+        PlanShape shape = shapeFor(mode);
+        Path lockFile = pipeline.lockFile();
+        int resolveTicks = scopeEstimate(effective, lockFile);
+        int preflightTicks = shape.preflightTicks().applyAsInt(resolveTicks);
         AtomicInteger resolveEstimate = new AtomicInteger(0);
 
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
-                .ticks(1)
+                .ticks(preflightTicks)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
-                    ctx.put(EFFECTIVE, effective);
-                    ctx.put(MANIFESTS_SHA, cc.jumpkick.lock.LockManifestDigest.compute(dir));
-                    ctx.progress(1);
+                    ctx.put(MANIFESTS_SHA, pipeline.manifestsSha());
+                    ctx.progress(preflightTicks);
                 })
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
                 .stage(BuildStage.RESOLVE)
-                .label("Resolving")
+                .label(shape.resolveLabel())
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(() -> {
-                    int estimate = scopeEstimate(effective, lockFile);
-                    resolveEstimate.set(estimate);
-                    return estimate;
+                    resolveEstimate.set(resolveTicks);
+                    return resolveTicks;
                 })
                 .execute(ctx -> {
-                    ctx.label("Resolving");
-                    JkBuild eff = ctx.require(EFFECTIVE);
-                    Cas cas = JkStores.cas(cache);
-                    // --force / Session force: drop process resolve memos before any POM/metadata work.
-                    if (SessionContext.current().config().forceOr(false)) {
-                        cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
-                    }
-                    if (SessionContext.current().offline() && Files.exists(lockFile)) {
-                        try {
-                            Lockfile existing = LockfileReader.read(lockFile);
-                            requireOfflineSatisfiable(eff, existing, cas);
-                            ctx.progress(existing.artifacts().size());
-                            ctx.put(LOCKFILE, existing);
-                            return;
-                        } catch (Exception e) {
-                            ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
-                            throw new RuntimeException(e);
-                        }
-                    }
-                    boolean profile = cc.jumpkick.resolve.ResolveProfile.on();
-                    if (profile) cc.jumpkick.resolve.ResolveProfile.reset();
-                    long prepT0 = profile ? System.nanoTime() : 0L;
-                    RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
-                    Lockfile existing = null;
-                    if (Files.exists(lockFile)) {
-                        try {
-                            existing = LockfileReader.read(lockFile);
-                        } catch (Exception ignored) {
-                            // unreadable lock — resolve fresh
-                        }
-                    }
-                    Map<String, String> lockedShas =
-                            existing != null ? GitSourceResolution.lockedImmutableShas(existing) : Map.of();
-                    GitSourceResolution.Prepared prep;
-                    PathSourceResolution.Prepared pathPrep;
+                    ctx.label(shape.resolveLabel());
                     try {
-                        Path javaHome = JavaHomes.resolveJavaHome(dir);
-                        prep = GitSourceResolution.prepare(
-                                eff, baseRepos, cas, javaHome, JkVersion.VERSION, lockedShas);
-                        pathPrep = PathSourceResolution.prepare(
-                                prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
-                    } catch (Exception e) {
-                        ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
-                        throw new RuntimeException(e);
-                    }
-                    if (profile) cc.jumpkick.resolve.ResolveProfile.phasePrep(System.nanoTime() - prepT0);
-                    RepoGroup repos = pathPrep.repos();
-                    // Deliberately no Diagnostics.Palette here — see the class javadoc.
-                    LockOrchestrator orchestrator = new LockOrchestrator(repos)
-                            .withProjectDir(dir)
-                            .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
-                                    pathPrep.project(), dir))
-                            .withPlatformPolicy(pathPrep.project().build().platformPolicy())
-                            .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
-                    // Wrap the caller's observer so it also drives ctx.label/progress
-                    // (the bar under a console listener; wire progress events when hosted).
-                    ResolveObserver wrappedObserver = new ResolveObserver() {
-                        @Override
-                        public void onTotal(int total) {
-                            int delta = total - resolveEstimate.getAndSet(total);
-                            if (delta > 0) ctx.updateTicks(delta);
-                            observer.onTotal(total);
-                        }
-
-                        @Override
-                        public void onPackage(String module, String version) {
-                            if (coordLabel != null) {
-                                ctx.label("Fetched " + coordLabel.apply(module, version));
-                            }
-                            ctx.progress(1);
-                            observer.onPackage(module, version);
-                        }
-
-                        @Override
-                        public void onPhase(String label) {
-                            if (label != null && !label.isBlank()) ctx.label(label);
-                            observer.onPhase(label);
-                        }
-
-                        @Override
-                        public void onGraphPackage(String module, String version) {
-                            // Graph phase: advance bar without implying the jar is on disk yet.
-                            if (coordLabel != null) {
-                                ctx.label("Resolving " + coordLabel.apply(module, version));
-                            } else if (module != null) {
-                                ctx.label("Resolving " + module + (version != null ? ":" + version : ""));
-                            }
-                            ctx.progress(1);
-                            observer.onGraphPackage(module, version);
-                        }
-                    };
-                    try {
-                        boolean keepPins = conservative && !sources && existing != null;
-                        Lockfile lock;
-                        long resolveT0 = profile ? System.nanoTime() : 0L;
-                        if (sources) {
-                            lock = orchestrator.lockWithSources(
-                                    pathPrep.project(),
-                                    JkVersion.VERSION,
-                                    features,
-                                    withDefaultFeatures,
-                                    wrappedObserver);
-                        } else if (keepPins) {
-                            lock = orchestrator.lockConservative(
-                                    pathPrep.project(),
-                                    existing,
-                                    JkVersion.VERSION,
-                                    features,
-                                    withDefaultFeatures,
-                                    wrappedObserver);
-                        } else {
-                            // Local maven-metadata within TTL first (default 24h) — do not
-                            // force-revalidate every jk lock (conditional GETs still 429 Central
-                            // on large graphs / back-to-back dogfood). Fresh indexes: jk update
-                            // or -F / --force (Session force → MavenMetadataCache).
-                            lock = orchestrator.lock(
-                                    pathPrep.project(),
-                                    JkVersion.VERSION,
-                                    features,
-                                    withDefaultFeatures,
-                                    wrappedObserver);
-                        }
-                        if (profile) {
-                            cc.jumpkick.resolve.ResolveProfile.phaseResolve(System.nanoTime() - resolveT0);
-                        }
-                        long postT0 = profile ? System.nanoTime() : 0L;
-                        lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
-                        String kotlinVersion = keepPins && existing.kotlin() != null
-                                ? existing.kotlin()
-                                : resolveKotlinVersion(eff, repos);
-                        if (kotlinVersion != null) {
-                            ctx.label("resolved kotlin " + kotlinVersion);
-                            lock = lock.withKotlin(kotlinVersion);
-                        }
-                        String scalaVersion = keepPins && existing.scala() != null
-                                ? existing.scala()
-                                : resolveScalaVersion(eff, repos);
-                        if (scalaVersion != null) {
-                            ctx.label("resolved scala " + scalaVersion);
-                            lock = lock.withScala(scalaVersion);
-                        }
-                        ctx.put(LOCKFILE, lock);
-                        if (profile) {
-                            cc.jumpkick.resolve.ResolveProfile.phasePost(System.nanoTime() - postT0);
-                            System.err.println("jk: " + cc.jumpkick.resolve.ResolveProfile.report());
-                        }
+                        ctx.put(
+                                LOCKFILE,
+                                pipeline.resolve(
+                                        LockPipeline.readIfPresent(dir),
+                                        barObserver(ctx, observer, resolveEstimate, coordLabel),
+                                        LockPipeline.of(ctx)));
                     } catch (UnsatisfiableException e) {
                         ctx.error("verbatim", e.getMessage());
                         throw new RuntimeException(e);
@@ -299,96 +211,14 @@ public final class LockPlans {
         Task lockPlugins = Task.builder(TaskNames.LOCK_PLUGINS)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.RESOLVE_DEPS)
-                .ticks(() -> Math.max(
-                        1,
-                        effective.plugins().isEmpty() ? 0 : effective.plugins().size()))
+                .ticks(Math.max(1, effective.plugins().size()))
                 .execute(ctx -> {
-                    var decls = effective.plugins();
-                    ctx.label("lock plugins");
-                    Cas cas = JkStores.cas(cache);
-                    RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
-                    var entries = new ArrayList<Lockfile.PluginEntry>();
-                    for (var pd : decls) {
-                        ctx.label("lock " + pd.coordinate());
-                        try {
-                            String hex;
-                            Path jarPath;
-                            if (pd.isPathPin()) {
-                                Path jar = resolvePluginPath(dir, pd.path());
-                                if (!Files.isRegularFile(jar)) {
-                                    throw new RuntimeException("plugins." + pd.alias() + " path `" + pd.path()
-                                            + "` is not a readable file (" + jar + ")");
-                                }
-                                hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
-                                if (!hex.equals(pd.sha256())) {
-                                    throw new RuntimeException("plugins." + pd.alias()
-                                            + " sha256 mismatch: declared " + pd.sha256()
-                                            + " but file is " + hex
-                                            + " (`" + jar + "`)");
-                                }
-                                jarPath = jar;
-                            } else {
-                                var coord = Coordinate.of(pd.group(), pd.name(), pd.version());
-                                var fetched = repos.tryFetchArtifact(coord)
-                                        .orElseThrow(() -> new RuntimeException(
-                                                pd.coordinateWithVersion() + " not found in any repo"));
-                                hex = fetched.fetched().sha256();
-                                if (!hex.equals(pd.sha256())) {
-                                    throw new RuntimeException("plugins." + pd.alias()
-                                            + " sha256 mismatch: declared " + pd.sha256()
-                                            + " but resolved jar is " + hex
-                                            + " (" + pd.coordinateWithVersion() + ")");
-                                }
-                                jarPath = fetched.fetched().cachePath();
-                                // Sibling POM for worker classpath reconstruction.
-                                repos.tryFetchArtifact(
-                                        new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
-                            }
-                            entries.add(new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex));
-                            try {
-                                PluginDescriptorOps.materialize(dir, hex, jarPath);
-                            } catch (IOException e) {
-                                ctx.output("note: " + pd.coordinate() + " has no jk-plugin.toml — locked, but"
-                                        + " it will not own a jk.toml table");
-                            }
-                        } catch (Exception e) {
-                            ctx.error("plugin", pd.coordinate() + " — " + e.getMessage());
-                            throw new RuntimeException(e);
-                        }
-                        ctx.progress(1);
+                    try {
+                        ctx.put(LOCKFILE, pipeline.pinPlugins(ctx.require(LOCKFILE), LockPipeline.of(ctx)));
+                    } catch (RuntimeException e) {
+                        ctx.error("plugin", e.getMessage());
+                        throw e;
                     }
-                    String floor = ctx.require(LOCKFILE).jkMin();
-                    Set<String> seen = new HashSet<>();
-                    for (var e : entries) seen.add(e.coordinate() + ":" + e.version());
-                    for (var located : cc.jumpkick.engine.plugin.BuiltInPluginJars.locatedTablePlugins()) {
-                        Path jar = located.path();
-                        cc.jumpkick.plugin.manifest.PluginDescriptor d;
-                        try {
-                            d = cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
-                                    located.manifestToml(), jar.toString(), false);
-                        } catch (Exception unparseable) {
-                            continue; // engine install already skipped this jar loudly
-                        }
-                        // Pin only plugins this project configures. Pinning every located
-                        // plugin churned each project's lock on every jk version bump and
-                        // ping-ponged between developers on different jk versions, for
-                        // plugins the project never forks.
-                        if (effective.pluginConfig(d.table()).isEmpty()) continue;
-                        String hex;
-                        try {
-                            hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
-                        } catch (IOException e) {
-                            continue;
-                        }
-                        String coord = "cc.jumpkick:" + located.plugin().artifactId();
-                        String ver = cc.jumpkick.model.JkVersion.VERSION;
-                        if (seen.add(coord + ":" + ver)) {
-                            entries.add(new Lockfile.PluginEntry(coord, ver, "sha256:" + hex));
-                        }
-                        floor = cc.jumpkick.plugin.manifest.PluginDescriptors.maxFloor(
-                                floor, cc.jumpkick.plugin.manifest.PluginDescriptors.jkCompatFloor(d.jkCompat()));
-                    }
-                    ctx.put(LOCKFILE, ctx.require(LOCKFILE).withPlugins(entries).withJkMin(floor));
                 })
                 .build();
 
@@ -396,42 +226,7 @@ public final class LockPlans {
                 .kind(TaskKind.IO)
                 .requires(TaskNames.LOCK_PLUGINS)
                 .ticks(1)
-                .execute(ctx -> {
-                    // Lockfile pins for every sdk-component a plugin contributes: installed → on-disk
-                    // revision; else feed stable revision when reachable.
-                    LinkedHashSet<String> components = new LinkedHashSet<>();
-                    try {
-                        for (var sd :
-                                cc.jumpkick.plugin.manifest.PluginContributions.stepDependencies(effective, dir)) {
-                            if (sd.sdkComponent() != null && !"root".equals(sd.sdkComponent())) {
-                                components.add(sd.sdkComponent());
-                            }
-                        }
-                    } catch (RuntimeException ignored) {
-                        // no plugin tables / no contributions — nothing to pin
-                    }
-                    if (components.isEmpty()) return;
-                    ctx.label("pin sdk components");
-                    var entries = new ArrayList<cc.jumpkick.lock.Lockfile.SdkEntry>();
-                    for (String component : components) {
-                        String revision = SdkComponents.installedRevision(component);
-                        if (revision == null) {
-                            try {
-                                var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-                                var feedComponent = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk)
-                                        .feed()
-                                        .find(component);
-                                if (feedComponent != null) revision = feedComponent.revision();
-                            } catch (Exception ignored) {
-                                // offline / feed unreachable — leave unpinned rather than guess
-                            }
-                        }
-                        if (revision != null) {
-                            entries.add(new cc.jumpkick.lock.Lockfile.SdkEntry(component, revision));
-                        }
-                    }
-                    ctx.put(LOCKFILE, ctx.require(LOCKFILE).withSdk(entries));
-                })
+                .execute(ctx -> ctx.put(LOCKFILE, pipeline.pinSdk(ctx.require(LOCKFILE), LockPipeline.of(ctx))))
                 .build();
 
         Task write = Task.builder(TaskNames.WRITE_LOCKFILE)
@@ -439,14 +234,12 @@ public final class LockPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("write " + lockFile.getFileName());
-                    Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
-                    ctx.put(LOCKFILE, stamped);
-                    LockfileWriter.write(stamped, lockFile, ctx.require(MANIFESTS_SHA));
+                    ctx.put(LOCKFILE, pipeline.write(ctx.require(LOCKFILE), ctx.require(MANIFESTS_SHA)));
                     ctx.progress(1);
                 })
                 .build();
 
-        return BuildPlan.builder("lock")
+        return BuildPlan.builder(shape.planName())
                 .addTask(parseBuild)
                 .addTask(resolve)
                 .addTask(lockPlugins)
@@ -455,168 +248,49 @@ public final class LockPlans {
                 .build();
     }
 
-    /** {@code jk update}: same as {@link #lockBuildPlan} but always resolves fresh. */
-    public static BuildPlan updateBuildPlan(
-            Path dir, JkBuild effective, Path cache, URI repoUrl, List<String> features, boolean withDefaultFeatures) {
-        return updateBuildPlan(
-                dir, effective, cache, repoUrl, features, withDefaultFeatures, null, ResolveObserver.NOOP);
-    }
-
     /**
-     * As {@link #updateBuildPlan(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
-     * platform-policy override ({@code enforced}|{@code floor}).
+     * Wrap {@code observer} so it also drives the bar under a console listener (and the wire when
+     * hosted): ticks grow to the solver's real total, and every graph/materialize event advances
+     * them.
      */
-    public static BuildPlan updateBuildPlan(
-            Path dir,
-            JkBuild effective,
-            Path cache,
-            URI repoUrl,
-            List<String> features,
-            boolean withDefaultFeatures,
-            String platformOverride) {
-        return updateBuildPlan(
-                dir, effective, cache, repoUrl, features, withDefaultFeatures, platformOverride, ResolveObserver.NOOP);
-    }
+    private static ResolveObserver barObserver(
+            TaskContext ctx,
+            ResolveObserver observer,
+            AtomicInteger estimate,
+            @Nullable BiFunction<String, String, String> coordLabel) {
+        return new ResolveObserver() {
+            @Override
+            public void onTotal(int total) {
+                int delta = total - estimate.getAndSet(total);
+                if (delta > 0) ctx.updateTicks(delta);
+                observer.onTotal(total);
+            }
 
-    /**
-     * As {@link #updateBuildPlan(Path, JkBuild, Path, URI, List, boolean, String)} with a progress
-     * {@link ResolveObserver}. Preflight (parse) owns ~10% of the bar; resolve owns the rest via
-     * per-package graph/materialize ticks so the last dep lands near 100%.
-     */
-    public static BuildPlan updateBuildPlan(
-            Path dir,
-            JkBuild effective,
-            Path cache,
-            URI repoUrl,
-            List<String> features,
-            boolean withDefaultFeatures,
-            String platformOverride,
-            ResolveObserver observer) {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
-        PlatformPolicy policy = effectivePlatformPolicy(effective, platformOverride);
-        AtomicInteger resolveEstimate = new AtomicInteger(0);
-        int resolveTicks = scopeEstimate(effective, lockFile);
-        // ~10% of the bar for parse/preflight; a thin write trailer so the last resolve tick is
-        // near 100% rather than stuck at a three-way equal split.
-        int preflightTicks = Math.max(1, (int) Math.round(resolveTicks / 9.0));
-        int writeTicks = 1;
+            @Override
+            public void onPackage(String module, String version) {
+                if (coordLabel != null) ctx.label("Fetched " + coordLabel.apply(module, version));
+                ctx.progress(1);
+                observer.onPackage(module, version);
+            }
 
-        Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
-                .ticks(preflightTicks)
-                .execute(ctx -> {
-                    ctx.label("parse jk.toml");
-                    ctx.put(EFFECTIVE, effective);
-                    ctx.put(MANIFESTS_SHA, cc.jumpkick.lock.LockManifestDigest.compute(dir));
-                    ctx.progress(preflightTicks);
-                })
-                .build();
+            @Override
+            public void onPhase(String label) {
+                if (label != null && !label.isBlank()) ctx.label(label);
+                observer.onPhase(label);
+            }
 
-        Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
-                .stage(BuildStage.RESOLVE)
-                .kind(TaskKind.IO)
-                .requires(TaskNames.PARSE_BUILD)
-                .ticks(() -> {
-                    resolveEstimate.set(resolveTicks);
-                    return resolveTicks;
-                })
-                .execute(ctx -> {
-                    ctx.label("re-resolve dependencies");
-                    JkBuild eff = ctx.require(EFFECTIVE);
-                    Cas cas = JkStores.cas(cache);
-                    RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
-                    try {
-                        // Git deps: re-materialize at current tip (accept movement).
-                        Path javaHome = JavaHomes.resolveJavaHome(dir);
-                        GitSourceResolution.Prepared prep =
-                                GitSourceResolution.prepare(eff, baseRepos, cas, javaHome, JkVersion.VERSION);
-                        PathSourceResolution.Prepared pathPrep = PathSourceResolution.prepare(
-                                prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
-                        ResolveObserver wrappedObserver = new ResolveObserver() {
-                            @Override
-                            public void onTotal(int total) {
-                                int delta = total - resolveEstimate.getAndSet(total);
-                                if (delta > 0) ctx.updateTicks(delta);
-                                observer.onTotal(total);
-                            }
-
-                            @Override
-                            public void onPackage(String module, String version) {
-                                ctx.progress(1);
-                                observer.onPackage(module, version);
-                            }
-
-                            @Override
-                            public void onPhase(String label) {
-                                if (label != null && !label.isBlank()) ctx.label(label);
-                                observer.onPhase(label);
-                            }
-
-                            @Override
-                            public void onGraphPackage(String module, String version) {
-                                if (module != null) {
-                                    ctx.label("Resolving " + module + (version != null ? ":" + version : ""));
-                                }
-                                ctx.progress(1);
-                                observer.onGraphPackage(module, version);
-                            }
-                        };
-                        // Float-to-latest needs current indexes; revalidate past TTL (conditional
-                        // GET). Normal jk lock stays on the warm disk TTL.
-                        Lockfile lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
-                                () -> new LockOrchestrator(pathPrep.repos())
-                                        .withProjectDir(dir)
-                                        .withJvmEnvironment(
-                                                cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
-                                                        pathPrep.project(), dir))
-                                        .withPlatformPolicy(policy)
-                                        .withUnmappedPolicy(
-                                                pathPrep.project().build().unmappedPolicy())
-                                        .lock(
-                                                pathPrep.project(),
-                                                JkVersion.VERSION,
-                                                features,
-                                                withDefaultFeatures,
-                                                wrappedObserver));
-                        lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
-                        // jk update floats everything, including the Kotlin compiler pin.
-                        String kotlinVersion = resolveKotlinVersion(eff, pathPrep.repos());
-                        if (kotlinVersion != null) {
-                            ctx.label("resolved kotlin " + kotlinVersion);
-                            lock = lock.withKotlin(kotlinVersion);
-                        }
-                        String scalaVersion = resolveScalaVersion(eff, pathPrep.repos());
-                        if (scalaVersion != null) {
-                            ctx.label("resolved scala " + scalaVersion);
-                            lock = lock.withScala(scalaVersion);
-                        }
-                        ctx.put(LOCKFILE, lock);
-                    } catch (UnsatisfiableException e) {
-                        ctx.error("verbatim", e.getMessage());
-                        throw new RuntimeException(e);
-                    } catch (Exception e) {
-                        ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
-                        throw new RuntimeException(e);
-                    }
-                })
-                .build();
-
-        Task write = Task.builder(TaskNames.WRITE_LOCKFILE)
-                .requires(TaskNames.RESOLVE_DEPS)
-                .ticks(writeTicks)
-                .execute(ctx -> {
-                    ctx.label("write " + lockFile.getFileName());
-                    Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
-                    ctx.put(LOCKFILE, stamped);
-                    LockfileWriter.write(stamped, lockFile, ctx.require(MANIFESTS_SHA));
-                    ctx.progress(writeTicks);
-                })
-                .build();
-
-        return BuildPlan.builder("update")
-                .addTask(parseBuild)
-                .addTask(resolve)
-                .addTask(write)
-                .build();
+            @Override
+            public void onGraphPackage(String module, String version) {
+                // Graph phase: advance the bar without implying the jar is on disk yet.
+                if (coordLabel != null) {
+                    ctx.label("Resolving " + coordLabel.apply(module, version));
+                } else if (module != null) {
+                    ctx.label("Resolving " + module + (version != null ? ":" + version : ""));
+                }
+                ctx.progress(1);
+                observer.onGraphPackage(module, version);
+            }
+        };
     }
 
     // ---- jk update --git ----------------------------------------------------
@@ -626,7 +300,8 @@ public final class LockPlans {
      * refreshed} counts the git artifacts actually re-pinned; non-zero means the caller should
      * surface {@code error} (a bare, uncolored message — no command prefix) and exit with that code.
      */
-    public record GitUpdateOutcome(int exitCode, int refreshed, String error) {}
+    public record GitUpdateOutcome(
+            int exitCode, int refreshed, @Nullable String error) {}
 
     /**
      * {@code jk update --git [<name>]}: re-resolve git dependencies only, in {@code root}'s project
@@ -638,10 +313,10 @@ public final class LockPlans {
             Path dir,
             JkBuild root,
             Path cache,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaultFeatures,
-            String targetLibrary)
+            @Nullable String targetLibrary)
             throws Exception {
         JkBuild effectiveRoot = applyWorkspaceContextIfModule(dir, root);
         var scopes = new LinkedHashMap<Path, JkBuild>();
@@ -685,40 +360,34 @@ public final class LockPlans {
     }
 
     /**
-     * Re-resolve {@code effective}'s full dependency set (the normal plan — every git dep
+     * Re-resolve {@code effective}'s full dependency set (the normal update pass — every git dep
      * accepts upstream movement, no tag-rewrite check), then splice the result against the existing
-     * lock so only {@code targeted}'s git artifact(s) actually change; every other artifact keeps
-     * its previously-locked value. Returns how many of {@code targeted} were actually refreshed.
+     * lock so only {@code targeted}'s git artifact(s) actually change; every other artifact, plugin
+     * pin and sdk pin keeps its previously-locked value. Returns how many of {@code targeted} were
+     * actually refreshed.
      */
     private static int updateGitOnlyForScope(
             Path dir,
             JkBuild effective,
             Path cache,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaultFeatures,
             List<Dependency> targeted)
             throws Exception {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
-        Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
-
+        LockPipeline pipeline = new LockPipeline(
+                dir,
+                effective,
+                cache,
+                repoUrl,
+                features,
+                withDefaultFeatures,
+                new LockMode.Update(null),
+                JkVersion.VERSION);
         // Digest captured before resolving.
-        String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(dir);
-        Cas cas = JkStores.cas(cache);
-        RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
-        Path javaHome = JavaHomes.resolveJavaHome(dir);
-        GitSourceResolution.Prepared prep =
-                GitSourceResolution.prepare(effective, baseRepos, cas, javaHome, JkVersion.VERSION);
-        PathSourceResolution.Prepared pathPrep =
-                PathSourceResolution.prepare(prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
-        Lockfile newLock = new LockOrchestrator(pathPrep.repos())
-                .withProjectDir(dir)
-                .withJvmEnvironment(
-                        cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(pathPrep.project(), dir))
-                .withPlatformPolicy(pathPrep.project().build().platformPolicy())
-                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
-                .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
-        newLock = GitSourceResolution.stamp(newLock, prep.gitInfoByKey());
+        String manifestsSha = pipeline.manifestsSha();
+        Lockfile oldLock = LockPipeline.readIfPresent(dir);
+        Lockfile newLock = pipeline.resolve(null, ResolveObserver.NOOP, LockPipeline.Progress.SILENT);
 
         Set<String> targetKeys = new LinkedHashSet<>();
         for (Dependency d : targeted) targetKeys.add(gitKey(d.gitSource()));
@@ -754,20 +423,8 @@ public final class LockPlans {
                 newLock.jkMin(),
                 newLock.manifestsSha256(),
                 newLock.projectId());
-        finalLock = cc.jumpkick.lock.LockfileModules.stamp(finalLock, dir);
-        LockfileWriter.write(finalLock, lockFile, manifestsSha);
+        pipeline.write(finalLock, manifestsSha);
         return refreshed;
-    }
-
-    /**
-     * CLI {@code --platform} override wins; else {@code [resolve] platform} from the project
-     * (default enforced).
-     */
-    static PlatformPolicy effectivePlatformPolicy(JkBuild project, String override) {
-        if (override != null && !override.isBlank()) {
-            return PlatformPolicy.parse(override.trim());
-        }
-        return project != null && project.build() != null ? project.build().platformPolicy() : PlatformPolicy.ENFORCED;
     }
 
     private static String gitKey(GitSource s) {
@@ -810,46 +467,49 @@ public final class LockPlans {
         if (project.isWorkspaceRoot()) return project;
         try {
             var rootOpt = WorkspaceLocator.findRoot(dir);
-            if (rootOpt.isEmpty()) return cc.jumpkick.model.Variants.unionDependencies(project);
+            if (rootOpt.isEmpty()) return Variants.unionDependencies(project);
             Path wsRoot = rootOpt.get();
             JkBuild wsRootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
-            if (!wsRootBuild.isWorkspaceRoot()) return cc.jumpkick.model.Variants.unionDependencies(project);
+            if (!wsRootBuild.isWorkspaceRoot()) return Variants.unionDependencies(project);
             var siblings = WorkspaceLoader.loadModules(wsRoot, wsRootBuild);
             return WorkspaceMerge.applyToModule(wsRootBuild, project, siblings.values());
         } catch (Exception ignored) {
-            return cc.jumpkick.model.Variants.unionDependencies(project);
+            return Variants.unionDependencies(project);
         }
     }
 
     /**
      * The single lock scope for {@code entryDir}: workspace root (merged model) or standalone
      * project. A workspace <em>member</em> redirects to its root so any lock entry point — CLI
-     * cascade, HTTP/MCP job — resolves the full workspace union and writes the root
+     * cascade, HTTP/MCP job, auto-lock — resolves the full workspace union and writes the root
      * {@code jk-lock.toml}, never one module's closure over it.
+     *
+     * @param workspace true when the written lock is the workspace-wide root lock
+     * @param moduleCount declared workspace modules behind that lock (0 when standalone)
      */
-    public record LockScope(Path lockDir, JkBuild effective, String coord) {}
+    public record LockScope(Path lockDir, JkBuild effective, String coord, boolean workspace, int moduleCount) {}
 
     /** Resolve the {@link LockScope} for {@code entryDir}. Throws like {@link JkBuildParser#parse}. */
     public static LockScope lockScope(Path entryDir) throws IOException {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
-        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
-                SessionContext.current().offline());
+        LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
         JkBuild root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-        if (root.isWorkspaceRoot()) {
-            var modules = WorkspaceLoader.loadModules(entryDir, root);
-            return new LockScope(entryDir, WorkspaceMerge.merge(root, modules.values()), coordLabel(root, entryDir));
-        }
+        if (root.isWorkspaceRoot()) return workspaceScope(entryDir, root);
         var rootOpt = WorkspaceLocator.findRoot(entryDir);
         if (rootOpt.isPresent()) {
             Path wsRoot = rootOpt.get();
-            JkBuild rootManifest = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
-            var modules = WorkspaceLoader.loadModules(wsRoot, rootManifest);
-            return new LockScope(
-                    wsRoot, WorkspaceMerge.merge(rootManifest, modules.values()), coordLabel(rootManifest, wsRoot));
+            return workspaceScope(wsRoot, JkBuildParser.parse(wsRoot.resolve("jk.toml")));
         }
+        // Standalone: variant dep overlays union here (workspace scopes union inside WorkspaceMerge).
         JkBuild effective = applyWorkspaceContextIfModule(entryDir, root);
-        return new LockScope(entryDir, effective, coordLabel(effective, entryDir));
+        return new LockScope(entryDir, effective, coordLabel(effective, entryDir), false, 0);
+    }
+
+    private static LockScope workspaceScope(Path wsRoot, JkBuild rootManifest) throws IOException {
+        var modules = WorkspaceLoader.loadModules(wsRoot, rootManifest);
+        JkBuild effective = Variants.unionDependencies(WorkspaceMerge.merge(rootManifest, modules.values()));
+        return new LockScope(wsRoot, effective, coordLabel(rootManifest, wsRoot), true, modules.size());
     }
 
     /**
@@ -886,172 +546,5 @@ public final class LockPlans {
         } catch (Exception ignored) {
         }
         return 40;
-    }
-
-    /**
-     * Resolve the project's {@code kotlin} version selector to a concrete Kotlin compiler release.
-     * Returns {@code null} for a Java project or when resolution can't complete. Shared with
-     * {@link LockFlow} and the update plan so every lock-write path stamps the pin.
-     */
-    static String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
-        if (!effective.project().isKotlin()) return null;
-        VersionSelector selector = effective.project().kotlin();
-        if (selector instanceof VersionSelector.Exact exact) {
-            return exact.version();
-        }
-        VersionSet set = VersionSelectors.toVersionSet(selector);
-        Coordinate coord = Coordinate.of("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "any");
-        List<String> available;
-        try {
-            available = repos.availableVersions(coord);
-        } catch (IOException e) {
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
-        return available.stream()
-                .filter(set::contains)
-                .filter(Versions::isStable)
-                .max(Versions::compare)
-                .or(() -> available.stream().filter(set::contains).max(Versions::compare))
-                .orElse(null);
-    }
-
-    /**
-     * Resolve the project's {@code scala} version selector to a concrete Scala 3 compiler release.
-     * Returns {@code null} for a non-Scala project or when resolution can't complete.
-     */
-    static String resolveScalaVersion(JkBuild effective, RepoGroup repos) {
-        if (!effective.project().isScala()) return null;
-        VersionSelector selector = effective.project().scala();
-        if (selector instanceof VersionSelector.Exact exact) {
-            return exact.version();
-        }
-        VersionSet set = VersionSelectors.toVersionSet(selector);
-        Coordinate coord = Coordinate.of("org.scala-lang", "scala3-compiler_3", "any");
-        List<String> available;
-        try {
-            available = repos.availableVersions(coord);
-        } catch (IOException e) {
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
-        return pickScalaVersion(set, available);
-    }
-
-    /** Highest stable match in {@code available}; falls back to any matching version. */
-    static String pickScalaVersion(VersionSet set, List<String> available) {
-        return available.stream()
-                .filter(set::contains)
-                .filter(Versions::isStable)
-                .max(Versions::compare)
-                .or(() -> available.stream().filter(set::contains).max(Versions::compare))
-                .orElse(null);
-    }
-
-    /**
-     * Extra diagnosis for the offline miss above: when the mirror <em>does</em> hold this
-     * coordinate but under different bytes than the lock pins, "isn't cached" is misleading — the
-     * artifact is right there, it simply is not the one the lockfile named. Say so and name the
-     * escape hatch, since `jk sync` alone will not resolve a first-write-wins mirror entry.
-     *
-     * @return a clause to append to the message, or "" when the mirror has nothing to say
-     */
-    private static String mirrorMismatchHint(Cas cas, Lockfile.Artifact pkg, String lockedHex) {
-        try {
-            if (pkg.name().indexOf(':') < 0) return "";
-            String repoName = cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source());
-            if (!cc.jumpkick.repo.RepoArtifactResolver.isNamedRemote(repoName)) return "";
-            String m2Path = cc.jumpkick.repo.MavenLayout.artifactPath(pkg.coordinate());
-            var store = cc.jumpkick.repo.RepoArtifactStore.forRepoName(cas.root(), repoName);
-            String stored = store.storedSha256(m2Path).orElse(null);
-            if (stored == null || stored.equalsIgnoreCase(lockedHex)) return "";
-            return " (the " + repoName + " mirror holds different bytes for it — sha256 " + shortSha(stored)
-                    + " vs the locked " + shortSha(lockedHex)
-                    + "; `jk repo refresh " + pkg.coordinate() + "` once online drops the stale entry)";
-        } catch (RuntimeException e) {
-            return ""; // diagnosis is a nicety — never let it replace the real error
-        }
-    }
-
-    private static String shortSha(String hex) {
-        return hex == null || hex.length() <= 12 ? String.valueOf(hex) : hex.substring(0, 12);
-    }
-
-    /**
-     * The locator the compile classpath itself will use: the Maven local repository when
-     * integration is on and no locked module opted out, then {@code repos/<name>/}. The offline
-     * gate has to answer the question the build will ask, and since Maven layout became the only
-     * dependency store a dependency jar is never a CAS blob.
-     */
-    private static cc.jumpkick.repo.ArtifactLocator offlineLocator(Lockfile lock, Cas cas) {
-        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().integration()
-                && lock.modules().stream().noneMatch(m -> Boolean.FALSE.equals(m.m2integration()));
-        return new cc.jumpkick.repo.ArtifactLocator(
-                cas.root(), m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
-    }
-
-    /**
-     * Throw if an existing lockfile can't be honored entirely from the local store while offline.
-     */
-    private static void requireOfflineSatisfiable(JkBuild effective, Lockfile lock, Cas cas) {
-        Set<String> locked = new HashSet<>();
-        for (Lockfile.Artifact pkg : lock.artifacts()) {
-            // Index package key and GA — declared deps use GA; lock rows use g:a:type:classifier.
-            locked.add(pkg.name());
-            locked.add(pkg.packageKey());
-            try {
-                if (cc.jumpkick.model.PackageId.isMavenPackageKey(pkg.name())) {
-                    locked.add(cc.jumpkick.model.PackageId.parse(pkg.name()).ga());
-                }
-            } catch (RuntimeException ignored) {
-                // non-Maven lock name
-            }
-        }
-        for (var entry : effective.dependencies().byScope().entrySet()) {
-            if (entry.getKey() == Scope.PLATFORM) continue;
-            for (var dep : entry.getValue()) {
-                if (!locked.contains(dep.module())) {
-                    throw new IllegalStateException("offline: "
-                            + dep.module()
-                            + " is declared in jk.toml but not in jk-lock.toml; run `jk lock` online first");
-                }
-            }
-        }
-        cc.jumpkick.repo.ArtifactLocator locator = offlineLocator(lock, cas);
-        for (Lockfile.Artifact pkg : lock.artifacts()) {
-            String checksum = pkg.checksum();
-            if (checksum == null) {
-                // Nothing to materialize for POM-only rows. Still say so — a checksum-less
-                // jar row must not be silently treated as present.
-                System.err.println("jk: note: lock row "
-                        + pkg.name()
-                        + "@"
-                        + pkg.version()
-                        + " has no checksum — offline check skipped it"
-                        + " (POM-only alias, or incomplete lock)");
-                continue;
-            }
-            String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
-            if (locator.locate(pkg).isEmpty()) {
-                throw new IllegalStateException("offline: "
-                        + pkg.name()
-                        + ":"
-                        + pkg.version()
-                        + " is locked but its artifact isn't cached"
-                        + mirrorMismatchHint(cas, pkg, hex)
-                        + "; run `jk sync` online first");
-            }
-        }
-    }
-
-    /** Resolve a plugin path relative to the project dir (or absolute). */
-    private static Path resolvePluginPath(Path projectDir, String raw) {
-        Path p = Path.of(raw);
-        if (p.isAbsolute()) return p.normalize();
-        return projectDir.resolve(p).normalize();
     }
 }
