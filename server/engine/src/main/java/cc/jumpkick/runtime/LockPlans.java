@@ -982,7 +982,20 @@ public final class LockPlans {
     }
 
     /**
-     * Throw if an existing lockfile can't be honored entirely from the local CAS while offline.
+     * The locator the compile classpath itself will use: the Maven local repository when
+     * integration is on and no locked module opted out, then {@code repos/<name>/}. The offline
+     * gate has to answer the question the build will ask, and since Maven layout became the only
+     * dependency store a dependency jar is never a CAS blob.
+     */
+    private static cc.jumpkick.repo.ArtifactLocator offlineLocator(Lockfile lock, Cas cas) {
+        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().integration()
+                && lock.modules().stream().noneMatch(m -> Boolean.FALSE.equals(m.m2integration()));
+        return new cc.jumpkick.repo.ArtifactLocator(
+                cas.root(), m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
+    }
+
+    /**
+     * Throw if an existing lockfile can't be honored entirely from the local store while offline.
      */
     private static void requireOfflineSatisfiable(JkBuild effective, Lockfile lock, Cas cas) {
         Set<String> locked = new HashSet<>();
@@ -1008,6 +1021,7 @@ public final class LockPlans {
                 }
             }
         }
+        cc.jumpkick.repo.ArtifactLocator locator = offlineLocator(lock, cas);
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             String checksum = pkg.checksum();
             if (checksum == null) {
@@ -1022,7 +1036,7 @@ public final class LockPlans {
                 continue;
             }
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
-            if (!cas.contains(hex)) {
+            if (locator.locate(pkg).isEmpty()) {
                 throw new IllegalStateException("offline: "
                         + pkg.name()
                         + ":"
