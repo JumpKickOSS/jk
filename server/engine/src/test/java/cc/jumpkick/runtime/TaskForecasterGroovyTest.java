@@ -10,6 +10,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,6 +44,7 @@ class TaskForecasterGroovyTest {
         Path src = Files.createDirectories(mod.resolve("src"));
         Path foo = src.resolve("Foo.groovy");
         Files.writeString(foo, "class Foo {}");
+        agedByAnHour(foo);
         // Workspace lock lives at the root only (not under the module). Must stamp
         // manifests-sha256 or LockFreshness treats the lock as always-stale and the forecast
         // short-circuits to a single "compile-main" step (no compile-groovy).
@@ -81,5 +83,30 @@ class TaskForecasterGroovyTest {
                         .findFirst()
                         .orElseThrow();
         assertThat(warmGv.cached()).isTrue();
+
+        // The boundary the pinning above keeps the test away from, asserted rather than assumed:
+        // a source at or past stampMillis reads as changed, which is what an unpinned source can
+        // land on when the forecast and the stamp share a filesystem tick.
+        Files.setLastModifiedTime(foo, FileTime.fromMillis(System.currentTimeMillis() + 3_600_000));
+        List<TaskForecast.Module> touched = TaskForecaster.of(graph, cas, actionCache, cache);
+        TaskForecast.Task touchedGv =
+                touched.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()
+                        .filter(s -> s.name().equals("compile-groovy"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(touchedGv.cached())
+                .as("a source newer than the stamp is not cached")
+                .isFalse();
+    }
+
+    /**
+     * Push a source's mtime an hour back so stamp comparisons don't race the wall clock:
+     * {@code looksFresh} treats {@code mtime >= stampMillis} as changed, so a source and the stamp
+     * that follows it must not be able to share a millisecond. Without this the assertion rests on
+     * the cold forecast taking longer than one filesystem tick, which under a loaded parallel run
+     * it does not reliably do.
+     */
+    private static void agedByAnHour(Path file) throws Exception {
+        Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis() - 3_600_000));
     }
 }
