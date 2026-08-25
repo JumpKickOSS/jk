@@ -103,12 +103,25 @@ final class FakeRegistry implements AutoCloseable {
         return "127.0.0.1:" + door.getLocalPort();
     }
 
-    /** Close a TLS handshake outright; relay a plain HTTP conversation to the real server. */
+    /** Answer a TLS handshake in plaintext; relay a plain HTTP conversation to the real server. */
     private static void relay(Socket client, int backend) {
         try (client) {
             PushbackInputStream fromClient = new PushbackInputStream(client.getInputStream(), 1);
             int first = fromClient.read();
-            if (first < 0 || first == 0x16) return; // EOF, or a TLS ClientHello
+            if (first < 0) return; // EOF
+            if (first == 0x16) { // a TLS ClientHello
+                // Answer it the way a plain-HTTP server does — with an HTTP response, which is not
+                // a TLS record. That is what makes JSSE raise SSLException("Unrecognized SSL
+                // message, plaintext connection?"), and SSLException is the one failure Jib's
+                // FailoverHttpClient retries over HTTP. Closing the socket instead surfaces a bare
+                // SocketException, which Jib does not classify as "this is not HTTPS" and
+                // propagates — so the fixture never got past the base-image pull.
+                client.getOutputStream()
+                        .write("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                                .getBytes(StandardCharsets.US_ASCII));
+                client.getOutputStream().flush();
+                return;
+            }
             fromClient.unread(first);
             try (Socket upstream = new Socket(InetAddress.getLoopbackAddress(), backend)) {
                 Thread request = Thread.ofVirtual().start(() -> pump(fromClient, upstream));
