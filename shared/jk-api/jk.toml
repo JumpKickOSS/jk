@@ -1,6 +1,9 @@
 name = "jk-model"
 description = "Domain model: dependencies, build plans, and coordinates"
 
+[dependencies]
+jk-host.workspace = true
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

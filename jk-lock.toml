@@ -2,12 +2,12 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "8247459479a7e79149a16063ab252e7d089d4132cda326d39684d73540bce9cb"
+manifests-sha256 = "a89b9e9b8e15ea207f5bd9b0ace3170fe543abfef186c2a9ae8401e2e2316ecf"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [native]
-metadata-repository = "1.1.4"
-checksum = "sha256:6a0d94b592efd06eda730490436322331e8558c698bf164153ff0c2ce6333f45"
+metadata-repository = "1.1.10"
+checksum = "sha256:d347e5ae879b84effc64390f362827eef9b45bbf068c53b6821ece7f0809da6b"
 
 [[artifact]]
 name     = "aopalliance:aopalliance:jar:"
