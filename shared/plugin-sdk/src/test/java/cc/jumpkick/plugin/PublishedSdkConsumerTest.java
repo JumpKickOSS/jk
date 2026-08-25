@@ -19,6 +19,7 @@ import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.Element;
@@ -78,12 +79,14 @@ class PublishedSdkConsumerTest {
     @Test
     void a_consumer_resolves_the_sdk_from_a_repository_and_compiles_against_it(@TempDir Path work) throws Exception {
         String repoPath = System.getProperty(REPO_PROPERTY);
-        assertThat(repoPath)
-                .as(
-                        "-D%s must point at the staged Maven repository; :plugin-sdk:test sets it"
-                                + " and depends on the publish tasks that fill it",
-                        REPO_PROPERTY)
-                .isNotNull();
+        // Gradle's :plugin-sdk:test always stages the repo and sets the property, so under the
+        // gate this assumption cannot skip. The self-host tier (`jk test`) has no publish task to
+        // stage it — there the honest report is SKIPPED, not a failure about a fixture the
+        // harness cannot provide.
+        Assumptions.assumeTrue(
+                repoPath != null,
+                "-D" + REPO_PROPERTY + " not set: no staged Maven repository in this harness"
+                        + " (Gradle's :plugin-sdk:test stages it and always sets the property)");
         Path repo = Path.of(repoPath);
 
         String version = System.getProperty(VERSION_PROPERTY);

@@ -6,6 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.WhyReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.GraphOps;
 import java.io.BufferedWriter;
@@ -46,7 +47,7 @@ public final class WhyVerb implements HostedVerb {
             try {
                 report = GraphOps.why(Path.of(Jsonl.str(requestLine, "dir")), Jsonl.str(requestLine, "query"));
             } catch (RuntimeException e) {
-                report = WhyReport.error(cc.jumpkick.host.Errors.text(e));
+                report = WhyReport.error(Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

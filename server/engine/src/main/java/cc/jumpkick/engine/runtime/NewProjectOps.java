@@ -12,6 +12,7 @@ import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.PluginTemplates;
 import cc.jumpkick.giter8.TemplateSpec;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
@@ -316,7 +317,7 @@ public final class NewProjectOps {
         String parentRaw = req.parentDir() == null ? "" : req.parentDir().strip();
         if (parentRaw.isEmpty()) throw new IllegalArgumentException("missing \"parentDir\"");
         // Same rules as the activity Build path: ~ and relatives resolve against user.home.
-        Path parent = cc.jumpkick.host.PathUtil.resolveUserPath(parentRaw);
+        Path parent = PathUtil.resolveUserPath(parentRaw);
         if (!req.relaxParent()) assertAllowedParent(parent);
         if (!Files.isDirectory(parent)) {
             throw new IllegalArgumentException("parentDir is not a directory: " + parent);
@@ -325,7 +326,7 @@ public final class NewProjectOps {
         Path target;
         String targetRaw = req.targetDir() == null ? "" : req.targetDir().strip();
         if (!targetRaw.isEmpty()) {
-            target = cc.jumpkick.host.PathUtil.resolveUserPath(targetRaw).normalize();
+            target = PathUtil.resolveUserPath(targetRaw).normalize();
             // targetDir gets the same allowlist gate as parentDir.
             if (!req.relaxParent()) assertAllowedParent(target.getParent() != null ? target.getParent() : target);
         } else {

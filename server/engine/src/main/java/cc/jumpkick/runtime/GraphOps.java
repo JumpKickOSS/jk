@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.protocol.WhyReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -68,7 +69,7 @@ public final class GraphOps {
             }
             return new WhyReport(null, names, versions, owners, paths);
         } catch (IOException | RuntimeException e) {
-            return WhyReport.error(cc.jumpkick.host.Errors.text(e));
+            return WhyReport.error(Errors.text(e));
         }
     }
 

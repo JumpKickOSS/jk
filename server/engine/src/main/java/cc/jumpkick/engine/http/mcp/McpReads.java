@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.WhyReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
@@ -86,7 +87,7 @@ public final class McpReads {
             }
             m.put("edges", edges);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
@@ -105,7 +106,7 @@ public final class McpReads {
             List<Scope> scopes = DependencyGraphModel.parseScopes(scopesCsv);
             g = DependencyGraphModel.forProjectDir(root, scopes, transitive);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
             return m;
         }
         m.put("workspace", g.workspace());
@@ -172,7 +173,7 @@ public final class McpReads {
         try {
             files = GenerateOps.generate(root, kind, Map.of());
         } catch (RuntimeException e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
             return m;
         }
         if (files.error() != null && !files.error().isBlank()) {
@@ -194,7 +195,7 @@ public final class McpReads {
             return r.toStructured();
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
             return m;
         }
     }

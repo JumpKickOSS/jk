@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.M2Dirs;
@@ -73,7 +74,7 @@ public final class JkPluginSync {
             }
 
             try {
-                String hex = cc.jumpkick.host.Hashing.sha256Hex(m2Jar);
+                String hex = Hashing.sha256Hex(m2Jar);
                 localStore.materialize(relPath, m2Jar, hex);
                 fetched++;
                 obs.fetched(w.artifactId());

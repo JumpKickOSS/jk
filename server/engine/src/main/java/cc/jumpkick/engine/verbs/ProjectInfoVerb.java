@@ -6,6 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.ExecPlans;
 import java.io.BufferedWriter;
@@ -50,7 +51,7 @@ public final class ProjectInfoVerb implements HostedVerb {
                         Jsonl.str(requestLine, "affectedSince"),
                         Jsonl.bool(requestLine, "counts", false));
             } catch (RuntimeException e) {
-                info = ProjectInfo.error(cc.jumpkick.host.Errors.text(e));
+                info = ProjectInfo.error(Errors.text(e));
             }
             host.sendQuiet(writer, info.encode());
 

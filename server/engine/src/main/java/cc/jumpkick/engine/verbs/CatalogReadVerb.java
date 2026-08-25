@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.runtime.CatalogReadOps;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -60,7 +61,7 @@ public final class CatalogReadVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "includeCached", false),
                         Jsonl.bool(requestLine, "bundledOnly", false)));
             } catch (Exception e) {
-                ack = CatalogReadAck.error(cc.jumpkick.host.Errors.text(e));
+                ack = CatalogReadAck.error(Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

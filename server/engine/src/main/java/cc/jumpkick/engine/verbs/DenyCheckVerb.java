@@ -6,6 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.PolicyOps;
 import java.io.BufferedWriter;
@@ -46,7 +47,7 @@ public final class DenyCheckVerb implements HostedVerb {
             try {
                 report = PolicyOps.denyCheck(Path.of(Jsonl.str(requestLine, "dir")));
             } catch (RuntimeException e) {
-                report = DenyReport.error(cc.jumpkick.host.Errors.text(e));
+                report = DenyReport.error(Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

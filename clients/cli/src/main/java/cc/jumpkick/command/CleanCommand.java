@@ -15,6 +15,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -211,9 +212,9 @@ public final class CleanCommand implements CliCommand {
      * writer left to race and a not-empty directory is a real failure again (JK-2451).
      */
     static void deleteRecursively(Path root, long[] stats) throws IOException {
-        var tally = new cc.jumpkick.host.PathUtil.Removed();
+        var tally = new PathUtil.Removed();
         try {
-            cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(root, tally);
+            PathUtil.deleteRecursivelyOrThrow(root, tally);
         } finally {
             // Whatever it managed to remove is removed, failure or not — the report must match disk.
             stats[0] += tally.files();

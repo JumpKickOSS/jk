@@ -5,6 +5,7 @@ import cc.jumpkick.engine.CoalescingLockPackages;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
@@ -79,8 +80,7 @@ final class LockCascade {
             effective = scope.effective();
             coord = scope.coord();
         } catch (RuntimeException e) {
-            host.sendQuiet(
-                    writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(cc.jumpkick.host.Errors.text(e)), -1));
+            host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
             return JobOutcome.failed(Exit.CONFIG);
         }
 

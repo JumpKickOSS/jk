@@ -13,6 +13,7 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -741,7 +742,7 @@ public final class TaskForecaster {
                         "classes:" + classesTok,
                         "contrib:" + contribTok,
                         "main:" + (mainClass == null ? "" : mainClass),
-                        "sbom:" + (sbom == null ? "" : cc.jumpkick.host.Hashing.sha256Hex(sbom)),
+                        "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
                         "manifest:" + project.manifest());
                 Perf.end("  package-fingerprint", tp);
                 String pkgKey = ActionKey.forArtifact(

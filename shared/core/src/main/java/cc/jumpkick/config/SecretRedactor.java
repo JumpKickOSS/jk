@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -217,7 +218,7 @@ public final class SecretRedactor {
      * dependency now, so the old hand-copied twin is gone (JK-2172).
      */
     private static String jsonEscape(String s) {
-        String quoted = cc.jumpkick.jsonl.Jsonl.quote(s);
+        String quoted = Jsonl.quote(s);
         return quoted.substring(1, quoted.length() - 1);
     }
 

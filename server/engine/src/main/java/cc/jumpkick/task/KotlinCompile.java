@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -83,7 +84,7 @@ public final class KotlinCompile {
         // checkout with a warm cache), BTA would compile "only what changed" into the void
         // and report success with a near-empty dir. Start the IC state over instead.
         if (request.incremental() && Files.isDirectory(request.workingDir()) && !hasClasses(request.outputDir())) {
-            cc.jumpkick.host.PathUtil.deleteRecursively(request.workingDir());
+            PathUtil.deleteRecursively(request.workingDir());
         }
         CasPrewriter prewriter = CasPrewriter.watching(cas, request.outputDir());
         CompileResult kr;

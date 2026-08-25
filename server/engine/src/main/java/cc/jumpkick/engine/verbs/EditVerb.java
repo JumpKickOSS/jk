@@ -6,6 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.EditOps;
 import java.io.BufferedWriter;
@@ -49,7 +50,7 @@ public final class EditVerb implements HostedVerb {
                         Jsonl.str(requestLine, "op"),
                         Jsonl.strArray(requestLine, "args"));
             } catch (RuntimeException e) {
-                result = new EditOps.Result(false, cc.jumpkick.host.Errors.text(e));
+                result = new EditOps.Result(false, Errors.text(e));
             }
             host.sendQuiet(writer, ProtoReads.editAck(result.changed(), result.error(), result.detail()));
 

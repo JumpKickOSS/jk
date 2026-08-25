@@ -8,6 +8,8 @@ import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
@@ -52,13 +54,13 @@ final class HttpProjectApi {
     void handleNewProject(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String name = cc.jumpkick.jsonl.Jsonl.str(body, "name");
-        String parentDir = cc.jumpkick.jsonl.Jsonl.str(body, "parentDir");
-        String group = cc.jumpkick.jsonl.Jsonl.str(body, "group");
-        String lang = cc.jumpkick.jsonl.Jsonl.str(body, "lang");
-        String layout = cc.jumpkick.jsonl.Jsonl.str(body, "layout");
-        String template = cc.jumpkick.jsonl.Jsonl.str(body, "template");
-        boolean executable = cc.jumpkick.jsonl.Jsonl.bool(body, "executable", true);
+        String name = Jsonl.str(body, "name");
+        String parentDir = Jsonl.str(body, "parentDir");
+        String group = Jsonl.str(body, "group");
+        String lang = Jsonl.str(body, "lang");
+        String layout = Jsonl.str(body, "layout");
+        String template = Jsonl.str(body, "template");
+        boolean executable = Jsonl.bool(body, "executable", true);
         try {
             // The SPA routes #project/<id> immediately, so identity materializes with creation.
             var result = NewProjectOps.createWithIdentity(
@@ -274,7 +276,7 @@ final class HttpProjectApi {
         body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -332,7 +334,7 @@ final class HttpProjectApi {
         body.put("dir", list.root().toString());
         body.put("truncated", list.truncated());
         body.put("files", files);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -413,7 +415,7 @@ final class HttpProjectApi {
                 body.put("encoding", b.encoding());
                 body.put("etag", b.etag());
                 body.put("content", b.content());
-                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+                HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
             }
         }
     }
@@ -512,11 +514,11 @@ final class HttpProjectApi {
             return;
         }
         String body = new String(raw, StandardCharsets.UTF_8);
-        String projectId = cc.jumpkick.jsonl.Jsonl.topStr(body, "project");
-        String path = cc.jumpkick.jsonl.Jsonl.topStr(body, "path");
-        String content = cc.jumpkick.jsonl.Jsonl.topStr(body, "content");
-        String etag = cc.jumpkick.jsonl.Jsonl.topStr(body, "etag");
-        String encoding = cc.jumpkick.jsonl.Jsonl.topStr(body, "encoding");
+        String projectId = Jsonl.topStr(body, "project");
+        String path = Jsonl.topStr(body, "path");
+        String content = Jsonl.topStr(body, "content");
+        String etag = Jsonl.topStr(body, "etag");
+        String encoding = Jsonl.topStr(body, "encoding");
         if (projectId == null || projectId.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -601,7 +603,7 @@ final class HttpProjectApi {
                 if (fileName.equals(ManifestPaths.MANIFEST) || fileName.equals(ManifestPaths.LIBRARIES)) {
                     resp.put("lockStale", Boolean.TRUE);
                 }
-                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(resp));
+                HttpEngineServer.sendJson(exchange, 200, MiniJson.write(resp));
             }
         }
     }

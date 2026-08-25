@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
@@ -75,7 +76,7 @@ class BuildPlannerStagedClassesTest {
         Fixture f = fixture(tmp);
         Files.writeString(f.classes.resolve("Kept.class"), "kept");
         // The declared step exists but never ran, so its scratch dir is absent.
-        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(f.contributed);
+        PathUtil.deleteRecursivelyOrThrow(f.contributed);
 
         Path staged = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
 
@@ -133,7 +134,7 @@ class BuildPlannerStagedClassesTest {
         Files.writeString(f.contributed.resolve("Generated.class"), "generated");
 
         Path stage = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
-        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(stage);
+        PathUtil.deleteRecursivelyOrThrow(stage);
 
         assertThat(PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout))
                 .isEqualTo(stage);

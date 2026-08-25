@@ -19,6 +19,7 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
@@ -112,7 +113,7 @@ public final class PlannerPackage {
                             "classes:" + ClasspathFingerprint.entry(classes),
                             "contrib:" + contributionsToken(contributed),
                             "main:" + (mainClass == null ? "" : mainClass),
-                            "sbom:" + (sbom == null ? "" : cc.jumpkick.host.Hashing.sha256Hex(sbom)),
+                            "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
                             "manifest:" + project.manifest());
                     String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
                     String pkgKey = ActionKey.forArtifact(pkgTask, BuildIdentity.cacheKeyVersion(), tokens);

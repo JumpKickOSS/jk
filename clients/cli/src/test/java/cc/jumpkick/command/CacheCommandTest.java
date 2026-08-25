@@ -13,6 +13,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
@@ -580,7 +581,7 @@ class CacheCommandTest {
             // repos/ lives under the STORE root — where MavenRepo writes (JK-2176); the old
             // cache-rooted seed only matched the pre-fix search's wrong walk root.
             RepoArtifactStore.forRepoName(JkStores.store(), "central")
-                    .materialize(MavenLayout.artifactPath(coord), blob, cc.jumpkick.host.Hashing.sha256Hex(bytes));
+                    .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -176,7 +177,7 @@ public final class HostCooldown {
 
     /** One file per host, named by a hash so a host name can never escape the directory. */
     private Path fileFor(String host) {
-        String key = cc.jumpkick.host.Hashing.sha256Hex(host.toLowerCase(Locale.ROOT));
+        String key = Hashing.sha256Hex(host.toLowerCase(Locale.ROOT));
         return dir.resolve(key.substring(0, 16) + ".until");
     }
 }

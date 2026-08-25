@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.GenerateOps;
 import java.io.BufferedWriter;
@@ -50,7 +51,7 @@ public final class GenerateVerb implements HostedVerb {
                         Jsonl.str(requestLine, "kind"),
                         ProtoReads.generateParams(requestLine));
             } catch (RuntimeException e) {
-                files = GeneratedFiles.error(cc.jumpkick.host.Errors.text(e));
+                files = GeneratedFiles.error(Errors.text(e));
             }
             host.sendQuiet(writer, files.encode());
 

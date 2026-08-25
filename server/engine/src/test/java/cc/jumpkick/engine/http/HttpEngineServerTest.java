@@ -12,6 +12,7 @@ import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.BuildMetrics;
 import java.io.IOException;
@@ -1218,7 +1219,7 @@ class HttpEngineServerTest {
                     .contains("\"hasJkToml\":true");
             assertThat(fromRel.body()).contains("\"dir\":\"" + pick + "\"");
         } finally {
-            cc.jumpkick.host.PathUtil.deleteRecursively(pick);
+            PathUtil.deleteRecursively(pick);
         }
     }
 

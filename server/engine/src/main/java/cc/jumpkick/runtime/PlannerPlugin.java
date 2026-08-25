@@ -9,6 +9,8 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.lock.Lockfile;
@@ -386,7 +388,7 @@ public final class PlannerPlugin {
                         }
                     }
 
-                    cc.jumpkick.host.PathUtil.deleteRecursively(scratch); // stale outputs never survive
+                    PathUtil.deleteRecursively(scratch); // stale outputs never survive
                     Files.createDirectories(scratch);
                     ctx.label(step.name());
                     SpecWriter specWriter = new SpecWriter()
@@ -558,8 +560,8 @@ public final class PlannerPlugin {
         // are a packager bug.
         Path outBase = jarPath.getParent().toAbsolutePath().normalize();
         for (String line : workerLines) {
-            if (!"produced".equals(cc.jumpkick.jsonl.Jsonl.str(line, "t"))) continue;
-            Path p = Path.of(String.valueOf(cc.jumpkick.jsonl.Jsonl.str(line, "path")))
+            if (!"produced".equals(Jsonl.str(line, "t"))) continue;
+            Path p = Path.of(String.valueOf(Jsonl.str(line, "path")))
                     .toAbsolutePath()
                     .normalize();
             if (!p.startsWith(outBase)) {

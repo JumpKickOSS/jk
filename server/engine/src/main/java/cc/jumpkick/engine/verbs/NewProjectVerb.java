@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.NewProjectAck;
 import cc.jumpkick.engine.runtime.NewProjectOps;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.util.List;
@@ -72,7 +73,7 @@ public final class NewProjectVerb implements HostedVerb {
                 NewProjectOps.Created created = NewProjectOps.createWithIdentity(req);
                 ack = NewProjectAck.of(created.path().toString(), created.projectId(), created.filesWritten());
             } catch (Exception e) {
-                ack = NewProjectAck.error(cc.jumpkick.host.Errors.text(e));
+                ack = NewProjectAck.error(Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

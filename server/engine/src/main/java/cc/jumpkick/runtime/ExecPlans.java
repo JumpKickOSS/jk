@@ -15,6 +15,7 @@ import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -249,7 +250,7 @@ public final class ExecPlans {
                             ? ""
                             : build.project().scala().raw());
         } catch (RuntimeException | IOException e) {
-            return ProjectInfo.error(cc.jumpkick.host.Errors.text(e));
+            return ProjectInfo.error(Errors.text(e));
         }
     }
 
@@ -413,7 +414,7 @@ public final class ExecPlans {
                 default -> ExecPlan.error(kind, "unknown exec-plan kind: " + kind);
             };
         } catch (RuntimeException | IOException e) {
-            return ExecPlan.error(kind, cc.jumpkick.host.Errors.text(e));
+            return ExecPlan.error(kind, Errors.text(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return ExecPlan.error(kind, "interrupted");

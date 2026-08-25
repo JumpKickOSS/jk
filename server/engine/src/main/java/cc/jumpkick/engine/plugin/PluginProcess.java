@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -233,8 +234,8 @@ public final class PluginProcess {
         // produces neither EOF nor a visible descendant — descendants() of a dead process is
         // empty, and closing the fd does not wake a blocked native pipe read. The job thread
         // waits root-exit + a drain grace, then abandons the reader instead of hanging forever.
-        BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        BufferedReader reader =
+                new BoundedLineReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         AtomicBoolean abandoned = new AtomicBoolean();
         AtomicReference<IOException> pumpError = new AtomicReference<>();
         CountDownLatch pumpDone = new CountDownLatch(1);

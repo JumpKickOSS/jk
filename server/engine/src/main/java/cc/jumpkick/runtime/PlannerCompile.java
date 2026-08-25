@@ -22,6 +22,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
@@ -507,7 +508,7 @@ public final class PlannerCompile {
                     // Start the merged tree clean — both stamps die with it, so javac re-runs
                     // too (rare: only on source removals).
                     if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.KOTLIN, freshInputs)) {
-                        cc.jumpkick.host.PathUtil.deleteRecursively(classes);
+                        PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
@@ -625,7 +626,7 @@ public final class PlannerCompile {
                     // A shrunken Groovy source set must not leave dropped classes in the merged
                     // output (the assemble merge into classes/ is additive).
                     if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.GROOVY, freshInputs)) {
-                        cc.jumpkick.host.PathUtil.deleteRecursively(classes);
+                        PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);

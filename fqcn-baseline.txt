@@ -166,10 +166,7 @@
     1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/windows/package-info.java
     1  clients/cli-terminal/src/test/java/cc/jumpkick/terminal/KeysTest.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
-    1  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineSpawn.java
-    1  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineWire.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/engine/package-info.java
-    3  clients/cli/src/main/java/cc/jumpkick/command/AotCachePackage.java
     2  clients/cli/src/main/java/cc/jumpkick/command/CleanCommand.java
     1  clients/cli/src/main/java/cc/jumpkick/command/ScriptRunner.java
     1  clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineTestSupport.java
@@ -184,11 +181,8 @@
     8  plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java
     3  plugins/quarkus/src/main/java/cc/jumpkick/quarkus/QuarkusAugmentMain.java
     3  plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/EngineHttpFront.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/EngineVerbBridge.java
     2  server/engine/src/main/java/cc/jumpkick/engine/EngineVitals.java
     1  server/engine/src/main/java/cc/jumpkick/engine/TerminalSignals.java
-    4  server/engine/src/main/java/cc/jumpkick/engine/http/HttpHistoryApi.java
    16  server/engine/src/main/java/cc/jumpkick/engine/http/HttpProjectApi.java
     7  server/engine/src/main/java/cc/jumpkick/engine/http/HttpReadApi.java
     9  server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpMachine.java
@@ -291,7 +285,6 @@
     1  shared/client-io/src/test/java/cc/jumpkick/http/HostCooldownTest.java
     3  shared/client-io/src/test/java/cc/jumpkick/repo/RepoArtifactStoreTest.java
     1  shared/client-io/src/test/java/cc/jumpkick/repo/RepoCredentialResolverTest.java
-    1  shared/core/src/main/java/cc/jumpkick/config/SecretRedactor.java
     1  shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java
     5  shared/core/src/test/java/cc/jumpkick/config/JkBuildParserTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/JkBuildWorkspaceTest.java
@@ -313,7 +306,6 @@
     1  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/PackageIo.java
     3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/PluginCommandExec.java
     3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/TaskExec.java
-    1  shared/toolchain-jdk/src/main/java/cc/jumpkick/androidsdk/AndroidSdkInstaller.java
     2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkCatalogClientTest.java
     2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkRegistryTest.java
     1  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkResolverTest.java

@@ -11,6 +11,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -99,9 +100,7 @@ public final class UpdateVerb implements HostedVerb {
                 try {
                     root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 } catch (RuntimeException e) {
-                    host.sendQuiet(
-                            writer,
-                            ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(cc.jumpkick.host.Errors.text(e)), -1));
+                    host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
                     return JobOutcome.failed(Exit.CONFIG);
                 }
                 var outcome =

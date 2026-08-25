@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.IdeOps;
 import java.io.BufferedWriter;
@@ -52,7 +53,7 @@ public final class IdeModelVerb implements HostedVerb {
                         jdksDir == null ? null : Path.of(jdksDir),
                         false);
             } catch (RuntimeException e) {
-                model = IdeWireModel.error(cc.jumpkick.host.Errors.text(e));
+                model = IdeWireModel.error(Errors.text(e));
             }
             host.sendQuiet(writer, model.encode());
 

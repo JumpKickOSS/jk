@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildEditor;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
@@ -55,7 +56,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", cc.jumpkick.host.Errors.text(e));
+            out.put("error", Errors.text(e));
         }
         return out;
     }
@@ -77,7 +78,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", cc.jumpkick.host.Errors.text(e));
+            out.put("error", Errors.text(e));
         }
         return out;
     }
@@ -100,7 +101,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", cc.jumpkick.host.Errors.text(e));
+            out.put("error", Errors.text(e));
         }
         return out;
     }

@@ -8,6 +8,9 @@ import cc.jumpkick.engine.LockFloor;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.verbs.MetricsVerb;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;
@@ -78,7 +81,7 @@ final class HttpReadApi {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("path", EffectiveUserConfig.configPath().toString());
         body.put("rows", rows);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -137,9 +140,7 @@ final class HttpReadApi {
                 HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         Path dir;
         try {
-            dir = requested == null || requested.isBlank()
-                    ? cc.jumpkick.host.PathUtil.userHome()
-                    : cc.jumpkick.host.PathUtil.resolveUserPath(requested);
+            dir = requested == null || requested.isBlank() ? PathUtil.userHome() : PathUtil.resolveUserPath(requested);
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -211,7 +212,7 @@ final class HttpReadApi {
     void handleBuild(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
+        String dir = Jsonl.str(body, "dir");
         if (dir == null || dir.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -219,7 +220,7 @@ final class HttpReadApi {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
-        String kind = cc.jumpkick.jsonl.Jsonl.str(body, "kind");
+        String kind = Jsonl.str(body, "kind");
         long requestId;
         try {
             requestId = jobs.trigger(JobSpec.of(kind, dir));
@@ -268,9 +269,9 @@ final class HttpReadApi {
     void handleCancel(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        long jid = cc.jumpkick.jsonl.Jsonl.longValue(body, "jid", -1);
+        long jid = Jsonl.longValue(body, "jid", -1);
         if (jid < 0) {
-            String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
+            String dir = Jsonl.str(body, "dir");
             if (dir != null && !dir.isBlank()) {
                 int n = jobs.cancelDir(dir);
                 HttpEngineServer.sendJson(

@@ -9,6 +9,7 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
@@ -64,7 +65,7 @@ public final class IdeOps {
         try {
             return build(startDir, cache, jdksDir, fetchMissing);
         } catch (IOException | RuntimeException e) {
-            return IdeWireModel.error(cc.jumpkick.host.Errors.text(e));
+            return IdeWireModel.error(Errors.text(e));
         }
     }
 

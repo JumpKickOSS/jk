@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.engine.runtime.CacheInventoryOps;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
@@ -71,7 +72,7 @@ public final class CacheInventoryVerb implements HostedVerb {
                     ack = CacheInventoryOps.run(req);
                 }
             } catch (Exception e) {
-                ack = CacheInventoryAck.error(cc.jumpkick.host.Errors.text(e));
+                ack = CacheInventoryAck.error(Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

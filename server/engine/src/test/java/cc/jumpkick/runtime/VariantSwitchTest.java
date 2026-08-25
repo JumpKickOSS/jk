@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -99,7 +100,7 @@ class VariantSwitchTest {
 
         // The daemon-observed failing shape: clean, restore a from the action cache, then
         // switch to b — the switch after a RESTORED (not compiled) tree must also work.
-        cc.jumpkick.host.PathUtil.deleteRecursively(project.resolve("target"));
+        PathUtil.deleteRecursively(project.resolve("target"));
         BuildPlanResult a3 = buildVariant(project, cache, "mode=a");
         assertThat(a3.success()).as("variant a restores after clean").isTrue();
         assertThat(classes.resolve("OnlyA.class")).exists();

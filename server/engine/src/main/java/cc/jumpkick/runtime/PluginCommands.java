@@ -5,6 +5,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -92,7 +93,7 @@ public final class PluginCommands {
                 Files.deleteIfExists(spec);
             }
         } catch (IOException | InterruptedException | RuntimeException e) {
-            return PluginCommandReport.error(cc.jumpkick.host.Errors.text(e));
+            return PluginCommandReport.error(Errors.text(e));
         }
     }
 }

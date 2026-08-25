@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jsonl.Jsonl;
@@ -89,7 +90,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
                     default -> error = "unknown catalog: " + catalog;
                 }
             } catch (Exception e) {
-                error = cc.jumpkick.host.Errors.text(e);
+                error = Errors.text(e);
             }
             host.sendQuiet(writer, ProtoReads.freshenCatalogAck(error == null, error));
 

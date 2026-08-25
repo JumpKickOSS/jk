@@ -6,6 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.GraphOps;
 import java.io.BufferedWriter;
@@ -53,7 +54,7 @@ public final class TreeVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "stack", false),
                         Jsonl.strArray(requestLine, "scopes"));
             } catch (IOException | RuntimeException e) {
-                error = cc.jumpkick.host.Errors.text(e);
+                error = Errors.text(e);
             }
             host.sendQuiet(writer, ProtoReads.treeAck(error, rendered));
 

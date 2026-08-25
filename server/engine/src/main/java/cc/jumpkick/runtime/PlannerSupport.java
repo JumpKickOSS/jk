@@ -14,6 +14,7 @@ import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -22,6 +23,8 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -732,8 +735,7 @@ public final class PlannerSupport {
         // launch — a manifest jk cannot fork must never forecast as "tests cached".
         // The launch-side directories are not passed: the mode, not the caller, decides what the
         // two path tokens mean, and this mode keeps them literal.
-        var resolved = cc.jumpkick.config.TestEnvValues.resolve(
-                testEnv, null, null, new cc.jumpkick.config.TestEnvValues.Mode.CacheKey(lookup, redactor));
+        var resolved = TestEnvValues.resolve(testEnv, null, null, new TestEnvValues.Mode.CacheKey(lookup, redactor));
         for (Map.Entry<String, String> e : resolved.entrySet()) {
             extras.add("test-env:" + e.getKey() + "=" + e.getValue());
         }
@@ -878,7 +880,7 @@ public final class PlannerSupport {
         for (Path dir : contributed) {
             sb.append(ClasspathFingerprint.entry(dir)).append('\n');
         }
-        return cc.jumpkick.host.Hashing.sha256Hex(sb.toString());
+        return Hashing.sha256Hex(sb.toString());
     }
 
     /**
@@ -903,7 +905,7 @@ public final class PlannerSupport {
         // only overwrites paths it reproduces, so a survivor from a previous build (a renamed or
         // no-longer-emitted class) would be packaged, and the packaging key is taken over this
         // dir — so the wrong content is what gets cached and restored.
-        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(stage);
+        PathUtil.deleteRecursivelyOrThrow(stage);
         Files.createDirectories(stage);
         copyTreeInto(classes, stage);
         for (Path contrib : extra) copyTreeInto(contrib, stage);

@@ -9,6 +9,7 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.command.Exit;
@@ -134,7 +135,7 @@ final class ScriptRunner {
         if (neutralized != null) {
             Path srcDir = stateDir()
                     .resolve("script-cache")
-                    .resolve(cc.jumpkick.host.Hashing.sha256Hex(source.getBytes(StandardCharsets.UTF_8)))
+                    .resolve(Hashing.sha256Hex(source.getBytes(StandardCharsets.UTF_8)))
                     .resolve("src");
             Files.createDirectories(srcDir);
             execScript = srcDir.resolve(script.getFileName().toString());

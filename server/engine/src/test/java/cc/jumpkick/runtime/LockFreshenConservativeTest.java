@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
@@ -321,7 +322,7 @@ class LockFreshenConservativeTest {
         if (!root.endsWith("/")) root = root + "/";
         URI metaUri = URI.create(root).resolve("com/foo/lib/maven-metadata.xml");
         Path metaDir = JkStores.store().resolve("metadata");
-        Path body = metaDir.resolve(cc.jumpkick.host.Hashing.sha256Hex(metaUri.toString()));
+        Path body = metaDir.resolve(Hashing.sha256Hex(metaUri.toString()));
         Files.deleteIfExists(body);
         Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".h"));
     }

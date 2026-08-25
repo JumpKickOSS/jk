@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -126,7 +127,7 @@ public final class WorkspaceExecute {
         try {
             entryBuild = JkBuildParser.parse(req.entryDir().resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.host.Errors.text(e)));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -164,7 +165,7 @@ public final class WorkspaceExecute {
         try {
             graph = BuildGraph.resolve(req.entryDir(), entryBuild);
         } catch (IOException e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.host.Errors.text(e)));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -286,7 +287,7 @@ public final class WorkspaceExecute {
             try {
                 failed = ModuleOutputRestore.restoreAll(req.entryDir(), List.copyOf(restoreNeeded), req.cache());
             } catch (IOException e) {
-                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.host.Errors.text(e)));
+                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
                 listener.onWorkspaceFinish(r);
                 return r;
             }

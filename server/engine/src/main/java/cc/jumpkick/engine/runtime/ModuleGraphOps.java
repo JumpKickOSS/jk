@@ -6,6 +6,7 @@ import cc.jumpkick.config.ModuleDotGraph;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.ModuleGraphAck;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
@@ -63,7 +64,7 @@ public final class ModuleGraphOps {
             }
             return ModuleGraphAck.of(graph);
         } catch (Exception e) {
-            return ModuleGraphAck.error(cc.jumpkick.host.Errors.text(e));
+            return ModuleGraphAck.error(Errors.text(e));
         }
     }
 }

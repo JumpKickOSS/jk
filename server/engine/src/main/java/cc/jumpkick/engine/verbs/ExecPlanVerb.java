@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.ExecPlans;
 import java.io.BufferedWriter;
@@ -58,7 +59,7 @@ public final class ExecPlanVerb implements HostedVerb {
                         ProtoSession.variantOf(requestLine),
                         ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
-                plan = ExecPlan.error("unknown", cc.jumpkick.host.Errors.text(e));
+                plan = ExecPlan.error("unknown", Errors.text(e));
             }
             host.sendQuiet(writer, plan.encode());
 

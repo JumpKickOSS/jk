@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -70,9 +71,7 @@ public final class ForecastVerb implements HostedVerb {
                         graph = BuildService.resolveGraph(entryDir, entryBuild);
                     } catch (IOException e) {
                         host.sendQuiet(
-                                writer,
-                                ProtoReads.forecastAck(
-                                        List.of(), false, false, List.of(cc.jumpkick.host.Errors.text(e))));
+                                writer, ProtoReads.forecastAck(List.of(), false, false, List.of(Errors.text(e))));
                         return null;
                     }
                     if (graph.hasErrors()) {
@@ -90,9 +89,7 @@ public final class ForecastVerb implements HostedVerb {
                     return null;
                 });
             } catch (Exception e) {
-                host.sendQuiet(
-                        writer,
-                        ProtoReads.forecastAck(List.of(), false, false, List.of(cc.jumpkick.host.Errors.text(e))));
+                host.sendQuiet(writer, ProtoReads.forecastAck(List.of(), false, false, List.of(Errors.text(e))));
             }
 
         } catch (Exception e) {

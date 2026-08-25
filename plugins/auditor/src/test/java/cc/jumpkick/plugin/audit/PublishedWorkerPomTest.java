@@ -20,6 +20,7 @@ import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.Element;
@@ -156,15 +157,17 @@ class PublishedWorkerPomTest {
         compileAgainst(jars.values(), work);
     }
 
-    /** The staged repository, or a failure that says which task fills it. */
+    /**
+     * The staged repository. Gradle's {@code :auditor:test} always sets the property (and depends
+     * on {@code stageWorkerRepo}, which fills it), so under the gate the assumption cannot skip;
+     * the self-host tier has no staging task, and there the honest report is SKIPPED.
+     */
     private static Path stagedRepo() {
         String repoPath = System.getProperty(REPO_PROPERTY);
-        assertThat(repoPath)
-                .as(
-                        "-D%s must point at the staged Maven repository; :auditor:test sets it and"
-                                + " depends on stageWorkerRepo, which fills it",
-                        REPO_PROPERTY)
-                .isNotNull();
+        Assumptions.assumeTrue(
+                repoPath != null,
+                "-D" + REPO_PROPERTY + " not set: no staged Maven repository in this harness"
+                        + " (Gradle's :auditor:test stages it via stageWorkerRepo)");
         Path repo = Path.of(repoPath);
         assertThat(repo).isDirectory();
         return repo;

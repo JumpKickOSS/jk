@@ -6,6 +6,7 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.EngineTransport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -92,7 +93,7 @@ public final class EngineWire {
                 }
             }
         }
-        return new cc.jumpkick.jsonl.BoundedLineReader(
+        return new BoundedLineReader(
                 new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, idleMs);
     }
 

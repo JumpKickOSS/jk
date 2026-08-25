@@ -2,6 +2,7 @@
 package cc.jumpkick.androidsdk;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
@@ -207,6 +208,6 @@ public final class AndroidSdkInstaller {
     }
 
     private static void deleteRecursively(Path root) {
-        cc.jumpkick.host.PathUtil.deleteRecursively(root);
+        PathUtil.deleteRecursively(root);
     }
 }

@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.gradle.GradleExporter;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.BomExporter;
 import cc.jumpkick.lock.LockPaths;
@@ -45,7 +46,7 @@ public final class GenerateOps {
                 default -> GeneratedFiles.error("unknown generate kind: " + kind);
             };
         } catch (IOException | RuntimeException e) {
-            return GeneratedFiles.error(cc.jumpkick.host.Errors.text(e));
+            return GeneratedFiles.error(Errors.text(e));
         }
     }
 

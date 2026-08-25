@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import java.io.BufferedWriter;
@@ -25,7 +26,7 @@ public final class WireEventSink implements EventSink {
         if (writer == null) return;
         String line = encode(event);
         if (line == null) return;
-        cc.jumpkick.engine.WireWriter.sendQuiet(writer, line);
+        WireWriter.sendQuiet(writer, line);
     }
 
     static @Nullable String encode(EngineEvent event) {

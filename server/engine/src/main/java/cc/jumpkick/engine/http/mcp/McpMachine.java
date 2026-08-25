@@ -7,6 +7,7 @@ import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
@@ -15,6 +16,7 @@ import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkService;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -55,7 +57,7 @@ public final class McpMachine {
             try (var stream = Files.list(envsRoot)) {
                 stream.filter(Files::isDirectory).forEach(envs::add);
             } catch (IOException e) {
-                m.put("error", cc.jumpkick.host.Errors.text(e));
+                m.put("error", Errors.text(e));
                 return m;
             }
             envs.sort(Comparator.comparing(pth -> pth.getFileName().toString()));
@@ -80,7 +82,7 @@ public final class McpMachine {
         if (!Files.isRegularFile(envJson)) return null;
         try {
             // env.json is pretty-printed — parse properly, never compact-form key scans.
-            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(Files.readString(envJson, StandardCharsets.UTF_8));
+            Object parsed = MiniJson.parse(Files.readString(envJson, StandardCharsets.UTF_8));
             if (parsed instanceof Map<?, ?> map && map.get(field) instanceof String s) return s;
             return null;
         } catch (IOException | RuntimeException e) {
@@ -127,7 +129,7 @@ public final class McpMachine {
             }
             m.put("error", "unknown key (nerd-font | engine.max-heap-mb)");
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
@@ -158,7 +160,7 @@ public final class McpMachine {
             m.put("storeBytes", snap.artifactStorageBytes());
             m.put("hint", "jk_disk action=clean then nuke if you still need space");
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
@@ -179,7 +181,7 @@ public final class McpMachine {
             }
             m.put("jdks", rows);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
@@ -228,7 +230,7 @@ public final class McpMachine {
             m.put("home", jdk.home().toString());
             m.put("installed", true);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
@@ -275,7 +277,7 @@ public final class McpMachine {
             }
             m.put("removed", removed);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
@@ -356,7 +358,7 @@ public final class McpMachine {
                 preview.put("cacheBytesAfter", after.get("cacheBytes"));
                 return preview;
             } catch (Exception e) {
-                preview.put("error", cc.jumpkick.host.Errors.text(e));
+                preview.put("error", Errors.text(e));
                 return preview;
             }
         }
@@ -375,7 +377,7 @@ public final class McpMachine {
             m.put("storeDir", store.toString());
             m.put("storeBytes", ss.bytes());
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.host.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }

@@ -32,6 +32,11 @@
 # The count is `wc -l`: newline characters, the same number the scoreboard and commit messages
 # cite. Recount one file with `wc -l <path>`.
 #
+# The five entries below each grew by one or two lines on 2026-08-25 when the repaired
+# optimize-imports pass (JK-2408) first ran with a resolvable classpath: each FQCN it shortened
+# costs one import line, and a file sitting exactly at its baseline crosses it by that trade.
+# The FQCN ratchet tightened by the same trade; net vocabulary went down, not up.
+#
 # UPDATING AFTER A SHRINK. Shrinking a listed file passes — the ratchet never blocks progress. The
 # guard then prints the tightened line, e.g.
 #
@@ -136,7 +141,7 @@
 # self-heal retry that repairs it — the file's own javadoc names this. The AOT marker and refusal
 # vocabulary that used to be most of the excess now live in `cc.jumpkick.host.AotCacheFiles`; what is
 # left is the spawn decision itself.
-833  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineSpawn.java
+834  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineSpawn.java
 
 # One painter owns the whole failure block: the OSC-8 deep link, the gutter, the source snippet and
 # the box drawing are aligned against each other column by column, and a split desynchronises them.
@@ -209,14 +214,14 @@
 # `projectJavaHome` reaches), and none of the shared/host owners spells anything it derives. The
 # available peel is the one the invariant above already names as deliberate, so taking it needs an
 # argument this ticket did not have.
-1080  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
+1081  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
 
 # T58: step bodies shared by the Planner* collaborators. No invariant holds it here — ratchet only.
 # JK-2438 note: this is the file most of the deleted BuildPlanner facade forwarded to, and it did not
 # grow by a line — the delegates were re-exports, not relocated code. Every member here has at least
 # one caller (checked), so there is no free deletion; the honest next move is to split the file by
 # collaborator, which is a design decision rather than a cleanup.
-948  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
+950  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
 
 # T58: plugin discovery, the contribution fold and the plugin step bodies. Ratchet only.
 # JK-2438 found the seam and could not take it in scope: `loadBomConstraints` spells the nine
@@ -235,7 +240,7 @@
 # behind the new number — a forecast key derived here rather than shared with the build is the defect
 # class this file kept reintroducing (JK-2460/2479/2480/2491), so the ratchet is now also a rule about
 # what may live here.
-1136  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
+1137  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
 
 # T58: workspace step execution and the target/ write-drain that `jk build` must not return ahead
 # of (JK-2451). Ratchet only — JK-2438 took one line, which is not the point of the change it made:
@@ -247,7 +252,7 @@
 # UnaryOperator above applies the same knob set in a third place (a different shape — it decorates an
 # Inputs rather than building one), and nothing in the fast tier goes red when `withVariant` is
 # dropped from `moduleInputs`, so that thread is compiler-checked and not test-checked.
-908  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
+909  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
 
 # T58. The invariant this replaces said "the `##JKT:` fork protocol has exactly one writer and one
 # reader, and they are the two ends of the same wire format". Half of that is false: the writer is

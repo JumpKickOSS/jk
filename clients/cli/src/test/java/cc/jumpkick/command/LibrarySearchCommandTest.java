@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -141,7 +142,7 @@ class LibrarySearchCommandTest {
         if (Files.isDirectory(repos)) {
             try (var names = Files.list(repos)) {
                 for (Path repo : names.toList()) {
-                    cc.jumpkick.host.PathUtil.deleteRecursively(repo.resolve("commons-io"));
+                    PathUtil.deleteRecursively(repo.resolve("commons-io"));
                 }
             }
         }

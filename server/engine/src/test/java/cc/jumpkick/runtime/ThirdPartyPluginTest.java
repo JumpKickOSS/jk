@@ -8,6 +8,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
@@ -97,7 +98,7 @@ class ThirdPartyPluginTest {
                 .resolve(ARTIFACT)
                 .resolve(VERSION)
                 .resolve(ARTIFACT + "-" + VERSION + ".jar");
-        String hex = cc.jumpkick.host.Hashing.sha256Hex(jar);
+        String hex = Hashing.sha256Hex(jar);
 
         Files.writeString(project.resolve("jk.toml"), """
                 name = "demo"
@@ -204,7 +205,7 @@ class ThirdPartyPluginTest {
                 .resolve(ARTIFACT)
                 .resolve(version)
                 .resolve(ARTIFACT + "-" + version + ".jar");
-        String hex = cc.jumpkick.host.Hashing.sha256Hex(jar);
+        String hex = Hashing.sha256Hex(jar);
 
         Files.writeString(tmp.resolve("jk.toml"), """
                 name = "demo"

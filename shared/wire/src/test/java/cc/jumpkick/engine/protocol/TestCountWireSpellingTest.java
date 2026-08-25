@@ -7,13 +7,15 @@ import cc.jumpkick.run.TestSummary;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -142,10 +144,30 @@ class TestCountWireSpellingTest {
         List<Path> scanned = new ArrayList<>();
         Map<String, List<String>> hits = new LinkedHashMap<>();
 
-        try (Stream<Path> walk = Files.walk(root)) {
-            for (Path f : walk.filter(Files::isRegularFile).toList()) {
+        // walkFileTree with SKIP_SUBTREE, not Files.walk + a relative-path filter: the filter kept
+        // build output out of the corpus but the walk still descended into it, and a parallel test
+        // task deleting its own build/tmp mid-walk turned this scan into a NoSuchFileException.
+        // Pruned directories cannot race, because they are never entered. Pruning is by *module
+        // output* shape, not by bare name — `src/main/java/cc/jumpkick/plugin/build/` is a source
+        // package named `build`, and a name-only prune silently blinds the scan to it (that exact
+        // mistake is corrections item 54).
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                if (name.equals(".git")) return FileVisitResult.SKIP_SUBTREE;
+                boolean moduleOutput = (name.equals("build") || name.equals("target"))
+                        && (Files.exists(dir.resolveSibling("build.gradle.kts"))
+                                || Files.exists(dir.resolveSibling("jk.toml"))
+                                || dir.getParent() != null && dir.getParent().equals(root));
+                return moduleOutput ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) throws IOException {
+                if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
                 String rel = root.relativize(f).toString().replace('\\', '/');
-                if (!isProductionSource(rel)) continue;
+                if (!isProductionSource(rel)) return FileVisitResult.CONTINUE;
                 scanned.add(f);
                 String body = Files.readString(f, StandardCharsets.UTF_8);
                 for (String retired : RETIRED) {
@@ -153,8 +175,15 @@ class TestCountWireSpellingTest {
                         hits.computeIfAbsent(retired, k -> new ArrayList<>()).add(rel);
                     }
                 }
+                return FileVisitResult.CONTINUE;
             }
-        }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path f, IOException exc) {
+                // A file that vanished mid-walk was not a production source.
+                return FileVisitResult.CONTINUE;
+            }
+        });
 
         assertThat(scanned)
                 .as("production sources scanned under %s — a tiny corpus means the walk missed the tree", root)

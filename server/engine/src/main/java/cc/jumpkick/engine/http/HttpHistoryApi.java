@@ -6,6 +6,7 @@ import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.runtime.ProjectIds;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
@@ -186,7 +187,7 @@ final class HttpHistoryApi {
     private String enrichHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return raw;
         try {
-            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(raw);
+            Object parsed = MiniJson.parse(raw);
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
@@ -203,10 +204,10 @@ final class HttpHistoryApi {
                 }
             }
             if (!Boolean.TRUE.equals(m.get("running"))) {
-                return cc.jumpkick.jsonl.MiniJson.write(m);
+                return MiniJson.write(m);
             }
             HttpLive.Run match = matchLiveRun(m);
-            if (match == null) return cc.jumpkick.jsonl.MiniJson.write(m);
+            if (match == null) return MiniJson.write(m);
             m.put("jid", match.requestId());
             if (match.startedAt() > 0) {
                 m.put("startedAt", match.startedAt());
@@ -227,7 +228,7 @@ final class HttpHistoryApi {
             } else if (!match.tasks().isEmpty()) {
                 m.put("tasks", liveTasksJson(match.tasks()));
             }
-            return cc.jumpkick.jsonl.MiniJson.write(m);
+            return MiniJson.write(m);
         } catch (RuntimeException e) {
             return raw; // best-effort — never break the list for a bad row
         }

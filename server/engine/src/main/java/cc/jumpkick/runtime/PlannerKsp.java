@@ -13,6 +13,7 @@ import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.kotlin.KotlinResolver;
@@ -242,7 +243,7 @@ public final class PlannerKsp {
 
                     // A stale round's outputs must not survive into the source union.
                     for (String sub : List.of("kotlin", "java", "classes", "resources")) {
-                        cc.jumpkick.host.PathUtil.deleteRecursively(outBase.resolve(sub));
+                        PathUtil.deleteRecursively(outBase.resolve(sub));
                     }
                     Files.createDirectories(outBase.resolve("caches"));
 

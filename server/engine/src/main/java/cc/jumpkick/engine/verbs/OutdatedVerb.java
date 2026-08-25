@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.OutdatedReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.OutdatedPlans;
 import java.io.BufferedWriter;
@@ -61,7 +62,7 @@ public final class OutdatedVerb implements HostedVerb {
                 report = SessionContext.where(
                         session, () -> OutdatedPlans.compute(dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
             } catch (Exception e) {
-                report = OutdatedReport.error(cc.jumpkick.host.Errors.text(e));
+                report = OutdatedReport.error(Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

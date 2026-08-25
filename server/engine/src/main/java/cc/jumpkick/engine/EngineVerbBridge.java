@@ -12,6 +12,7 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.engine.verbs.VerbHost;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -124,7 +125,7 @@ public final class EngineVerbBridge implements VerbHost {
 
     @Override
     public String requestFailedLine(@Nullable String dir, Throwable e) {
-        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, cc.jumpkick.host.Errors.text(e)));
+        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, Errors.text(e)));
     }
 
     @Override

@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.PluginCommands;
 import java.io.BufferedWriter;
@@ -53,7 +54,7 @@ public final class PluginCommandVerb implements HostedVerb {
                         ProtoSession.variantOf(requestLine),
                         ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
-                report = PluginCommandReport.error(cc.jumpkick.host.Errors.text(e));
+                report = PluginCommandReport.error(Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

@@ -7,6 +7,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
@@ -259,7 +260,7 @@ public final class CacheInventoryOps {
             try {
                 coord = Coordinate.parse(spec);
             } catch (IllegalArgumentException e) {
-                return CacheInventoryAck.error(cc.jumpkick.host.Errors.text(e));
+                return CacheInventoryAck.error(Errors.text(e));
             }
             String relPath = MavenLayout.artifactPath(coord);
             List<String> hitRepos = new ArrayList<>();

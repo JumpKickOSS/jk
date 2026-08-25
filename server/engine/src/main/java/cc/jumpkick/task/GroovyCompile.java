@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
@@ -111,10 +112,10 @@ public final class GroovyCompile {
      * stubs and ships stub-bodied phantom classes instead of erroring.
      */
     private static void wipe(GroovycRequest request) throws IOException {
-        cc.jumpkick.host.PathUtil.deleteRecursively(request.outputDir());
+        PathUtil.deleteRecursively(request.outputDir());
         Files.createDirectories(request.outputDir());
         if (request.stubsOut() != null) {
-            cc.jumpkick.host.PathUtil.deleteRecursively(request.stubsOut());
+            PathUtil.deleteRecursively(request.stubsOut());
             Files.createDirectories(request.stubsOut());
         }
     }

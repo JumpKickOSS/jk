@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -67,8 +68,7 @@ class ClasspathFingerprintTest {
         // Same tree reconstructed after clean (action record + resource roots).
         Path res = Files.createDirectories(dir.resolve("resources"));
         write(res.resolve("app.properties"), "x=1\n");
-        Map<String, String> compileOut =
-                Map.of("a/A.class", cc.jumpkick.host.Hashing.sha256Hex(classes.resolve("a/A.class")));
+        Map<String, String> compileOut = Map.of("a/A.class", Hashing.sha256Hex(classes.resolve("a/A.class")));
         String reconstructed = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of(res));
         assertThat(reconstructed).isEqualTo(live);
     }
@@ -80,7 +80,7 @@ class ClasspathFingerprintTest {
         write(classes.resolve(BuildStamps.JAVA), "stamp-noise");
         String live = ClasspathFingerprint.entry(classes);
         Map<String, String> outs = new LinkedHashMap<>();
-        outs.put("A.class", cc.jumpkick.host.Hashing.sha256Hex(classes.resolve("A.class")));
+        outs.put("A.class", Hashing.sha256Hex(classes.resolve("A.class")));
         outs.put(BuildStamps.JAVA, "deadbeef");
         assertThat(ClasspathFingerprint.entryFromOutputDigests(outs)).isEqualTo(live);
     }

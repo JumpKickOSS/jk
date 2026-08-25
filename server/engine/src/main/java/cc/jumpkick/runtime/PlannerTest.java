@@ -20,6 +20,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
@@ -140,12 +141,12 @@ public final class PlannerTest {
                             ? Files.readString(suiteMarker).trim()
                             : null;
                     if (prevSelection != null && !prevSelection.equals(selectionKey)) {
-                        cc.jumpkick.host.PathUtil.deleteRecursively(testClasses);
+                        PathUtil.deleteRecursively(testClasses);
                         for (Path langOut : List.of(
                                 ctx.require(LAYOUT).kotlinTestClassesDir(),
                                 ctx.require(LAYOUT).groovyTestClassesDir())) {
                             if (Files.isDirectory(langOut)) {
-                                cc.jumpkick.host.PathUtil.deleteRecursively(langOut);
+                                PathUtil.deleteRecursively(langOut);
                             }
                         }
                     }
