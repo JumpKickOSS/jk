@@ -67,8 +67,12 @@ class CleanCommandTest {
     @EnabledOnOs({OS.LINUX, OS.MAC}) // PosixFilePermissions — undeletable-dir lock is POSIX-only
     void delete_stats_count_only_what_was_actually_removed(@TempDir Path tempDir) throws IOException {
         Path root = Files.createDirectories(tempDir.resolve("target"));
-        // "zz.txt" sorts after "locked/…" in the reverse-order walk, so it is deleted (and counted)
-        // before the undeletable file aborts the walk.
+        // One deletable file either side of "locked" in sort order, on purpose. This used to read
+        // "zz.txt sorts after locked/… so it is deleted before the undeletable file aborts the
+        // walk" — a test pinned to the traversal order of the implementation, which passed while
+        // one bad file could strand every sibling the walk had not reached yet. Both are counted
+        // now, whichever order they are visited in.
+        Files.writeString(root.resolve("aa.txt"), "abc");
         Files.writeString(root.resolve("zz.txt"), "abc");
         Path locked = Files.createDirectories(root.resolve("locked"));
         Files.writeString(locked.resolve("file.txt"), "defghi");
@@ -82,9 +86,9 @@ class CleanCommandTest {
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"));
         }
 
-        // zz.txt once; the file that survived contributes nothing.
-        assertThat(stats[0]).isEqualTo(1);
-        assertThat(stats[1]).isEqualTo(3);
+        // Both deletable files; the one that survived contributes nothing.
+        assertThat(stats[0]).as("files removed").isEqualTo(2);
+        assertThat(stats[1]).as("bytes removed").isEqualTo(6);
         assertThat(locked.resolve("file.txt")).exists();
     }
 }

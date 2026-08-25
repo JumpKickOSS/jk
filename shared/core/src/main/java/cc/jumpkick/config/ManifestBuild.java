@@ -409,13 +409,15 @@ public final class ManifestBuild {
             // sibling reaches them through an existing `kind = "tests"` edge and no main jar can.
             // Gradle spells the same fact as a `testFixtures` source set; declaring shared test
             // helpers under [build] extra-src instead would ship them, which is the mistake this
-            // key exists to make unnecessary.
+            // key exists to make unnecessary. An entry may name a single file where a directory
+            // would over-reach: see clients/cli, which needs one source out of a package whose
+            // other members do not compile without the IntelliJ platform SDK.
             TomlArray tes = test.getArray("extra-src");
             if (tes != null) {
                 for (int i = 0; i < tes.size(); i++) {
                     Object val = tes.get(i);
                     if (!(val instanceof String str) || str.isBlank())
-                        throw new JkBuildParseException("[test].extra-src must be an array of directory strings");
+                        throw new JkBuildParseException("[test].extra-src must be an array of directory or file paths");
                     testExtraSrc.add(str);
                 }
             }

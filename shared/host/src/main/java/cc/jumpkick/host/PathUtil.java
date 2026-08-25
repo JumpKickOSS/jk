@@ -105,6 +105,11 @@ public final class PathUtil {
      * handed to the caller; a vanished entry is success either way, because the roots this deletes
      * are engine sockets, pid files and worker scratch that another process may be tearing down at
      * the same time, and losing a race to it is not a failure of ours.
+     *
+     * <p>A failure does not stop the walk. One undeletable file must not strand its deletable
+     * siblings — {@code jk clean}'s report is the tally, and the tally has to match what actually
+     * came off disk. The caller gets the first failure with any later ones attached as suppressed;
+     * finishing the walk is also what makes the tally independent of traversal order.
      */
     private static void deleteTree(Path root, Removed tally, boolean quiet) throws IOException {
         if (root == null) return;
@@ -122,45 +127,60 @@ public final class PathUtil {
         }
         // A link (or any non-directory) is one delete, whatever it points at.
         if (!rootAttrs.isDirectory()) {
-            deleteOne(root, rootAttrs, tally, quiet);
+            IOException e = deleteOne(root, rootAttrs, tally);
+            if (e != null && !quiet && !(e instanceof NoSuchFileException)) throw e;
             return;
         }
         // No FileVisitOption.FOLLOW_LINKS, so a link to a directory arrives at visitFile and is
         // removed as a leaf. Do not add it.
+        // Collected, not thrown, so the walk finishes: see the note on the tally above.
+        IOException[] failure = {null};
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                deleteOne(file, attrs, tally, quiet);
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                record(deleteOne(file, attrs, tally));
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult visitFileFailed(Path file, IOException e) throws IOException {
-                if (quiet || e instanceof NoSuchFileException) return FileVisitResult.CONTINUE;
-                throw e;
+            public FileVisitResult visitFileFailed(Path file, IOException e) {
+                record(e);
+                return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
-                if (e != null && !quiet && !(e instanceof NoSuchFileException)) throw e;
-                deleteOne(dir, null, tally, quiet);
+            public FileVisitResult postVisitDirectory(Path dir, IOException e) {
+                // `e` is a failure to iterate the directory, not to delete it, so still try the
+                // delete afterwards: an unreadable directory may well be removable.
+                record(e);
+                record(deleteOne(dir, null, tally));
                 return FileVisitResult.CONTINUE;
+            }
+
+            private void record(IOException e) {
+                // A vanished entry is not a failure — another process finished the job for us.
+                if (e == null || quiet || e instanceof NoSuchFileException) return;
+                if (failure[0] == null) failure[0] = e;
+                else if (failure[0] != e) failure[0].addSuppressed(e);
             }
         });
+        if (failure[0] != null) throw failure[0];
     }
 
     /**
-     * One entry, never its target. {@code attrs} comes from the walk (already NOFOLLOW) so the
-     * tally sizes the link and not what it points at; null means a directory, which counts as zero.
+     * One entry, never its target; returns the failure instead of throwing it, so the caller can
+     * keep walking. {@code attrs} comes from the walk (already NOFOLLOW) so the tally sizes the
+     * link and not what it points at; null means a directory, which counts as zero.
      */
-    private static void deleteOne(Path p, BasicFileAttributes attrs, Removed tally, boolean quiet) throws IOException {
+    private static IOException deleteOne(Path p, BasicFileAttributes attrs, Removed tally) {
         try {
             boolean gone = Files.deleteIfExists(p);
             if (gone && tally != null && attrs != null && attrs.isRegularFile()) {
                 tally.add(attrs.size());
             }
+            return null;
         } catch (IOException e) {
-            if (!quiet) throw e;
+            return e;
         }
     }
 

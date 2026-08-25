@@ -35,7 +35,7 @@ dependencies {
     testImplementation(libs.bouncycastle.bcpg)
     // JkWireModel (compiled from the IntelliJ tree, see intellijParserSrc) uses JetBrains
     // nullness because the platform API does; compile-only, test scope, never shipped.
-    testCompileOnly("org.jetbrains:annotations:26.0.2")
+    testCompileOnly(libs.jetbrains.annotations)
     // The tree's shared test primitives (`cc.jumpkick.testing`): `Await`, `ShortTempDirs`,
     // `SysProps`, `LoopbackHttp`. A separate source set of :host, so `checkCliRuntimeClasspath`
     // below still sees a runtime classpath with no test code and no JUnit on it (JK-2443).

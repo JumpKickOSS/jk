@@ -65,7 +65,16 @@ public final class TestSupport {
         List<Path> out = new ArrayList<>();
         for (String rel : roots) {
             Path root = moduleDir.resolve(rel).normalize();
-            if (Files.isDirectory(root)) out.addAll(TestSuites.collectExt(root, ext));
+            if (Files.isDirectory(root)) {
+                out.addAll(TestSuites.collectExt(root, ext));
+            } else if (rel.endsWith(ext) && Files.isRegularFile(root)) {
+                // One file, not a root. `clients/cli` needs exactly one source out of the IntelliJ
+                // plugin's package — JkWireModel, the wire parser, which imports only java.util and
+                // org.jetbrains.annotations. Its five neighbours need the platform SDK, so naming
+                // the directory would not compile. Gradle expresses the same thing by Sync-ing that
+                // one file into a generated source dir.
+                out.add(root);
+            }
         }
         return out;
     }
