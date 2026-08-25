@@ -10,9 +10,11 @@ description = "jk plugin SPI: the stable surface plugins compile against. " +
         "in :host, which every plugin therefore reaches."
 
 // Published as `cc.jumpkick:jk-plugin-sdk` on its OWN version line, independent of
-// cc.jumpkick.model.JkVersion (jk's release train): the SPI freezes on a different cadence. Keep
-// this literal in sync with cc.jumpkick.plugin.PluginSdkVersion.VERSION (the constant the CLI reads
-// to render `jk new --plugin` scaffolds).
+// cc.jumpkick.model.JkVersion (jk's release train): the SPI freezes on a different cadence. This
+// line is the ONE owner of the SDK version: it is what actually gets published, `test` hands it to
+// PublishedSdkConsumerTest below, and PluginSdkScaffoldVersionTest (in :core) reads it back to hold
+// the `jk new --plugin` scaffold pin against it. JK-2430 deleted the Java constant that used to
+// mirror it — nothing in production read it, and a mirror a compiler cannot check is a comment.
 group = "cc.jumpkick"
 version = "0.1.0"
 
@@ -85,4 +87,7 @@ tasks.named<Test>("test") {
     // green having re-run nothing — which is how a broken POM ships past a test that covers it.
     inputs.dir(treeLocal.url).withPropertyName("treeLocalRepo")
     systemProperty("jk.tree.local.repo", File(treeLocal.url).absolutePath)
+    // The version that was actually published, straight off the publishing owner above. A constant
+    // in src/main could disagree with it and the resolve would still find *a* jar.
+    systemProperty("jk.plugin.sdk.version", version.toString())
 }

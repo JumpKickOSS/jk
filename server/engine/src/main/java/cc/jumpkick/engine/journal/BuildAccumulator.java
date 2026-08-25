@@ -599,12 +599,18 @@ public final class BuildAccumulator {
         // the user can act on, with a diagnostic saying the job produced no result at all.
         boolean noVerdict = success == null && !anyFact && !cancelled;
         boolean ok = success != null ? success : (!anyFailure && !cancelled && !noVerdict);
-        int exit = success != null ? exitCode : (ok ? Exit.SUCCESS : (noVerdict ? Exit.SOFTWARE : Exit.FAILURE));
         // cancelToken / late markUserCancelled also trip on the benign end-of-request EOF (the
         // client closes the socket as soon as it reads the terminal). Trust a stamped outcome:
         // success is never cancelled; an explicit failure is cancelled only when the user/deadline
         // stamp was set (not merely cancelled=true from cooperative fail-fast / EOF race).
         boolean cancelledEffective = resolveCancelledFlag(success, userCancelled, cancelled);
+        // One derivation, cancelled arm first: a row labelled cancelled carries the code every
+        // shell already means by an interrupt, so `$?` and `jk history` agree about the same run.
+        // Until JK-2485 every cancel wrote FAILURE and read back as an ordinary failed build; the
+        // exit of work that stopped before it could rule is not evidence of anything else.
+        int exit = cancelledEffective
+                ? Exit.INTERRUPTED
+                : success != null ? exitCode : (ok ? Exit.SUCCESS : (noVerdict ? Exit.SOFTWARE : Exit.FAILURE));
         // Each workspace module carries its own step chain (keyed by its dir); a single-plan
         // build has no module rows, so its steps live in the record's top-level list (the ""
         // bucket). This is exactly the two shapes the dashboard renders (per-module vs compact).

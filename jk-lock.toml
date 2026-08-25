@@ -2,8 +2,12 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "80393dde901240177284aac658be02a7fbe9d8a152a719f2447e0e9d555da9a1"
+manifests-sha256 = "8247459479a7e79149a16063ab252e7d089d4132cda326d39684d73540bce9cb"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
+
+[native]
+metadata-repository = "1.1.4"
+checksum = "sha256:6a0d94b592efd06eda730490436322331e8558c698bf164153ff0c2ce6333f45"
 
 [[artifact]]
 name     = "aopalliance:aopalliance:jar:"
@@ -2546,14 +2550,6 @@ name    = "jk-auditor"
 version = "0.12.0"
 java    = 25
 description = "JumpKick's OSV audit plugin"
-
-[[module]]
-path    = "plugins/compat-bridge"
-group   = "cc.jumpkick"
-name    = "jk-compat-bridge"
-version = "0.12.0"
-java    = 25
-description = "JumpKick's Maven/Gradle compatibility plugin"
 
 [[module]]
 path    = "plugins/formatter"

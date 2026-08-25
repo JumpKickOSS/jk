@@ -2,7 +2,11 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.DirKeys;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,9 +33,9 @@ public final class McpHistoryViews {
         m.put("coord", str(rec, "coord"));
         m.put("failedModules", failedModules(rec));
         m.put("diagnosticCount", listSize(rec.get("diagnostics")));
-        Map<String, Object> tests = map(rec.get("tests"));
-        long failed = tests == null ? 0 : lng(tests, "failed");
-        m.put("testFailed", failed);
+        // The same nested counts object the journal stores and the dashboard renders — MCP does not
+        // get a private flattened spelling of "how many tests failed" (JK-2424).
+        m.put(TestSummary.WIRE_KEY, map(rec.get(TestSummary.WIRE_KEY)));
         return m;
     }
 
@@ -64,6 +68,61 @@ public final class McpHistoryViews {
         String s = DirKeys.key(dir);
         while (s.endsWith("/") && s.length() > 1) s = s.substring(0, s.length() - 1);
         return s;
+    }
+
+    /**
+     * The journal key for a caller-supplied directory. Journal and bind keys are strings, not host
+     * paths: an already-absolute key keeps its shape, so {@code /ws} does not acquire a drive letter
+     * on Windows ({@code resolveUserPath} would make it {@code C:\ws}), while {@code ~} and relative
+     * input still resolve against the host. {@code ..} collapses either way — a key still reading
+     * {@code /ws/../other} matches no journal row.
+     *
+     * <p>Every tool that looks a project up by directory keys it through here, or {@code jk_bind}
+     * and {@code jk_project} answer differently for the same argument.
+     */
+    public static String dirKey(String dir) {
+        return isAbsoluteDirKey(dir)
+                ? normalizeDir(Path.of(dir.strip()).normalize().toString())
+                : normalizeDir(PathUtil.resolveUserPath(dir).toString());
+    }
+
+    /** True for journal-style absolute keys: leading {@code /} or {@code C:\…} / {@code C:/…}. */
+    private static boolean isAbsoluteDirKey(@Nullable String dir) {
+        if (dir == null || dir.isBlank()) return false;
+        String s = dir.strip();
+        if (s.startsWith("/") || s.startsWith("\\")) return true;
+        return s.length() >= 3
+                && Character.isLetter(s.charAt(0))
+                && s.charAt(1) == ':'
+                && (s.charAt(2) == '/' || s.charAt(2) == '\\');
+    }
+
+    /**
+     * The compact outcome row a job answer carries: enough to decide what to do next, never the
+     * diagnostic blobs. {@code null} in, {@code null} out — no run, no summary.
+     */
+    public static @Nullable Map<String, Object> jobSummary(@Nullable Map<String, Object> rec) {
+        if (rec == null) return null;
+        Map<String, Object> sum = summarize(rec);
+        Map<String, Object> one = new LinkedHashMap<>();
+        one.put("id", sum.get("id"));
+        one.put("kind", sum.get("kind"));
+        one.put("success", sum.get("success"));
+        one.put("exitCode", sum.get("exitCode"));
+        one.put("failedModules", sum.get("failedModules"));
+        if (sum.get("jid") != null) one.put("jid", sum.get("jid"));
+        return one;
+    }
+
+    /** One raw journal line as a map; a corrupt row is {@code null}, never an exception. */
+    @SuppressWarnings("unchecked")
+    public static @Nullable Map<String, Object> parseRecord(String raw) {
+        try {
+            Object o = MiniJson.parse(raw);
+            return o instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static List<String> failedModules(Map<String, Object> rec) {

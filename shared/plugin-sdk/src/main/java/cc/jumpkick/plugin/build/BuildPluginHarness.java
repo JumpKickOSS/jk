@@ -286,7 +286,8 @@ public final class BuildPluginHarness {
             Map<String, Path> stepOutputs,
             Map<String, Path> extras,
             List<String> commandArgs,
-            Map<String, String> secrets) {
+            Map<String, String> secrets,
+            boolean offline) {
 
         static Spec read(Path file) throws IOException {
             String op = "";
@@ -312,6 +313,8 @@ public final class BuildPluginHarness {
             Map<String, Path> extras = new LinkedHashMap<>();
             List<String> commandArgs = new ArrayList<>();
             Map<String, String> secrets = new LinkedHashMap<>();
+            // Absent means offline: a worker launched without a stated policy must not reach out.
+            boolean offline = true;
 
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.isBlank()) continue;
@@ -382,6 +385,7 @@ public final class BuildPluginHarness {
                         secrets.put(
                                 String.valueOf(Jsonl.str(line, "key")),
                                 String.valueOf(Jsonl.str(line, "value")));
+                    case PluginProtocol.OFFLINE -> offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
                     default -> {
                         // unknown line — forward compatibility
                     }
@@ -392,7 +396,7 @@ public final class BuildPluginHarness {
                     new ProjectFacts(group, name, version, javaRelease, mainClass, nativeDeclared, kotlin, manifest);
             return new Spec(
                     op, stepName, config, facts, classesDir, moduleDir, scratch, javaHome, artifactPath, classpath,
-                    entries, stepOutputs, extras, commandArgs, secrets);
+                    entries, stepOutputs, extras, commandArgs, secrets, offline);
         }
     }
 
@@ -437,6 +441,11 @@ public final class BuildPluginHarness {
         @Override
         public Path javaHome() {
             return spec.javaHome();
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override
@@ -485,6 +494,11 @@ public final class BuildPluginHarness {
         public Optional<Path> mainArtifact() {
             return Optional.ofNullable(spec.artifactPath())
                     .filter(Files::isRegularFile);
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override
@@ -547,6 +561,11 @@ public final class BuildPluginHarness {
         @Override
         public Path javaHome() {
             return spec.javaHome();
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override

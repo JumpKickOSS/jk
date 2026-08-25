@@ -73,6 +73,20 @@ public final class FormatCommand implements CliCommand {
      */
     private static final String UNPARSEABLE = "unparseable";
 
+    /**
+     * What {@code jk format} returns when the <em>plan</em> failed — the format did not run to
+     * completion. Since JK-2474 that includes a worker that died mid-run, which the engine now
+     * catches by reconciling its per-file count against the file total.
+     *
+     * <p>Deliberately not {@code 1}: {@code 1} is {@code --check}'s drift code, and a script that
+     * cannot tell "your files need formatting" from "the formatter died" is exactly the conflation
+     * {@link Exit} exists to end. Deliberately not the worker's own exit either — a raw {@code 139}
+     * from a SIGSEGV or {@code 137} from an OOM-kill is outside jk's vocabulary, and the engine
+     * refuses to publish one on a successful plan, so {@code o.workerExit()} below is only ever
+     * reached with a {@code 0} or a {@code 1}.
+     */
+    static final int PLAN_FAILED = Exit.SOFTWARE;
+
     /** A format run's summary — the same fields whichever transport ran the plan. */
     private record Outcome(BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
 
@@ -194,7 +208,7 @@ public final class FormatCommand implements CliCommand {
                 for (BuildPlanResult.Diagnostic d : o.result().errors()) {
                     CommandWedge.printFail("Format", d.message());
                 }
-                return 1;
+                return PLAN_FAILED;
             }
             if (o.total() == 0) {
                 if (!global.outputIsJson()) CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
@@ -259,7 +273,7 @@ public final class FormatCommand implements CliCommand {
                     cm.writeAbove(Theme.colorize("  error", Theme.active().error()) + "  " + d.message());
                 }
                 cm.finishBuildPlanFailure("format failed");
-                return 1;
+                return PLAN_FAILED;
             }
             if (o.total() == 0) {
                 cm.stepDone("", "fmt", true, "Formatting files…");

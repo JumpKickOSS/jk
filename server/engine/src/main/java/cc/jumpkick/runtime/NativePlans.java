@@ -17,7 +17,7 @@ import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
- * {@code jk native} plan: {@link BuildPlanner} plus {@link BuildPlanner#nativeStep} for
+ * {@code jk native} plan: {@link BuildPlanner} plus {@link PlannerNative#nativeStep} for
  * eligible modules. GraalVM home is always resolved client-side and passed in.
  */
 public final class NativePlans {
@@ -135,9 +135,9 @@ public final class NativePlans {
         // Assembly / sources tails only here — native carries CLI main/args from this command.
         // Do not append [native] always via allowNative; that is the jk build path. jk native
         // attaches native-image only for modules the client marked with a Graal home (unique main).
-        BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
+        PlannerTails.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
         if (allowNative && isNativeEligible(graalHome)) {
-            builder.addTask(BuildPlanner.nativeStep(
+            builder.addTask(PlannerNative.nativeStep(
                     moduleDir,
                     cache,
                     lockFile,

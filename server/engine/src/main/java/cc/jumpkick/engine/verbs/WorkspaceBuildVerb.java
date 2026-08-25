@@ -32,7 +32,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -202,19 +201,11 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             }
             WorkspaceRequest workspaceReq = req;
 
-            JkConfig config = new JkConfig(
-                    Optional.empty(),
-                    Optional.of(offline),
-                    Optional.of(rerun),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of(verbose),
-                    Optional.empty(),
-                    Optional.of(force),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty());
+            JkConfig config = JkConfig.empty()
+                    .withOffline(offline)
+                    .withRebuild(rerun)
+                    .withVerbose(verbose)
+                    .withForce(force);
             Session session = Session.defaults()
                     .withConfig(config)
                     .withWorkingDir(entryDir)

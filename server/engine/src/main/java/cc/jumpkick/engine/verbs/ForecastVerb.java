@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 public final class ForecastVerb implements HostedVerb {
 
@@ -56,19 +55,10 @@ public final class ForecastVerb implements HostedVerb {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                        Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "force", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(Jsonl.bool(requestLine, "offline", false))
+                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                        .withForce(Jsonl.bool(requestLine, "force", false));
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)

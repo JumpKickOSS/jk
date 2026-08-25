@@ -45,15 +45,6 @@ public final class PluginAot {
      */
     static volatile long trainingTimeoutMillis = TimeUnit.SECONDS.toMillis(120);
 
-    /**
-     * A sticky {@code .noaot} marker older than this is treated as absent at read time and
-     * removed, giving the key a fresh training attempt. Failures within the window still back
-     * off (no retry storm); without an expiry, the sole key of a tool that once failed would
-     * never retrain — {@link #sweepTool}'s orphan sweep only runs from a <em>successful</em>
-     * train of a sibling key.
-     */
-    static final long NOAOT_RETRY_MILLIS = 7L * 24 * 60 * 60 * 1_000;
-
     /** A claim file older than this is a crashed trainer's leftover — reclaimable. */
     private static final long CLAIM_STALE_MILLIS = 10 * 60 * 1_000;
 
@@ -131,7 +122,7 @@ public final class PluginAot {
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
             AotCacheFiles.deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
-            if (eligible(id) && trainingEnabled() && !noAotBlocked(cache)) {
+            if (eligible(id) && trainingEnabled() && !AotCacheFiles.blocked(cache)) {
                 trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer, meta);
             }
         } catch (RuntimeException e) {
@@ -242,7 +233,7 @@ public final class PluginAot {
             } else {
                 AotCacheFiles.deleteIfEmpty(cache); // truncated leftover: retrain below
             }
-            if (!trainingEnabled() || noAotBlocked(cache)) return false;
+            if (!trainingEnabled() || AotCacheFiles.blocked(cache)) return false;
             String what = prefix + " worker (" + id.vendor() + " " + id.version() + ")";
             trainBlocking(what, cache, trainer, Math.max(1_000L, timeoutMs), meta);
             return AotCacheFiles.usable(cache);
@@ -467,7 +458,10 @@ public final class PluginAot {
      * anything — cache or orphaned {@code .noaot} failure marker — untouched for
      * {@link #UNUSED_TTL_MILLIS}. Several keys are legitimately live at once (different toolchain
      * JDKs, Kotlin versions, GC pins); expiring a stale {@code .noaot} also gives a once-failed key
-     * a fresh training attempt. Engine caches ({@code engine-<version>-…}) share this directory but
+     * a fresh training attempt. It is not the expiry that key can rely on, though — this sweep only
+     * runs from a <em>successful</em> train of a sibling, so a tool whose sole key failed retrains
+     * because {@link AotCacheFiles#blocked} expires the marker at read time.
+     * Engine caches ({@code engine-<version>-…}) share this directory but
      * are version-lifecycle-owned (EngineClient sweep + EngineInstall.gc) — never touched here.
      *
      * <p>Names are {@code <tool>-<jk-version>-<16hex>.aot}; the pool is one product version of one
@@ -534,26 +528,6 @@ public final class PluginAot {
             Files.setLastModifiedTime(p, FileTime.fromMillis(System.currentTimeMillis()));
         } catch (IOException ignored) {
             // best-effort; worst case the cache looks colder than it is
-        }
-    }
-
-    /**
-     * Is training for {@code cache} blocked by its {@code .noaot} marker? Markers older than
-     * {@link #NOAOT_RETRY_MILLIS} are expired at read time — deleted, and the key retrains. The
-     * sweep-side expiry ({@link #sweepTool}) only runs from a successful sibling train, so a
-     * tool whose sole key failed would otherwise never retry.
-     */
-    static boolean noAotBlocked(Path cache) {
-        Path marker = AotCacheFiles.marker(cache);
-        try {
-            if (!Files.exists(marker)) return false;
-            long age = System.currentTimeMillis()
-                    - Files.getLastModifiedTime(marker).toMillis();
-            if (age <= NOAOT_RETRY_MILLIS) return true;
-            deleteQuietly(marker); // expired: one bad day must not disable AOT forever
-            return false;
-        } catch (IOException e) {
-            return true; // unreadable marker: skip training, never fail the build
         }
     }
 

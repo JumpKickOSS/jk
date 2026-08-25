@@ -103,8 +103,9 @@ class TestEnvTest {
         JkBuild before = project(tmp, "[test]\nenv = { MODE = \"a\" }\n");
         JkBuild after = project(tmp, "[test]\nenv = { MODE = \"b\" }\n");
 
-        assertThat(BuildPlanner.testStampExtras(tmp, before)).isNotEqualTo(BuildPlanner.testStampExtras(tmp, after));
-        assertThat(BuildPlanner.testStampExtras(tmp, before)).contains("test-env:MODE=a");
+        assertThat(PlannerSupport.testStampExtras(tmp, before))
+                .isNotEqualTo(PlannerSupport.testStampExtras(tmp, after));
+        assertThat(PlannerSupport.testStampExtras(tmp, before)).contains("test-env:MODE=a");
     }
 
     @Test
@@ -116,7 +117,7 @@ class TestEnvTest {
         String home = System.getenv("HOME");
         org.junit.jupiter.api.Assumptions.assumeTrue(home != null && !home.isBlank());
 
-        List<String> extras = BuildPlanner.testStampExtras(tmp, project);
+        List<String> extras = PlannerSupport.testStampExtras(tmp, project);
 
         assertThat(extras).noneMatch(s -> s.contains(home));
         assertThat(extras).anyMatch(s -> s.startsWith("test-env:HOME_DIR=" + SecretRedactor.KEY_PREFIX));
@@ -129,13 +130,13 @@ class TestEnvTest {
         Files.writeString(tmp.resolve(".env"), "TOKEN=" + secret + "\n");
         JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${TOKEN}\" }\n");
 
-        List<String> extras = BuildPlanner.testStampExtras(tmp, project);
+        List<String> extras = PlannerSupport.testStampExtras(tmp, project);
         assertThat(extras).noneMatch(s -> s.contains(secret));
         assertThat(extras).anyMatch(s -> s.startsWith("test-env:API_KEY=" + SecretRedactor.KEY_PREFIX));
 
         // A different secret must retest (different digest).
         Files.writeString(tmp.resolve(".env"), "TOKEN=other-secret-value\n");
-        List<String> after = BuildPlanner.testStampExtras(tmp, project);
+        List<String> after = PlannerSupport.testStampExtras(tmp, project);
         assertThat(after).isNotEqualTo(extras);
         assertThat(after).noneMatch(s -> s.contains("other-secret-value"));
     }
@@ -153,7 +154,7 @@ class TestEnvTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY")
                 .hasMessageContaining(UNSET);
-        assertThatThrownBy(() -> BuildPlanner.testStampExtras(tmp, project))
+        assertThatThrownBy(() -> PlannerSupport.testStampExtras(tmp, project))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY")
                 .hasMessageContaining(UNSET);
@@ -171,14 +172,14 @@ class TestEnvTest {
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("actions"));
 
         // Cold: nothing cached for this module.
-        assertThatThrownBy(() -> BuildPlanner.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
+        assertThatThrownBy(() -> PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY");
 
         // Give the variable a value, take the key the build would use and store the green marker
         // under it — "this module's tests are cached" is now true on disk.
         Files.writeString(tmp.resolve(".env"), UNSET + "=a-value-long-enough-to-count\n");
-        String key = BuildPlanner.runTestsStampKey(tmp, project, false, classes, lock, List.of());
+        String key = PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of());
         assertThat(key).isNotNull();
         cache.storeWithOutputs("run-tests", key, Map.of(), Map.of("tests.total", "1"));
         assertThat(cache.lookup(key)).isPresent();
@@ -186,7 +187,7 @@ class TestEnvTest {
         // Take the value away again. Same manifest, same marker: the plan must fail as it did cold,
         // not key on the raw ${VAR} text and let the forecast report a skip.
         Files.delete(tmp.resolve(".env"));
-        assertThatThrownBy(() -> BuildPlanner.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
+        assertThatThrownBy(() -> PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY");
     }

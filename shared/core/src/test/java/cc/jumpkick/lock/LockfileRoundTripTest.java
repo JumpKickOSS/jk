@@ -243,4 +243,44 @@ class LockfileRoundTripTest {
         assertThat(rendered).contains("scala   = \"3\"");
         assertThat(LockfileReader.parse(rendered).modules().getFirst().scala()).isEqualTo("3");
     }
+
+    /**
+     * The reachability-metadata repository is an input to {@code native-image} and therefore a lock
+     * fact (JK-2476). It sits in its own {@code [native]} table rather than an {@code [[artifact]]}
+     * row: it is on no classpath and in no scope, and the artifact table is the solver's output.
+     */
+    @Test
+    void the_native_metadata_pin_round_trips() {
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
+                .withNativeMetadata(new Lockfile.NativeMetadata("1.2.0", "sha256:" + "ab".repeat(32)))
+                .withArtifacts(List.of(new Lockfile.Artifact(
+                        "com.example:widget", "1.0.0", "central", null, null, List.of(Scope.MAIN), List.of())));
+        String rendered = LockfileWriter.render(original);
+
+        assertThat(rendered).contains("[native]\nmetadata-repository = \"1.2.0\"\n");
+        // The [[artifact]] rows below must not have been swallowed into [native].
+        Lockfile parsed = LockfileReader.parse(rendered);
+        assertThat(parsed.artifacts()).hasSize(1);
+        assertThat(parsed.nativeMetadata()).isEqualTo(original.nativeMetadata());
+        assertThat(parsed.nativeMetadata().checksumHex()).isEqualTo("ab".repeat(32));
+    }
+
+    /** Locks written before the pin existed read as "no pin", not as a version to guess at. */
+    @Test
+    void a_lock_without_the_native_table_has_no_pin() {
+        assertThat(LockfileReader.parse("""
+                        version = 1
+                        generated-by = "jk 0.9.0"
+                        resolution-algorithm = "pubgrub-v1"
+                        """).nativeMetadata()).isNull();
+        // A table with no version is the same as no table: there is nothing to extract.
+        assertThat(LockfileReader.parse("""
+                        version = 1
+                        generated-by = "jk 0.9.0"
+                        resolution-algorithm = "pubgrub-v1"
+
+                        [native]
+                        checksum = "sha256:dead"
+                        """).nativeMetadata()).isNull();
+    }
 }

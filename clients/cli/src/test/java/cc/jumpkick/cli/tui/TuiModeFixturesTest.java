@@ -12,7 +12,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
@@ -134,7 +133,7 @@ class TuiModeFixturesTest {
     }
 
     private static JkConfig noAnsiConfig() {
-        return JkConfig.empty().withNoAnsi(Optional.of(true));
+        return JkConfig.empty().withNoAnsi(true);
     }
 
     private static <T> T withConfig(JkConfig cfg, Supplier<T> body) throws Exception {

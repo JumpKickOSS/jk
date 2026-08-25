@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.DenyPolicy;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
@@ -27,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -48,9 +48,16 @@ public final class JkBuildParser {
      * without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied by
      * {@link #parse(Path)} on top so it always sees a fresh root.
      */
-    private static final Map<Path, Cached> PARSE_CACHE = new ConcurrentHashMap<>();
+    private static final StampedMemo<Path, String, JkBuild> PARSE_CACHE = StampedMemo.create();
 
-    private record Cached(String body, JkBuild value) {}
+    /**
+     * Memo of {@link #document(Path)}, keyed by absolute path and stamped with the file's bytes —
+     * the same staleness rule as {@link #PARSE_CACHE}, for the same reason. Holds the TOML document
+     * rather than the {@link JkBuild}, so the single-table entry points below ({@code [deny]},
+     * {@code [train]}, {@code [image]}, {@code [test]} tags, {@code [jvm]}) share one disk read and
+     * one {@link Interpolation#guard} with the full parse instead of each doing their own.
+     */
+    private static final StampedMemo<Path, String, TomlParseResult> DOC_CACHE = StampedMemo.create();
 
     /**
      * Parse {@code jk.toml} and resolve workspace inheritance / sibling placeholders for the module
@@ -79,20 +86,70 @@ public final class JkBuildParser {
             throw new JkBuildParseException("jk.toml not found: " + file);
         }
         Path key = file.toAbsolutePath().normalize();
-        Cached cached = PARSE_CACHE.get(key);
-        if (cached != null && cached.body().equals(body)) {
-            return cached.value();
-        }
-        Path moduleDir = key.getParent();
-        LibraryCatalog catalog;
+        return PARSE_CACHE.get(key, body, () -> {
+            TomlParseResult root = document(key, body);
+            Path moduleDir = key.getParent();
+            LibraryCatalog catalog;
+            try {
+                catalog = LibraryCatalog.forProject(moduleDir);
+            } catch (IllegalStateException e) {
+                throw new JkBuildParseException(e.getMessage(), e);
+            }
+            return build(root, catalog, moduleDir);
+        });
+    }
+
+    /**
+     * <strong>The</strong> read of a {@code jk.toml}: bytes → tomlj → one syntax-error message →
+     * one {@link Interpolation#guard}, memoized on the file's bytes.
+     *
+     * <p>Every table in the file comes through here — the full {@link JkBuild} parse and each
+     * single-table entry point alike. That is what makes them agree: before this existed, five
+     * readers each opened the file, and only the full parse ran the interpolation guard, so
+     * {@code jk deny} / {@code jk train} / {@code jk image} / the test-tag baseline / the
+     * {@code [jvm]} overlay all read manifests the build itself would have rejected.
+     */
+    static TomlParseResult document(Path file) throws IOException {
+        Objects.requireNonNull(file, "file");
+        String body;
         try {
-            catalog = LibraryCatalog.forProject(moduleDir);
-        } catch (IllegalStateException e) {
-            throw new JkBuildParseException(e.getMessage(), e);
+            body = Files.readString(file);
+        } catch (NoSuchFileException e) {
+            throw new JkBuildParseException("jk.toml not found: " + file);
         }
-        JkBuild parsed = parse(body, catalog, moduleDir);
-        PARSE_CACHE.put(key, new Cached(body, parsed));
-        return parsed;
+        return document(file.toAbsolutePath().normalize(), body);
+    }
+
+    private static TomlParseResult document(Path key, String body) {
+        return DOC_CACHE.get(key, body, () -> document(body));
+    }
+
+    /** As {@link #document(Path)} for text with no file behind it (string parses, tests). */
+    private static TomlParseResult document(String toml) {
+        TomlParseResult result = Toml.parse(toml);
+        if (result.hasErrors()) {
+            throw new JkBuildParseException(
+                    "failed to parse jk.toml: " + result.errors().getFirst().getMessage());
+        }
+        // Reject ${VAR} outside the whitelisted positions before anything else reads the file, so
+        // the message names the position rather than surfacing later as a bewildering "no such
+        // version".
+        Interpolation.guard(result);
+        return result;
+    }
+
+    /**
+     * The document for {@code file}, or {@code null} when there is no such file. Absence is the
+     * caller's business (most side tables have an empty value for it); a file that exists and is
+     * malformed is never absence, and throws.
+     */
+    private static TomlParseResult documentIfPresent(Path file) {
+        if (file == null || !Files.isRegularFile(file)) return null;
+        try {
+            return document(file);
+        } catch (IOException e) {
+            throw new JkBuildParseException("could not read " + file + ": " + e.getMessage(), e);
+        }
     }
 
     /** Test seam: how many files the parse memo currently holds. */
@@ -101,26 +158,21 @@ public final class JkBuildParser {
     }
 
     public static JkBuild reparse(Path file) throws IOException {
-        PARSE_CACHE.remove(file.toAbsolutePath().normalize());
+        forget(file);
         return parse(file);
-    }
-
-    /**
-     * Raw structural probe: does {@code file} declare a non-empty {@code [workspace] modules}
-     * array? Reads the TOML directly — never builds a {@link JkBuild}, resolves plugins, or reads
-     * the lockfile. {@link cc.jumpkick.lock.LockPaths} calls this from lock-location discovery,
-     * which itself runs <em>inside</em> a full parse (plugin-manifest resolution needs the lock
-     * path); a full parse here would re-enter {@link #parseLocal} on the very file being parsed
-     * and recurse until the stack blows.
-     */
-    public static boolean declaresWorkspaceModules(Path file) throws IOException {
-        return hasWorkspaceModules(Toml.parse(Files.readString(file)));
     }
 
     /** Drop memo and re-parse without workspace resolution. */
     public static JkBuild reparseLocal(Path file) throws IOException {
-        PARSE_CACHE.remove(file.toAbsolutePath().normalize());
+        forget(file);
         return parseLocal(file);
+    }
+
+    /** Evict both memos for {@code file}; the document memo backs the single-table entry points. */
+    private static void forget(Path file) {
+        Path key = file.toAbsolutePath().normalize();
+        PARSE_CACHE.forget(key);
+        DOC_CACHE.forget(key);
     }
 
     public static JkBuild parse(String toml) {
@@ -143,16 +195,11 @@ public final class JkBuildParser {
      */
     private static JkBuild parse(String toml, LibraryCatalog catalog, Path moduleDir) {
         Objects.requireNonNull(toml, "toml");
+        return build(document(toml), catalog, moduleDir);
+    }
+
+    private static JkBuild build(TomlParseResult result, LibraryCatalog catalog, Path moduleDir) {
         Objects.requireNonNull(catalog, "catalog");
-        TomlParseResult result = Toml.parse(toml);
-        if (result.hasErrors()) {
-            throw new JkBuildParseException(
-                    "failed to parse jk.toml: " + result.errors().getFirst().getMessage());
-        }
-        // Reject ${VAR} outside the whitelisted positions before anything else reads the file, so
-        // the message names the position rather than surfacing later as a bewildering "no such
-        // version".
-        Interpolation.guard(result);
         rejectRemovedCatalogConfig(result);
         rejectRemovedProjectTable(result);
         // Workspace roots keep concrete project defaults; members may omit fields and inherit.
@@ -379,8 +426,41 @@ public final class JkBuildParser {
         return ManifestDeps.splitEmbeddedUrl(urlRaw);
     }
 
+    /**
+     * {@code [test] include-tags} / {@code exclude-tags} — the baseline tag filters when no profile
+     * or CLI override applies. Empty when the file or the table is absent.
+     *
+     * <p>A manifest that exists and does not parse throws. It used to be swallowed into
+     * {@link TestTomlTags#EMPTY}, which reads as "this project filters no tags" — so a typo in
+     * {@code [test]} silently widened the suite instead of failing the command.
+     */
     public static TestTomlTags parseTestTags(Path buildFile) {
-        return ManifestTables.parseTestTags(buildFile);
+        TomlParseResult root = documentIfPresent(buildFile);
+        return root == null ? TestTomlTags.EMPTY : ManifestTables.parseTestTags(root);
+    }
+
+    /** {@code [deny]} — the dependency policy block. Permissive when the file/table is absent. */
+    public static DenyPolicy denyPolicy(Path file) {
+        TomlParseResult root = documentIfPresent(file);
+        return root == null ? DenyPolicy.permissive() : ManifestDeny.parse(root);
+    }
+
+    /** {@code [train]} — AOT training config. {@link TrainConfig#EMPTY} when the table is absent. */
+    public static TrainConfig trainConfig(Path file) {
+        TomlParseResult root = documentIfPresent(file);
+        return root == null ? TrainConfig.EMPTY : ManifestTrain.parse(root, String.valueOf(file));
+    }
+
+    /** {@code [image]} — the project layer only; {@link GlobalConfig#image()} is the layer under it. */
+    public static ManifestImage.ImageConfigData imageConfig(Path file) {
+        TomlParseResult root = documentIfPresent(file);
+        return root == null ? ManifestImage.ImageConfigData.EMPTY : ManifestImage.parse(root);
+    }
+
+    /** {@code [jvm]} — worker-fork JVM tuning. {@link PluginTuning#NONE} when the table is absent. */
+    public static PluginTuning jvmTuning(Path file) {
+        TomlParseResult root = documentIfPresent(file);
+        return root == null ? PluginTuning.NONE : PluginTunings.fromToml(root);
     }
 
     public record TestTomlTags(List<String> includeTags, List<String> excludeTags) {

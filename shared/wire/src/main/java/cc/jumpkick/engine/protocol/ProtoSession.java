@@ -238,12 +238,6 @@ public final class ProtoSession {
             boolean rebuild,
             boolean noTimeline,
             String assemblyOverride) {
-        if (request == null
-                || request.length() < 2
-                || request.charAt(0) != '{'
-                || request.charAt(request.length() - 1) != '}') {
-            throw new IllegalArgumentException("withSession needs an encoded single-line request object");
-        }
         boolean hasVariant = variant != null && !variant.isBlank();
         boolean hasEnv = clientEnv != null && !clientEnv.isEmpty();
         boolean hasJvm = t != null
@@ -252,8 +246,7 @@ public final class ProtoSession {
                         || t.stringDedup() != null
                         || !t.extraArgs().isEmpty());
         boolean hasAssembly = assemblyOverride != null && !assemblyOverride.isBlank();
-        if (!hasVariant && !hasEnv && !hasJvm && !rebuild && !noTimeline && !hasAssembly) return request;
-        StringBuilder b = new StringBuilder(request.substring(0, request.length() - 1));
+        StringBuilder b = new StringBuilder();
         if (rebuild) b.append(",\"rebuild\":true");
         if (noTimeline) b.append(",\"noTimeline\":true");
         if (hasVariant) b.append(",\"variant\":").append(Jsonl.quote(variant));
@@ -267,7 +260,10 @@ public final class ProtoSession {
                 b.append(",\"jvmStringDedup\":\"").append(t.stringDedup()).append('\"');
             if (!t.extraArgs().isEmpty()) b.append(",\"jvmArgs\":").append(quoteArray(t.extraArgs()));
         }
-        return b.append('}').toString();
+        // Each fragment carries its own leading comma so the chain reads uniformly; the splicer
+        // owns the one that joins them to the request, and that one depends on whether the
+        // request is `{}`.
+        return Jsonl.append(request, b.isEmpty() ? "" : b.substring(1));
     }
 
     /**
@@ -278,13 +274,7 @@ public final class ProtoSession {
      */
     public static String withTrigger(String request, String trigger) {
         if (trigger == null || trigger.isBlank()) return request;
-        if (request == null
-                || request.length() < 2
-                || request.charAt(0) != '{'
-                || request.charAt(request.length() - 1) != '}') {
-            throw new IllegalArgumentException("withTrigger needs an encoded single-line request object");
-        }
-        return request.substring(0, request.length() - 1) + ",\"trigger\":" + Jsonl.quote(trigger) + "}";
+        return Jsonl.append(request, "\"trigger\":" + Jsonl.quote(trigger));
     }
 
     /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code minified}/empty). */

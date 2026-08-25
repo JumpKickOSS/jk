@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.build.InvocationPhase;
+import cc.jumpkick.run.TestSummary;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -325,15 +326,17 @@ class EngineProtocolTest {
 
     @Test
     void audit_request_round_trips_all_fields() {
-        String json = ProtoJobs.auditRequest("/work", "/cache", "HIGH", "http://osv/batch", "http://osv/vulns/");
+        String json = ProtoJobs.auditRequest("/work", "/cache", "HIGH", "http://osv/batch", "http://osv/vulns/", true);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.AUDIT_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
         assertThat(Jsonl.str(json, "severity")).isEqualTo("HIGH");
         assertThat(Jsonl.str(json, "osvBatchUrl")).isEqualTo("http://osv/batch");
         assertThat(Jsonl.str(json, "osvVulnsUrl")).isEqualTo("http://osv/vulns/");
+        // The audit worker queries OSV, so the run's offline decision has to ride the request.
+        assertThat(Jsonl.bool(json, "offline", false)).isTrue();
         // null overrides decode as absent (the real OSV endpoints)
-        assertThat(Jsonl.str(ProtoJobs.auditRequest("/w", "/c", "LOW", null, null), "osvBatchUrl"))
+        assertThat(Jsonl.str(ProtoJobs.auditRequest("/w", "/c", "LOW", null, null, false), "osvBatchUrl"))
                 .isNull();
     }
 
@@ -401,8 +404,12 @@ class EngineProtocolTest {
                 "alice",
                 "hunter2",
                 null,
+                true,
                 false);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.PUBLISH_REQUEST);
+        // A publish uploads to someone else's server: the offline decision rides the request so
+        // the worker can refuse rather than PUT behind an offline run's back.
+        assertThat(Jsonl.bool(json, "offline", false)).isTrue();
         assertThat(Jsonl.str(json, "repoUrl")).isEqualTo("https://repo/m2");
         assertThat(Jsonl.str(json, "region")).isEqualTo("us-east-1");
         assertThat(Jsonl.str(json, "endpoint")).isNull();
@@ -444,7 +451,10 @@ class EngineProtocolTest {
     void goal_finish_image_variant_carries_the_success_tail_fields_and_test_counts() {
         String json = ProtoEvents.planFinishImage("", true, 12, 12, 0, 0, "reg.io/app:1.0", null, "app", "1.0", null);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
-        assertThat(Jsonl.longValue(json, "testTotal", -1)).isEqualTo(12);
+        // One wire spelling: the counts ride as the nested `tests` object, never flat scalars (JK-2424).
+        TestSummary counts = TestSummary.readCounts(json);
+        assertThat(counts).isNotNull();
+        assertThat(counts.total()).isEqualTo(12);
         assertThat(Jsonl.str(json, "imageRef")).isEqualTo("reg.io/app:1.0");
         assertThat(Jsonl.str(json, "imageTarball")).isNull();
         assertThat(Jsonl.str(json, "imageName")).isEqualTo("app");
@@ -475,7 +485,7 @@ class EngineProtocolTest {
 
     @Test
     void provision_request_and_result_round_trip() {
-        String req = ProtoJobs.provisionRequest("/cache", "/proj", "/cache/tools", true, true);
+        String req = ProtoJobs.provisionRequest("/proj", "/cache/tools", true, true);
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.PROVISION_REQUEST);
         // Project directory is always "dir" (never projectDir) — freeze invariant.
         assertThat(Jsonl.str(req, "dir")).isEqualTo("/proj");
@@ -484,7 +494,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(req, "noDiscover", false)).isTrue();
         assertThat(Jsonl.bool(req, "gradle", false)).isTrue();
 
-        String result = ProtoEvents.provisionResult("/cache/tools/mvn/bin/mvn", "3.9.9", "DOWNLOADED", null, 0, null);
+        String result = ProtoEvents.provisionResult("/cache/tools/mvn/bin/mvn", "3.9.9", "DOWNLOADED", null, 0);
         assertThat(EngineProtocol.typeOf(result)).isEqualTo(EngineProtocol.PROVISION_RESULT);
         assertThat(Jsonl.str(result, "bin")).isEqualTo("/cache/tools/mvn/bin/mvn");
         assertThat(Jsonl.str(result, "version")).isEqualTo("3.9.9");
@@ -517,7 +527,7 @@ class EngineProtocolTest {
                         ProtoJobs.buildRequest("/w", "/c", null, 1, null, false, false, 0, false, false, false, false),
                         "dir"))
                 .isEqualTo("/w");
-        assertThat(Jsonl.str(ProtoJobs.provisionRequest("/c", "/w", "/t", false, false), "dir"))
+        assertThat(Jsonl.str(ProtoJobs.provisionRequest("/w", "/t", false, false), "dir"))
                 .isEqualTo("/w");
         assertThat(Jsonl.str(ProtoEvents.planFinish("/w", true), "dir")).isEqualTo("/w");
     }

@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NullMarked;
 
-/** Finish / plain-chrome / plan-paint collaborator for {@link JkManager}. */
+/** Finish / settle / plan-paint collaborator for {@link JkManager} — the ANSI half of the mode axis. */
 @NullMarked
 final class JkManagerView {
 
@@ -43,14 +43,10 @@ final class JkManagerView {
 
     // --- completion -------------------------------------------------------
 
-    /** Settle with {@code ✔ <plan> Successful: <message>} (the head in green). */
-    public void finishSuccess(String message) {
-        finishSuccess(message, List.of());
-    }
-
     /**
-     * Like {@link #finishSuccess(String)}, but first prints {@code above} — buffered subprocess
-     * output (compiler warnings, &c.) — as scrollback above the result line, so the {@code ✔
+     * Settle with {@code ✔ <plan> Successful: <message>} (the head in green), first printing
+     * {@code above} — buffered subprocess output (compiler warnings, &c.) — as scrollback
+     * above the result line, so the {@code ✔
      * Successful} summary is the last thing the user sees. The lines land after the live region is
      * wiped, under one lock, so they never interleave with the bar.
      */
@@ -65,12 +61,7 @@ final class JkManagerView {
      * + cap + command. See {@link JkWedge}.
      */
     public void finishBuildPlanSuccess(String tail, List<String> above) {
-        m.settle(JkWedge.ok(m.planName(), tail).renderLine(m.headerContext()), above);
-    }
-
-    /** {@link #finishBuildPlanSuccess(String, List)} with no buffered output above. */
-    public void finishBuildPlanSuccess(String tail) {
-        finishBuildPlanSuccess(tail, List.of());
+        m.settle(JkWedge.ok(m.planName(), tail).renderLine(headerContext()), above);
     }
 
     /**
@@ -83,22 +74,12 @@ final class JkManagerView {
      * after the command returns).
      */
     public void finishBuildPlanExec(String tail, List<String> above) {
-        m.settle(JkWedge.work(m.planName(), tail).renderLine(m.headerContext()), above);
-    }
-
-    /** {@link #finishBuildPlanExec(String, List)} with no buffered output above. */
-    public void finishBuildPlanExec(String tail) {
-        finishBuildPlanExec(tail, List.of());
+        m.settle(JkWedge.work(m.planName(), tail).renderLine(headerContext()), above);
     }
 
     /** Settle the build plan with the red chip: {@code ‼ Build ▶ Failure <tail>}. */
     public void finishBuildPlanFailure(String tail, List<String> above) {
-        m.settle(JkWedge.failedTo(m.planName(), tail).renderLine(m.headerContext()), above);
-    }
-
-    /** {@link #finishBuildPlanFailure(String, List)} with no buffered output above. */
-    public void finishBuildPlanFailure(String tail) {
-        finishBuildPlanFailure(tail, List.of());
+        m.settle(JkWedge.failedTo(m.planName(), tail).renderLine(headerContext()), above);
     }
 
     /**
@@ -107,12 +88,7 @@ final class JkManagerView {
      */
     public void finishBuildPlanCancelled(List<String> above) {
         String took = ConsoleSpec.took(Duration.ofMillis(m.elapsedMillis()));
-        m.settle(JkWedge.cancelled(m.planName(), false, took).renderLine(m.headerContext()), above);
-    }
-
-    /** {@link #finishBuildPlanCancelled(List)} with no buffered output above. */
-    public void finishBuildPlanCancelled() {
-        finishBuildPlanCancelled(List.of());
+        m.settle(JkWedge.cancelled(m.planName(), false, took).renderLine(headerContext()), above);
     }
 
     /**
@@ -121,15 +97,10 @@ final class JkManagerView {
      * JkWedge#failedTo}.
      */
     public void finishBuildPlanFailureCustom(String sentence, List<String> above) {
-        m.settle(JkWedge.fail(m.planName(), RichText.ansi(sentence)).renderLine(m.headerContext()), above);
+        m.settle(JkWedge.fail(m.planName(), RichText.ansi(sentence)).renderLine(headerContext()), above);
     }
 
-    /** Settle with a red cross and a failure message. */
-    public void finishFailure(String message) {
-        finishFailure(message, List.of());
-    }
-
-    /** Like {@link #finishFailure(String)}, with buffered output printed above the result line. */
+    /** Settle with a red cross and a failure message, with buffered output printed above it. */
     public void finishFailure(String message, List<String> above) {
         m.settle(Theme.colorize(Glyphs.CROSS, Theme.active().error()) + " " + message, above);
     }
@@ -155,21 +126,11 @@ final class JkManagerView {
                 m.out.flush();
             } else if (m.animate && !Theme.active().isAnsi()) {
                 // Plain: end multi-line chrome without a settle wedge (caller owns outcome).
-                m.printPlainDone();
+                m.plain.printDone();
             } else {
                 m.out.flush();
             }
         }
-    }
-
-    /** The plan/command name shown in the header ("Building", "Locking", …). */
-    String planName() {
-        String n = m.planMode ? m.name : m.label;
-        return n == null ? "" : n;
-    }
-
-    void settle(String line) {
-        m.settle(line, List.of());
     }
 
     /**
@@ -198,7 +159,7 @@ final class JkManagerView {
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
                 // Plain multi-line: mandatory done line before the settle wedge.
-                m.printPlainDone();
+                m.plain.printDone();
             }
             // Deferred subprocess output (e.g. compiler warnings) prints as
             // scrollback above the result line, with a blank separator, so the
@@ -216,303 +177,11 @@ final class JkManagerView {
             if (printedAbove || processAbove > 0) {
                 m.out.println();
             }
-            m.ensureLeadingBlank(); // quiet / late m.settle still gets the leading blank
+            ensureLeadingBlank(); // quiet / late m.settle still gets the leading blank
             m.out.println(line);
             m.out.flush();
             m.outputWindow.resetCommitted();
         }
-    }
-
-    // --- plain multi-line chrome ---------------------------------
-
-    /**
-     * Ensure the first plain prepare/progress line exists once aggregate progress is known. Must
-     * hold the manager lock. Later mid-run lines come from stage changes, a 30s heartbeat while a
-     * stage is active, {@code built}, and {@code done} — not from percent ticks.
-     */
-    void ensurePlainProgressStarted(long num, long den) {
-        if (m.done || den <= 0 || m.plainProgressStarted) return;
-        m.plainProgressMode = true;
-        maybePrintPlainInitializing();
-        String status = currentPlainStatus();
-        String subject = currentPlainSubject();
-        if (PlainPhase.PREPARE.equals(status) || firstActiveRow() == null) {
-            status = PlainPhase.PREPARE;
-            if (subject.isEmpty()) subject = m.planCoord == null ? "" : m.planCoord;
-        }
-        printPlainSnapshot(0, status, false, subject, "");
-    }
-
-    /**
-     * Reprint the current stage when it has been silent for {@link JkManager#PLAIN_HEARTBEAT_MS}.
-     * Must hold the manager lock. Refreshes percent, ETA, and live status details (e.g. remaining
-     * tests).
-     */
-    void maybeEmitPlainHeartbeat() {
-        if (m.done || !m.animate || !m.plainProgressMode || !m.plainProgressStarted) return;
-        if (m.plainLastPrintedNanos == 0) return;
-        long elapsedNs = System.nanoTime() - m.plainLastPrintedNanos;
-        if (elapsedNs < JkManager.PLAIN_HEARTBEAT_MS * 1_000_000L) return;
-        if (firstActiveRow() == null) return;
-        String status = currentPlainStatus();
-        if (PlainPhase.PREPARE.equals(status)
-                || PlainPhase.DONE.equals(status)
-                || PlainPhase.BUILT.equals(status)
-                || PlainPhase.INITIALIZING.equals(status)) {
-            return;
-        }
-        // Same gate as phase-change: wait for "compiling N sources" / "running N tests".
-        if ("compiling".equals(status) || PlainPhase.RUNNING_TESTS.equals(status)) return;
-        printPlainSnapshot(currentPlainPercent(), status, false, currentPlainSubject(), "", true);
-    }
-
-    /** First ETA seed: print immediately as {@code start} on the workspace coordinate. */
-    void emitPlainEtaKnown() {
-        if (m.done || !m.animate) return;
-        if (m.plainEtaAnnounced) return;
-        m.plainProgressMode = true;
-        maybePrintPlainInitializing();
-        String root = planCoordOrEmpty();
-        if (!PlainPhase.PREPARE.equals(m.plainLastStatus) && firstActiveRow() == null && !root.isEmpty()) {
-            printPlainSnapshot(0, PlainPhase.PREPARE, false, root, "");
-        }
-        m.plainEtaAnnounced = true;
-        printPlainSnapshot(currentPlainPercent(), PlainPhase.START, false, root, "");
-    }
-
-    /** Major step/phase change: print immediately at the current percent. */
-    void emitPlainPhaseChange() {
-        if (m.done || !m.animate) return;
-        m.plainProgressMode = true;
-        maybePrintPlainInitializing();
-        if (m.remainingWorkMs >= 0) m.plainEtaAnnounced = true;
-        String status = currentPlainStatus();
-        if (PlainPhase.PREPARE.equals(status)) return;
-        // Wait for "compiling N sources" / "running N tests" before the first line of those phases.
-        if ("compiling".equals(status) || PlainPhase.RUNNING_TESTS.equals(status)) return;
-        printPlainSnapshot(currentPlainPercent(), status, false);
-    }
-
-    /** Module finished: print immediately with {@code built}. */
-    void emitPlainModuleBuilt(String module) {
-        if (m.done || !m.animate) return;
-        m.plainProgressMode = true;
-        maybePrintPlainInitializing();
-        String subject = module == null ? "" : module;
-        printPlainSnapshot(currentPlainPercent(), PlainPhase.BUILT, false, subject, "");
-    }
-
-    /**
-     * Verbose-only sub-step detail (e.g. native classpath size). Same module/phase as the last
-     * line is allowed because the detail is the point.
-     */
-    void emitPlainStepDetail(String detail) {
-        if (m.done || !m.animate) return;
-        if (!SessionContext.current().config().verboseOr(false)) return;
-        String extra = detail == null ? "" : PlainAscii.transform(detail);
-        if (extra.isBlank()) return;
-        m.plainProgressMode = true;
-        maybePrintPlainInitializing();
-        printPlainSnapshot(currentPlainPercent(), currentPlainStatus(), false, currentPlainSubject(), extra);
-    }
-
-    private void maybePrintPlainInitializing() {
-        if (m.plainChromeStarted || m.done) return;
-        m.out.println(JkWedge.plainWedge(Glyphs.PULSE_PLAIN, planName(), PlainPhase.INITIALIZING));
-        m.plainChromeStarted = true;
-        m.out.flush();
-    }
-
-    /** Indeterminate plain start/heartbeat (simple mode open, or plan without progress). */
-    void printPlainIndeterminate(boolean forceStart) {
-        synchronized (m.lock) {
-            if (m.done) return;
-            if (m.plainChromeStarted && !forceStart) return;
-            if (m.plainChromeStarted && m.plainProgressMode) return;
-            m.out.println(plainIndeterminateLine(false));
-            m.plainChromeStarted = true;
-            m.out.flush();
-        }
-    }
-
-    /** Mandatory plain done line — progress ends at {@code 100% - done}. */
-    void printPlainDone() {
-        if (!m.animate) return;
-        if (m.plainProgressMode) {
-            if (!m.plainProgressStarted) {
-                maybePrintPlainInitializing();
-            }
-            printPlainSnapshot(100, PlainPhase.DONE, true, planCoordOrEmpty(), "");
-            return;
-        }
-        if (m.plainChromeStarted || !m.planMode) {
-            if (!m.plainChromeStarted) {
-                m.out.println(plainIndeterminateLine(false));
-            }
-            m.out.println(plainIndeterminateLine(true));
-            m.plainChromeStarted = true;
-            m.out.flush();
-        }
-    }
-
-    /**
-     * {@code "jk: * Format > Examining source files :: 10% - prepare"} or {@code coord :: 100% - done}.
-     */
-    static String plainProgressLine(String command, String message, int percent, boolean done) {
-        String subject = (message == null || message.isBlank()) ? "" : message;
-        if (done) {
-            return JkWedge.plainWedge(
-                    Glyphs.PULSE_PLAIN,
-                    command == null ? "" : command,
-                    formatPlainTail(subject, 100, null, PlainPhase.DONE, ""));
-        }
-        return JkWedge.plainWedge(
-                Glyphs.PULSE_PLAIN,
-                command == null ? "" : command,
-                formatPlainTail(subject, percent, null, PlainPhase.PREPARE, ""));
-    }
-
-    private void printPlainSnapshot(int percent, String status, boolean doneLine) {
-        printPlainSnapshot(percent, status, doneLine, currentPlainSubject(), "", false);
-    }
-
-    private void printPlainSnapshot(int percent, String status, boolean doneLine, String subject, String detail) {
-        printPlainSnapshot(percent, status, doneLine, subject, detail, false);
-    }
-
-    private void printPlainSnapshot(
-            int percent, String status, boolean doneLine, String subject, String detail, boolean force) {
-        String line = doneLine
-                ? JkWedge.plainWedge(
-                        Glyphs.PULSE_PLAIN, planName(), formatPlainTail(subject, 100, null, PlainPhase.DONE, ""))
-                : JkWedge.plainWedge(
-                        Glyphs.PULSE_PLAIN,
-                        planName(),
-                        formatPlainTail(subject, percent, plainEtaClock(), status, detail));
-        if (!doneLine && !force && !shouldPrintPlain(status, subject, detail)) return;
-        m.plainLastSubject = subject == null ? "" : subject;
-        m.plainLastStatus = status == null ? "" : status;
-        m.out.println(line);
-        m.plainChromeStarted = true;
-        m.plainProgressStarted = true;
-        m.plainLastPrintedNanos = System.nanoTime();
-        m.out.flush();
-    }
-
-    /**
-     * Print on a new module/phase ({@code start}/{@code built}/{@code prepare}/…), or a verbose
-     * detail. Same module+phase with only an ETA/percent tick is suppressed; the 30s heartbeat
-     * bypasses this via {@code force}.
-     */
-    private boolean shouldPrintPlain(String status, String subject, String detail) {
-        if (detail != null && !detail.isBlank()) return true;
-        String sub = subject == null ? "" : subject;
-        String st = status == null ? "" : status;
-        return !sub.equals(m.plainLastSubject) || !PlainPhase.sameFamily(st, m.plainLastStatus);
-    }
-
-    private static String formatPlainTail(String subject, int percent, String eta, String status, String detail) {
-        String st = status == null || status.isBlank() ? PlainPhase.PREPARE : status;
-        StringBuilder tail = new StringBuilder();
-        if (subject != null && !subject.isBlank()) {
-            tail.append(subject).append(" :: ");
-        }
-        tail.append(percent).append('%');
-        boolean showEta =
-                eta != null && !eta.isBlank() && !PlainPhase.PREPARE.equals(st) && !PlainPhase.DONE.equals(st);
-        if (showEta) {
-            tail.append(" (ETA ~").append(eta).append(')');
-        }
-        tail.append(" - ").append(st);
-        if (detail != null && !detail.isBlank()) {
-            tail.append(" = ").append(detail);
-        }
-        return tail.toString();
-    }
-
-    private String planCoordOrEmpty() {
-        return m.planCoord == null ? "" : m.planCoord;
-    }
-
-    /** {@code "jk: * Format > Examining source files - working..."} / {@code … - done.}. */
-    static String plainIndeterminateLine(String command, String message, boolean done) {
-        if (command == null || command.isEmpty()) {
-            String msg = (message == null || message.isBlank()) ? "working" : message;
-            String tail = msg + " - " + (done ? "done." : "working...");
-            return JkWedge.PLAIN_LINE_PREFIX + Glyphs.PULSE_PLAIN + " " + tail;
-        }
-        if (done) {
-            return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, "100% - done");
-        }
-        String msg = (message == null || message.isBlank()) ? PlainPhase.INITIALIZING : message;
-        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, msg);
-    }
-
-    private String plainIndeterminateLine(boolean doneLine) {
-        if (m.planMode) {
-            return plainIndeterminateLine(planName(), doneLine ? null : PlainPhase.INITIALIZING, doneLine);
-        }
-        return plainIndeterminateLine(null, m.label, doneLine);
-    }
-
-    private String currentPlainStatus() {
-        JkManager.Row active = firstActiveRow();
-        if (active != null) {
-            if (active.plainStatusOverride != null && !active.plainStatusOverride.isEmpty()) {
-                return active.plainStatusOverride;
-            }
-            if (active.plainRemainingTests >= 0) {
-                return PlainPhase.runningTests(active.plainRemainingTests);
-            }
-            return PlainPhase.status(active.phase != null ? active.phase : active.step);
-        }
-        String sl = m.solveLabel;
-        if (sl != null && !sl.isEmpty()) return PlainPhase.status(sl);
-        return PlainPhase.PREPARE;
-    }
-
-    private String currentPlainSubject() {
-        JkManager.Row active = firstActiveRow();
-        if (active != null) {
-            if (active.module != null && !active.module.isEmpty()) return active.module;
-            if (active.message != null && !active.message.isEmpty()) return active.message;
-            if (active.step != null && !active.step.isEmpty()) return active.step;
-        }
-        if (m.planCoord != null && !m.planCoord.isEmpty()) return m.planCoord;
-        if (m.target != null && !m.target.isEmpty()) return m.target;
-        return "";
-    }
-
-    /** Newest active row (insertion order) — the step that just started owns the status. */
-    private JkManager.Row firstActiveRow() {
-        JkManager.Row last = null;
-        for (JkManager.Row r : m.rows.values()) {
-            if (r.state == JkManager.RowState.ACTIVE) last = r;
-        }
-        return last;
-    }
-
-    private int currentPlainPercent() {
-        long[] bd = m.displayBar(m.elapsedMillis());
-        if (bd[1] <= 0) return 0;
-        return new Progress(bd[0], bd[1]).percent();
-    }
-
-    private String plainEtaClock() {
-        long remMs = plainRemainingMs();
-        if (remMs < 0) return null;
-        return JkManagerColor.fmtClock(remMs);
-    }
-
-    private long plainRemainingMs() {
-        long elapsed = m.elapsedMillis();
-        if (m.residualRemainingMs >= 0 && (m.remainingWorkMs >= 0 || m.residualRemainingMs > 0)) {
-            return Math.max(0L, m.residualRemainingMs - Math.max(0L, elapsed - m.residualSetAtElapsedMs));
-        }
-        if (m.remainingWorkMs >= 0) {
-            return Math.max(0L, m.remainingWorkMs - Math.max(0L, elapsed - m.remainingSetAtElapsedMs));
-        }
-        return -1L;
     }
 
     /**
@@ -532,7 +201,7 @@ final class JkManagerView {
         m.out.print(Theme.colorize(m.PULSE, m.openPulseColors[Math.floorMod(m.frame, m.openPulseColors.length)]));
         m.out.print(' ');
         m.out.print(m.label);
-        m.out.print(m.ELLIPSIS);
+        m.out.print(Glyphs.ELLIPSIS);
         m.out.print(Ansi.ERASE_LINE_TO_END);
         m.out.print(Osc.taskbarIndeterminate());
     }
@@ -560,21 +229,6 @@ final class JkManagerView {
             return;
         }
         writeAbove(text);
-    }
-
-    /**
-     * Plain {@code --no-ansi} TTY: there is no Ctrl-O listener and no settle dump, so a
-     * tool/worker crash would leave its only evidence (the buffered stdout ring) invisible.
-     * Print the uncommitted ring lines sequentially — they land directly above the failure
-     * wedge the settle is about to emit (JK-2163).
-     */
-    void dumpPlainProcessOutput() {
-        synchronized (m.lock) {
-            var pending = m.outputWindow.uncommittedForDisplay(OutputWindow.MAX_LINES);
-            for (String line : pending) m.out.println(line);
-            m.outputWindow.markAllCommitted();
-            if (!pending.isEmpty()) m.out.flush();
-        }
     }
 
     public void writeAbove(String text) {
@@ -637,7 +291,6 @@ final class JkManagerView {
         syncSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
-        int colBudget = JkManagerColor.rowColumnBudget(m.width);
         boolean force = forceFullRepaint;
         forceFullRepaint = false;
         int prev = m.lastLines.size();
@@ -648,7 +301,7 @@ final class JkManagerView {
             boolean changed = force || i >= prev || !lines.get(i).equals(m.lastLines.get(i));
             if (changed) {
                 m.out.print('\r');
-                m.out.print(JkManagerColor.truncateVisible(lines.get(i), colBudget));
+                m.out.print(RenderContext.truncateVisible(lines.get(i), colBudget()));
                 m.out.print(Ansi.ERASE_LINE_TO_END);
             }
             m.out.print('\n');
@@ -656,14 +309,35 @@ final class JkManagerView {
         if (prev > lines.size()) m.out.print(Ansi.ERASE_DISPLAY_TO_END);
         long[] bd = m.displayBar(elapsed);
         m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
-        if (m.animate && !Theme.active().isAnsi() && bd[1] > 0) {
-            synchronized (m.lock) {
-                m.ensurePlainProgressStarted(bd[0], bd[1]);
-            }
-        }
         m.lastLines = lines;
         m.linesDrawn = lines.size();
         paintedCols = m.width;
+    }
+
+    /**
+     * Lift the cursor to the top of the live region and erase it. The cursor invariant — parked at
+     * the start of the line below the region between paints — is enforced here rather than restated
+     * at each call site: JK-2092, JK-2106 and JK-2109 were each a bug in one copy of this sequence.
+     */
+    private void liftRegion() {
+        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
+        if (up == 0) return;
+        m.out.print(Ansi.cursorUp(up));
+        m.out.print('\r');
+        m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+    }
+
+    /** Paint one row from column 0, clipped to {@link #colBudget()}, and advance a line. */
+    private void emitLine(String line) {
+        m.out.print('\r');
+        m.out.print(RenderContext.truncateVisible(line, colBudget()));
+        m.out.print(Ansi.ERASE_LINE_TO_END);
+        m.out.print('\n');
+    }
+
+    /** Columns one row may paint at the current terminal width. */
+    private int colBudget() {
+        return RenderContext.rowColumnBudget(m.width);
     }
 
     /**
@@ -678,19 +352,8 @@ final class JkManagerView {
         // Uncommitted only: lines from an earlier open (dump or live appends) are already
         // permanent scrollback right above — re-dumping them duplicates (JK-2092).
         List<String> pane = m.outputWindow.uncommittedForDisplay(budget);
-        int colBudget = JkManagerColor.rowColumnBudget(m.width);
-        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
-        if (up > 0) {
-            m.out.print(Ansi.cursorUp(up));
-            m.out.print('\r');
-            m.out.print(Ansi.ERASE_DISPLAY_TO_END);
-        }
-        for (String line : pane) {
-            m.out.print('\r');
-            m.out.print(JkManagerColor.truncateVisible(line, colBudget));
-            m.out.print(Ansi.ERASE_LINE_TO_END);
-            m.out.print('\n');
-        }
+        liftRegion();
+        for (String line : pane) emitLine(line);
         m.outputWindow.noteCommitted(pane.size());
         m.outputWindow.markAllCommitted();
         writeLiveRegion(liveRegionLines(chrome, m.width));
@@ -705,12 +368,7 @@ final class JkManagerView {
     void closePeekPaint() {
         if (!m.animate || !Theme.active().isAnsi()) return;
         syncSize();
-        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
-        if (up > 0) {
-            m.out.print(Ansi.cursorUp(up));
-            m.out.print('\r');
-            m.out.print(Ansi.ERASE_DISPLAY_TO_END);
-        }
+        liftRegion();
         // liveRegionLines paints "" when peek is off but process lines were committed.
         writeLiveRegion(liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
         m.out.flush();
@@ -722,18 +380,8 @@ final class JkManagerView {
      */
     private void liftEmitRepaintLive(String text) {
         syncSize();
-        int colBudget = JkManagerColor.rowColumnBudget(m.width);
-        String painted = JkManagerColor.truncateVisible(text, colBudget);
-        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
-        if (up > 0) {
-            m.out.print(Ansi.cursorUp(up));
-            m.out.print('\r');
-            m.out.print(Ansi.ERASE_DISPLAY_TO_END);
-        }
-        m.out.print('\r');
-        m.out.print(painted);
-        m.out.print(Ansi.ERASE_LINE_TO_END);
-        m.out.print('\n');
+        liftRegion();
+        emitLine(text);
         m.outputWindow.noteCommitted(1);
         m.outputWindow.markAllCommitted();
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
@@ -743,13 +391,7 @@ final class JkManagerView {
 
     /** Write live-region lines from the current cursor and update lastLines / linesDrawn. */
     private void writeLiveRegion(List<String> live) {
-        int colBudget = JkManagerColor.rowColumnBudget(m.width);
-        for (String line : live) {
-            m.out.print('\r');
-            m.out.print(JkManagerColor.truncateVisible(line, colBudget));
-            m.out.print(Ansi.ERASE_LINE_TO_END);
-            m.out.print('\n');
-        }
+        for (String line : live) emitLine(line);
         m.lastLines = live;
         m.linesDrawn = live.size();
         paintedCols = m.width;
@@ -824,35 +466,13 @@ final class JkManagerView {
         // rewrap get the reflow-height climb.
         int up = m.lastLines.size();
         if (TerminalReflow.reflows()) {
-            up = Math.max(physicalRowsAfterReflow(m.lastLines, fromCols, toCols), up);
+            up = Math.max(TerminalReflow.physicalRows(m.lastLines, fromCols, toCols), up);
         }
         if (up > 0) m.out.print(Ansi.cursorUp(up));
         m.out.print('\r');
         m.out.print(Ansi.ERASE_DISPLAY_TO_END);
         m.lastLines = List.of();
         m.linesDrawn = 0;
-    }
-
-    /**
-     * Physical rows occupied by {@code lines} after the terminal reflows from {@code fromCols} to
-     * {@code toCols}. Each line was painted at most {@link JkManagerColor#rowColumnBudget(int)} of
-     * {@code fromCols} wide (one row then); after a shrink, reflow wraps that text to
-     * {@code ceil(painted / toCols)} rows.
-     */
-    static int physicalRowsAfterReflow(List<String> lines, int fromCols, int toCols) {
-        if (lines == null || lines.isEmpty()) return 0;
-        int width = Math.max(1, toCols);
-        int fromBudget = JkManagerColor.rowColumnBudget(Math.max(1, fromCols));
-        int rows = 0;
-        for (String line : lines) {
-            int painted = Math.min(RenderContext.visibleWidth(line), fromBudget);
-            if (painted <= 0) {
-                rows += 1; // blank logical line still occupies a row
-            } else {
-                rows += (painted + width - 1) / width;
-            }
-        }
-        return rows;
     }
 
     /**
@@ -974,19 +594,6 @@ final class JkManagerView {
         return new JkManager.TreeEntry(renderWorkRow("", phaseLabel, failed, detail), failed ? n.briefError : "");
     }
 
-    /**
-     * Step label for the tree detail segment. Strips a leading {@code module:: } prefix when the
-     * engine label already embeds the coordinate (test progress labels) so the row does not read
-     * {@code g:a › Test › g:a:: FooTest}.
-     */
-    static String detailForDisplay(String module, String message) {
-        return JkManagerColor.detailForDisplay(module, message);
-    }
-
-    static String renderBriefErrorLine(boolean last, String brief) {
-        return JkManagerColor.renderBriefErrorLine(last, brief);
-    }
-
     /** Dim segment separator between module, phase, and detail on a work row. */
     private static final String WORK_ROW_SEP = "›";
 
@@ -1015,69 +622,9 @@ final class JkManagerView {
         }
         sb.append(Theme.colorize(phase, phaseStyle));
         if (detail != null && !detail.isBlank()) {
-            sb.append(' ').append(sep).append(' ').append(colorDetail(phase, detail, t));
+            sb.append(' ').append(sep).append(' ').append(JkManagerColor.colorDetail(phase, detail, t));
         }
         return sb.toString();
-    }
-
-    /**
-     * Color a live step detail under the phase label.
-     *
-     * <ul>
-     * <li><b>{@code Class.method(…)} form only</b> (run-tests live labels): Java {@link
-     * cc.jumpkick.cli.run.SyntaxHighlight} — not every step under the Test phase (compile-test
-     * is phase Test too and must stay prose gray)
-     * <li><b>Everything else</b>: prose in mid-gray ({@link Theme#midGray} {@code #A0A0A0}), never
-     * cyan and never dim bright-black, with:
-     * <ul>
-     * <li>integers / counts / sizes → yellow ({@link Theme#warning})
-     * <li>size units ({@code MiB}, {@code KB}, …) stay gray after the number
-     * <li>artifact filenames and path-like tokens → {@link Theme#path}
-     * <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.theme.Coords}
-     * <li>fetched short-names / bare library ids after resolve verbs → coord short-name
-     * <li>short cache key hex → dimmest gray
-     * </ul>
-     * <li>Trailing {@code [wN]} worker tags stay gray
-     * </ul>
-     */
-    static String colorDetail(String phase, String detail, Theme t) {
-        return JkManagerColor.colorDetail(phase, detail, t);
-    }
-
-    static String colorNativeClasspathSizeDetail(String detail, Theme t) {
-        return JkManagerColor.colorNativeClasspathSizeDetail(detail, t);
-    }
-
-    static String colorProseDetail(String text, Theme t) {
-        return JkManagerColor.colorProseDetail(text, t);
-    }
-
-    static boolean looksLikeSizeUnit(String unit) {
-        return JkManagerColor.looksLikeSizeUnit(unit);
-    }
-
-    static boolean isFetchOrResolveVerb(String word) {
-        return JkManagerColor.isFetchOrResolveVerb(word);
-    }
-
-    static boolean looksLikeLibraryShortName(String tok) {
-        return JkManagerColor.looksLikeLibraryShortName(tok);
-    }
-
-    static boolean looksLikeCoord(String tok) {
-        return JkManagerColor.looksLikeCoord(tok);
-    }
-
-    static String colorCoord(String tok) {
-        return JkManagerColor.colorCoord(tok);
-    }
-
-    static boolean looksLikePathOrArtifact(String tok) {
-        return JkManagerColor.looksLikePathOrArtifact(tok);
-    }
-
-    static boolean looksLikeJavaMember(String s) {
-        return JkManagerColor.looksLikeJavaMember(s);
     }
 
     RenderContext headerContext() {
@@ -1103,57 +650,11 @@ final class JkManagerView {
         boolean hasBar = barDen > 0 || den > 0;
         boolean phase1 = !hasBar && !sl.isEmpty();
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
-        // Dual clock when we have ever received a remaining-work seed (including residual 0 done).
-        // Prefer residual re-anchor (eases into R(t), ends on time); else frozen R0 − elapsed.
-        // Deadline = setAt + R so m.target remainingSec and elapsedSec share whole-second boundaries.
-        long remainingSec;
-        boolean seeded;
-        long overrunSec = 0;
+        Countdown.Face face;
         synchronized (m.lock) {
-            long anchorRem;
-            long anchorAt;
-            if (m.residualRemainingMs >= 0 && (m.remainingWorkMs >= 0 || m.residualRemainingMs > 0)) {
-                // Residual known (including 0 after R0 was seeded) — countdown tracks R(t).
-                seeded = true;
-                anchorRem = m.residualRemainingMs;
-                anchorAt = m.residualSetAtElapsedMs;
-            } else if (m.remainingWorkMs >= 0) {
-                seeded = true;
-                anchorRem = m.remainingWorkMs;
-                anchorAt = m.remainingSetAtElapsedMs;
-            } else {
-                seeded = false;
-                anchorRem = 0;
-                anchorAt = 0;
-            }
-            if (seeded) {
-                long deadlineMs = anchorAt + anchorRem;
-                long deadlineSec = deadlineMs / 1000L;
-                long targetSec = Math.max(0L, deadlineSec - elapsedSec);
-                // Jitter buffer: sample latest m.target at most once per whole-second elapsed tick.
-                // Same-second residual re-anchors update the private m.target only; the painted face
-                // holds until elapsedSec advances (or first paint / seed / snap-to-zero). One
-                // asymmetry is deliberate the other way: a re-anchor that RAISES the m.target in the
-                // same second a zero was committed repaints immediately — holding the 0s until the
-                // next second manufactured a 0s → Ns bounce.
-                if (m.countdownDisplayElapsedSec < 0
-                        || elapsedSec != m.countdownDisplayElapsedSec
-                        || targetSec == 0
-                        || m.countdownDisplayRemainingSec <= 0) {
-                    m.countdownDisplayRemainingSec = targetSec;
-                    m.countdownDisplayElapsedSec = elapsedSec;
-                }
-                remainingSec = m.countdownDisplayRemainingSec;
-                if (remainingSec <= 0) {
-                    // How far past the residual/R0 deadline, on the same whole-second counter.
-                    overrunSec = Math.max(0L, elapsedSec - deadlineSec);
-                }
-            } else {
-                remainingSec = 0;
-                m.countdownDisplayElapsedSec = -1;
-            }
+            face = m.countdown.face(elapsedMillis);
         }
-        RichText clock = clockFace(seeded, remainingSec, overrunSec, elapsedSec);
+        RichText clock = clockFace(face, elapsedSec);
         RenderContext ctx = frameCtx.withCaps(m.nerdFont).withFrame(m.frame);
         if (phase1) {
             RichText msg = RichText.of(
@@ -1168,26 +669,21 @@ final class JkManagerView {
                 .renderLine(ctx);
     }
 
-    private RichText clockFace(boolean seeded, long remainingSec, long overrunSec, long elapsedSec) {
+    private RichText clockFace(Countdown.Face face, long elapsedSec) {
         String elapsed = JkManagerColor.fmtClockSeconds(elapsedSec);
-        if (!seeded) {
+        if (!face.seeded()) {
             return RichText.parse("[dark-gray]·[/] [mid-gray]" + elapsed + "[/]");
         }
         // Countdown stays mid-gray: ~remaining, then 0s, then +overrun. Elapsed stays dim, no +.
         String rem;
-        if (remainingSec > 0) {
-            rem = "[mid-gray]~" + JkManagerColor.fmtClockSeconds(remainingSec) + "[/]";
-        } else if (overrunSec > 0) {
-            rem = "[mid-gray]+" + JkManagerColor.fmtClockSeconds(overrunSec) + "[/]";
+        if (face.remainingSec() > 0) {
+            rem = "[mid-gray]~" + JkManagerColor.fmtClockSeconds(face.remainingSec()) + "[/]";
+        } else if (face.overrunSec() > 0) {
+            rem = "[mid-gray]+" + JkManagerColor.fmtClockSeconds(face.overrunSec()) + "[/]";
         } else {
             rem = "[mid-gray]0s[/]";
         }
         return RichText.parse(
                 "[dark-gray]·[/] [dark-gray italic]ETA [/]" + rem + " [dark-gray]·[/] [dark-gray]" + elapsed + "[/]");
     }
-
-    /**
-     * Countdown/elapsed duration from milliseconds: {@code "42s"}, {@code "1m 02s"},
-     * {@code "1h 05m 09s"} (units past the lead zero-padded).
-     */
 }

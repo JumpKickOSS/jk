@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
-import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.config.BuildLogicToml.Logic;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
@@ -40,7 +40,6 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import org.tomlj.TomlTable;
 
 /**
  * Project-local <strong>build logic</strong> (tickets 1037 / 1039 / 1044). Convention directory is
@@ -62,45 +61,7 @@ import org.tomlj.TomlTable;
  */
 public final class BuildLogicSupport {
 
-    /** Default project-relative directory for build logic sources (dot-dir: not product noise). */
-    public static final String DEFAULT_DIR = ".jk-build";
-
     private BuildLogicSupport() {}
-
-    public record Config(Path logicDir, String mainClass) {}
-
-    /**
-     * Resolve build-logic config: {@code [build].logic} overrides the directory (default {@link
-     * #DEFAULT_DIR}); absent dir → empty. {@code logic = "off"} / {@code "false"} / {@code "none"}
-     * disables even when {@code .jk-build/} exists.
-     */
-    public static Optional<Config> config(Path projectDir) {
-        Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
-        String logicRel = DEFAULT_DIR;
-        String main = null;
-        Optional<TomlTable> build = TomlValues.parse(toml).map(t -> t.getTable("build"));
-        if (build.isPresent() && build.get() != null) {
-            TomlTable b = build.get();
-            String logic = b.getString("logic");
-            if (logic != null && !logic.isBlank()) {
-                String n = logic.trim().toLowerCase(Locale.ROOT);
-                if (EnvValues.parseBool(n).filter(on -> !on).isPresent() || n.equals("none") || n.equals("disable")) {
-                    return Optional.empty();
-                }
-                logicRel = logic.trim();
-            }
-            String lm = b.getString("logic-main");
-            if (lm != null && !lm.isBlank()) main = lm.trim();
-        }
-
-        Path logicDir = root.resolve(logicRel).normalize();
-        if (!logicDir.startsWith(root)) {
-            throw new IllegalStateException("[build].logic must stay under the project root: " + logicRel);
-        }
-        if (!Files.isDirectory(logicDir)) return Optional.empty();
-        return Optional.of(new Config(logicDir, main));
-    }
 
     /**
      * As {@link #run(Path, BuildLayout, ActionCache, Path, BuildLogicAnchor, java.util.function.Consumer,
@@ -147,17 +108,16 @@ public final class BuildLogicSupport {
             java.util.function.Consumer<String> label,
             java.util.concurrent.atomic.AtomicReference<List<String>> inputTokensRef)
             throws IOException, InterruptedException {
-        Optional<Config> cfg = config(projectDir);
+        Optional<Logic> cfg = BuildLogicToml.resolve(projectDir);
         if (cfg.isEmpty()) return false;
-        Config c = cfg.get();
+        Logic c = cfg.get();
 
-        List<Path> javaSources = listJava(c.logicDir());
-        List<Path> ktSources = listKotlin(c.logicDir());
-        List<BuildLogicScripts.ScriptTask> scripts = BuildLogicScripts.discover(c.logicDir());
+        List<Path> javaSources = listJava(c.dir());
+        List<Path> ktSources = listKotlin(c.dir());
+        List<BuildLogicScripts.ScriptTask> scripts = BuildLogicScripts.discover(c.dir());
         if (javaSources.isEmpty() && ktSources.isEmpty() && scripts.isEmpty()) {
             if (anchor == BuildLogicAnchor.AFTER_RESOURCES) {
-                label.accept(
-                        "build-logic: no sources/scripts in " + c.logicDir().getFileName());
+                label.accept("build-logic: no sources/scripts in " + c.dir().getFileName());
             }
             return true;
         }
@@ -175,7 +135,7 @@ public final class BuildLogicSupport {
                 Path apiCp = apiClasspath();
                 // BuildPlanner calls run() once per anchor (four times per module per build).
                 // A stamp beside the classes compiles once per change instead of every anchor.
-                String stamp = logicStamp(c.logicDir(), javaSources, ktSources, apiCp);
+                String stamp = logicStamp(c.dir(), javaSources, ktSources, apiCp);
                 Compiled compiled = readStamp(logicClasses);
                 if (compiled != null && compiled.stamp().equals(stamp)) {
                     kotlinStdlib = compiled.kotlinStdlib();
@@ -224,7 +184,7 @@ public final class BuildLogicSupport {
             Path classesDir,
             BuildLogicAnchor anchor,
             java.util.function.Consumer<String> label,
-            Config c,
+            Logic c,
             List<Path> javaSources,
             List<Path> ktSources,
             List<BuildLogicScripts.ScriptTask> scripts,
@@ -236,16 +196,16 @@ public final class BuildLogicSupport {
         if (tasks.isEmpty()) return true;
 
         List<String> sourceTokens = new ArrayList<>();
-        sourceTokens.add("dir:" + projectDir.relativize(c.logicDir()));
+        sourceTokens.add("dir:" + projectDir.relativize(c.dir()));
         for (Path src : javaSources) {
-            sourceTokens.add("src:" + c.logicDir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+            sourceTokens.add("src:" + c.dir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
         }
         for (Path src : ktSources) {
-            sourceTokens.add("kt:" + c.logicDir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+            sourceTokens.add("kt:" + c.dir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
         }
         for (BuildLogicScripts.ScriptTask s : scripts) {
-            sourceTokens.add("script:" + c.logicDir().relativize(s.file()) + ":"
-                    + Hashing.sha256Hex(Files.readAllBytes(s.file())));
+            sourceTokens.add(
+                    "script:" + c.dir().relativize(s.file()) + ":" + Hashing.sha256Hex(Files.readAllBytes(s.file())));
         }
         sourceTokens.add("anchor:" + anchor.name());
         // A build-logic task reads the project, not only itself: BuildLogicContext hands it
@@ -381,7 +341,7 @@ public final class BuildLogicSupport {
     }
 
     private static Map<BuildLogicAnchor, List<RegisteredTask>> discoverTasks(
-            Config c, Path logicClasses, Path apiCp, Path kotlinStdlib, boolean allowEmpty, URLClassLoader cl)
+            Logic c, Path logicClasses, Path apiCp, Path kotlinStdlib, boolean allowEmpty, URLClassLoader cl)
             throws IOException {
         Map<BuildLogicAnchor, List<RegisteredTask>> out = emptyByAnchor();
 
@@ -422,8 +382,8 @@ public final class BuildLogicSupport {
 
             // Legacy mains at AFTER_RESOURCES (unless logic-main pins one class)
             List<String> mains;
-            if (c.mainClass() != null && !c.mainClass().isBlank()) {
-                mains = List.of(c.mainClass().trim());
+            if (c.main() != null && !c.main().isBlank()) {
+                mains = List.of(c.main().trim());
             } else {
                 mains = discoverLegacyMains(logicClasses, cl);
             }

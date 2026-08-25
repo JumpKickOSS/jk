@@ -44,8 +44,7 @@ class BuildServiceEtaParityTest {
         var plan = new ExplainPlan(List.of(shapeOnly), java.util.Map.of(dir, Set.of()), 1, List.of());
 
         var forced = cc.jumpkick.config.Session.defaults()
-                .withConfig(cc.jumpkick.config.JkConfig.empty()
-                        .withRebuild(java.util.Optional.of(true))) // same distrust lever as force
+                .withConfig(cc.jumpkick.config.JkConfig.empty().withRebuild(true)) // same distrust lever as force
                 .withCacheDir(tmp.resolve("cache"));
         List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
                 forced,

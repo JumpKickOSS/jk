@@ -77,13 +77,6 @@ public final class ProjectBuilds {
         return ProjectIdentity.resolve(projectDir).id();
     }
 
-    /** @deprecated use {@link #key(Path)} — path-only hash is no longer the identity. */
-    @Deprecated
-    public static String key(String coord, Path projectDir) {
-        return ProjectIdentity.resolve(projectDir == null ? Path.of(".") : projectDir)
-                .id();
-    }
-
     public static Path projectHome(Path projectDir) {
         return projectHome(buildsRoot(), ProjectIdentity.resolve(projectDir));
     }

@@ -600,10 +600,12 @@ public final class ProtoJobs {
      * Scan the lockfile against OSV (see {@link EngineProtocol#AUDIT_REQUEST}). {@code severity} is the client's
      * threshold, carried only for the evaluate step's label (the client applies the threshold
      * itself); {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides and may be
-     * {@code null}.
+     * {@code null}. {@code offline} reconstructs the session config engine-side, as on {@link
+     * #buildRequest} — the audit worker queries OSV over the network and must refuse rather than
+     * do it behind an offline run's back.
      */
     public static String auditRequest(
-            String dir, String cache, String severity, String osvBatchUrl, String osvVulnsUrl) {
+            String dir, String cache, String severity, String osvBatchUrl, String osvVulnsUrl, boolean offline) {
         return "{\"type\":\""
                 + EngineProtocol.AUDIT_REQUEST
                 + "\",\"dir\":"
@@ -616,6 +618,8 @@ public final class ProtoJobs {
                 + Jsonl.quote(osvBatchUrl)
                 + ",\"osvVulnsUrl\":"
                 + Jsonl.quote(osvVulnsUrl)
+                + ",\"offline\":"
+                + offline
                 + "}";
     }
 
@@ -667,6 +671,8 @@ public final class ProtoJobs {
      * Publish artifacts (see {@link EngineProtocol#PUBLISH_REQUEST}). The credential fields ({@code authType} =
      * {@code basic}/{@code bearer}/{@code anonymous} + {@code user}/{@code pass}/{@code token}) and
      * {@code gpgPassphrase} were resolved client-side; nullable string fields may be {@code null}.
+     * {@code offline} reconstructs the session config engine-side, as on {@link #buildRequest} — a
+     * publish uploads to someone else's server, so an offline run refuses instead of PUTting.
      */
     public static String publishRequest(
             String dir,
@@ -686,6 +692,7 @@ public final class ProtoJobs {
             String user,
             String pass,
             String token,
+            boolean offline,
             boolean verbose) {
         return "{\"type\":\""
                 + EngineProtocol.PUBLISH_REQUEST
@@ -723,6 +730,8 @@ public final class ProtoJobs {
                 + Jsonl.quote(pass)
                 + ",\"token\":"
                 + Jsonl.quote(token)
+                + ",\"offline\":"
+                + offline
                 + ",\"verbose\":"
                 + verbose
                 + "}";
@@ -807,13 +816,10 @@ public final class ProtoJobs {
      * Provision a Maven/Gradle distribution (see {@link EngineProtocol#PROVISION_REQUEST}). Project directory
      * field is {@code dir} — same spelling as every other hosted request.
      */
-    public static String provisionRequest(
-            String cache, String dir, String toolsRoot, boolean noDiscover, boolean gradle) {
+    public static String provisionRequest(String dir, String toolsRoot, boolean noDiscover, boolean gradle) {
         return "{\"type\":\""
                 + EngineProtocol.PROVISION_REQUEST
-                + "\",\"cache\":"
-                + Jsonl.quote(cache)
-                + ",\"dir\":"
+                + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"toolsRoot\":"
                 + Jsonl.quote(toolsRoot)

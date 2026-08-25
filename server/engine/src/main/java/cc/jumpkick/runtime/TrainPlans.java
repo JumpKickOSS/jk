@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
-import cc.jumpkick.config.TrainConfigParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -82,7 +82,7 @@ public final class TrainPlans {
                     Path moduleJdk = ctx.get(BuildPlanner.JAVA_HOME).orElse(javaHome);
                     TrainConfig config;
                     try {
-                        config = TrainConfigParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
+                        config = JkBuildParser.trainConfig(moduleDir.resolve(ManifestPaths.MANIFEST));
                     } catch (Exception e) {
                         throw new RuntimeException("invalid [train] config: " + e.getMessage(), e);
                     }

@@ -192,3 +192,244 @@ test('cancelled cards hide success and failure details', () => {
   assert.deepEqual(v.okModules(card), []);
   assert.deepEqual(v.failedModules(card), []);
 });
+
+// --- JK-2424: the dashboard renders test counts from the journal's nested `tests` object ---
+
+/**
+ * A real journal record, verbatim from a jk self-host run:
+ *   ~/.local/state/jk/builds/projects/a66f86e5.../runs/1/record.json
+ * Every top-level field is byte-for-byte what the engine wrote; only the `modules` array is
+ * truncated to its first entry (62 KB otherwise), and nothing under test reads past it.
+ * `GET /api/history` streams these bodies to the SPA verbatim, so this IS the wire shape.
+ */
+const REAL_RECORD = {
+    "id": "20260824T053110035",
+    "buildNumber": 1,
+    "schema": 2,
+    "kind": "build",
+    "dir": "/home/bsant/src/oss/jk",
+    "coord": "cc.jumpkick:jk",
+    "projectId": "a66f86e5f1e675e17a67c9c36474f968",
+    "startedAt": 1787549470032,
+    "finishedAt": 1787549568034,
+    "millis": 98002,
+    "success": true,
+    "cancelled": false,
+    "exitCode": 0,
+    "jkVersion": "0.12.0",
+    "tests": {
+      "total": 4323,
+      "succeeded": 4314,
+      "failed": 0,
+      "skipped": 9
+    },
+    "modules": [
+      {
+        "coord": "cc.jumpkick:jk-dynamic-surface",
+        "dir": "/home/bsant/src/oss/jk/shared/dynamic-surface",
+        "success": true,
+        "exitCode": 0,
+        "millis": 2027,
+        "tasks": [
+          {
+            "name": "parse-build",
+            "stage": "resolve",
+            "status": "SUCCESS",
+            "millis": 4
+          },
+          {
+            "name": "resolve-deps",
+            "stage": "resolve",
+            "status": "SUCCESS",
+            "millis": 77
+          },
+          {
+            "name": "ensure-jdk",
+            "stage": "resolve",
+            "status": "SKIPPED",
+            "millis": 4
+          },
+          {
+            "name": "build-logic-before-compile",
+            "stage": "generate",
+            "status": "SKIPPED",
+            "millis": 1
+          },
+          {
+            "name": "compile-java",
+            "stage": "compile",
+            "status": "SKIPPED",
+            "millis": 7
+          },
+          {
+            "name": "build-logic-after-compile",
+            "stage": "compile",
+            "status": "SKIPPED",
+            "millis": 0
+          },
+          {
+            "name": "write-stamp",
+            "stage": "compile",
+            "status": "SKIPPED",
+            "millis": 0
+          },
+          {
+            "name": "copy-resources",
+            "stage": "compile",
+            "status": "SKIPPED",
+            "millis": 0
+          },
+          {
+            "name": "compile-test",
+            "stage": "test",
+            "status": "SUCCESS",
+            "millis": 1432
+          },
+          {
+            "name": "build-logic-before-package",
+            "stage": "package",
+            "status": "SKIPPED",
+            "millis": 0
+          },
+          {
+            "name": "run-tests",
+            "stage": "test",
+            "status": "SUCCESS",
+            "millis": 482
+          },
+          {
+            "name": "package-jar",
+            "stage": "package",
+            "status": "SUCCESS",
+            "millis": 11
+          },
+          {
+            "name": "deliver",
+            "stage": "package",
+            "status": "SUCCESS",
+            "millis": 0
+          }
+        ]
+      }
+    ],
+    "tasks": [],
+    "diagnostics": [],
+    "trigger": "cli",
+    "commit": "c944294f",
+    "running": false,
+    "requestId": 1,
+    "benefit": {
+      "estimatedUncachedMillis": 116072,
+      "savedMillis": 18070,
+      "coveredSkips": 0,
+      "totalSkips": 166
+    },
+    "io": {
+      "remoteUp": 0,
+      "remoteDown": 3300890,
+      "localUp": 63382703,
+      "localDown": 0
+    }
+  };
+
+test('projectDetail renders the tests column from the nested tests object (JK-2424)', () => {
+  const v = vm({ selectedProjectId: REAL_RECORD.projectId, projectHistory: [REAL_RECORD] });
+  const detail = appOptions.computed.projectDetail.call(v);
+
+  assert.equal(detail.empty, false, 'a matching record is not an empty project');
+  assert.equal(detail.rows.length, 1);
+  // index.html renders `{{ r.tests.succeeded }} / {{ r.tests.total }}` off exactly this object.
+  assert.deepEqual(detail.rows[0].tests, { total: 4323, succeeded: 4314, failed: 0, skipped: 9 });
+  assert.equal(detail.rows[0].tests.succeeded, 4314);
+  assert.equal(detail.rows[0].tests.total, 4323);
+});
+
+test('a record with no test phase renders no test counts rather than zeros (JK-2424)', () => {
+  // 217 of the 218 records on this host wrote `"tests": null` — no test step ran. The column has
+  // to show an em dash, not "0 / 0", so the row must carry null and not a zeroed object.
+  const noTests = { ...REAL_RECORD, tests: null };
+  const v = vm({ selectedProjectId: noTests.projectId, projectHistory: [noTests] });
+
+  assert.equal(appOptions.computed.projectDetail.call(v).rows[0].tests, null);
+});
+
+test('the SPA reads no retired flat test-count spelling (JK-2424)', async () => {
+  // Every module, not just app.js: the reader can move between files and the ban has to follow it.
+  const fs = await import('node:fs/promises');
+  const dir = process.env.JK_APP_DIR;
+  for (const file of (await fs.readdir(dir)).filter((f) => f.endsWith('.js'))) {
+    const src = await fs.readFile(path.join(dir, file), 'utf8');
+    for (const retired of ['testsFailed', 'testFailed', 'testsTotal', 'testTotal',
+                           'testsSucceeded', 'testSucceeded', 'testsSkipped', 'testSkipped']) {
+      assert.ok(!src.includes('.' + retired), file + ' still reads r.' + retired);
+      assert.ok(!src.includes("'" + retired + "'"), file + ' still reads ' + retired + ' by name');
+    }
+  }
+});
+
+test('the Projects tab decides a record outcome with the one outcome rule', () => {
+  // The journal writes a record's steps under `tasks`, at the top level and per module. The tab
+  // used to walk `r.steps` / `m.steps` — a spelling no emitter has ever produced — so a FAIL task
+  // could not move the badge and the row fell through to the record's own `success` bit.
+  const failedTask = {
+    ...REAL_RECORD,
+    success: true,
+    cancelled: false,
+    modules: [],
+    tasks: [{ name: 'run-tests', stage: 'test', status: 'FAIL', millis: 12 }],
+  };
+  const v = vm({ selectedProjectId: failedTask.projectId, projectHistory: [failedTask] });
+  assert.equal(appOptions.computed.projectDetail.call(v).rows[0].outcome, 'failed');
+  assert.equal(appOptions.computed.projectsList.call(v)[0].state, 'failed');
+});
+
+test('a module-level FAIL task also reaches the Projects tab', () => {
+  const failedModule = {
+    ...REAL_RECORD,
+    success: true,
+    cancelled: false,
+    tasks: [],
+    modules: [{ dir: '/w/core', finished: true, success: false, millis: 5,
+                tasks: [{ name: 'compile-java', stage: 'compile', status: 'FAIL', millis: 5 }] }],
+  };
+  const v = vm({ selectedProjectId: failedModule.projectId, projectHistory: [failedModule] });
+  assert.equal(appOptions.computed.projectDetail.call(v).rows[0].outcome, 'failed');
+});
+
+test('mib is whole MiB, and asks for a decimal rather than being shadowed by a second copy', () => {
+  // Two `mib(bytes)` keys in one methods object: the later one silently won, so every heap figure
+  // on the Admin panel and in the footer carried a decimal the first definition meant to round off.
+  const v = vm();
+  assert.equal(v.mib(281_018_368), '268 MiB');
+  assert.equal(v.mib(281_018_368, 1), '268.0 MiB');
+  assert.equal(v.mib(null), '—');
+  assert.equal(v.mib(-1), '—');
+});
+
+test('one duration formatter: the card, the spark tooltip and the live clock agree', async () => {
+  const { fmtDuration, fmtClockSeconds } = await import(
+    pathToFileURL(path.join(process.env.JK_APP_DIR, 'format.js'))
+  );
+  const v = vm();
+  const hour = 3_605_000;
+  // The card's "took" text, the sparkline tooltip's, and the running card's counter face.
+  assert.equal(v.duration(hour), '1h 00m 05s');
+  assert.equal(fmtDuration(hour), '1h 00m 05s');
+  assert.equal(fmtClockSeconds(3605), '1h 00m 05s');
+  assert.equal(v.duration(820), '820 ms');
+  assert.equal(v.duration(5500), '5.5 s');
+  assert.equal(v.duration(65_500), '1m 05s');
+  assert.equal(v.duration(null), '');
+});
+
+test('one relative-time formatter, and it can say days', () => {
+  const now = 10 * 86_400_000;
+  const v = vm({ now });
+  assert.equal(v.ago(now - 30 * 3_600_000), '1d ago');
+  assert.equal(v.ago(now - 90 * 60_000), '1h ago');
+  assert.equal(v.ago(now - 5 * 60_000), '5m ago');
+  assert.equal(v.ago(now - 1000), 'just now');
+  assert.equal(v.ago(null), '');
+  assert.equal(v.agoLong(now - (86_400_000 + 2 * 3_600_000 + 3 * 60_000 + 4000)), '1d 2h 3m 4s ago');
+  assert.equal(v.agoLong(null), 'never');
+});

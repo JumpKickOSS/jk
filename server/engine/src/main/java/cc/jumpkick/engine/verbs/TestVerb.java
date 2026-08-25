@@ -20,7 +20,6 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.TestSupport;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.Set;
 
 /** Single-project {@code test-request}. */
@@ -78,19 +77,11 @@ public final class TestVerb implements HostedVerb {
             int estimatedTestCount = TestSupport.estimateSelectedSuiteTestCount(
                     entryDir, compactTests, ProtoJobs.testSelectionOf(requestLine));
 
-            JkConfig config = new JkConfig(
-                    Optional.empty(),
-                    Optional.of(offline),
-                    Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of(verbose),
-                    Optional.empty(),
-                    Optional.of(force),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty());
+            JkConfig config = JkConfig.empty()
+                    .withOffline(offline)
+                    .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                    .withVerbose(verbose)
+                    .withForce(force);
             Session session = Session.defaults()
                     .withConfig(config)
                     .withWorkingDir(entryDir)

@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.MinimalToml;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -11,8 +12,12 @@ import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 
 /**
- * Text editor for single-line dependency entries in {@code jk.toml}, preserving formatting and
- * comments. Validates the result with {@link Toml#parse}; rejects if unparseable.
+ * The writer for {@code jk.toml}: surgical line edits that preserve formatting and comments, with
+ * every result run back through {@link Toml#parse} by {@link #validated} before it is returned.
+ *
+ * <p>Scalars are quoted by {@link MinimalToml}, the one TOML encoder. This class used to carry its
+ * own escaper that left control characters raw, which {@code validated} then rejected as invalid
+ * TOML — a correct refusal reported as an internal error.
  */
 public final class JkBuildEditor {
 
@@ -28,8 +33,13 @@ public final class JkBuildEditor {
     /** The {@code modules = ...} assignment within {@code [workspace]}. */
     private static final Pattern MODULES_KEY = Pattern.compile("^\\s*modules\\s*=.*$");
 
-    /** A double-quoted string literal element. */
-    private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
+    /**
+     * A double-quoted string literal element, escapes included. The escape alternative is
+     * load-bearing: the writer emits {@link MinimalToml#quote}d values, so a module path carrying a
+     * quote is written as {@code "a\\"b"} — and a pattern that stops at the first {@code "} cannot
+     * find its own output again, which made {@code removeWorkspaceModule} a silent no-op for it.
+     */
+    private static final Pattern QUOTED = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
 
     /**
      * A dep entry line: {@code key = { ... }} or {@code key.workspace = true}. Captures key in group
@@ -114,15 +124,14 @@ public final class JkBuildEditor {
         }
 
         StringBuilder sb = new StringBuilder(library)
-                .append(" = { sha256 = \"")
-                .append(escape(sha256))
-                .append("\", group = \"")
-                .append(escape(group))
-                .append("\"");
+                .append(" = { sha256 = ")
+                .append(MinimalToml.quote(sha256))
+                .append(", group = ")
+                .append(MinimalToml.quote(group));
         if (!artifact.equals(library)) {
-            sb.append(", name = \"").append(escape(artifact)).append("\"");
+            sb.append(", name = ").append(MinimalToml.quote(artifact));
         }
-        sb.append(", version = \"").append(escape(version)).append("\" }");
+        sb.append(", version = ").append(MinimalToml.quote(version)).append(" }");
         String entryLine = sb.toString();
 
         int header = findScopeHeader(lines, scope);
@@ -211,7 +220,9 @@ public final class JkBuildEditor {
             // table with this module as its first entry.
             StringBuilder sb = new StringBuilder(content);
             if (!content.isEmpty() && !content.endsWith("\n")) sb.append('\n');
-            sb.append("\n[workspace]\nmodules = [\"").append(escape(path)).append("\"]\n");
+            sb.append("\n[workspace]\nmodules = [")
+                    .append(MinimalToml.quote(path))
+                    .append("]\n");
             return validated(sb.toString());
         }
 
@@ -225,7 +236,7 @@ public final class JkBuildEditor {
         }
         // No modules key yet — add one right under the header.
         if (modulesLine < 0) {
-            lines.add(wsHeader + 1, wsIndent + "modules = [\"" + escape(path) + "\"]");
+            lines.add(wsHeader + 1, wsIndent + "modules = [" + MinimalToml.quote(path) + "]");
             return validated(join(lines));
         }
 
@@ -248,7 +259,7 @@ public final class JkBuildEditor {
             arrayText.append(lines.get(i)).append('\n');
         Matcher q = QUOTED.matcher(arrayText);
         while (q.find()) {
-            if (q.group(1).equals(path)) return content; // already a module
+            if (decoded(q).equals(path)) return content; // already a module
         }
 
         if (modulesLine == closeLine) {
@@ -305,7 +316,7 @@ public final class JkBuildEditor {
             String line = lines.get(i);
             Matcher q = QUOTED.matcher(line);
             while (q.find()) {
-                if (!q.group(1).equals(path)) continue;
+                if (!decoded(q).equals(path)) continue;
                 // Cut the quoted element plus one adjacent comma (the following one when present,
                 // else the preceding one) so the remaining array stays valid.
                 String before = line.substring(0, q.start());
@@ -341,9 +352,9 @@ public final class JkBuildEditor {
         char prev = j >= 0 ? line.charAt(j) : '\0';
         String insertion =
                 switch (prev) {
-                    case '[' -> "\"" + escape(path) + "\""; // empty array
-                    case ',' -> " \"" + escape(path) + "\""; // trailing comma already present
-                    default -> ", \"" + escape(path) + "\"";
+                    case '[' -> MinimalToml.quote(path); // empty array
+                    case ',' -> " " + MinimalToml.quote(path); // trailing comma already present
+                    default -> ", " + MinimalToml.quote(path);
                 };
         lines.set(lineIdx, line.substring(0, close) + insertion + line.substring(close));
     }
@@ -366,7 +377,7 @@ public final class JkBuildEditor {
             String el = lines.get(modulesLine + 1);
             indent = el.substring(0, el.length() - el.stripLeading().length());
         }
-        lines.add(closeLine, indent + "\"" + escape(path) + "\",");
+        lines.add(closeLine, indent + MinimalToml.quote(path) + ",");
     }
 
     // --- internals ---------------------------------------------------------
@@ -430,33 +441,13 @@ public final class JkBuildEditor {
         if (hit.isPresent()
                 && hit.get().group().equals(group)
                 && hit.get().artifact().equals(artifact)) {
-            return name + " = \"" + escape(versionLiteral) + "\"";
+            return name + " = " + MinimalToml.quote(versionLiteral);
         }
-        StringBuilder sb = new StringBuilder(name)
-                .append(" = { group = \"")
-                .append(escape(group))
-                .append("\"");
+        StringBuilder sb = new StringBuilder(name).append(" = { group = ").append(MinimalToml.quote(group));
         if (!artifact.equals(name)) {
-            sb.append(", name = \"").append(escape(artifact)).append("\"");
+            sb.append(", name = ").append(MinimalToml.quote(artifact));
         }
-        sb.append(", version = \"").append(escape(versionLiteral)).append("\" }");
-        return sb.toString();
-    }
-
-    /** Escape a value destined for a TOML basic string literal. */
-    private static String escape(String s) {
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> sb.append("\\\\");
-                case '"' -> sb.append("\\\"");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> sb.append(c);
-            }
-        }
+        sb.append(", version = ").append(MinimalToml.quote(versionLiteral)).append(" }");
         return sb.toString();
     }
 
@@ -522,6 +513,75 @@ public final class JkBuildEditor {
             lines.add(insertAt, line);
         }
         return validated(join(lines));
+    }
+
+    /**
+     * Set a root-level scalar key, creating it when absent and replacing its value when present.
+     *
+     * <p>Insertion position is the whole point: a bare key written after a {@code [table]} header
+     * lands <em>inside</em> that table, so a new key goes before the first header (or at the end of
+     * a manifest that has none). {@code value} is already TOML-encoded — {@link MinimalToml#quote}
+     * for a string, {@link String#valueOf} for a number or boolean — and the result is
+     * {@link #validated}, so a caller cannot write a manifest jk will not read back.
+     */
+    public static String setRootScalar(String content, String key, String value) {
+        if (key == null || !key.matches("[A-Za-z][A-Za-z0-9_-]*")) {
+            throw new IllegalArgumentException("root key must match [A-Za-z][A-Za-z0-9_-]* (got: " + key + ")");
+        }
+        String assignment = key + " = " + value;
+        List<String> lines = splitPreservingTerminator(content);
+        // Groups 1 and 2 keep the author's indent and their `=` column: a hand-aligned manifest
+        // stays aligned across an edit.
+        Pattern rootKey = Pattern.compile("^([ \\t]*)" + Pattern.quote(key) + "([ \\t]*)=");
+        for (int i = 0; i < lines.size(); i++) {
+            if (ANY_HEADER.matcher(lines.get(i)).matches()) break; // past the root section
+            String line = lines.get(i);
+            Matcher m = rootKey.matcher(line);
+            if (m.find()) {
+                String comment = trailingComment(line.substring(m.end()));
+                lines.set(i, m.group(1) + key + m.group(2) + "= " + value + comment);
+                return validated(join(lines));
+            }
+        }
+        int firstHeader = lines.size();
+        for (int i = 0; i < lines.size(); i++) {
+            if (ANY_HEADER.matcher(lines.get(i)).matches()) {
+                firstHeader = i;
+                break;
+            }
+        }
+        while (firstHeader > 0 && lines.get(firstHeader - 1).isBlank()) firstHeader--;
+        lines.add(firstHeader, assignment);
+        return validated(join(lines));
+    }
+
+    /**
+     * The {@code # …} comment trailing a value, with its leading whitespace, or {@code ""}. A
+     * {@code #} inside a quoted value is part of the value, so quoting is tracked rather than
+     * assumed away — this is a formatting-preserving editor and silently eating a user's note
+     * would be the same class of loss as reflowing their file.
+     */
+    private static String trailingComment(String afterEquals) {
+        boolean basic = false;
+        boolean literal = false;
+        for (int i = 0; i < afterEquals.length(); i++) {
+            char c = afterEquals.charAt(i);
+            if (c == '\\' && basic) {
+                i++; // an escaped character cannot close the string
+            } else if (c == '"' && !literal) {
+                basic = !basic;
+            } else if (c == '\'' && !basic) {
+                literal = !literal;
+            } else if (c == '#' && !basic && !literal) {
+                return "  " + afterEquals.substring(i).strip();
+            }
+        }
+        return "";
+    }
+
+    /** The element a {@link #QUOTED} match names, decoded by the one TOML codec. */
+    private static String decoded(Matcher quotedElement) {
+        return MinimalToml.unquote(quotedElement.group());
     }
 
     private static String validated(String text) {

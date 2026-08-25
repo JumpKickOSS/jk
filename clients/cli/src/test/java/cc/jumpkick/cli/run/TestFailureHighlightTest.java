@@ -14,7 +14,6 @@ import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Width;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -352,7 +351,7 @@ class TestFailureHighlightTest {
                 "@@src 2*|" + longLine,
                 "@@src-end",
                 "Test Failure end");
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
         Session original = SessionContext.current();
         List<String> painted;
         try {

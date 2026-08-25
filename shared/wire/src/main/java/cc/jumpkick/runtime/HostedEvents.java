@@ -27,5 +27,5 @@ public final class HostedEvents {
     }
 
     /** A provisioned Maven/Gradle distribution ({@code jk mvn}/{@code jk gradle}). */
-    public record Provision(String bin, String version, String source, String error, int exit, String diag) {}
+    public record Provision(String bin, String version, String source, String error, int exit) {}
 }

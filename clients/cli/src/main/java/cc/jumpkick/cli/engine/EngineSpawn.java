@@ -217,10 +217,10 @@ public final class EngineSpawn {
 
     /**
      * The resolved engine to spawn: which artifact, the host JDK (JAR only), whether that JDK is a
-     * HotSpot/C2 JVM (AOT is only stable there), the AOT cache path, and whether a {@code.noaot}
-     * marker already says AOT can't apply for this key.
+     * HotSpot/C2 JVM (AOT is only stable there), and the AOT cache path. A refusal marker is not
+     * carried here: it expires, so it is read when the mode is chosen and nowhere else.
      */
-    record EngineTarget(EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache, boolean noAotMarker) {}
+    record EngineTarget(EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache) {}
 
     /** A host JDK for the engine: home, vendor, and version (from its {@code release} file). */
     record EngineJdk(Path home, JdkVendor vendor, String version) {}
@@ -242,26 +242,26 @@ public final class EngineSpawn {
                 + " — materialize it (`./install.sh build/dist/jk` or `jk self materialize …`),"
                 + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
         if (engine.kind() != EngineArtifact.Kind.JAR) {
-            return new EngineTarget(engine, null, false, null, false);
+            return new EngineTarget(engine, null, false, null);
         }
         EngineJdk jdk = resolveEngineJdk();
         Path aot = aotCachePath(paths, Path.of(engine.path()), jdk);
-        boolean marker = Files.exists(AotCacheFiles.marker(aot));
-        return new EngineTarget(engine, jdk.home(), isHotSpot(jdk.vendor()), aot, marker);
+        return new EngineTarget(engine, jdk.home(), isHotSpot(jdk.vendor()), aot);
     }
 
     /**
-     * AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code.noaot} marker uses
-     * AOT. Train-on-miss is skipped when {@link cc.jumpkick.util.AotSettings#trainingEnabled} is
-     * false ({@code JK_AOT_TRAIN=off}) — still maps an existing cache. USE requires a
-     * <em>non-empty</em> cache ({@link AotCacheFiles#usable}): a zero-byte leftover from a crashed
-     * trainer would otherwise map "forever" while never accelerating anything — it is deleted here
-     * so the key can retrain.
+     * AOT mode for a target: only a JAR engine on a HotSpot JDK whose key is not under a live
+     * refusal ({@link AotCacheFiles#blocked} — a refusal is a back-off, expired past its TTL on the
+     * schedule the worker trainer also uses, not believed forever). Train-on-miss is skipped when
+     * {@link cc.jumpkick.util.AotSettings#trainingEnabled} is false ({@code JK_AOT_TRAIN=off}) —
+     * still maps an existing cache. USE requires a <em>non-empty</em> cache ({@link
+     * AotCacheFiles#usable}): a zero-byte leftover from a crashed trainer would otherwise map
+     * "forever" while never accelerating anything — it is deleted here so the key can retrain.
      */
     static AotMode chooseAotMode(EngineTarget t) {
         if (t.engine().kind() != EngineArtifact.Kind.JAR) return AotMode.NONE;
         if (!t.hotspot()) return AotMode.NONE; // GraalVM host: its Graal JIT breaks the cache — skip cleanly
-        if (t.noAotMarker()) return AotMode.NONE;
+        if (AotCacheFiles.blocked(t.aotCache())) return AotMode.NONE;
         if (AotCacheFiles.usable(t.aotCache())) return AotMode.USE;
         AotCacheFiles.deleteIfEmpty(t.aotCache()); // torn/zero-byte leftover: treat as missing so it retrains
         if (!AotSettings.trainingEnabled()) return AotMode.NONE;
@@ -455,8 +455,8 @@ public final class EngineSpawn {
         }
         String stem = "engine-" + version + "-" + hash;
         Path cache = aotDir.resolve(stem + ".aot");
-        // Sweep THIS version's other keys — the cache, the JEP 514 ".aot.config" recording
-        // intermediate, and any ".noaot" marker. The "<16-hex>." shape check keeps a version
+        // Sweep THIS version's other keys — the cache, the JEP 514 .aot.config recording
+        // intermediate, and any refusal marker. The "<16-hex>." shape check keeps a version
         // whose name extends ours ("0.10.0" vs "0.10.1") out of the blast radius.
         String versionPrefix = "engine-" + version + "-";
         List<String> swept = new ArrayList<>();
@@ -488,9 +488,9 @@ public final class EngineSpawn {
 
     /**
      * Best-effort {@code aot.toml} row for the engine cache key (even before the file exists, so a
-     * pending train is still documented). Updates size/status when the cache or {@code .noaot}
-     * marker is present. {@code ready} means size &gt; 0 — the same predicate {@link
-     * #chooseAotMode} maps by, so the manifest and the engine never disagree about one file.
+     * pending train is still documented). {@code ready} means size &gt; 0 and {@code noaot} means a
+     * refusal is still live — the same two predicates {@link #chooseAotMode} decides by, so the
+     * manifest and the engine never disagree about one file.
      */
     static void recordEngineAotManifest(Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
         if (cache == null) return;
@@ -499,7 +499,7 @@ public final class EngineSpawn {
         try {
             String name = cache.getFileName().toString();
             boolean ready = Files.isRegularFile(cache) && Files.size(cache) > 0;
-            boolean noaot = Files.exists(AotCacheFiles.marker(cache));
+            boolean noaot = AotCacheFiles.blocked(cache);
             String status = ready ? "ready" : (noaot ? "noaot" : "pending");
             var b = AotManifest.Entry.builder(name)
                     .tool("engine")

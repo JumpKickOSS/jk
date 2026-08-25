@@ -23,7 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The minified plugin: R8 {@code --classfile} full mode over a plain Java app + its runtime
- * closure, packaged as one slim executable jar replacing the main artifact. The acceptance is
+ * closure, packaged as one slim executable jar <em>beside</em> the main artifact — artifacts are
+ * additive, and the test below asserts all three (thin, fat, minified). The acceptance is
  * behavioral AND structural: the shrunk jar <em>runs</em> ({@code java -jar} prints the expected
  * output — R8 kept everything reachable), dead library code is gone (an unreferenced
  * commons-lang3 package is absent), and the artifact is a fraction of the input closure.
@@ -32,8 +33,17 @@ import org.junit.jupiter.api.io.TempDir;
  * <em>after a cache hit too</em>: it is the only copy, and a shipped obfuscated jar whose map has
  * silently vanished can never have a crash report resolved again.
  *
- * <p>Network test (Maven Central: commons-lang3 + the r8 jar); the CAS persists under build/ so
- * repeat runs are warm.
+ * <p>Both tests pin the {@code package-minified} step's OUTCOME, because the artifact alone cannot
+ * tell you which one you got: a jar the packaging cache restored is byte-identical to a jar R8 just
+ * made, so every assertion below is equally true of a run in which the packager never started. That
+ * is mechanism 4 in {@code code-as-art.md}'s list of ways a suite reports success while proving
+ * nothing, and {@link #assertMinifiedStep} is the only place this test can rule it out.
+ *
+ * <p>Network test (Maven Central: commons-lang3 + the r8 jar). The CAS and the fetched repos persist
+ * under {@code build/android-spike-cache}, so repeat runs skip the downloads — but the packaging
+ * ACTION records there cannot be replayed across runs: every action id is qualified by the
+ * artifact's absolute path ({@code ActionKey.qualifiedTaskId}) and the project lives in a per-method
+ * {@code @TempDir}. The warm part is the network, not the work.
  */
 @Tag("slow")
 class MinifiedPluginTest {
@@ -49,6 +59,7 @@ class MinifiedPluginTest {
         BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
+        assertMinifiedStep(result, TaskStatus.SUCCESS, "R8 must have run — this test's subject is its output");
 
         // Artifacts are additive: the thin jar always, the fat jar because minified implies it,
         // and the minified jar itself. The fat jar beside it is what makes the two comparable.
@@ -97,6 +108,7 @@ class MinifiedPluginTest {
         BuildPlanResult first = build(project, cache);
         assertThat(first.errors()).isEmpty();
         assertThat(first.success()).isTrue();
+        assertMinifiedStep(first, TaskStatus.SUCCESS, "the record the second build hits must be one this run wrote");
 
         Path target = project.resolve("target");
         Path jar = target.resolve("slim-1.0.0-min.jar");
@@ -113,13 +125,7 @@ class MinifiedPluginTest {
         BuildPlanResult second = build(project, cache);
         assertThat(second.errors()).isEmpty();
         assertThat(second.success()).isTrue();
-        // SKIPPED is what TaskContext.cached() reports: the restore path ran, R8 did not.
-        assertThat(second.steps())
-                .filteredOn(step -> TaskNames.PACKAGE_MINIFIED.equals(step.name()))
-                .singleElement()
-                .extracting(BuildPlanResult.StepReport::status)
-                .as("the second build must be the cache hit this test is about")
-                .isEqualTo(TaskStatus.SKIPPED);
+        assertMinifiedStep(second, TaskStatus.SKIPPED, "the second build must be the cache hit this test is about");
 
         assertThat(jar).exists();
         assertThat(mapping)
@@ -128,7 +134,24 @@ class MinifiedPluginTest {
         assertThat(Files.readString(mapping)).isEqualTo(mapped);
     }
 
-    /** The CAS persists under build/ so repeat runs (and the second test here) are warm. */
+    /**
+     * The {@code package-minified} outcome. {@link TaskStatus#SUCCESS} means the plugin worker ran
+     * and {@code MinifiedJarPackager.produce} with it; {@link TaskStatus#SKIPPED} is what {@code
+     * TaskContext.cached()} reports when {@code PlannerSupport.restorePackaged} hard-linked a stored
+     * artifact back instead and no worker ever started. From outside the two are indistinguishable —
+     * same jar, same bytes — so a test that does not say which one it expects cannot notice the day
+     * it stops exercising R8 at all.
+     */
+    private static void assertMinifiedStep(BuildPlanResult result, TaskStatus expected, String why) {
+        assertThat(result.steps())
+                .filteredOn(step -> TaskNames.PACKAGE_MINIFIED.equals(step.name()))
+                .singleElement()
+                .extracting(BuildPlanResult.StepReport::status)
+                .as(why)
+                .isEqualTo(expected);
+    }
+
+    /** Downloads persist here (CAS + fetched repos), so repeat runs are warm on the network. */
     private static Path spikeCache() {
         return Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
     }
@@ -180,11 +203,13 @@ class MinifiedPluginTest {
      * The obfuscating variant: no library closure (R8 over one class is seconds, and the map is the
      * subject here, not the shrink ratio), and a per-run marker in the source.
      *
-     * <p>The marker is load-bearing. The spike cache above outlives the JVM, and packaging keys are
-     * content-derived — so a fixed fixture makes the <em>first</em> build a replay of a record some
-     * earlier run stored, and then "the map is still there after a cache hit" is true of a run in
-     * which the packager never executed. A unique class body forces the first build to really
-     * package, so the second one is a hit on a record this run wrote.
+     * <p>The marker makes the first build cold <em>by construction</em>: this test is about what a
+     * cache hit gives back, so the record the second build hits has to be one R8 wrote a moment
+     * earlier — a first build that was itself a hit would make "the map is still there" true of a
+     * run in which the packager never executed. Today the {@code @TempDir} already guarantees it
+     * (packaging action ids carry the artifact's absolute path), so the unique class body is belt
+     * and braces against a key derivation that stops carrying the path; the {@code SUCCESS}
+     * assertion on the first build is what checks the guarantee actually held.
      */
     private static Path writeObfuscatedProject(Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
@@ -250,7 +275,7 @@ class MinifiedPluginTest {
         // The tails carry the additive artifacts (-all.jar, -min.jar); coreBuilder stops at the
         // thin jar, so a plan without them is not what `jk build` runs.
         var builder = BuildPlanner.coreBuilder(in);
-        BuildPlanner.appendDeclaredTails(builder, in);
+        PlannerTails.appendDeclaredTails(builder, in);
         return builder.build().run();
     }
 }

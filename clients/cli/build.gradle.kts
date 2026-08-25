@@ -57,6 +57,17 @@ val checkCliRuntimeClasspath by tasks.registering {
 }
 
 // JK-2151: native reachability — CLI main must not name parser / plugin-schema types.
+//
+// JK-2489 closed the hole this guard was written for and could not previously state: the ban listed
+// twelve type names but not `org.tomlj` itself, because `BuildLogicTaskScan` named `TomlValues` and
+// `org.tomlj.TomlTable` to read `[build].logic` — one violation, in the guard's own module, for as
+// long as the guard has existed. `TomlScan` reads that key now (see `BuildLogicToml`), so the two
+// entries below are enforceable. This is the rule the guard registry reserved as G4 and never
+// landed; it belongs here rather than as a new letter, because it is the same reachability control.
+//
+// Measured 2026-08-24 across 274 files under clients/cli/src/main/java: 0 violations for all
+// fourteen entries. `TomlScan` and `MinimalToml` are deliberately absent from the list — they are
+// the line scanner and the scalar codec the native image is *supposed* to reach.
 val checkCliNoParseTypes by tasks.registering {
     val main = layout.projectDirectory.dir("src/main/java")
     inputs.dir(main)
@@ -65,6 +76,8 @@ val checkCliNoParseTypes by tasks.registering {
             "JkBuildParser",
             "PluginDescriptor",
             "PluginTableRegistry",
+            "org.tomlj",
+            "TomlValues",
             "LockFreshness",
             "LockManifestDigest",
             "PluginContributions",
@@ -131,6 +144,173 @@ val checkTestRootsDeclared by tasks.registering {
 tasks.named("check") { dependsOn(checkTestRootsDeclared) }
 tasks.named("test") { dependsOn(checkTestRootsDeclared) }
 
+// ---------------------------------------------------------------------------
+// G22 — JK-2449: the IDE clients are wired to jk by string, and nothing checked the strings.
+//
+// `clients/intellij` and `clients/vscode` are not modules of this build (the IntelliJ plugin is a
+// standalone Gradle build; the VS Code extension is JavaScript), so no compiler ever looks at
+// them. That is how a P0 survived 24 days: commit 45eb5ec9 sed'd `jk.lock` -> `jk-lock.toml`
+// tree-wide and rewrote a VS Code *command id* in `package.json`, leaving the palette entry
+// pointing at a command `extension.js` never registers. Nothing about that is a compile error —
+// it is valid JSON naming a handler that does not exist — so adopting the two clients as modules
+// with a `check` would have produced a green gate over the live defect. The gate has to be a
+// cross-file wiring check, and it has to be cheap: an IntelliJ plugin build needs a whole IDE
+// distribution (`intellijIdeaCommunity("2024.1.7")`, fetched from JetBrains' own repositories,
+// which this build's `dependencyResolutionManagement` does not carry) and a VS Code extension
+// needs a Node toolchain. `checkAll` now depends on every module's `check`, so adopting either
+// would put a large third-party download on the critical path of every gate — a worse trade than
+// no check, and the reason `checkNoBareManifestName` already records `clients/intellij` as
+// deliberately out of this build.
+//
+// So the clients are gated from here — `:cli` already owns `IdeCommand`, the IDE generators, BSP,
+// and the `IdeWireModel` they parse — with five arms, all reading their expectations from the
+// owning file rather than restating them:
+//
+//   1. VS Code command ids, BOTH directions: `contributes.commands[].command` in package.json is
+//      exactly the set registered by `vscode.commands.registerCommand` in extension.js. One
+//      direction alone is half a guard — a registered command missing from the palette is
+//      unreachable in exactly the same way as a palette entry with no handler.
+//   2. Every jk verb either client shells out to exists, checked against the names and aliases
+//      declared by the `:cli` command classes themselves.
+//   3. Every implementation class `plugin.xml` names under `cc.jumpkick.idea` has a source file.
+//   4. Every wire field `JkWireModel` reads is emitted by `IdeWireModel.encode()`.
+//   5. The IntelliJ plugin declares no `untilBuild` upper bound. A pin here is a time bomb on
+//      JetBrains' cadence: "252.*" made the plugin refuse to install on IDEA 2025.3 (build 253).
+//
+// Measured 2026-08-24 against 6 VS Code command ids (6 registered handlers), 6 shelled verbs
+// (bsp/build/ide/lock/sync/test) resolved against 110 owner-declared command names and aliases,
+// 7 plugin.xml implementation classes and 10 wire fields — 0 violations after the `jk.lock` and
+// `untilBuild` fixes in this change, 2 before. Each arm also fails loudly if its own scan comes
+// back empty (or, for the verb owner, implausibly small), so a shape change cannot quietly turn
+// an arm into a green no-op.
+// ---------------------------------------------------------------------------
+val checkIdeClientWiring by tasks.registering {
+    group = "verification"
+    description = "Fail when clients/intellij or clients/vscode names a jk verb, command id, class or wire field that does not exist"
+    val vscodeManifest = rootProject.file("clients/vscode/package.json")
+    val vscodeSource = rootProject.file("clients/vscode/extension.js")
+    val ideaPluginXml = rootProject.file("clients/intellij/src/main/resources/META-INF/plugin.xml")
+    val ideaBuildScript = rootProject.file("clients/intellij/build.gradle.kts")
+    val ideaJava = rootProject.file("clients/intellij/src/main/java")
+    val wireModel = rootProject.file("shared/wire/src/main/java/cc/jumpkick/engine/protocol/IdeWireModel.java")
+    val cliCommands = fileTree(layout.projectDirectory.dir("src/main/java/cc/jumpkick/command")) {
+        include("**/*Command.java")
+    }
+    inputs.file(vscodeManifest).withPropertyName("vscodeManifest")
+    inputs.file(vscodeSource).withPropertyName("vscodeSource")
+    inputs.file(ideaPluginXml).withPropertyName("ideaPluginXml")
+    inputs.file(ideaBuildScript).withPropertyName("ideaBuildScript")
+    inputs.dir(ideaJava).withPropertyName("ideaJava")
+    inputs.file(wireModel).withPropertyName("wireModel")
+    inputs.files(cliCommands).withPropertyName("cliCommands")
+    val stamp = layout.buildDirectory.file("guards/ide-client-wiring.ok")
+    outputs.file(stamp)
+    doLast {
+        val problems = mutableListOf<String>()
+
+        // --- 1. VS Code palette entries and registered handlers are the same set --------------
+        val manifestText = vscodeManifest.readText()
+        val extensionText = vscodeSource.readText()
+        val declared = Regex("\"command\"\\s*:\\s*\"([^\"]+)\"").findAll(manifestText)
+            .map { it.groupValues[1] }.toSortedSet()
+        val registered = Regex("registerCommand\\(\\s*\"([^\"]+)\"").findAll(extensionText)
+            .map { it.groupValues[1] }.toSortedSet()
+        (declared - registered).forEach {
+            problems += "package.json contributes command '$it' that extension.js never registers"
+        }
+        (registered - declared).forEach {
+            problems += "extension.js registers command '$it' that package.json never contributes"
+        }
+
+        // --- 2. Every shelled-out verb is a real jk command (names read from the owners) -------
+        val verbs = sortedSetOf<String>()
+        cliCommands.files.forEach { f ->
+            val text = f.readText()
+            Regex("String name\\(\\)\\s*\\{\\s*return \"([a-z][a-z0-9-]*)\";").findAll(text)
+                .forEach { verbs += it.groupValues[1] }
+            Regex("List<String> aliases\\(\\)\\s*\\{[^}]*?return List\\.of\\(([^)]*)\\);", RegexOption.DOT_MATCHES_ALL)
+                .findAll(text)
+                .forEach { m ->
+                    Regex("\"([a-z][a-z0-9-]*)\"").findAll(m.groupValues[1]).forEach { verbs += it.groupValues[1] }
+                }
+        }
+        if (verbs.size < 40) {
+            problems += "verb owner scan found only ${verbs.size} jk commands under src/main/java/cc/jumpkick/command" +
+                    " — the name()/aliases() shape moved and arm 2 is blind"
+        }
+        val shelled = sortedSetOf<String>()
+        Regex("runJk\\(\\[\\s*\"([a-z][a-z0-9-]*)\"").findAll(extensionText)
+            .forEach { shelled += it.groupValues[1] }
+        val jkCliAction = File(ideaJava, "cc/jumpkick/idea/JkCliAction.java")
+        val jkSyncService = File(ideaJava, "cc/jumpkick/idea/JkSyncService.java")
+        Regex("super\\(\\s*\"[^\"]*\"\\s*,\\s*\"([a-z][a-z0-9-]*)\"").findAll(jkCliAction.readText())
+            .forEach { shelled += it.groupValues[1] }
+        Regex("JkCliRunner\\.run\\([^,]+,\\s*List\\.of\\(\"([a-z][a-z0-9-]*)\"").findAll(jkSyncService.readText())
+            .forEach { shelled += it.groupValues[1] }
+        if (shelled.isEmpty()) {
+            problems += "found no jk verbs invoked by either IDE client — the call shape moved and arm 2 is blind"
+        }
+        (shelled - verbs).forEach {
+            problems += "an IDE client shells out to 'jk $it', which is not a name or alias of any :cli command"
+        }
+
+        // --- 3. plugin.xml names classes that exist -------------------------------------------
+        val xml = ideaPluginXml.readText()
+        val ideaClasses = Regex("(?:class|implementation)=\"(cc\\.jumpkick\\.idea\\.[A-Za-z0-9_.$]+)\"")
+            .findAll(xml).map { it.groupValues[1] }.toSortedSet()
+        if (ideaClasses.isEmpty()) {
+            problems += "plugin.xml declares no cc.jumpkick.idea implementation class — arm 3 is blind"
+        }
+        ideaClasses.forEach { fqcn ->
+            // Inner classes (JkCliAction$Sync) live in the outer class's file.
+            val outer = fqcn.substringBefore('$')
+            val source = File(ideaJava, outer.replace('.', '/') + ".java")
+            if (!source.isFile) {
+                problems += "plugin.xml names $fqcn but ${source.name} does not exist"
+            } else if (fqcn.contains('$')) {
+                val inner = fqcn.substringAfter('$')
+                if (!source.readText().contains("class $inner")) {
+                    problems += "plugin.xml names $fqcn but ${source.name} declares no class $inner"
+                }
+            }
+        }
+
+        // --- 4. Every wire field the plugin reads is one the engine emits ----------------------
+        val jkWireModel = File(ideaJava, "cc/jumpkick/idea/JkWireModel.java").readText()
+        val read = sortedSetOf<String>()
+        Regex("str(?:Field|Array)\\(\\s*(?:body|json)\\s*,\\s*\"([A-Za-z][A-Za-z0-9]*)\"")
+            .findAll(jkWireModel).forEach { read += it.groupValues[1] }
+        // `workspace` is sniffed as a raw \"key\": literal rather than through the field helpers.
+        Regex("\\\\\"([A-Za-z][A-Za-z0-9]*)\\\\\"\\s*:").findAll(jkWireModel)
+            .forEach { read += it.groupValues[1] }
+        if (read.isEmpty()) {
+            problems += "JkWireModel reads no recognised wire field — the parse shape moved and arm 4 is blind"
+        }
+        val emitted = wireModel.readText()
+        read.forEach { field ->
+            if (!emitted.contains("\\\"$field\\\":")) {
+                problems += "JkWireModel reads wire field '$field' that IdeWireModel.encode() does not emit"
+            }
+        }
+
+        // --- 5. No untilBuild upper bound on the IntelliJ plugin -------------------------------
+        val ideaBuild = ideaBuildScript.readText()
+        Regex("untilBuild\\s*(?:=|\\.set\\()\\s*\"([^\"]+)\"").find(ideaBuild)?.let {
+            problems += "clients/intellij pins untilBuild to \"${it.groupValues[1]}\" — a pinned upper bound makes" +
+                    " the plugin uninstallable the moment JetBrains ships the next build line; unset it with" +
+                    " `untilBuild = provider { null }`"
+        }
+
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                    "The IDE clients are not compiled by this build, so their wiring to jk is only ever checked"
+                            + " here (JK-2449):\n        " + problems.sorted().joinToString("\n        "))
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkIdeClientWiring) }
+
 // Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via EngineInstall
 // / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
 application {
@@ -159,9 +339,6 @@ val publisherWorkerJar by configurations.creating {
 val imageBuilderWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
-val compatBridgeWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
 val springBootWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
@@ -178,7 +355,6 @@ dependencies {
     auditorWorkerJar(project(":auditor"))
     publisherWorkerJar(project(":publisher"))
     imageBuilderWorkerJar(project(":image-builder"))
-    compatBridgeWorkerJar(project(":compat-bridge"))
     springBootWorkerJar(project(":spring-boot"))
     androidWorkerJar(project(":android"))
     javaCompilerWorkerJar(project(":java-compiler"))
@@ -239,8 +415,9 @@ tasks.named<Test>("test") {
     // pass caps explicitly (withCaps / NerdFontCaps args), so pinning the ambient default off costs
     // no coverage (JK-1970).
     environment("JK_NERD_FONT", "false")
-    // Do not autoload EngineTestExtension (materialize + stop-after-every-class).
-    systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
+    // EngineTestExtension (materialize + stop-after-every-class) stays unloaded here: the unit
+    // tier must not spawn engines. That is the conventions default for every tier since JK-2447,
+    // so this tier states nothing; `integrationTest` below is the one that overrides it.
     systemProperty(
             "junit.jupiter.tempdir.deletion.strategy.default",
             "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy")
@@ -258,7 +435,7 @@ tasks.named<Test>("integrationTest") {
     dependsOn(
             ":engine:shadowJar",
             kotlinWorkerJar, groovyWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
-            imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar,
+            imageBuilderWorkerJar, springBootWorkerJar, androidWorkerJar,
             javaCompilerWorkerJar,
             ":kotlin-compiler:stageWorkerRepo",
             ":groovy-compiler:stageWorkerRepo",
@@ -267,7 +444,6 @@ tasks.named<Test>("integrationTest") {
             ":auditor:stageWorkerRepo",
             ":publisher:stageWorkerRepo",
             ":image-builder:stageWorkerRepo",
-            ":compat-bridge:stageWorkerRepo",
             ":spring-boot:stageWorkerRepo",
             ":android:stageWorkerRepo")
     environment("TERM", "xterm-256color")
@@ -305,7 +481,6 @@ tasks.named<Test>("integrationTest") {
                         ":auditor",
                         ":publisher",
                         ":image-builder",
-                        ":compat-bridge",
                         ":spring-boot",
                         ":android")
                 .forEach { p ->
@@ -323,7 +498,6 @@ tasks.named<Test>("integrationTest") {
         systemProperty("jk.auditor.plugin.jar", auditorWorkerJar.singleFile.absolutePath)
         systemProperty("jk.publisher.plugin.jar", publisherWorkerJar.singleFile.absolutePath)
         systemProperty("jk.image-builder.plugin.jar", imageBuilderWorkerJar.singleFile.absolutePath)
-        systemProperty("jk.compat-bridge.plugin.jar", compatBridgeWorkerJar.singleFile.absolutePath)
         systemProperty("jk.spring-boot.plugin.jar", springBootWorkerJar.singleFile.absolutePath)
         systemProperty("jk.android.plugin.jar", androidWorkerJar.singleFile.absolutePath)
     }

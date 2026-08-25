@@ -2,11 +2,19 @@
 package cc.jumpkick.scaffold;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.util.MinimalToml;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Renders a starter {@code jk.toml} from {@link NewInputs} (name-as-key dependency tables). */
+/**
+ * Renders a starter {@code jk.toml} from {@link NewInputs} (name-as-key dependency tables).
+ *
+ * <p>Every string value goes through {@link MinimalToml#quote}. It used to splice raw text between
+ * two {@code "} characters at eleven sites, so a project name, group or main class containing a
+ * quote or a backslash — a Windows path in {@code main}, say — produced a {@code jk.toml} that jk
+ * itself could not parse.
+ */
 public final class NewJkBuildRenderer {
 
     /** Compiler version selector: first {@code jk lock} pins the current stable. */
@@ -16,10 +24,10 @@ public final class NewJkBuildRenderer {
 
     public static String render(NewInputs inputs) {
         var sb = new StringBuilder();
-        sb.append("name     = \"").append(inputs.name()).append("\"\n");
-        sb.append("group    = \"").append(inputs.group()).append("\"\n");
+        sb.append("name     = ").append(MinimalToml.quote(inputs.name())).append('\n');
+        sb.append("group    = ").append(MinimalToml.quote(inputs.group())).append('\n');
         sb.append("version  = \"0.1.0\"\n");
-        sb.append("jdk      = \"").append(inputs.jdk()).append("\"\n");
+        sb.append("jdk      = ").append(MinimalToml.quote(inputs.jdk())).append('\n');
         switch (inputs.lang()) {
             case JAVA -> sb.append("java     = ").append(inputs.javaRelease()).append('\n');
             case KOTLIN -> sb.append("kotlin   = \"").append(LATEST).append("\"\n");
@@ -27,12 +35,15 @@ public final class NewJkBuildRenderer {
             case SCALA -> sb.append("scala    = \"").append(LATEST).append("\"\n");
         }
         inputs.kotlinModuleName()
-                .ifPresent(m -> sb.append("module   = \"").append(m).append("\"\n"));
+                .ifPresent(m ->
+                        sb.append("module   = ").append(MinimalToml.quote(m)).append('\n'));
 
         if (!inputs.plugin() && (inputs.main().isPresent() || inputs.assembly())) {
             sb.append("\n[application]\n");
             if (inputs.main().isPresent()) {
-                sb.append("main       = \"").append(inputs.main().get()).append("\"\n");
+                sb.append("main       = ")
+                        .append(MinimalToml.quote(inputs.main().get()))
+                        .append('\n');
             }
             if (inputs.assembly()) {
                 sb.append("assembly   = true\n"); // aligns with `main       =` above
@@ -46,7 +57,8 @@ public final class NewJkBuildRenderer {
         if (inputs.plugin()) {
             // The SDK the plugin compiles against. A `main` dep, NOT `provided`: the worker forks
             // as `java -jar`, so jk-plugin-sdk must be shaded INTO the fat jar, not merely on the
-            // compile classpath. Keep in sync with PluginSdkVersion.VERSION / plugin-sdk/build.gradle.kts.
+            // compile classpath. The published version is owned by shared/plugin-sdk/build.gradle.kts;
+            // PluginSdkScaffoldVersionTest fails if this copy drifts from it.
             sb.append("\n[dependencies]\n");
             sb.append("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"0.1.0\" }\n");
             return sb.toString();
@@ -92,7 +104,8 @@ public final class NewJkBuildRenderer {
         if (hit != null && hit.group().equals(group) && hit.artifact().equals(artifact)) {
             return artifact + " = \"latest\"";
         }
-        return artifact + " = { group = \"" + group + "\", version = \"" + e.version() + "\" }";
+        return artifact + " = { group = " + MinimalToml.quote(group) + ", version = " + MinimalToml.quote(e.version())
+                + " }";
     }
 
     /**

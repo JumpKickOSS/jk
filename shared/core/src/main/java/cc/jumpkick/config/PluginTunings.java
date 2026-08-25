@@ -5,8 +5,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
@@ -52,7 +50,9 @@ public final class PluginTunings {
      */
     public static PluginTuning overlayProject(PluginTuning base, Path projectDir) {
         PluginTuning eff = base == null ? PluginTuning.NONE : base;
-        return projectDir == null ? eff : overlay(eff, fromToml(projectDir.resolve(ManifestPaths.MANIFEST)));
+        return projectDir == null
+                ? eff
+                : overlay(eff, JkBuildParser.jvmTuning(projectDir.resolve(ManifestPaths.MANIFEST)));
     }
 
     /** The {@code JK_*} environment layer. Coercion via the shared {@link EnvValues}. */
@@ -65,15 +65,13 @@ public final class PluginTunings {
     }
 
     /**
-     * The {@code [jvm]} table of a {@code jk.toml}, or {@link PluginTuning#NONE}. Never throws — a
-     * missing/malformed file or table degrades to {@code NONE}. Coercion via the shared {@link
-     * TomlValues} ({@code max-ram-percent} accepts a TOML integer or float; {@code args} keeps only
-     * string elements).
+     * The {@code [jvm]} table of a parsed {@code jk.toml}, or {@link PluginTuning#NONE} when it is
+     * absent. Reached through {@link JkBuildParser#jvmTuning(Path)}, which owns the read. Coercion
+     * via the shared {@link TomlValues} ({@code max-ram-percent} accepts a TOML integer or float;
+     * {@code args} keeps only string elements).
      */
-    public static PluginTuning fromToml(Path jkToml) {
-        Optional<TomlParseResult> parsed = TomlValues.parse(jkToml);
-        if (parsed.isEmpty()) return PluginTuning.NONE;
-        TomlTable jvm = parsed.get().getTable("jvm");
+    static PluginTuning fromToml(TomlTable root) {
+        TomlTable jvm = root.getTable("jvm");
         if (jvm == null) return PluginTuning.NONE;
         return new PluginTuning(
                 TomlValues.optDouble(jvm, "max-ram-percent").orElse(null),

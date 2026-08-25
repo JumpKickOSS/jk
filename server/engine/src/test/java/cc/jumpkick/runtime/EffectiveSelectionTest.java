@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link BuildPlanner#effectiveSelection} must honor an explicitly cleared tag list: a
+ * {@link PlannerSupport#effectiveSelection} must honor an explicitly cleared tag list: a
  * profile's {@code exclude-tags = []} resolves to empty lists with {@code tagsResolved}, and the
  * engine must not fold the module's own {@code [test]} tags back in.
  */
@@ -35,7 +35,7 @@ class EffectiveSelectionTest {
     void cleared_selection_stays_cleared(@TempDir Path dir) throws Exception {
         moduleWithExcludes(dir);
         var cleared = TestSelection.of(List.of(), false, List.of(), List.of(), true);
-        var eff = BuildPlanner.effectiveSelection(cleared, dir);
+        var eff = PlannerSupport.effectiveSelection(cleared, dir);
         assertThat(eff.excludeTags()).isEmpty();
         assertThat(eff.includeTags()).isEmpty();
     }
@@ -43,7 +43,7 @@ class EffectiveSelectionTest {
     @Test
     void unresolved_default_still_folds_module_tags(@TempDir Path dir) throws Exception {
         moduleWithExcludes(dir);
-        var eff = BuildPlanner.effectiveSelection(TestSelection.DEFAULT, dir);
+        var eff = PlannerSupport.effectiveSelection(TestSelection.DEFAULT, dir);
         assertThat(eff.excludeTags()).containsExactly("slow", "integration");
     }
 
@@ -54,7 +54,8 @@ class EffectiveSelectionTest {
         String json = "{" + ProtoJobs.testSelectionFields(cleared).substring(1) + "}";
         var decoded = ProtoJobs.testSelectionOf(json);
         assertThat(decoded.tagsResolved()).isTrue();
-        assertThat(BuildPlanner.effectiveSelection(decoded, dir).excludeTags()).isEmpty();
+        assertThat(PlannerSupport.effectiveSelection(decoded, dir).excludeTags())
+                .isEmpty();
 
         String defJson =
                 "{" + ProtoJobs.testSelectionFields(TestSelection.DEFAULT).substring(1) + "}";

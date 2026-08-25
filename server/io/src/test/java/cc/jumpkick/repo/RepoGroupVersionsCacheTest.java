@@ -11,7 +11,6 @@ import cc.jumpkick.model.Coordinate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -141,7 +140,7 @@ class RepoGroupVersionsCacheTest {
     }
 
     private static void goOffline() {
-        SessionContext.installConfig(JkConfig.empty().withOffline(Optional.of(true)));
+        SessionContext.installConfig(JkConfig.empty().withOffline(true));
     }
 
     private static void writeMeta(Path root, String group, String artifact, String... versions) throws Exception {

@@ -10,7 +10,6 @@ import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.AggregateContext;
-import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlListener;
@@ -380,32 +379,16 @@ public final class NativeCommand implements CliCommand {
         ModuleScopeHint.apply(view, "building", scopeHintNames);
         AggregateContext agg = new AggregateContext(view);
         int[] built = {0};
-        int[] finished = {0};
-        var listener = new WorkspaceBuildListener() {
-            @Override
-            public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
-                agg.applySnapshot(snap);
-            }
-
-            @Override
-            public BuildPlanListener onModuleStart(ModulePlan m) {
-                return new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
-            }
-
-            @Override
-            public void onModuleFinish(ModuleOutcome o) {
-                if (o.success()) built[0]++;
-                int n = ++finished[0];
-                String completion =
-                        BuildCommand.completionLine(o.success(), n, Math.max(totalModules, n), o.coord(), o.millis());
-                if (view.animating()) {
-                    view.addCompletion(completion);
-                }
-            }
-        };
+        // Not buffered and no JSONL: the JSON / verbose arm above is this verb's headless renderer,
+        // so nothing may be written above this region.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", false, false), wsRoot, null, false);
+        // Client-side pre-count; the engine corrects it upward when -m pulls in transitive prereqs.
+        run.seedPlanned(totalModules);
         WorkspaceResult result;
         try {
-            result = EngineClient.runNative(paths, req, listener);
+            result = EngineClient.runNative(paths, req, run.live(view, agg, o -> {
+                if (o.success()) built[0]++;
+            }));
         } catch (IOException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
@@ -421,7 +404,7 @@ public final class NativeCommand implements CliCommand {
                     .map(ModuleOutcome::coord)
                     .findFirst()
                     .orElse("build");
-            view.finishBuildPlanFailure(Coord.module(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
+            view.finishBuildPlanFailure(Coord.module(failedCoord) + " " + BuildTails.elapsedSince(buildStart));
             List<String> rendered = new ArrayList<>();
             ConsoleSpec.appendErrors(rendered, agg.lastErrors());
             for (String line : rendered) CliOutput.err(line);
@@ -432,7 +415,7 @@ public final class NativeCommand implements CliCommand {
                         + ", "
                         + workspaceSummary(built[0], nativeCount)
                         + " "
-                        + BuildCommand.elapsedSince(buildStart));
+                        + BuildTails.elapsedSince(buildStart));
         return 0;
     }
 
@@ -466,7 +449,7 @@ public final class NativeCommand implements CliCommand {
         ConsoleSpec spec = new ConsoleSpec(
                 "Build",
                 r -> Theme.colorize("Native build successful", Theme.active().success())
-                        + BuildCommand.builtArtifact(projectDir, build),
+                        + BuildTails.builtArtifact(projectDir, build),
                 r -> Coord.module(coord).renderLine(),
                 true);
         var listener = new WorkspaceBuildListener() {

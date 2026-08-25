@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -54,6 +55,7 @@ public final class AuditVerb implements HostedVerb {
                 String batch = Jsonl.str(requestLine, "osvBatchUrl");
                 String vulns = Jsonl.str(requestLine, "osvVulnsUrl");
                 Session session = Session.defaults()
+                        .withConfig(JkConfig.empty().withOffline(Jsonl.bool(requestLine, "offline", false)))
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache)
                         .withCancel(cancelToken)

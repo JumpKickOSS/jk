@@ -141,7 +141,7 @@ public final class NativeEffort {
             Path cache = JkDirs.cache();
             if (Files.isRegularFile(lock)) {
                 try {
-                    List<Path> jars = BuildPlanner.assemblyDependencyJars(moduleDir, project, lock, cache);
+                    List<Path> jars = PlannerSupport.assemblyDependencyJars(moduleDir, project, lock, cache);
                     deps = sumExistingBytes(jars);
                 } catch (IOException | RuntimeException ignored) {
                 }

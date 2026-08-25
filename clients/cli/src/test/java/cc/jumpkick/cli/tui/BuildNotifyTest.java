@@ -11,7 +11,6 @@ import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class BuildNotifyTest {
@@ -73,7 +72,7 @@ class BuildNotifyTest {
 
     @Test
     void desktopNotify_empty_when_no_osc() {
-        var noOsc = JkConfig.empty().withNoOsc(Optional.of(true));
+        var noOsc = JkConfig.empty().withNoOsc(true);
         SessionContext.runWhere(Session.defaults().withConfig(noOsc), () -> {
             assertThat(Osc.oscEnabled()).isFalse();
             assertThat(Osc.desktopNotify("JumpKick Build", "hello")).isEmpty();

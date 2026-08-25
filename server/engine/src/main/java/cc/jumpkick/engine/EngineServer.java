@@ -13,10 +13,8 @@ import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.jobs.JobTransport;
-import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
-import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
@@ -24,37 +22,27 @@ import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
+import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.StandardProtocolFamily;
-import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.ClosedChannelException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -66,6 +54,23 @@ import java.util.function.Supplier;
  * Resident engine: election, accept loop, drain/close, and four-arm {@link VerbShape} dispatch.
  * Verbs, journal, SSE, HTTP jobs, and listeners are collaborators — this class is the
  * composition root.
+ *
+ * <p><b>What deliberately stays here, and is not a peel waiting to happen.</b> {@link
+ * #lifecycleLock} covers the drain decision, the accept gate and the plan-slot claim as one
+ * lifecycle, and {@link #tryStartBuildPlan} <em>is</em> that invariant rather than a caller of it:
+ * "not draining" and "one more plan is running" have to become true inside the same critical
+ * section the deciders read — the shutdown message, the displacement watchdog, and the orphan
+ * check all settle under this lock. Extracting the claim, {@link #yieldListeners}, {@link
+ * #awaitDrainComplete} or the shutdown arm was proposed and withdrawn: every version of it hands
+ * {@code lifecycleLock} to a second object, which spreads one invariant across two files instead
+ * of making the race unrepresentable. Their length here is the cost of holding that invariant in
+ * one place, and it was paid on purpose.
+ *
+ * <p>What did leave, and why it could: {@link EngineElection} owns the engine's identity on disk —
+ * mutex, incumbent probe, generation, listener, pid file, endpoint — which is settled before the
+ * accept loop starts and only read afterwards. {@link DrainReporter} owns the {@code drain-status}
+ * channel — it reports the decision this class makes and makes none of its own. Neither touches
+ * {@code lifecycleLock}.
  */
 public final class EngineServer implements AutoCloseable {
 
@@ -96,9 +101,6 @@ public final class EngineServer implements AutoCloseable {
 
     /** How often the displacement watchdog re-reads the endpoint / pid file. */
     private static final long DISPLACEMENT_TICK_MS = 1_000;
-
-    /** How long a handover probe waits for the predecessor's {@code bye} after yield. */
-    private static final long HANDOVER_BYE_MS = 2_000;
 
     /**
      * Sidecar AOT trainer spawner/process. Spawned only after winning election; reaped on exit.
@@ -192,11 +194,6 @@ public final class EngineServer implements AutoCloseable {
         this.metricsFile = file;
     }
 
-    /** Test seam: inspect exclusive holds. */
-    InFlightBuilds inFlightBuildsForTests() {
-        return inFlightBuilds;
-    }
-
     /** Event-request id for the hosted op on this thread (set around the runner). */
     private final ThreadLocal<Long> currentEventRequestId = new ThreadLocal<>();
 
@@ -211,17 +208,13 @@ public final class EngineServer implements AutoCloseable {
     // Graceful-drain: listeners (UDS / TCP / HTTP) are closed so the successor can bind; in-flight
     // connections keep running. New jobs are refused. Exit once every plan slot is released.
     private volatile boolean draining;
-    private final AtomicBoolean drainReporterStarted = new AtomicBoolean();
-    /** Predecessor pids currently reporting drain-status to this (successor) engine. */
-    private final ConcurrentHashMap<Long, Integer> drainingPredecessors = new ConcurrentHashMap<>();
 
-    private FileChannel lockChannel;
-    private FileLock lock;
-    /** The generation this engine bound (socket/lock/pid/token) — see EnginePaths.generation. */
-    private EnginePaths.Paths active;
+    /** Identity on disk: mutex, incumbent probe, generation, pid file, endpoint pointer. */
+    private final EngineElection election;
 
-    private FileLock genLock;
-    private FileChannel genLockChannel;
+    /** The {@code drain-status} channel to a successor, and the record of our own predecessors. */
+    private final DrainReporter drain;
+
     private ServerSocketChannel serverChannel;
     private ExecutorService connectionExecutor;
 
@@ -279,6 +272,21 @@ public final class EngineServer implements AutoCloseable {
         String bid = this.buildId.isEmpty() ? "" : "+" + this.buildId;
         this.engineEpoch = version + bid + "@" + this.startedAtMillis;
         this.aot = new AotTrainer(this.log);
+        this.election = new EngineElection(paths, this.version, this.buildId, this.pid, this.startedAtMillis, this.log);
+        this.drain = new DrainReporter(
+                this.pid,
+                this.version,
+                () -> EnginePaths.activeSocket(paths),
+                // Reads the lifecycle decision; never takes the lock itself (see DrainReporter).
+                () -> {
+                    synchronized (lifecycleLock) {
+                        return draining && !shuttingDown;
+                    }
+                },
+                activeBuildPlans::get,
+                DrainReporter.sockets(),
+                this.log,
+                DrainReporter.TICK_MS);
         this.idle = new IdleHousekeeping(
                 activeBuildPlans,
                 cacheGate,
@@ -382,102 +390,23 @@ public final class EngineServer implements AutoCloseable {
      * {@code true}; there is no idle countdown — the engine stays resident until told to stop.
      */
     public boolean run() throws IOException {
-        Files.createDirectories(paths.dir());
-        // Startup mutex: serializes concurrent spawns/takeovers through bind + endpoint write.
-        lockChannel = FileChannel.open(paths.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-        try {
-            lock = lockChannel.tryLock();
-        } catch (OverlappingFileLockException e) {
-            lock = null;
-        }
-        if (lock == null) {
-            lockChannel.close();
-            lockChannel = null;
-            return false; // another engine is mid-startup — it wins this race
-        }
-
-        // Where clients currently connect — the engine this one displaces (drained below).
-        // Captured BEFORE we bind, and null when nothing was live: once the compat pointer is
-        // written the flat path names US, and a drain aimed there is a self-shutdown.
-        Path previousActive = EnginePaths.activeSocket(paths);
-        if (!Files.exists(previousActive)) previousActive = null;
-
-        // Same-version election: if a live engine of THIS version AND build identity already
-        // serves, this instance is a redundant spawn-race participant — lose quietly. A different
-        // version — or the same -SNAPSHOT version with a DIFFERENT buildId (a rebuilt dev
-        // engine; stale incumbents once won these elections and served old code) — proceeds to
-        // takeover. An empty buildId on either side means "no opinion": version rule only.
-        Incumbent incumbent = helloProbe(previousActive, version);
-        if (incumbent != null
-                && version.equals(incumbent.version())
-                && (buildId.isEmpty() || incumbent.buildId().isEmpty() || buildId.equals(incumbent.buildId()))) {
-            releaseStartupLock();
-            return false;
-        }
-
-        // Claim the first free generation. The winner's gen lock is held for the engine's whole
-        // life; a crashed engine's stale gen files are reclaimed here by winning its lock.
-        for (int n = 1; n < 10_000 && active == null; n++) {
-            EnginePaths.Paths cand = EnginePaths.generation(paths, n);
-            FileChannel gc = FileChannel.open(cand.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            FileLock gl;
-            try {
-                gl = gc.tryLock();
-            } catch (OverlappingFileLockException e) {
-                gl = null;
-            }
-            if (gl != null) {
-                active = cand;
-                genLock = gl;
-                genLockChannel = gc;
-            } else {
-                gc.close();
-            }
-        }
-        if (active == null) {
-            releaseStartupLock();
-            return false;
-        }
-
-        // Stale files from a crashed prior owner of this generation.
-        Files.deleteIfExists(active.socket());
-        Files.deleteIfExists(active.token());
-
-        if (EngineTransport.useLoopbackTcp()) {
-            // Windows: no dependable Unix-domain-socket support — bind an ephemeral loopback TCP
-            // port instead, and gate every connection on a shared secret (see EngineTransport),
-            // since a TCP port (unlike a socket file) isn't filesystem-permission-gated by default.
-            serverChannel = ServerSocketChannel.open();
-            serverChannel.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
-            int port = ((InetSocketAddress) serverChannel.getLocalAddress()).getPort();
-            expectedToken = EngineTransport.newToken();
-            // This token gates every engine RPC — i.e. arbitrary code execution as the engine
-            // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
-            // umask on a shared machine.
-            OwnerOnlyFiles.write(active.token().getParent(), active.token(), expectedToken);
-            Files.writeString(active.socket(), Integer.toString(port));
-        } else {
-            serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
-            serverChannel.bind(UnixDomainSocketAddress.of(active.socket()));
-        }
-        writePidFile();
-
-        // TAKEOVER: from this write on, every new connection resolves to this generation.
-        EnginePaths.writeEndpoint(paths, active.socket());
-        releaseStartupLock();
+        EngineElection.Won won = election.win();
+        if (won == null) return false; // lost the spawn race / an identical engine already serves
+        serverChannel = won.listener();
+        expectedToken = won.token();
 
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
         planSharedWorkerMemoryOnce();
 
-        log.accept("jk engine: listening on " + active.socket() + " (pid " + pid + ")");
+        log.accept("jk engine: listening on " + won.active().socket() + " (pid " + pid + ")");
 
         // Order matters: tell the predecessor to drain FIRST — that is what
         // makes it suppress training and kill its trainer sidecar. Wiping before that signal
         // leaves a window in which its in-flight trainer can atomically rename a fresh cache into
         // the directory we just swept, which is exactly the refill this was meant to prevent.
         // Our own trainer starts last, after the sweep, so it never sweeps its own output.
-        drainDisplaced(previousActive);
+        election.askPredecessorToYield(won.displaced());
         // Drop other product versions' AOT (engine + workers); keep ours (named *-<version>-*).
         try {
             int wiped = EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), version);
@@ -496,8 +425,8 @@ public final class EngineServer implements AutoCloseable {
             // a predecessor may still have the previous jar mapped — retry on the next cycle
         }
         aot.startIfConfigured();
-        // HTTP binds only after the predecessor has yielded (drainDisplaced waits for bye, which
-        // is sent after HTTP/UDS unbind). Binding earlier lost the handoff race and stuck
+        // HTTP binds only after the predecessor has yielded (askPredecessorToYield waits for bye,
+        // which is sent after HTTP/UDS unbind). Binding earlier lost the handoff race and stuck
         // "Address already in use" in `jk engine status` for the engine's life.
         http.start();
         // leftover running=true journal rows from a killed engine cannot still be live.
@@ -521,105 +450,6 @@ public final class EngineServer implements AutoCloseable {
         cleanup();
         log.accept("jk engine: stopped");
         return true;
-    }
-
-    private void releaseStartupLock() {
-        try {
-            if (lock != null) lock.release();
-            if (lockChannel != null) lockChannel.close();
-        } catch (IOException ignored) {
-            // best-effort; process exit releases it regardless
-        }
-        lock = null;
-        lockChannel = null;
-    }
-
-    /**
-     * Tell a displaced predecessor to yield its listeners and drain. Blocks until {@code bye} so
-     * HTTP / the old UDS are free before this engine binds HTTP.
-     */
-    private void drainDisplaced(Path previousActive) {
-        if (previousActive == null || previousActive.equals(active.socket())) return;
-        if (!Files.exists(previousActive)) return;
-        if (namesSelf(previousActive)) return; // a stale flat pointer we just re-claimed — never self-drain
-        try (SocketChannel ch = openClient(previousActive)) {
-            BufferedWriter w =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader r = new cc.jumpkick.jsonl.BoundedLineReader(
-                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, HANDOVER_BYE_MS);
-            w.write(ProtoLifecycle.shutdown(false));
-            w.write('\n');
-            w.flush();
-            String bye = r.readLine();
-            int plans = bye != null ? Jsonl.intValue(bye, "plans", 0) : 0;
-            log.accept("jk engine: asked displaced engine at "
-                    + previousActive.getFileName()
-                    + " to yield"
-                    + (plans > 0 ? " (" + plans + " job(s) still running)" : ""));
-        } catch (IOException e) {
-            // Nothing live there (stale file) — the watchdog on the other side also covers us.
-        }
-    }
-
-    /**
-     * True when {@code candidate} resolves to THIS engine's own listener — the flat compat
-     * pointer after we've re-claimed a crashed generation's name (Unix symlink → our gen socket;
-     * TCP → a copy of our own port). Drain/probe traffic must never target it.
-     */
-    private boolean namesSelf(Path candidate) {
-        try {
-            if (EngineTransport.useLoopbackTcp()) {
-                return Files.readString(candidate)
-                        .trim()
-                        .equals(Files.readString(active.socket()).trim());
-            }
-            return candidate.toRealPath().equals(active.socket().toRealPath());
-        } catch (IOException e) {
-            return false; // unreadable/vanished — the connect attempt sorts it out
-        }
-    }
-
-    /** A live engine's identity as answered on the wire. */
-    private record Incumbent(String version, String buildId, long pid) {}
-
-    /** The identity a live engine at {@code socket} answers with, or {@code null}. */
-    private static Incumbent helloProbe(Path socket, String probeVersion) {
-        if (socket == null || !Files.exists(socket)) return null;
-        try (SocketChannel ch = openClient(socket)) {
-            BufferedWriter w =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader r = new cc.jumpkick.jsonl.BoundedLineReader(
-                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, HANDOVER_BYE_MS);
-            w.write(ProtoLifecycle.hello(probeVersion, "probe"));
-            w.write('\n');
-            w.flush();
-            String ack = r.readLine();
-            if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
-            String v = Jsonl.str(ack, "version");
-            if (v == null) return null;
-            String id = Jsonl.str(ack, "buildId");
-            return new Incumbent(v, id == null ? "" : id, Jsonl.longValue(ack, "pid", -1));
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-    }
-
-    /** Minimal client connect for engine→engine signalling (token-gated on the TCP transport). */
-    private static SocketChannel openClient(Path socket) throws IOException {
-        if (EngineTransport.useLoopbackTcp()) {
-            int port = Integer.parseInt(Files.readString(socket).trim());
-            SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
-            Path token = EnginePaths.tokenFor(socket);
-            BufferedWriter w =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            // The auth envelope, exactly as the CLI client sends it — authenticate accepts
-            // nothing else (a raw token line here once broke takeover/election on TCP).
-            w.write(ProtoLifecycle.auth(Files.readString(token).trim()));
-            w.write('\n');
-            w.flush();
-            return ch;
-        }
-        return SocketChannel.open(UnixDomainSocketAddress.of(socket));
     }
 
     /**
@@ -650,13 +480,12 @@ public final class EngineServer implements AutoCloseable {
                             return;
                         }
                         try {
-                            if (displacedBySuccessor()) {
+                            if (election.displacedBySuccessor()) {
                                 log.accept("jk engine: displaced by a newer engine — yielding listeners and draining");
                                 yieldListeners(activeBuildPlans.get() == 0);
                                 return;
                             }
-                            Path ep = EnginePaths.endpoint(paths);
-                            if (!Files.exists(ep) && orphanedAndUnused()) {
+                            if (election.endpointMissing() && orphanedAndUnused()) {
                                 log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
                                 aot.stopQuietly();
                                 synchronized (lifecycleLock) {
@@ -674,30 +503,6 @@ public final class EngineServer implements AutoCloseable {
                 "jk-engine-displacement-watchdog");
         t.setDaemon(true);
         t.start();
-    }
-
-    /**
-     * True when this process is no longer the named primary: the endpoint points at another
-     * generation, the pid file names another process, or the socket path answers as another pid
-     * (state-dir deleted and rebound onto this generation name).
-     */
-    private boolean displacedBySuccessor() throws IOException {
-        if (active == null) return false;
-        Path ep = EnginePaths.endpoint(paths);
-        String mine = active.socket().getFileName().toString();
-        if (Files.isRegularFile(ep) && !mine.equals(Files.readString(ep).trim())) {
-            return true;
-        }
-        long named = readPidFile(active.pid());
-        if (named > 0 && named != pid) {
-            return true;
-        }
-        if (named == pid) {
-            return false; // pid file still ours; generation-name check above covered a gen N+1 takeover
-        }
-        // Pid file missing (state dir deleted). Hello the path: a rebound successor answers as another pid.
-        Incumbent live = helloProbe(EnginePaths.activeSocket(paths), version);
-        return live != null && live.pid() > 0 && live.pid() != pid;
     }
 
     private void acceptLoop() {
@@ -735,7 +540,7 @@ public final class EngineServer implements AutoCloseable {
 
     private void handleConnection(SocketChannel ch) {
         try (ch;
-                BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
+                BufferedReader reader = new BoundedLineReader(
                         new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
@@ -827,15 +632,15 @@ public final class EngineServer implements AutoCloseable {
                     // Takeover already repointed the endpoint before sending shutdown — kill the
                     // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
                     // Voluntary `jk engine stop` still names us; leave train to finish then.
-                    if (!endpointNamesThisEngine()) {
+                    if (!election.endpointNamesThisEngine()) {
                         aot.stopQuietly();
                     }
                     int n;
-                    boolean drain;
+                    boolean willDrain;
                     synchronized (lifecycleLock) {
                         n = activeBuildPlans.get();
-                        drain = !force && n > 0;
-                        if (drain) {
+                        willDrain = !force && n > 0;
+                        if (willDrain) {
                             draining = true;
                         } else {
                             shuttingDown = true;
@@ -845,28 +650,13 @@ public final class EngineServer implements AutoCloseable {
                         lifecycleLock.notifyAll();
                     }
                     http.stopNow();
-                    WireWriter.send(writer, ProtoLifecycle.bye(n, drain));
-                    if (drain) startDrainReporter();
+                    WireWriter.send(writer, ProtoLifecycle.bye(n, willDrain));
+                    if (willDrain) drain.start();
                     return;
                 }
-                case EngineProtocol.DRAIN_STATUS -> {
-                    long pred = Jsonl.longValue(line, "pid", -1);
-                    int plans = Jsonl.intValue(line, "plans", 0);
-                    // In-process handover uses one pid for both generations; still record.
-                    if (pred > 0) {
-                        Integer prev = drainingPredecessors.put(pred, plans);
-                        if (prev == null) {
-                            log.accept("jk engine: predecessor pid " + pred + " is draining (" + plans + " job(s))");
-                        }
-                    }
-                }
-                case EngineProtocol.DRAIN_DONE -> {
-                    long pred = Jsonl.longValue(line, "pid", -1);
-                    if (pred > 0) {
-                        drainingPredecessors.remove(pred);
-                        log.accept("jk engine: predecessor pid " + pred + " finished draining");
-                    }
-                }
+                case EngineProtocol.DRAIN_STATUS ->
+                    drain.predecessorDraining(Jsonl.longValue(line, "pid", -1), Jsonl.intValue(line, "plans", 0));
+                case EngineProtocol.DRAIN_DONE -> drain.predecessorFinished(Jsonl.longValue(line, "pid", -1));
                 case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
                 default ->
                     WireWriter.sendQuiet(
@@ -925,10 +715,6 @@ public final class EngineServer implements AutoCloseable {
         return jobs.cancelJobsForDir(dir);
     }
 
-    static String cancelledTerminalLine(boolean workspaceStream, String dir) {
-        return JobEnvelope.cancelledTerminalLine(workspaceStream, dir);
-    }
-
     /**
      * Orders wire-event publication against dashboard SSE connect hydration.
      * Publishers take the read side around each publish (accumulation happens strictly before,
@@ -944,22 +730,6 @@ public final class EngineServer implements AutoCloseable {
     private long eventRequestId() {
         Long id = currentEventRequestId.get();
         return id != null ? id : -1;
-    }
-
-    static String redactEnv(String dir, String text) {
-        return EventRedaction.redactEnv(dir, text);
-    }
-
-    static long jobHeartbeatMs() {
-        return JobEnvelope.jobHeartbeatMs();
-    }
-
-    static long jobDeadlineMs() {
-        return JobEnvelope.jobDeadlineMs();
-    }
-
-    static long jobDeadlineGraceMs() {
-        return JobEnvelope.jobDeadlineGraceMs();
     }
 
     private void onConnectionFinished() {
@@ -985,21 +755,6 @@ public final class EngineServer implements AutoCloseable {
      */
     public void aotTrainerSpawner(Supplier<Process> spawner) {
         aot.spawner(spawner);
-    }
-
-    /** Whether the endpoint pointer still names this generation's socket. */
-    private boolean endpointNamesThisEngine() {
-        if (active == null) return false;
-        try {
-            Path ep = EnginePaths.endpoint(paths);
-            if (!Files.isRegularFile(ep)) return false;
-            return active.socket()
-                    .getFileName()
-                    .toString()
-                    .equals(Files.readString(ep).trim());
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     /** Caller-facing graceful stop — same effect as receiving a {@link EngineProtocol#SHUTDOWN} message. */
@@ -1028,7 +783,7 @@ public final class EngineServer implements AutoCloseable {
             lifecycleLock.notifyAll();
         }
         http.stopNow();
-        if (draining && !shuttingDown) startDrainReporter();
+        if (draining && !shuttingDown) drain.start();
     }
 
     /** After the listener is closed, wait for in-flight plans before {@link #cleanup}. */
@@ -1042,75 +797,6 @@ public final class EngineServer implements AutoCloseable {
                     return;
                 }
             }
-        }
-    }
-
-    /**
-     * Push {@code drain-status} to whoever now owns the endpoint (the successor). No-op when the
-     * pointer still names us or nothing is listening — a voluntary {@code jk engine stop} has no
-     * successor.
-     */
-    private void startDrainReporter() {
-        if (!drainReporterStarted.compareAndSet(false, true)) return;
-        Thread t = Thread.ofVirtual().name("jk-engine-drain-report").unstarted(() -> {
-            SocketChannel ch = null;
-            BufferedWriter w = null;
-            try {
-                while (true) {
-                    synchronized (lifecycleLock) {
-                        if (shuttingDown || !draining) break;
-                    }
-                    Path dest = EnginePaths.activeSocket(paths);
-                    if (dest == null || !Files.exists(dest)) {
-                        Thread.sleep(500);
-                        continue;
-                    }
-                    try {
-                        if (ch == null || !ch.isOpen()) {
-                            if (ch != null) closeQuietly(ch);
-                            ch = openClient(dest);
-                            w = new BufferedWriter(
-                                    new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-                            w.write(ProtoLifecycle.hello(version, "probe"));
-                            w.write('\n');
-                            w.flush();
-                        }
-                        w.write(ProtoLifecycle.drainStatus(pid, activeBuildPlans.get(), version));
-                        w.write('\n');
-                        w.flush();
-                    } catch (IOException e) {
-                        if (ch != null) closeQuietly(ch);
-                        ch = null;
-                        w = null;
-                    }
-                    Thread.sleep(500);
-                }
-                if (w != null) {
-                    w.write(ProtoLifecycle.drainDone(pid));
-                    w.write('\n');
-                    w.flush();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (IOException ignored) {
-                // successor gone — we still exit when jobs finish
-            } finally {
-                if (ch != null) closeQuietly(ch);
-            }
-        });
-        t.setDaemon(true);
-        t.start();
-    }
-
-    private static long readPidFile(Path pidFile) {
-        try {
-            if (!Files.isRegularFile(pidFile)) return -1;
-            String first =
-                    Files.readString(pidFile).lines().findFirst().orElse("").trim();
-            if (first.isEmpty()) return -1;
-            return Long.parseLong(first);
-        } catch (IOException | NumberFormatException e) {
-            return -1;
         }
     }
 
@@ -1159,7 +845,11 @@ public final class EngineServer implements AutoCloseable {
             storeFeedRefresh = null;
         }
         http.close();
-        deleteQuietly(paths.http()); // the live bound-URL file — stale once we stop
+        try {
+            Files.deleteIfExists(paths.http()); // the live bound-URL file — stale once we stop
+        } catch (IOException ignored) {
+            // best-effort; the next start overwrites it
+        }
         // The http token is deliberately NOT deleted: it persists across restarts so an open
         // dashboard tab survives an upgrade/crash respawn. `jk engine rotate-token`
         // is the explicit way to invalidate it.
@@ -1169,43 +859,7 @@ public final class EngineServer implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        if (active != null) {
-            deleteQuietly(active.socket());
-            deleteQuietly(active.token());
-            deleteQuietly(active.pid());
-            // Retire the endpoint only if it still names US — a takeover successor owns it
-            // now and must not be un-pointed by the lame duck's exit.
-            try {
-                Path ep = EnginePaths.endpoint(paths);
-                String mine = active.socket().getFileName().toString();
-                if (Files.isRegularFile(ep) && mine.equals(Files.readString(ep).trim())) {
-                    deleteQuietly(ep);
-                }
-            } catch (IOException ignored) {
-                // best-effort
-            }
-            try {
-                if (genLock != null) genLock.release();
-                if (genLockChannel != null) genLockChannel.close();
-            } catch (IOException ignored) {
-                // process exit releases it regardless
-            }
-            deleteQuietly(active.lock());
-        }
-        releaseStartupLock();
-        deleteQuietly(paths.lock()); // the transient startup mutex file
-    }
-
-    private static void deleteQuietly(Path p) {
-        try {
-            Files.deleteIfExists(p);
-        } catch (IOException ignored) {
-            // best-effort cleanup — a leftover file is harmless (recreated/overwritten next start)
-        }
-    }
-
-    private void writePidFile() throws IOException {
-        Files.writeString(active.pid(), pid + "\n" + startedAtMillis + "\n", StandardCharsets.UTF_8);
+        election.retire();
     }
 
     /**
@@ -1223,9 +877,5 @@ public final class EngineServer implements AutoCloseable {
         } catch (IOException ignored) {
             // best-effort
         }
-    }
-
-    static boolean resolveCancelledFlag(Boolean successStamp, boolean userCancelled, boolean cancelHint) {
-        return BuildAccumulator.resolveCancelledFlag(successStamp, userCancelled, cancelHint);
     }
 }

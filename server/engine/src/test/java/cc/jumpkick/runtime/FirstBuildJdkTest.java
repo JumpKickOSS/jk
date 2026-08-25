@@ -114,7 +114,7 @@ import org.junit.jupiter.api.Tag;
                         .append('\n');
                 for (var f : ts.failures()) {
                     dump.append("NESTED-FAIL name=")
-                            .append(f.testName())
+                            .append(f.method())
                             .append(" ex=")
                             .append(f.exceptionClass())
                             .append(" msg=")

@@ -1032,9 +1032,21 @@ public record JkBuild(
     /**
      * {@code [native]} table for GraalVM native-image. {@link #enabled} is the resolved
      * {@code enabled} key (default {@link NativeMode#SUPPORTED} when the table is present with no
-     * key). See {@link JkBuild#nativeMode}.
+     * key). {@link #metadataRepository} selects the GraalVM reachability-metadata repository
+     * release, in the same grammar as a dependency version and defaulting to {@link
+     * #METADATA_REPOSITORY_DEFAULT} — {@code jk lock} resolves it and pins the answer, exactly as
+     * it does for a floating dependency. See {@link JkBuild#nativeMode}.
      */
-    public record NativeConfig(String mainClass, String name, List<String> args, String graal, NativeMode enabled) {
+    public record NativeConfig(
+            String mainClass,
+            String name,
+            List<String> args,
+            String graal,
+            NativeMode enabled,
+            VersionSelector metadataRepository) {
+
+        /** {@code metadata-repository} when the key is omitted: newest stable at lock time. */
+        public static final VersionSelector METADATA_REPOSITORY_DEFAULT = VersionSelector.parseFloating("latest");
 
         public NativeConfig {
             args = args == null ? List.of() : List.copyOf(args);
@@ -1042,6 +1054,7 @@ public record JkBuild(
             if (name != null && name.isBlank()) name = null;
             if (graal != null && graal.isBlank()) graal = null;
             if (enabled == null) enabled = NativeMode.SUPPORTED;
+            if (metadataRepository == null) metadataRepository = METADATA_REPOSITORY_DEFAULT;
         }
 
         /** True when {@code enabled = "always"} (or legacy {@code always = true}). */

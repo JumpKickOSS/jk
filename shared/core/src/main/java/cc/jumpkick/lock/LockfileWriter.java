@@ -110,6 +110,16 @@ public final class LockfileWriter {
         if (lockfile.projectId() != null && !lockfile.projectId().isBlank()) {
             out.append("project-id = ").append(quote(lockfile.projectId())).append('\n');
         }
+        // Last of the top-level scalars: opening [native] here would swallow any key written after
+        // it into that table. The [[artifact]] rows below close it again.
+        Lockfile.NativeMetadata pin = lockfile.nativeMetadata();
+        if (pin != null) {
+            out.append("\n[native]\n");
+            out.append("metadata-repository = ").append(quote(pin.version())).append('\n');
+            if (pin.checksum() != null && !pin.checksum().isBlank()) {
+                out.append("checksum = ").append(quote(pin.checksum())).append('\n');
+            }
+        }
 
         List<Lockfile.Artifact> sorted = new ArrayList<>(lockfile.artifacts());
         sorted.sort(Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version));

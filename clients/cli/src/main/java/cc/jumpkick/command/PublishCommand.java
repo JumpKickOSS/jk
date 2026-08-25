@@ -167,6 +167,7 @@ public final class PublishCommand implements CliCommand {
                             slsa,
                             sbom,
                             cred,
+                            global.offline,
                             global.verbose),
                     steps -> BuildPlanConsole.chooseConsoleListener("publish", steps, mode));
         } catch (IOException e) {

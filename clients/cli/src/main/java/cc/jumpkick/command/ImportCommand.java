@@ -27,7 +27,7 @@ import java.util.Locale;
 
 /**
  * {@code jk import <file>} — convert a Maven or Gradle build to {@code jk.toml} (engine-hosted
- * compat worker). This command pre-flights sources/overwrite and renders progress.
+ * in-process converter). This command pre-flights sources/overwrite and renders progress.
  */
 public final class ImportCommand implements CliCommand {
 

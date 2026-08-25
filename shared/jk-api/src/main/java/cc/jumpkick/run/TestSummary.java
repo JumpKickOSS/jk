@@ -1,13 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Aggregate test outcome: counts plus failures for exit codes and UI. {@code classes} is the
  * distinct executed test-class count when the runner could derive it, else 0 (unknown).
  * {@code classWallMs} maps FQCN → wall-ms for successfully finished class containers (ETA training).
+ *
+ * <p>Failures are {@link TestFailureInfo} — the same record the wire, {@code details.jsonl} and
+ * {@link BuildPlanResult.Diagnostic} carry. There is no summary-local failure type and therefore no
+ * adapter between them to lose {@code file}/{@code line}/{@code snippet}.
+ *
+ * <p>This class also owns the one on-the-wire spelling of the four counts: a nested
+ * {@code "tests":{"total":…,"succeeded":…,"failed":…,"skipped":…}} object. {@code plan-finish}, the
+ * history verbs, the MCP history rows, the journal's {@code record.json} and the dashboard all read
+ * and write that one shape — see {@link #WIRE_KEY}, {@link #countsJson} and {@link #readCounts}.
  */
 public record TestSummary(
         long total,
@@ -15,8 +28,17 @@ public record TestSummary(
         long failed,
         long skipped,
         long classes,
-        List<Failure> failures,
+        List<TestFailureInfo> failures,
         Map<String, Long> classWallMs) {
+
+    /**
+     * The one wire field name for test counts. It is an object, not four flat scalars: a flat
+     * prefix has to be spelled the same on every surface to stay one field, and jk shipped three
+     * spellings of it ({@code testFailed}, {@code testsFailed}, {@code tests.failed}) before this
+     * became the single owner. Absent or {@code null} means the run had no test phase — that is the
+     * signal, not a {@code -1} count.
+     */
+    public static final String WIRE_KEY = "tests";
 
     public TestSummary {
         failures = List.copyOf(failures);
@@ -24,12 +46,13 @@ public record TestSummary(
     }
 
     /** Classes unknown; no class walls. */
-    public TestSummary(long total, long succeeded, long failed, long skipped, List<Failure> failures) {
+    public TestSummary(long total, long succeeded, long failed, long skipped, List<TestFailureInfo> failures) {
         this(total, succeeded, failed, skipped, 0, failures, Map.of());
     }
 
     /** Class count known; no class walls. */
-    public TestSummary(long total, long succeeded, long failed, long skipped, long classes, List<Failure> failures) {
+    public TestSummary(
+            long total, long succeeded, long failed, long skipped, long classes, List<TestFailureInfo> failures) {
         this(total, succeeded, failed, skipped, classes, failures, Map.of());
     }
 
@@ -38,86 +61,42 @@ public record TestSummary(
     }
 
     /**
-     * One failed test. Identity comes from the runner's split uniqueId ({@code testEngine} /
-     * {@code className} / {@code method}); {@code exceptionClass} + {@code message} + {@code stack}
-     * are the throwable. Empty module/class and {@code workerId <= 0} mean unknown / serial.
-     *
-     * <p>{@code testName} is a short label for progress/headlines (usually the method segment), not a
-     * Jupiter display-name decision from the plugin.
+     * The four counts as the wire object's value — {@code {"total":…,"succeeded":…,"failed":…,
+     * "skipped":…}}, ready to follow {@code "tests":} in a JSONL line. Takes scalars so the journal's
+     * own count record can encode through the same owner without depending on this module.
      */
-    public record Failure(
-            String testName,
-            String exceptionClass,
-            String message,
-            String stack,
-            String module,
-            String className,
-            int workerId,
-            String testEngine,
-            String method) {
+    public static String countsJson(long total, long succeeded, long failed, long skipped) {
+        return MiniJson.write(countsMap(total, succeeded, failed, skipped));
+    }
 
-        public Failure {
-            if (testName == null) testName = "";
-            if (exceptionClass == null) exceptionClass = "";
-            if (message == null) message = "";
-            if (stack == null) stack = "";
-            if (module == null) module = "";
-            if (className == null) className = "";
-            if (testEngine == null) testEngine = "";
-            if (method == null) method = "";
-        }
+    /** {@link #countsJson} as a map, for encoders that build JSON from maps rather than strings. */
+    public static Map<String, Object> countsMap(long total, long succeeded, long failed, long skipped) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("total", total);
+        m.put("succeeded", succeeded);
+        m.put("failed", failed);
+        m.put("skipped", skipped);
+        return m;
+    }
 
-        /** Compat: no module / class / worker / engine. */
-        public Failure(String testName, String exceptionClass, String message, String stack) {
-            this(testName, exceptionClass, message, stack, "", "", 0, "", "");
-        }
+    /** This summary's counts as the wire object's value (failures and class walls are not counts). */
+    public String countsJson() {
+        return countsJson(total, succeeded, failed, skipped);
+    }
 
-        /** Compat: module/class/worker without engine/method. */
-        public Failure(
-                String testName,
-                String exceptionClass,
-                String message,
-                String stack,
-                String module,
-                String className,
-                int workerId) {
-            this(testName, exceptionClass, message, stack, module, className, workerId, "", "");
-        }
-
-        /** @deprecated use {@link #stack()} — kept as an alias for older call sites. */
-        @Deprecated
-        public String details() {
-            return stack;
-        }
-
-        /**
-         * One-line label for console: {@code module :: method [wN]}. Module and worker omitted when
-         * unknown / serial.
-         */
-        public String headline() {
-            StringBuilder sb = new StringBuilder();
-            if (!module.isBlank()) {
-                sb.append(module).append(" :: ");
-            }
-            String label = !method.isBlank() ? method : (!testName.isBlank() ? testName : className);
-            sb.append(label);
-            if (workerId > 0) {
-                sb.append("  [w").append(workerId).append(']');
-            }
-            return sb.toString();
-        }
-
-        /** Structured form for diagnostics / client wire (no source snippet). */
-        public TestFailureInfo toInfo() {
-            return new TestFailureInfo(
-                    module,
-                    testEngine,
-                    className,
-                    method.isBlank() ? testName : method,
-                    exceptionClass,
-                    message,
-                    stack,
-                    workerId);
-        }
+    /**
+     * Read the {@link #WIRE_KEY} object out of a JSONL line. {@code null} when the line carries no
+     * test counts — every producer omits the field (or writes {@code null}) for a run with no test
+     * phase, so "absent" and "zero tests ran" stay distinguishable.
+     */
+    public static @Nullable TestSummary readCounts(@Nullable String json) {
+        String counts = Jsonl.nested(json, WIRE_KEY);
+        if (counts == null) return null;
+        return new TestSummary(
+                Jsonl.longValue(counts, "total", 0),
+                Jsonl.longValue(counts, "succeeded", 0),
+                Jsonl.longValue(counts, "failed", 0),
+                Jsonl.longValue(counts, "skipped", 0),
+                List.of());
     }
 }

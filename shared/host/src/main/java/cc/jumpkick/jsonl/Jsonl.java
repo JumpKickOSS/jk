@@ -9,7 +9,8 @@ import java.util.Map;
 
 /**
  * Dependency-free JSONL field codec for engine and plugin wire lines: readers return defaults on missing/bad
- * fields; {@link #quote} is the writer half. Tree documents use sibling {@link MiniJson}.
+ * fields; {@link #quote} is the writer half and {@link #append} the one splicer. Tree documents use
+ * sibling {@link MiniJson}.
  */
 public final class Jsonl {
 
@@ -335,16 +336,6 @@ public final class Jsonl {
     }
 
     /**
-     * Escape a string into a JSON string literal, surrounding quotes included ({@code foo"bar} →
-     * {@code "foo\"bar"}). Control characters below 0x20 are emitted as {@code \\uXXXX}. The inverse
-     * of {@link #str} for the escape sequences both sides handle.
-     *
-     * <p>This is the writer half: a plugin building a protocol line uses it to encode arbitrary
-     * string values (diagnostics, paths, messages). A {@code null} value encodes as the bare JSON
-     * literal {@code null} (not a quoted string), so {@code "msg":} + {@code quote(maybeNull)} is
-     * always valid JSON.
-     */
-    /**
      * Extract a flat string-to-string map field ({@code "key":{"a":"1","b":"2"}}). Returns an
      * empty (mutable-safe, insertion-ordered) map when absent or malformed. The ONE wire encoding
      * for maps — parallel name/value arrays are gone.
@@ -417,6 +408,45 @@ public final class Jsonl {
         return b.append(']').toString();
     }
 
+    /**
+     * Splice a pre-encoded {@code "key":value} fragment into an already-encoded single-line JSON
+     * object, before its closing brace — {@code append("{\"a\":1}", "\"b\":2")} yields
+     * {@code {"a":1,"b":2}}. The ONE splicer.
+     *
+     * <p>{@code fields} carries no surrounding braces and no leading comma; {@code null} or blank
+     * is a no-op that returns {@code object} byte-identical (so a caller can splice
+     * unconditionally). The object is validated either way, because "this string is not an encoded
+     * object" is a programming error whether or not there is anything to add to it.
+     *
+     * <p>jk had six hand-rolled brace chops with three different malformed-input policies (throw,
+     * return unchanged, splice at the last brace wherever it sits) and every one of them emitted
+     * the invalid {@code {,"b":2}} when handed an empty object — the separator was a constant
+     * comma rather than a function of the object.
+     *
+     * @throws IllegalArgumentException when {@code object} is not a single-line {@code {…}}
+     */
+    public static String append(String object, String fields) {
+        if (object == null
+                || object.length() < 2
+                || object.charAt(0) != '{'
+                || object.charAt(object.length() - 1) != '}') {
+            throw new IllegalArgumentException("append needs an encoded single-line JSON object, got: " + object);
+        }
+        if (fields == null || fields.isBlank()) return object;
+        String separator = object.length() == 2 ? "" : ",";
+        return object.substring(0, object.length() - 1) + separator + fields + "}";
+    }
+
+    /**
+     * Escape a string into a JSON string literal, surrounding quotes included ({@code foo"bar} →
+     * {@code "foo\"bar"}). Control characters below 0x20 are emitted as {@code \\uXXXX}. The inverse
+     * of {@link #str} for the escape sequences both sides handle.
+     *
+     * <p>This is the writer half: a plugin building a protocol line uses it to encode arbitrary
+     * string values (diagnostics, paths, messages). A {@code null} value encodes as the bare JSON
+     * literal {@code null} (not a quoted string), so {@code "msg":} + {@code quote(maybeNull)} is
+     * always valid JSON.
+     */
     public static String quote(String s) {
         if (s == null) return "null";
         StringBuilder b = new StringBuilder(s.length() + 2);

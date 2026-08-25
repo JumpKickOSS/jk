@@ -79,22 +79,8 @@ public final class RepoCredentialResolver {
      */
     public RepoCredential resolve(String repoId, URI url, Optional<RepoCredential> inline) {
         RepoCredential credential = select(repoId, url, inline);
-        ResolvedSecrets.record(secretOf(credential));
+        ResolvedSecrets.record(credential.secret());
         return credential;
-    }
-
-    /**
-     * The half of a credential that is a secret: a bearer token, or Basic's password — which is
-     * where a token lands when the username is a login (the forge bridge does exactly that). The
-     * username is not filed: it is a person's or a repository's name, and masking it would blank
-     * ordinary build output.
-     */
-    private static String secretOf(RepoCredential credential) {
-        return switch (credential) {
-            case RepoCredential.Bearer b -> b.token();
-            case RepoCredential.Basic b -> b.password();
-            default -> null; // anonymous — nothing to mask
-        };
     }
 
     private RepoCredential select(String repoId, URI url, Optional<RepoCredential> inline) {

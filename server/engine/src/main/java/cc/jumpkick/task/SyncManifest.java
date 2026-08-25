@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.lock.Lockfile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +27,7 @@ public final class SyncManifest {
 
     /** Write a manifest for {@code lock}; {@code actionRoot} is the parent of {@code keys/}. */
     public static Path write(Path actionRoot, Path lockFile, Lockfile lock) throws IOException {
-        Path syncedDir = actionRoot.resolve(Sweep.SYNCED_SUBDIR);
+        Path syncedDir = ActionTree.SYNCED.under(actionRoot);
         Files.createDirectories(syncedDir);
         String fingerprint = Sweep.projectFingerprint(lockFile);
         Path target = syncedDir.resolve(fingerprint);

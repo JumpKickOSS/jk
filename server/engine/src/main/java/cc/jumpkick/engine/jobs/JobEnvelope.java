@@ -109,6 +109,15 @@ public final class JobEnvelope {
         String coordOf(String dir);
     }
 
+    /**
+     * Why a cancelled row was cancelled, for the two signals this envelope can tell apart. Both
+     * ride the journal as the {@code cancelled} warning diagnostic and {@code request-finish}'s
+     * {@code cancelReason}, next to the wall deadline's own sentence in {@link #enforceDeadline}.
+     */
+    private static final String CANCEL_BY_USER = "cancelled by the user (Ctrl-C, jk cancel, or the dashboard)";
+
+    private static final String CANCEL_BY_DISCONNECT = "the client disconnected before the job finished";
+
     private final Host host;
     private final ConcurrentHashMap<Long, LiveJob> liveJobs = new ConcurrentHashMap<>();
 
@@ -630,9 +639,15 @@ public final class JobEnvelope {
         return n;
     }
 
+    /**
+     * Stamp the cancel <em>and</em> why, so the journal can name who stopped the run. {@code
+     * cancelled=true} alone reads the same for a Ctrl-C and for a wall deadline, and only the
+     * deadline recorded a reason (JK-2485) — the flag that already tells the two user paths apart
+     * is the one that picks the sentence, so there is one mapping rather than a literal per caller.
+     */
     private void markUserCancelled(long requestId, boolean explicit) {
         BuildAccumulator a = host.accumulatorOf(requestId);
-        if (a != null) a.markUserCancelled(explicit);
+        if (a != null) a.markUserCancelled(explicit, explicit ? CANCEL_BY_USER : CANCEL_BY_DISCONNECT);
     }
 
     static void interruptRunner(@Nullable Thread runnerThread) {

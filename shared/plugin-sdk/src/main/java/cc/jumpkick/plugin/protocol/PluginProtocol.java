@@ -30,6 +30,16 @@ public final class PluginProtocol {
     // ---- spec line types (engine → plugin) ------------------------------------------------
 
     public static final String CONFIG = "config";
+    /**
+     * The job's network policy, stamped onto every spec at the fork itself (the engine's
+     * {@code PluginLaunch}), not by the code that built the spec. A worker never reads {@code
+     * JK_OFFLINE} or a system property to find this out: inside a forked JVM those describe the
+     * <em>engine daemon's</em> startup environment, so one {@code JK_OFFLINE=1 jk build} would pin
+     * every later build in that session. Absent means offline — a worker launched without a stated
+     * policy must not reach out.
+     */
+    public static final String OFFLINE = "offline";
+
     public static final String PROJECT = "project";
     public static final String MANIFEST_ATTR = "manifest-attr";
     public static final String LAYOUT = "layout";

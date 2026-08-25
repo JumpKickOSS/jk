@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
@@ -24,30 +24,39 @@ import org.tomlj.TomlTable;
  * }</pre>
  *
  * <p>Lenient: missing/malformed config never fails a command — falls back to the built-in official
- * URI and an empty third-party list.
+ * URI and an empty third-party list. There is no env layer here, which is why {@link
+ * MachineConfig#layer} is called with one argument: the precedence is the same rule with one fewer
+ * layer, not a different rule.
  */
 public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
 
     /** Default official first-party templates monorepo. */
     public static final String DEFAULT_OFFICIAL = "https://github.com/JumpKickOSS/jk-templates";
 
+    /** {@code [templates] official}: a blank override is not an override. */
+    private static final MachineConfig<String> OFFICIAL = MachineConfig.of(DEFAULT_OFFICIAL);
+
     /**
      * A named third-party (or extra) git template source. {@code rev} is an optional branch/tag for
-     * shallow clone ({@code git clone --branch}).
+     * shallow clone ({@code git clone --branch}); {@code null} means "the source's default branch".
      */
-    public record Source(String name, String url, Optional<String> rev) {
+    public record Source(String name, String url, @Nullable String rev) {
         public Source {
             Objects.requireNonNull(name, "name");
             Objects.requireNonNull(url, "url");
-            Objects.requireNonNull(rev, "rev");
             name = name.strip();
             url = url.strip();
+            if (rev != null && rev.isBlank()) rev = null;
+        }
+
+        /** A source pinned to no particular revision. */
+        public Source(String name, String url) {
+            this(name, url, null);
         }
 
         /** Git ref string for clone ({@code url} or {@code url#rev}). */
         public String gitRef() {
-            if (rev.isEmpty() || rev.get().isBlank()) return url;
-            return url + "#" + rev.get().strip();
+            return rev == null ? url : url + "#" + rev.strip();
         }
     }
 
@@ -72,13 +81,10 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
     }
 
     /** Parse from a root TOML document (tests / explicit file). */
-    public static JkTemplatesConfig fromTomlRoot(TomlTable root) {
+    public static JkTemplatesConfig fromTomlRoot(@Nullable TomlTable root) {
         if (root == null) return defaults();
         TomlTable templates = root.getTable("templates");
         if (templates == null) return defaults();
-
-        String official = templates.getString("official");
-        if (official == null || official.isBlank()) official = DEFAULT_OFFICIAL;
 
         List<Source> sources = new ArrayList<>();
         TomlTable sourcesTable = templates.getTable("sources");
@@ -87,20 +93,22 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
                 Object value = sourcesTable.get(name);
                 try {
                     if (value instanceof String s && !s.isBlank()) {
-                        sources.add(new Source(name, s, Optional.empty()));
+                        sources.add(new Source(name, s));
                     } else if (value instanceof TomlTable t) {
                         String url = t.getString("url");
                         if (url == null || url.isBlank()) continue;
                         String rev = t.getString("rev");
                         if (rev == null || rev.isBlank()) rev = t.getString("branch");
-                        sources.add(new Source(
-                                name, url, rev == null || rev.isBlank() ? Optional.empty() : Optional.of(rev)));
+                        sources.add(new Source(name, url, rev));
                     }
                 } catch (RuntimeException ignored) {
                     // lenient: skip malformed entry
                 }
             }
         }
-        return new JkTemplatesConfig(official.strip(), sources);
+        return new JkTemplatesConfig(
+                OFFICIAL.layer(TomlValues.optString(templates, "official").orElse(null))
+                        .strip(),
+                sources);
     }
 }

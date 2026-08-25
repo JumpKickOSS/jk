@@ -69,13 +69,7 @@ public interface TestProgressListener {
             String engine,
             String className,
             String method,
-            int workerId) {
-        onFailure(id, label, exClass, message, workerId);
-    }
-
-    /** @deprecated prefer the stack-bearing overload. */
-    @Deprecated
-    default void onFailure(String id, String display, String exClass, String message, int workerId) {}
+            int workerId) {}
 
     /**
      * Soft advisory from the launcher (e.g. W&gt;1 stacked with Jupiter in-process parallel). Does

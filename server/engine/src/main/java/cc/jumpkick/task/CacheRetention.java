@@ -235,10 +235,6 @@ public final class CacheRetention {
             }
             // Took the whole tier at the top of the method, before paying for the stat walk.
             case Bound.Cap.ResetAlways ignored -> {}
-            // A tier of files has no child tree to keep, so KeepOnly cannot reach this instrument;
-            // sweepSubtrees is where it means something. Named rather than defaulted so that
-            // adding a sixth Cap stops here and is decided, instead of silently doing nothing.
-            case Bound.Cap.KeepOnly ignored -> {}
             // The window was the whole policy.
             case Bound.Cap.None ignored -> {}
         }
@@ -311,14 +307,6 @@ public final class CacheRetention {
             } else {
                 survivors.add(t);
             }
-        }
-        if (bound.cap() instanceof Bound.Cap.KeepOnly(String live)) {
-            for (Tree t : survivors) {
-                if (t.dir().getFileName().toString().equals(live)) continue;
-                if (now - t.mtime() < grace) continue; // a half-written extract, not a leftover
-                out = out.plus(delete(t.dir(), dryRun));
-            }
-            return out;
         }
         if (bound.cap() instanceof Bound.Cap.Count(int max, var rule) && max > 0 && survivors.size() > max) {
             survivors.sort(Comparator.comparingLong(Tree::mtime));

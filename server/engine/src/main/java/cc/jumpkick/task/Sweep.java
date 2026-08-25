@@ -10,7 +10,8 @@ import java.time.Duration;
  *
  * <p>Lives in {@code engine.task} alongside {@link ActionCache} and {@link SyncManifest} because
  * they're the writers of the roots the sweep walks. Both reclaimers honour the same write grace
- * window, so a blob is never unlinked out from under a concurrent store or restore.
+ * window, so a blob is never unlinked out from under a concurrent store or restore. The names of
+ * those roots are {@code cc.jumpkick.host.ActionTree}'s, not this class's.
  */
 public final class Sweep {
 
@@ -25,12 +26,6 @@ public final class Sweep {
      * doesn't survive long.
      */
     public static final Duration MIN_AGE_FOR_SWEEP = Duration.ofHours(1);
-
-    /**
-     * Subdirectory under the action-cache root where {@code jk sync} stamps per-project reachability
-     * manifests.
-     */
-    public static final String SYNCED_SUBDIR = "synced";
 
     private Sweep() {}
 

@@ -6,6 +6,8 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -34,8 +36,9 @@ import java.util.stream.Stream;
  * --offline}):
  *
  * <ul>
- * <li><b>JUnit Platform</b> — when Jupiter jars are in the local cache (or network fetches them),
- * compile + run one real {@code @Test} via the Platform Launcher API.
+ * <li><b>JUnit Platform</b> — when the Jupiter jars are in the artifact store or the Maven local
+ * repository (or network fetches them into the store), compile + run one real {@code @Test} via the
+ * Platform Launcher API.
  * <li><b>Resolve</b> — time an HTTP GET of a tiny known Maven Central artifact.
  * </ul>
  *
@@ -64,13 +67,22 @@ final class HardwareProbe {
 
     private static final String PLATFORM_VER = "1.11.4";
 
-    record Options(boolean allowNetwork, Path cacheRoot) {
+    /**
+     * Where the probe may read and write Maven-layout artifacts. {@code storeRoot} is the
+     * <em>artifact</em> store ({@link JkDirs#store()}), never the cache root: a jar the probe
+     * fetches is an ordinary Central download that a later resolve can reuse, and the cache root
+     * is the tree {@code jk cache nuke} removes wholesale and {@code jk status} reports as the
+     * user's cache size. Neither factory takes a path, so no caller can hand this a cache root the
+     * way {@code Calibration.probe} used to (JK-2456) — the root comes from {@link JkDirs}, which
+     * a test redirects wholesale rather than per call site.
+     */
+    record Options(boolean allowNetwork, Path storeRoot) {
         static Options offline() {
-            return new Options(false, JkDirs.cache());
+            return new Options(false, JkDirs.store());
         }
 
-        static Options of(boolean allowNetwork, Path cacheRoot) {
-            return new Options(allowNetwork, cacheRoot != null ? cacheRoot : JkDirs.cache());
+        static Options of(boolean allowNetwork) {
+            return new Options(allowNetwork, JkDirs.store());
         }
     }
 
@@ -126,7 +138,7 @@ final class HardwareProbe {
             long resolveMs = 0;
             boolean resolveUsed = false;
             if (o.allowNetwork()) {
-                long r = measureResolve(o.cacheRoot());
+                long r = measureResolve();
                 if (r > 0) {
                     resolveMs = r;
                     resolveUsed = true;
@@ -373,8 +385,31 @@ final class HardwareProbe {
         }
     }
 
+    /**
+     * One Central GET. Production is {@link #httpGet}; the injection point exists so a test can
+     * drive the whole fetch-and-publish route — the part JK-2456 got wrong — without a network
+     * and without a mutable static base URL.
+     */
+    @FunctionalInterface
+    interface CentralFetch {
+        byte[] get(String url) throws IOException, InterruptedException;
+    }
+
     /** Locate or fetch the minimal Jupiter + Platform jars needed to run one test. */
-    private static List<Path> resolveJunitClasspath(Options opts) {
+    static List<Path> resolveJunitClasspath(Options opts) {
+        return resolveJunitClasspath(opts, HardwareProbe::httpGet);
+    }
+
+    /**
+     * As {@link #resolveJunitClasspath(Options)} with the Central transport supplied.
+     *
+     * <p>Reads the artifact store's per-repo Maven views then the Maven local repository, and on a
+     * miss with network fetches into the <em>store</em>. It used to read and write {@code
+     * <cache>/repos/}, a fourth Maven tree that no resolver consults, that {@code jk status} counts
+     * as cache and {@code jk cache nuke} deletes — so calibration both inflated the cache figure
+     * and re-downloaded the same seven jars after every nuke.
+     */
+    static List<Path> resolveJunitClasspath(Options opts, CentralFetch fetch) {
         // artifactId → (group path, version)
         Map<String, String[]> coords = new LinkedHashMap<>();
         coords.put("junit-jupiter-api", new String[] {"org/junit/jupiter", JUNIT_VER});
@@ -391,13 +426,15 @@ final class HardwareProbe {
             String groupPath = e.getValue()[0];
             String ver = e.getValue()[1];
             String rel = groupPath + "/" + artifact + "/" + ver + "/" + artifact + "-" + ver + ".jar";
-            Path found = findInCache(opts.cacheRoot(), rel);
+            // Re-listed per artifact: a fetch publishes a new repo view under the store.
+            List<Path> roots = artifactRoots(opts.storeRoot());
+            Path found = findLocal(roots, rel);
             if (found == null && opts.allowNetwork()) {
-                found = downloadToCache(opts.cacheRoot(), rel);
+                found = fetchFromCentral(opts.storeRoot(), rel, fetch);
             }
             if (found == null) {
-                // Try any version already on disk (dogfood machines often have newer 6.x).
-                found = findAnyVersion(opts.cacheRoot(), groupPath, artifact);
+                // Try any version already on disk (dogfood machines often have newer 6.x in ~/.m2).
+                found = findAnyVersion(roots, groupPath, artifact);
             }
             if (found == null) return List.of(); // incomplete set → skip probe
             out.add(found);
@@ -405,76 +442,99 @@ final class HardwareProbe {
         return out;
     }
 
-    private static Path findInCache(Path cacheRoot, String relativeMavenPath) {
-        if (cacheRoot == null) return null;
-        Path repos = cacheRoot.resolve("repos");
-        if (!Files.isDirectory(repos)) return null;
-        try (Stream<Path> stream = Files.list(repos)) {
-            for (Path repo : (Iterable<Path>) stream::iterator) {
-                Path jar = repo.resolve(relativeMavenPath);
-                if (Files.isRegularFile(jar)) return jar;
+    /**
+     * Maven-layout roots the probe may read, in preference order: each named repository view under
+     * {@code <store>/repos/}, then the Maven local repository. Both are trees jk already resolves
+     * against, so a hit here costs no network and no new bytes anywhere.
+     */
+    private static List<Path> artifactRoots(Path storeRoot) {
+        List<Path> roots = new ArrayList<>();
+        if (storeRoot != null) {
+            Path repos = storeRoot.resolve("repos");
+            if (Files.isDirectory(repos)) {
+                try (Stream<Path> stream = Files.list(repos)) {
+                    stream.filter(Files::isDirectory).sorted().forEach(roots::add);
+                } catch (IOException ignored) {
+                    // best-effort
+                }
             }
-        } catch (IOException ignored) {
-            // best-effort
+        }
+        Path m2 = M2Dirs.localRepository();
+        if (Files.isDirectory(m2)) roots.add(m2);
+        return roots;
+    }
+
+    private static Path findLocal(List<Path> roots, String relativeMavenPath) {
+        for (Path root : roots) {
+            Path jar = root.resolve(relativeMavenPath);
+            if (Files.isRegularFile(jar)) return jar;
         }
         return null;
     }
 
-    private static Path findAnyVersion(Path cacheRoot, String groupPath, String artifact) {
-        if (cacheRoot == null) return null;
-        Path repos = cacheRoot.resolve("repos");
-        if (!Files.isDirectory(repos)) return null;
-        try (Stream<Path> reposStream = Files.list(repos)) {
-            for (Path repo : (Iterable<Path>) reposStream::iterator) {
-                Path artDir = repo.resolve(groupPath).resolve(artifact);
-                if (!Files.isDirectory(artDir)) continue;
-                Path best = null;
-                try (Stream<Path> vers = Files.list(artDir)) {
-                    for (Path verDir : (Iterable<Path>) vers::iterator) {
-                        if (!Files.isDirectory(verDir)) continue;
-                        Path jar = verDir.resolve(artifact + "-" + verDir.getFileName() + ".jar");
-                        if (Files.isRegularFile(jar)) {
-                            // Prefer highest path name lexicographically (rough newest for dotted versions).
-                            if (best == null
-                                    || jar.getParent()
+    private static Path findAnyVersion(List<Path> roots, String groupPath, String artifact) {
+        for (Path root : roots) {
+            Path artDir = root.resolve(groupPath).resolve(artifact);
+            if (!Files.isDirectory(artDir)) continue;
+            Path best = null;
+            try (Stream<Path> vers = Files.list(artDir)) {
+                for (Path verDir : (Iterable<Path>) vers::iterator) {
+                    if (!Files.isDirectory(verDir)) continue;
+                    Path jar = verDir.resolve(artifact + "-" + verDir.getFileName() + ".jar");
+                    if (!Files.isRegularFile(jar)) continue;
+                    // Prefer highest path name lexicographically (rough newest for dotted versions).
+                    if (best == null
+                            || jar.getParent()
+                                            .getFileName()
+                                            .toString()
+                                            .compareTo(best.getParent()
                                                     .getFileName()
-                                                    .toString()
-                                                    .compareTo(best.getParent()
-                                                            .getFileName()
-                                                            .toString())
-                                            > 0) {
-                                best = jar;
-                            }
-                        }
+                                                    .toString())
+                                    > 0) {
+                        best = jar;
                     }
                 }
-                if (best != null) return best;
+            } catch (IOException ignored) {
+                // best-effort
             }
-        } catch (IOException ignored) {
-            // best-effort
+            if (best != null) return best;
         }
         return null;
     }
 
-    private static Path downloadToCache(Path cacheRoot, String relativeMavenPath) {
+    private static Path fetchFromCentral(Path storeRoot, String relativeMavenPath, CentralFetch fetch) {
         try {
-            byte[] body = httpGet(CENTRAL_BASE + relativeMavenPath);
+            byte[] body = fetch.get(CENTRAL_BASE + relativeMavenPath);
             if (body == null || body.length == 0) return null;
-            // This lands in the SHARED repos mirror that later resolution trusts by presence
-            // never persist unverified bytes. No.sha1, no cache entry.
-            byte[] sha1 = httpGet(CENTRAL_BASE + relativeMavenPath + ".sha1");
+            // Never persist unverified bytes: no .sha1, no store entry.
+            byte[] sha1 = fetch.get(CENTRAL_BASE + relativeMavenPath + ".sha1");
             if (sha1 == null || sha1.length == 0) return null;
             // SHA-1 because that is what Central publishes beside the artifact; the sidecar names
             // the algorithm, so the call site does too.
             Optional<String> expected = Hashing.checksumFromSidecar(new String(sha1, StandardCharsets.US_ASCII), 40);
             if (expected.isEmpty() || !expected.get().equals(Hashing.hashHex("SHA-1", body))) return null;
-            Path dest =
-                    cacheRoot.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(relativeMavenPath);
-            Files.createDirectories(dest.getParent());
-            Files.write(dest, body);
-            return dest;
+            return storeCentralJar(storeRoot, relativeMavenPath, body);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * Publish verified Central bytes as an ordinary store entry — {@code <store>/repos/central/…}
+     * plus the {@code .jk} memo, written through {@link RepoArtifactStore} exactly as a resolve
+     * would. The memo is the difference between an artifact a later resolve can hash-verify and
+     * reuse, and the seven orphan jars this probe used to leave under the cache root.
+     */
+    private static Path storeCentralJar(Path storeRoot, String relativeMavenPath, byte[] body) throws IOException {
+        if (storeRoot == null) return null;
+        Path tmp = Files.createTempFile("jk-calib-artifact", ".jar");
+        try {
+            Files.write(tmp, body);
+            RepoArtifactStore store = RepoArtifactStore.forRepoName(storeRoot, RepositorySpec.CENTRAL);
+            store.materialize(relativeMavenPath, tmp, Hashing.sha256Hex(body));
+            return store.locate(relativeMavenPath).orElse(null);
+        } finally {
+            Files.deleteIfExists(tmp);
         }
     }
 
@@ -482,7 +542,7 @@ final class HardwareProbe {
      * Time a cold-ish HTTP GET of a tiny Central artifact. Uses a unique cache-buster query so we
      * do not measure only a fully warm CDN path when the object is already popular — still network.
      */
-    private static long measureResolve(Path cacheRoot) {
+    private static long measureResolve() {
         try {
             // Prefer timing a real download into a temp file (not the shared cache) so we always hit network.
             String url = CENTRAL_BASE + RESOLVE_PROBE_PATH + "?jk_calib=" + System.nanoTime();

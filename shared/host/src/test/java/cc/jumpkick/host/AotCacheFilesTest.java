@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -119,5 +120,32 @@ class AotCacheFilesTest {
                 .isNull();
         assertThat(AotCacheFiles.refusal(null)).isNull();
         assertThat(AotCacheFiles.refusal("")).isNull();
+    }
+
+    /**
+     * One window for a refusal, whoever asks. The engine's spawn decision used to treat a marker as
+     * permanent while the worker trainer expired one after a week, so the same sidecar in the same
+     * directory meant two different things depending on which process read it.
+     */
+    @Test
+    void a_refusal_is_believed_for_the_ttl_and_then_deleted(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("engine-0.12.0-0123456789abcdef.aot");
+        assertThat(AotCacheFiles.blocked(cache)).isFalse(); // no marker at all
+        assertThat(AotCacheFiles.blocked(null)).isFalse();
+
+        Path marker = Files.createFile(AotCacheFiles.marker(cache));
+        assertThat(AotCacheFiles.blocked(cache)).isTrue();
+
+        Files.setLastModifiedTime(
+                marker, FileTime.fromMillis(System.currentTimeMillis() - AotCacheFiles.MARKER_TTL_MILLIS + 60_000));
+        assertThat(AotCacheFiles.blocked(cache)).isTrue();
+        assertThat(marker).exists();
+
+        Files.setLastModifiedTime(
+                marker, FileTime.fromMillis(System.currentTimeMillis() - AotCacheFiles.MARKER_TTL_MILLIS - 60_000));
+        assertThat(AotCacheFiles.blocked(cache)).isFalse();
+        // Deleted rather than ignored: the answer and the disk cannot drift apart, and a sweep that
+        // never runs cannot bring the refusal back.
+        assertThat(marker).doesNotExist();
     }
 }

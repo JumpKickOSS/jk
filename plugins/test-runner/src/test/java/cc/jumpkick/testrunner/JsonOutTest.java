@@ -60,18 +60,19 @@ class JsonOutTest {
     /**
      * The wire carries {@code EventType.wire()}, never the Java constant name: {@link
      * JsonEventWriter} converts before the map reaches the encoder. Asserting
-     * {@code JsonOut.string(EventType.PLAN_STARTED)} instead pinned {@code "PLAN_STARTED"} — a
-     * token nothing emits — and would have stayed green through a rename of the wire form.
+     * {@code JsonOut.string(EventType.PLAN_FINISHED)} instead pinned {@code "PLAN_FINISHED"} — a
+     * token nothing emits — and would have stayed green through a rename of the wire form. A
+     * two-word constant on purpose: the underscore is the part a naive conversion drops.
      */
     @Test
     void the_event_writer_emits_the_wire_name_not_the_java_constant() {
         var buffer = new ByteArrayOutputStream();
         new JsonEventWriter(new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKT:"))
-                .write(EventType.PLAN_STARTED, Map.of("id", "x"));
+                .write(EventType.PLAN_FINISHED, Map.of("id", "x"));
 
         String line = buffer.toString(StandardCharsets.UTF_8).strip();
-        assertTrue(line.contains("\"event\":\"plan_started\""), line);
-        assertFalse(line.contains("PLAN_STARTED"), line);
+        assertTrue(line.contains("\"event\":\"plan_finished\""), line);
+        assertFalse(line.contains("PLAN_FINISHED"), line);
     }
 
     /**

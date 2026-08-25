@@ -190,30 +190,6 @@ public final class EffortWeights {
         return TEST_STARTUP;
     }
 
-    /**
-     * Phase rollup: sum of flat learned step weights for a module (compile + test + package).
-     * Missing steps contribute 0. Used for module-level schedule costs when shape memo is cold.
-     */
-    public static int phaseRollupWeight(String dir, BuildMetrics metrics) {
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        int sum = 0;
-        for (String step : List.of(
-                TaskNames.COMPILE_JAVA,
-                TaskNames.COMPILE_KOTLIN,
-                TaskNames.COMPILE_GROOVY,
-                TaskNames.COMPILE_TEST,
-                TaskNames.RUN_TESTS,
-                TaskNames.PACKAGE_JAR,
-                TaskNames.RESOLVE_DEPS,
-                TaskNames.COPY_RESOURCES)) {
-            var e = metrics.step(dir == null ? "" : dir, step);
-            if (e.isPresent() && e.get().ok().count() >= MIN_METRICS_SAMPLES) {
-                sum += flatWeight(e.get().ok().avgMillis());
-            }
-        }
-        return sum;
-    }
-
     /** Learnable startup floor subtracted before recording a per-unit rate. */
     static int floor(String step) {
         return switch (step) {
@@ -240,15 +216,11 @@ public final class EffortWeights {
     }
 
     /**
-     * Success-only average wall for one module step (ms), or 0 when never recorded. Count ≥ 1 is
-     * enough — ETA composes dirty steps from measured pieces, not whole-build priors.
+     * Success-only average wall for one module step (ms), from this module's own history; 0 when it
+     * never ran the step here. Count ≥ 1 is enough — ETA composes dirty steps from measured pieces,
+     * not whole-build priors. Every caller picks its own fallback, so there is deliberately no
+     * combiner that tries own-then-host for them.
      */
-    public static long stepOkAvgMillis(BuildMetrics metrics, String dir, String step) {
-        long own = stepOkAvgMillisOwn(metrics, dir, step);
-        return own > 0 ? own : stepOkAvgMillisHost(metrics, step);
-    }
-
-    /** Module-own tier of {@link #stepOkAvgMillis} — 0 when this module never ran the step here. */
     static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
@@ -263,7 +235,7 @@ public final class EffortWeights {
         return 0;
     }
 
-    /** Host tier of {@link #stepOkAvgMillis}: the cross-module average wall for {@code step}. */
+    /** Host tier: the cross-module average wall for {@code step}, when this module has no history. */
     static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
@@ -1047,7 +1019,7 @@ public final class EffortWeights {
                 // sha256 is byte-identical), so a forced build resolves entirely from local disk
                 // it even succeeds offline. Reserving a per-artifact download here for cached deps
                 // was the bug that made `jk explain --force` predict tens of seconds of phantom fetch.
-                String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
+                String hex = a.checksumHex();
                 if (!cas.contains(hex)) fetches++;
             }
             return fetches == 0 ? SKIP : fetches * perFetch;

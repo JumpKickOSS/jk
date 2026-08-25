@@ -2,6 +2,10 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerNative.javaSources;
+import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
+import static cc.jumpkick.runtime.PlannerPlugin.beforeCompile;
+import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.KspProcessors;

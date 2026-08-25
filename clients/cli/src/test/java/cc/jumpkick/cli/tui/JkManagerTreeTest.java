@@ -182,14 +182,14 @@ class JkManagerTreeTest {
         int cols = 60;
         // Paint uses rowColumnBudget (terminal width − 1) so the trailing … is not lost to
         // DEC auto-wrap on the last column.
-        int paintCols = JkManagerColor.rowColumnBudget(cols);
+        int paintCols = RenderContext.rowColumnBudget(cols);
         for (String line : cm.renderBuildPlanLines(cols, 0)) {
-            assertThat(RenderContext.visibleWidth(JkManager.truncateVisible(line, paintCols)))
+            assertThat(RenderContext.visibleWidth(RenderContext.truncateVisible(line, paintCols)))
                     .isLessThanOrEqualTo(paintCols);
         }
         // Truncation adds an ellipsis rather than wrapping.
         String painted =
-                JkManager.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), paintCols);
+                RenderContext.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), paintCols);
         assertThat(TestAnsi.strip(painted)).contains("…");
         assertThat(TestAnsi.strip(painted)).endsWith("…");
     }
@@ -294,7 +294,7 @@ class JkManagerTreeTest {
             Size.probe = () -> new Size.Window(24, 40);
             Size.reset();
             List<String> last = cm.view.renderBuildPlanLines(80, 0);
-            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            int estimate = Math.max(TerminalReflow.physicalRows(last, 80, 40), last.size());
             buf.reset();
             cm.tick();
             assertThat(buf.toString(StandardCharsets.UTF_8)).contains(Ansi.cursorUp(estimate));
@@ -327,7 +327,7 @@ class JkManagerTreeTest {
             Size.probe = () -> new Size.Window(24, 40);
             Size.reset();
             TerminalReflow.force(true);
-            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            int estimate = Math.max(TerminalReflow.physicalRows(last, 80, 40), last.size());
             buf.reset();
             // Hidden write only buffers; open the pane so paint runs under the new column budget.
             cm.view.writeAbove("WARN something happened");
@@ -377,13 +377,12 @@ class JkManagerTreeTest {
     void physical_rows_after_reflow_grows_when_columns_shrink() {
         // A line painted ~79 cols wide reflows to 2 physical rows at 40 cols.
         String wide = "x".repeat(79);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 80, 40)).isEqualTo(2);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide, wide), 80, 40))
-                .isEqualTo(4);
+        assertThat(TerminalReflow.physicalRows(List.of(wide), 80, 40)).isEqualTo(2);
+        assertThat(TerminalReflow.physicalRows(List.of(wide, wide), 80, 40)).isEqualTo(4);
         // Widen / same width: still one physical row per logical line.
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 40, 80)).isEqualTo(1);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(""), 80, 40)).isEqualTo(1);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(), 80, 40)).isZero();
+        assertThat(TerminalReflow.physicalRows(List.of(wide), 40, 80)).isEqualTo(1);
+        assertThat(TerminalReflow.physicalRows(List.of(""), 80, 40)).isEqualTo(1);
+        assertThat(TerminalReflow.physicalRows(List.of(), 80, 40)).isZero();
     }
 
     @Test
@@ -408,7 +407,7 @@ class JkManagerTreeTest {
 
             List<String> painted = cm.lastLines;
             assertThat(painted).isNotEmpty();
-            int expectedUp = Math.max(JkManagerView.physicalRowsAfterReflow(painted, 120, 50), painted.size());
+            int expectedUp = Math.max(TerminalReflow.physicalRows(painted, 120, 50), painted.size());
 
             Size.probe = () -> new Size.Window(24, 50);
             Size.reset();

@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerSupport.copyResources;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.PathUtil;

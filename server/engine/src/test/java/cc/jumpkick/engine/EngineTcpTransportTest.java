@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The loopback-TCP transport (Windows' lane), forced via -Djk.engine.transport=tcp so the auth
  * handshake is exercised off-Windows. Regression: engine→engine signalling (helloProbe /
- * drainDisplaced) once sent a raw token line where the server requires the {@code auth} envelope,
+ * EngineElection.askPredecessorToYield) once sent a raw token line where the server requires the {@code auth} envelope,
  * so same-version election and takeover drain silently failed on TCP.
  */
 @Tag("integration")

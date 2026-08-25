@@ -31,7 +31,6 @@ import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 public final class ImageVerb implements HostedVerb {
@@ -97,19 +96,11 @@ public final class ImageVerb implements HostedVerb {
                 Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
                 boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                        Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(verbose),
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "force", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(Jsonl.bool(requestLine, "offline", false))
+                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                        .withVerbose(verbose)
+                        .withForce(Jsonl.bool(requestLine, "force", false));
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)

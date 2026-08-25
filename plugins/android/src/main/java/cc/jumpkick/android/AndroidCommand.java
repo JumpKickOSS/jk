@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.IOException;
@@ -43,6 +44,12 @@ final class AndroidCommand {
 
     private static int licenses(PluginCommandExec exec, boolean yes) throws Exception {
         Path root = exec.requireExtra("sdk-root");
+        // The license texts come off Google's repository feed; there is no cached copy to accept
+        // from, so an offline run refuses rather than reaching out behind the flag's back.
+        String feedUrl = System.getenv().getOrDefault("JK_ANDROID_FEED_URL", FEED_URL);
+        if (exec.offline() && !feedUrl.startsWith("file:")) {
+            throw new IOException(Errors.offlineRefusal(feedUrl));
+        }
         Map<String, String> licenses = fetchLicenses();
         if (licenses.isEmpty()) {
             exec.out("no licenses found in the SDK repository feed");

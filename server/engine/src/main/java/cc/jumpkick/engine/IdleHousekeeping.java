@@ -5,7 +5,7 @@ import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -17,10 +17,8 @@ import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -240,43 +238,48 @@ public final class IdleHousekeeping {
         }
     }
 
+    /**
+     * Run the queued prune, if the two maintenance locks are free. A cache root that is not on
+     * disk is skipped outright: {@code jk cache nuke} removes that root and leaves this engine
+     * running, so a boundary that asserted the tree back would undo the command, and one that
+     * merely tripped over the missing lock file logged a prune failure at every boundary from
+     * then on. Locks are taken through {@link CacheMaintenanceLocks} rather than re-derived here
+     * — a second copy of the protocol is how the two came to disagree about that.
+     */
     private void drainPendingPrune() {
         Path cache = pendingPruneCache.getAndSet(null);
         if (cache == null) return;
-        if (!cacheGate.writeLock().tryLock()) {
-            pendingPruneCache.compareAndSet(null, cache);
-            return;
-        }
-        try (FileChannel lockChan = FileChannel.open(
-                CacheTree.PRUNE_LOCK.under(cache), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-            FileLock pruneLock = lockChan.tryLock();
-            if (pruneLock == null) return;
-            try {
-                // Scratch is a single ambient directory, not a per-root one: sweeping it while
-                // pruning some other cache root would reach outside the root asked for.
-                boolean ambient = cache.equals(JkDirs.cache());
-                BuildPlan plan = CachePlans.pruneBuildPlan(cache, false, ambient);
-                BuildPlanResult result = plan.run();
-                if (result.success()) {
-                    CachePruneScheduler.write(
-                            cache,
-                            clock.getAsLong(),
-                            plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
-                    log.accept("jk engine: idle-boundary cache prune removed "
-                            + plan.get(CachePlans.FILES).orElse(0L)
-                            + " files ("
-                            + plan.get(CachePlans.BYTES).orElse(0L)
-                            + " bytes)");
-                } else {
-                    log.accept("jk engine: idle-boundary cache prune failed");
-                }
-            } finally {
-                pruneLock.release();
+        if (!Files.isDirectory(cache)) return;
+        try {
+            // Busy locks re-queue rather than drop the pass: the next boundary is soon and a
+            // prune skipped for good is a cache that grows past its budget in silence.
+            if (!CacheMaintenanceLocks.tryExclusively(cacheGate, cache, () -> prunePass(cache))) {
+                pendingPruneCache.compareAndSet(null, cache);
             }
         } catch (Exception e) {
             log.accept("jk engine: idle-boundary cache prune failed: " + e.getMessage());
-        } finally {
-            cacheGate.writeLock().unlock();
+        }
+    }
+
+    /** The prune itself; runs with both maintenance locks held. */
+    private void prunePass(Path cache) {
+        // Scratch is a single ambient directory, not a per-root one: sweeping it while
+        // pruning some other cache root would reach outside the root asked for.
+        boolean ambient = cache.equals(JkDirs.cache());
+        BuildPlan plan = CachePlans.pruneBuildPlan(cache, false, ambient);
+        BuildPlanResult result = plan.run();
+        if (result.success()) {
+            CachePruneScheduler.write(
+                    cache,
+                    clock.getAsLong(),
+                    plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
+            log.accept("jk engine: idle-boundary cache prune removed "
+                    + plan.get(CachePlans.FILES).orElse(0L)
+                    + " files ("
+                    + plan.get(CachePlans.BYTES).orElse(0L)
+                    + " bytes)");
+        } else {
+            log.accept("jk engine: idle-boundary cache prune failed");
         }
     }
 }

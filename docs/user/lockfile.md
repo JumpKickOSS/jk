@@ -86,6 +86,22 @@ not a silent accept. `jk repo refresh <coord>` re-fetches a coordinate on purpos
 GPG/Sigstore for *your* publishes: [Publish](publish.md). First-write-wins and
 `--offline` never networking are the store policy.
 
+## What else the lock pins
+
+Not everything a build depends on is a classpath entry. Alongside `[[artifact]]` the lock
+carries the resolved Kotlin/Scala compiler versions, `[[plugin]]` and `[[sdk]]` rows, and:
+
+```toml
+[native]
+metadata-repository = "1.1.4"
+checksum = "sha256:…"
+```
+
+— the GraalVM reachability-metadata repository release, resolved from `[native]
+metadata-repository` in `jk.toml`. It is not an `[[artifact]]` row: it is on no classpath
+and in no scope. It *is* an input to `native-image`, so it is pinned like one. See
+[Native images](native.md#the-graalvm-metadata-repository).
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)

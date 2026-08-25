@@ -4,7 +4,6 @@ package cc.jumpkick.cli.testing;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import java.util.Optional;
 import java.util.concurrent.Callable;
 
 /**
@@ -18,7 +17,7 @@ public final class NoAnsi {
 
     /** Restores the previous session even when {@code body} throws. */
     public static <T> T forced(Callable<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
         Session original = SessionContext.current();
         try {
             return SessionContext.where(original.withConfig(noAnsi), body);

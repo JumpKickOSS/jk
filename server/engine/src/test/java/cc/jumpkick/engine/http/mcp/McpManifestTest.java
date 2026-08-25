@@ -102,6 +102,26 @@ class McpManifestTest {
         }
     }
 
+    /**
+     * The edit goes through {@link cc.jumpkick.config.JkBuildEditor}, not a regex. The regex
+     * matched only a bare integer to end-of-line, so a commented value missed and the miss fell
+     * through to the "insert a root key" branch — writing a second {@code java =} line, which is
+     * invalid TOML, and writing it to disk unvalidated with {@code applied: true}.
+     */
+    @Test
+    void set_java_replaces_an_annotated_value_instead_of_duplicating_the_key(@TempDir Path dir) throws Exception {
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                "name = \"a\"\ngroup = \"g\"\nversion = \"1\"\njava = 17  # from the CI image\n[dependencies]\n",
+                StandardCharsets.UTF_8);
+        Map<String, Object> out = McpManifest.setJava(dir.toString(), 25, true);
+        assertThat(out).doesNotContainKey("error");
+        String after = Files.readString(dir.resolve("jk.toml"), StandardCharsets.UTF_8);
+        assertThat(after).containsOnlyOnce("java =");
+        assertThat(after).contains("# from the CI image");
+        assertThat(JkBuildParser.parse(after).project().javaRelease()).isEqualTo(25);
+    }
+
     @Test
     void set_java_replaces_an_existing_root_line(@TempDir Path dir) throws Exception {
         Files.writeString(

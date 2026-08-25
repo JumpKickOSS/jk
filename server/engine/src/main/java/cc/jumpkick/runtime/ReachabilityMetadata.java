@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
@@ -19,32 +20,72 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * GraalVM reachability-metadata repo for {@code jk native}: cached Maven zip, match locked
- * {@code g:a:v} via index ({@code tested-versions} then {@code latest}). Failures yield empty.
+ * The GraalVM reachability-metadata repository for {@code jk native}: extract the locked release,
+ * then match each locked {@code g:a:v} against its index ({@code tested-versions}, then
+ * {@code latest}). Failures yield an empty list — a missing repository degrades the image, it does
+ * not fail the build.
+ *
+ * <h2>Store, not cache</h2>
+ *
+ * The extracted tree lives under the <strong>artifact store</strong> ({@code JK_STORE_DIR}), beside
+ * {@code repos/} and the artifact CAS, because it is the same kind of thing: a downloaded,
+ * version-addressed Maven artifact, not a rebuildable action output. It was a cache tier, and that
+ * was wrong in the direction that costs the user money — {@code jk cache nuke} took 27 MB that only
+ * Maven Central can give back, and Sonatype's per-IP quota is sticky. Nothing under the cache root
+ * may be something a nuke makes you re-download.
+ *
+ * <h2>Version, not constant</h2>
+ *
+ * Which release is extracted comes from {@code jk-lock.toml}'s {@code [native]} pin, resolved from
+ * {@code [native] metadata-repository} by {@code jk lock}. It used to be a {@code static final
+ * String} here, which meant the repository release was decided by whichever jk binary happened to
+ * run — an input to {@code native-image} that no lock recorded and no user could choose.
  */
 public final class ReachabilityMetadata {
-
-    /**
-     * Repository release consumed by this jk version — walk forward with jk releases. Also the
-     * name of the one tree under {@code <cache>/graal-reachability} that can be read, which is
-     * how {@link cc.jumpkick.task.CacheTier}'s bound for that tier knows what to keep.
-     */
-    public static final String VERSION = "1.1.4";
 
     private static final String GROUP = "org.graalvm.buildtools";
     private static final String ARTIFACT = "graalvm-reachability-metadata";
 
+    /** Store entry holding the extracted repositories, one subtree per locked release. */
+    private static final String STORE_ENTRY = "native";
+
+    private static final String REPOSITORY_DIR = "metadata-repository";
+
     private ReachabilityMetadata() {}
 
+    /** The Maven coordinate of one repository release: the {@code repository} classifier zip. */
+    public static Coordinate coordinate(String version) {
+        return new Coordinate(GROUP, ARTIFACT, version, "repository", "zip");
+    }
+
     /**
-     * Matched config directories for {@code artifacts} (the RUNTIME lock entries), fetching and
-     * extracting the repository on first use. Logs matches through {@code log}; returns an empty
-     * list when the repo is unavailable (offline) or nothing matches.
+     * Where release {@code version} unpacks: {@code <store>/native/metadata-repository/<version>}.
+     * The version is in the path so a lock bump lands beside the old tree instead of mixing with it.
      */
-    static List<Path> configDirs(Path cache, RepoGroup repos, List<Lockfile.Artifact> artifacts, Consumer<String> log) {
+    public static Path repositoryRoot(Path storeRoot, String version) {
+        return storeRoot.resolve(STORE_ENTRY).resolve(REPOSITORY_DIR).resolve(version);
+    }
+
+    /**
+     * Matched config directories for {@code artifacts} (the RUNTIME lock entries), extracting the
+     * locked repository release on first use. Logs matches through {@code log}; returns an empty
+     * list when {@code pin} is null (the lock predates the pin, or no module declares
+     * {@code [native]}), when the repository is unavailable (offline), or when nothing matches.
+     */
+    static List<Path> configDirs(
+            Path storeRoot,
+            RepoGroup repos,
+            Lockfile.NativeMetadata pin,
+            List<Lockfile.Artifact> artifacts,
+            Consumer<String> log) {
+        if (pin == null) {
+            log.accept("no [native] metadata-repository in jk-lock.toml — run `jk lock`;"
+                    + " building without reachability metadata");
+            return List.of();
+        }
         Path repoRoot;
         try {
-            repoRoot = ensureExtracted(cache, repos);
+            repoRoot = ensureExtracted(storeRoot, repos, pin);
         } catch (IOException e) {
             log.accept("reachability metadata unavailable (" + e.getMessage() + ") — building without it");
             return List.of();
@@ -101,20 +142,36 @@ public final class ReachabilityMetadata {
     }
 
     /**
-     * Fetch + extract the repository zip once per {@link #VERSION}; concurrent-safe via
-     * extract-to-temp + atomic move, with a marker check for the fast path.
+     * Fetch + extract the locked repository release once; concurrent-safe via extract-to-temp +
+     * atomic move, with a marker check for the fast path. The locked checksum, when the lock carries
+     * one, is verified against the zip before anything is unpacked.
      */
-    private static Path ensureExtracted(Path cache, RepoGroup repos) throws IOException, InterruptedException {
-        Path root = CacheTree.GRAAL_REACHABILITY.under(cache).resolve(VERSION);
+    public static Path ensureExtracted(Path storeRoot, RepoGroup repos, Lockfile.NativeMetadata pin)
+            throws IOException, InterruptedException {
+        String version = pin.version();
+        Path root = repositoryRoot(storeRoot, version);
         Path marker = root.resolve(".complete");
         if (Files.isRegularFile(marker)) return root;
 
-        Path zip = repos.tryFetchArtifact(new Coordinate(GROUP, ARTIFACT, VERSION, "repository", "zip"))
-                .orElseThrow(() -> new IOException("cannot fetch " + GROUP + ":" + ARTIFACT + ":" + VERSION))
+        Coordinate coord = coordinate(version);
+        String expected = pin.checksumHex();
+        // The pinned fetch, so a stale local mirror is evicted rather than returned — the digest
+        // check below would otherwise fail forever on a copy nothing ever replaces.
+        Path zip = repos.tryFetchArtifact(coord, expected)
+                .orElseThrow(() -> new IOException("cannot fetch " + coord))
                 .fetched()
                 .cachePath();
+        if (expected != null) {
+            // Verified here and not off the fetch's own sha: a repository that serves different
+            // bytes than the lock pins passes its own sidecar check on the way in.
+            String actual = Hashing.sha256Hex(zip);
+            if (!expected.equalsIgnoreCase(actual)) {
+                throw new IOException("checksum mismatch for " + coord + ": jk-lock.toml pins sha256:" + expected
+                        + " but the fetched zip is sha256:" + actual);
+            }
+        }
 
-        Path tmp = Files.createTempDirectory(Files.createDirectories(root.getParent()), VERSION + ".extract-");
+        Path tmp = Files.createTempDirectory(Files.createDirectories(root.getParent()), version + ".extract-");
         try (ZipInputStream in = new ZipInputStream(Files.newInputStream(zip))) {
             ZipEntry entry;
             while ((entry = in.getNextEntry()) != null) {
@@ -132,13 +189,13 @@ public final class ReachabilityMetadata {
                 }
             }
         }
-        Files.writeString(tmp.resolve(".complete"), VERSION);
+        Files.writeString(tmp.resolve(".complete"), version);
         try {
             AtomicWrites.publishDir(tmp, root);
         } catch (IOException e) {
             // Another build won the race (publishDir handles a non-atomic FS itself): fine if the
             // winner completed.
-            cc.jumpkick.host.PathUtil.deleteRecursively(tmp);
+            PathUtil.deleteRecursively(tmp);
             if (!Files.isRegularFile(marker)) throw e;
         }
         return root;

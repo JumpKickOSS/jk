@@ -23,6 +23,8 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import lombok.AccessLevel;
+import lombok.Builder;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 
@@ -156,6 +158,7 @@ public final class Calibration {
     private final long probeCompilePerSourceMs;
     private final HostLearnedRates learned;
 
+    @Builder(toBuilder = true, access = AccessLevel.PRIVATE)
     private Calibration(
             double msPerWeight,
             long jvmForkMs,
@@ -500,30 +503,7 @@ public final class Calibration {
 
     /** Test seam: construct an instance directly (bypasses the probe/IO). */
     static Calibration testInstance(double msPerWeight, boolean measured, String version, long updated) {
-        return new Calibration(
-                msPerWeight,
-                10,
-                20,
-                5,
-                8,
-                15,
-                40,
-                0,
-                0,
-                0,
-                1.5,
-                8,
-                "jdk-x",
-                version,
-                updated,
-                measured,
-                false,
-                false,
-                SCHEMA,
-                100,
-                15,
-                2,
-                new HostLearnedRates());
+        return testInstance(msPerWeight, measured, version, updated, new HostLearnedRates(), 100, 15, 2);
     }
 
     /** Test seam with explicit learned rates. */
@@ -536,135 +516,34 @@ public final class Calibration {
             long probeStartup,
             long probeMethod,
             long probeCompile) {
-        return new Calibration(
-                msPerWeight,
-                10,
-                20,
-                5,
-                8,
-                15,
-                40,
-                0,
-                0,
-                0,
-                1.5,
-                8,
-                "jdk-x",
-                version,
-                updated,
-                measured,
-                false,
-                false,
-                SCHEMA,
-                probeStartup,
-                probeMethod,
-                probeCompile,
-                learned);
+        return builder()
+                .msPerWeight(msPerWeight)
+                .jvmForkMs(10)
+                .javacMs(20)
+                .diskIoMs(5)
+                .hashCpuMs(8)
+                .junitForkMs(15)
+                .junitRunMs(40)
+                .loadAtCalibration(1.5)
+                .cores(8)
+                .jdk("jdk-x")
+                .jkVersion(version)
+                .updated(updated)
+                .measured(measured)
+                .schema(SCHEMA)
+                .probeTestSuiteStartupMs(probeStartup)
+                .probeTestMethodMs(probeMethod)
+                .probeCompilePerSourceMs(probeCompile)
+                .learned(learned)
+                .build();
     }
 
     public Calibration withEngineColdStartMs(long coldMs) {
-        long c = Math.max(0, coldMs);
-        return copy(
-                msPerWeight,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                c,
-                loadAtCalibration,
-                cores,
-                jdk,
-                jkVersion,
-                updated,
-                measured,
-                junitPlatformUsed,
-                resolveUsed,
-                schema,
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                learned);
+        return toBuilder().engineColdStartMs(Math.max(0, coldMs)).build();
     }
 
     private Calibration withLearned(HostLearnedRates next) {
-        return copy(
-                msPerWeight,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                engineColdStartMs,
-                loadAtCalibration,
-                cores,
-                jdk,
-                jkVersion,
-                updated,
-                measured,
-                junitPlatformUsed,
-                resolveUsed,
-                Math.max(schema, SCHEMA),
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                next);
-    }
-
-    private static Calibration copy(
-            double msPerWeight,
-            long jvmForkMs,
-            long javacMs,
-            long diskIoMs,
-            long hashCpuMs,
-            long junitForkMs,
-            long junitRunMs,
-            long junitPlatformMs,
-            long resolveMs,
-            long engineColdStartMs,
-            double loadAtCalibration,
-            int cores,
-            String jdk,
-            String jkVersion,
-            long updated,
-            boolean measured,
-            boolean junitPlatformUsed,
-            boolean resolveUsed,
-            int schema,
-            long probeTestSuiteStartupMs,
-            long probeTestMethodMs,
-            long probeCompilePerSourceMs,
-            HostLearnedRates learned) {
-        return new Calibration(
-                msPerWeight,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                engineColdStartMs,
-                loadAtCalibration,
-                cores,
-                jdk,
-                jkVersion,
-                updated,
-                measured,
-                junitPlatformUsed,
-                resolveUsed,
-                schema,
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                learned);
+        return toBuilder().schema(Math.max(schema, SCHEMA)).learned(next).build();
     }
 
     // --- load / ensure -------------------------------------------------------
@@ -700,8 +579,8 @@ public final class Calibration {
     }
 
     /**
-     * Full ensure. {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing
-     * from the local cache (default on; callers pass false under global {@code --offline}).
+     * Full ensure. {@code allowNetwork} (on unless global {@code --offline}) enables the resolve
+     * HTTP probe and a JUnit jar fetch into the artifact store when the pinned jars are missing.
      */
     public static Calibration ensure(Path jdksDir, boolean force, boolean allowNetwork) {
         Calibration current = load();
@@ -799,57 +678,26 @@ public final class Calibration {
     }
 
     private Calibration touch(long nowMillis) {
-        return copy(
-                msPerWeight > 0 ? msPerWeight : EffortWeights.MS_PER_WEIGHT,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                engineColdStartMs,
-                loadAtCalibration,
-                cores > 0 ? cores : Runtime.getRuntime().availableProcessors(),
-                jdk,
-                JkVersion.VERSION,
-                nowMillis,
-                measured || !learned.isEmpty(),
-                junitPlatformUsed,
-                resolveUsed,
-                Math.max(schema, SCHEMA),
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                learned);
+        return toBuilder()
+                .msPerWeight(msPerWeight > 0 ? msPerWeight : EffortWeights.MS_PER_WEIGHT)
+                .cores(cores > 0 ? cores : Runtime.getRuntime().availableProcessors())
+                .jkVersion(JkVersion.VERSION)
+                .updated(nowMillis)
+                .measured(measured || !learned.isEmpty())
+                .schema(Math.max(schema, SCHEMA))
+                .build();
     }
 
     private static Calibration minimalWithLearned(HostLearnedRates learned, long now) {
-        return new Calibration(
-                EffortWeights.MS_PER_WEIGHT,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                safeLoadAverage(),
-                Runtime.getRuntime().availableProcessors(),
-                null,
-                JkVersion.VERSION,
-                now,
-                false,
-                false,
-                false,
-                SCHEMA,
-                0,
-                0,
-                0,
-                learned);
+        return builder()
+                .msPerWeight(EffortWeights.MS_PER_WEIGHT)
+                .loadAtCalibration(safeLoadAverage())
+                .cores(Runtime.getRuntime().availableProcessors())
+                .jkVersion(JkVersion.VERSION)
+                .updated(now)
+                .schema(SCHEMA)
+                .learned(learned)
+                .build();
     }
 
     public static Calibration recordEngineColdStart(long coldMs, long nowMillis) {
@@ -859,30 +707,16 @@ public final class Calibration {
         if (cur.present()) {
             next = cur.withEngineColdStartMs(c).touch(nowMillis);
         } else {
-            next = new Calibration(
-                    EffortWeights.MS_PER_WEIGHT,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    c,
-                    safeLoadAverage(),
-                    Runtime.getRuntime().availableProcessors(),
-                    null,
-                    JkVersion.VERSION,
-                    nowMillis,
-                    false,
-                    false,
-                    false,
-                    SCHEMA,
-                    0,
-                    0,
-                    0,
-                    cur.learned);
+            next = builder()
+                    .msPerWeight(EffortWeights.MS_PER_WEIGHT)
+                    .engineColdStartMs(c)
+                    .loadAtCalibration(safeLoadAverage())
+                    .cores(Runtime.getRuntime().availableProcessors())
+                    .jkVersion(JkVersion.VERSION)
+                    .updated(nowMillis)
+                    .schema(SCHEMA)
+                    .learned(cur.learned)
+                    .build();
         }
         persist(next);
         MEMO.set(next);
@@ -893,30 +727,14 @@ public final class Calibration {
         double next = (prev.present() && prev.measured)
                 ? ALPHA * observedMsPerWeight + (1 - ALPHA) * prev.msPerWeight
                 : observedMsPerWeight;
-        return copy(
-                next,
-                prev.jvmForkMs,
-                prev.javacMs,
-                prev.diskIoMs,
-                prev.hashCpuMs,
-                prev.junitForkMs,
-                prev.junitRunMs,
-                prev.junitPlatformMs,
-                prev.resolveMs,
-                prev.engineColdStartMs,
-                prev.loadAtCalibration,
-                prev.present() ? prev.cores : Runtime.getRuntime().availableProcessors(),
-                prev.jdk,
-                JkVersion.VERSION,
-                nowMillis,
-                true,
-                prev.junitPlatformUsed,
-                prev.resolveUsed,
-                Math.max(prev.schema, SCHEMA),
-                prev.probeTestSuiteStartupMs,
-                prev.probeTestMethodMs,
-                prev.probeCompilePerSourceMs,
-                prev.learned);
+        return prev.toBuilder()
+                .msPerWeight(next)
+                .cores(prev.present() ? prev.cores : Runtime.getRuntime().availableProcessors())
+                .jkVersion(JkVersion.VERSION)
+                .updated(nowMillis)
+                .measured(true)
+                .schema(Math.max(prev.schema, SCHEMA))
+                .build();
     }
 
     // --- the host probe ------------------------------------------------------
@@ -926,7 +744,7 @@ public final class Calibration {
             Optional<Path> javaHome = resolveJavaHome(jdksDir);
             if (javaHome.isEmpty()) return null;
             Path home = javaHome.get();
-            HardwareProbe.Result r = HardwareProbe.run(home, HardwareProbe.Options.of(allowNetwork, JkDirs.cache()));
+            HardwareProbe.Result r = HardwareProbe.run(home, HardwareProbe.Options.of(allowNetwork));
             if (r == null || !(r.msPerWeight() > 0)) return null;
             String jdkId = JdkRegistry.identifierFor(home);
             int platformMethods =
@@ -1144,30 +962,7 @@ public final class Calibration {
     }
 
     private static Calibration absent() {
-        return new Calibration(
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                -1,
-                0,
-                null,
-                null,
-                0,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                0,
-                new HostLearnedRates());
+        return builder().loadAtCalibration(-1).learned(new HostLearnedRates()).build();
     }
 
     private static void persist(Calibration c) {

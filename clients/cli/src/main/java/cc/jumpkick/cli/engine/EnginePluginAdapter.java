@@ -50,7 +50,7 @@ final class EnginePluginAdapter {
     /**
      * Send {@code requestLine} and replay the single-plan stream: plan-step burst → {@code
      * listenerFactory} (invoked once the step list is known, mirroring {@code
-     * EngineBuildListenerAdapter.runTest}) → plan events → terminal plan-finish. {@code onEvent}
+     * EngineJobs.runTest}) → plan events → terminal plan-finish. {@code onEvent}
      * receives each command-specific structured event as {@code (type, rawLine)}.
      */
     static HostedFinish stream(
@@ -68,7 +68,7 @@ final class EnginePluginAdapter {
      * invoking {@code preFinish} with the raw terminal line <em>before</em> the listener's own
      * {@code planFinish} is dispatched — for commands whose console listener renders summary fields
      * (populated from the finish line) from within its {@code planFinish} handler, mirroring how
-     * {@code EngineBuildListenerAdapter.runTest} settles {@code testResultOut} first.
+     * {@code EngineJobs.runTest} settles {@code testResultOut} first.
      */
     static HostedFinish stream(
             EnginePaths.Paths paths,
@@ -80,10 +80,10 @@ final class EnginePluginAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
+            BufferedReader reader = EngineWire.protocolReader(ch);
             // The session envelope — variant selection, client env, and worker-JVM tuning —
             // rides EVERY hosted-plan request line (compile/image/native/publish/install/...).
             // An empty envelope attaches nothing, so unadorned plans are byte-identical.
@@ -141,16 +141,16 @@ final class EnginePluginAdapter {
 
     /**
      * Send a one-shot {@link EngineProtocol#PROVISION_REQUEST} and wait for its terminal — no plan
-     * events stream (see the protocol docs); the worker may still take a while (a distribution
+     * events stream (see the protocol docs); the engine may still take a while (a distribution
      * download), which is fine on this blocking read.
      */
     static HostedEvents.Provision provision(EnginePaths.Paths paths, String requestLine) throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
+            BufferedReader reader = EngineWire.protocolReader(ch);
             // The session envelope — variant selection, client env, and worker-JVM tuning —
             // rides EVERY hosted-plan request line (compile/image/native/publish/install/...).
             // An empty envelope attaches nothing, so unadorned plans are byte-identical.
@@ -171,8 +171,7 @@ final class EnginePluginAdapter {
                             Jsonl.str(line, "version"),
                             Jsonl.str(line, "source"),
                             Jsonl.str(line, "error"),
-                            Jsonl.intValue(line, "exit", 1),
-                            Jsonl.str(line, "diag"));
+                            Jsonl.intValue(line, "exit", 1));
                 case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                 // Anything else is a forward-compatible no-op: ask for the next line.
                 default -> null;

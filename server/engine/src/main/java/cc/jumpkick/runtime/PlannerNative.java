@@ -2,6 +2,9 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
+import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
+import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -87,7 +90,7 @@ public final class PlannerNative {
                     JkBuild project = ctx.require(PROJECT);
                     JkBuild.NativeConfig nativeCfg = project.nativeConfig()
                             .orElseGet(() -> new JkBuild.NativeConfig(
-                                    null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED));
+                                    null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null));
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path mainJar = layout.mainJar();
                     if (!Files.exists(mainJar)) {
@@ -217,7 +220,11 @@ public final class PlannerNative {
                         cc.jumpkick.repo.RepoGroup metaRepos =
                                 RepoGroupBuilder.buildFor(project, null, JkStores.cas(cache));
                         metadataDirs = ReachabilityMetadata.configDirs(
-                                cache, metaRepos, runtimeArtifacts, msg -> ctx.label(msg));
+                                JkStores.storeRootFor(cache),
+                                metaRepos,
+                                metaLock.nativeMetadata(),
+                                runtimeArtifacts,
+                                msg -> ctx.label(msg));
                     }
                     if (frameworkSources != null) {
                         metadataDirs = List.of();
@@ -235,7 +242,7 @@ public final class PlannerNative {
                         // Refuse to native-build on stale train outputs when configured.
                         try {
                             var trainCfg =
-                                    cc.jumpkick.config.TrainConfigParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                                    cc.jumpkick.config.JkBuildParser.trainConfig(dir.resolve(ManifestPaths.MANIFEST));
                             String stale =
                                     TrainRunner.staleReason(dir, project, layout, lockFile, javaHomeEarly, trainCfg);
                             if (stale != null) {

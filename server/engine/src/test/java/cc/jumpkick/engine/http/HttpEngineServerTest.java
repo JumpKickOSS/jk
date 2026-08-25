@@ -91,7 +91,7 @@ class HttpEngineServerTest {
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
     private static final CacheSnapshot EMPTY_CACHE =
-            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -282,7 +282,8 @@ class HttpEngineServerTest {
         // The real SPA (clients/web/src/main/resources/web) rides the same classpath fallback the
         // test resources exercise — a bare [http] table gives a working dashboard with no file copying.
         assertThat(get("/app.js").body()).contains("Vue.createApp");
-        assertThat(get("/code.js").body()).contains("export function routeFromHash");
+        assertThat(get("/code.js").body()).contains("export const CodeView");
+        assertThat(get("/route.js").body()).contains("export function routeFromHash");
         assertThat(get("/fold.js").body()).contains("export function foldEvent");
         assertThat(get("/api.js").body()).contains("bootstrapToken");
         assertThat(get("/jk-logo.svg").headers().firstValue("Content-Type")).contains("image/svg+xml");
@@ -1097,7 +1098,11 @@ class HttpEngineServerTest {
                 0,
                 0,
                 0,
-                0);
+                0,
+                // The cache root as one tree — deliberately NOT casCount+actionsCount+… (that sum
+                // would read 145 / 35,200,100 here and it counts store bytes a nuke leaves).
+                77,
+                9_000_000);
         HttpResponse<String> resp = get("/api/cache");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
@@ -1106,8 +1111,11 @@ class HttpEngineServerTest {
                 .contains("\"casBytes\":5000000")
                 .contains("\"actionsCount\":40")
                 .contains("\"workerJarsBytes\":30000000")
-                .contains("\"totalCount\":145")
-                .contains("\"totalBytes\":35200100")
+                // The total is the cache root walked as one tree, not the sum of the sections
+                // above (that sum reads 145 / 35,200,100 for this fixture and includes store
+                // bytes a nuke leaves). It is the same fact `jk status` prints as Size on Disk.
+                .contains("\"totalCount\":77")
+                .contains("\"totalBytes\":9000000")
                 .contains("\"actionCacheBytes\":200000") // action index + cache CAS; format stamps are not budgeted
                 .contains("\"actionMaxBytes\":1073741824") // fixture cache budget (1 GiB)
                 // Store CAS + worker jars.

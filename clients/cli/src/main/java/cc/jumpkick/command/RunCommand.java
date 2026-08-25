@@ -9,13 +9,11 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.run.AggregateContext;
-import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.SessionContext;
@@ -24,13 +22,8 @@ import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.terminal.Ansi;
@@ -40,11 +33,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Project run plan (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
@@ -147,23 +136,11 @@ public final class RunCommand {
                     wr = runWorkspaceLive(request, scopeNames);
                     if (wr == null) return 1; // failure already settled on the view
                 } else {
-                    // Quiet / JSON / non-tty: append-only per-module completions (unchanged).
-                    AtomicInteger done = new AtomicInteger();
-                    int[] total = {0};
-                    var listener = new WorkspaceBuildListener() {
-                        @Override
-                        public void onPlan(List<ModulePlan> plan) {
-                            total[0] = plan.size();
-                        }
-
-                        @Override
-                        public void onModuleFinish(ModuleOutcome o) {
-                            String glyph = o.success() ? Glyphs.CHECK : Glyphs.CROSS;
-                            CliOutput.out(glyph + " [" + done.incrementAndGet() + "/" + Math.max(total[0], 1) + "] "
-                                    + o.coord());
-                        }
-                    };
-                    wr = EngineClient.buildWorkspace(EnginePaths.current(), request, listener);
+                    // Quiet / JSON / non-tty: the same append-only block + `✓ [k of N]` line
+                    // `jk build --verbose` prints. No JSONL — see runWorkspaceLive.
+                    var run = new WorkspaceRunView(
+                            new WorkspaceRunView.Chrome("Run", false, true), request.entryDir(), null, false);
+                    wr = EngineClient.buildWorkspace(EnginePaths.current(), request, run.headless());
                 }
                 if (wr != null && !wr.success()) {
                     CommandWedge.printFail("Run", "workspace build failed");
@@ -381,79 +358,30 @@ public final class RunCommand {
         view.setPlanCoord(BuildCommand.projectGaLabel(request.entryDir()));
         ModuleScopeHint.apply(view, "building", scopeNames);
         var agg = new AggregateContext(view);
-        Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
-        List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
-        AtomicInteger completed = new AtomicInteger();
-        int[] total = {0};
-        var listener = new WorkspaceBuildListener() {
-            @Override
-            public void onPreflight(String stage, int done, int totalUnits, String label) {
-                agg.preflight(stage, done, totalUnits, label);
-            }
-
-            @Override
-            public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
-                agg.applySnapshot(snap);
-            }
-
-            @Override
-            public void onEtaEstimate(long millis) {
-                view.setRemainingWorkEstimate(millis);
-            }
-
-            @Override
-            public void onPlan(List<ModulePlan> plan) {
-                total[0] = plan.size();
-            }
-
-            @Override
-            public BuildPlanListener onModuleStart(ModulePlan m) {
-                List<String> buf = Collections.synchronizedList(new ArrayList<String>());
-                buffers.put(m.dir(), buf);
-                var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
-                lis.bufferOutputInto(buf);
-                return lis;
-            }
-
-            @Override
-            public void onModuleFinish(ModuleOutcome o) {
-                List<String> buf = buffers.getOrDefault(o.dir(), List.of());
-                String completion = BuildCommand.completionLine(
-                        o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
-                if (view.animating()) {
-                    view.addCompletion(completion);
-                    synchronized (buf) {
-                        if (!buf.isEmpty()) deferredOutput.addAll(buf);
-                    }
-                } else {
-                    StringBuilder block = new StringBuilder();
-                    synchronized (buf) {
-                        for (String l : buf) block.append(l).append('\n');
-                    }
-                    block.append(completion);
-                    view.writeAbove(block.toString());
-                }
-            }
-        };
+        // No JSONL: `jk run`'s workspace pre-build is not a job an agent streams, it is the prologue
+        // to an exec, and the event stream belongs to the program that is about to start.
+        var run =
+                new WorkspaceRunView(new WorkspaceRunView.Chrome("Run", false, true), request.entryDir(), null, false);
         WorkspaceResult wr;
         try {
-            wr = EngineClient.buildWorkspace(EnginePaths.current(), request, listener);
+            wr = EngineClient.buildWorkspace(EnginePaths.current(), request, run.live(view, agg));
         } catch (JobCancelledException e) {
-            view.finishBuildPlanCancelled(deferredOutput);
+            view.finishBuildPlanCancelled(run.deferredOutput());
             return null;
         } catch (IOException e) {
-            view.finishBuildPlanFailure(String.valueOf(e.getMessage()), deferredOutput);
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()), run.deferredOutput());
             return null;
         }
         if (!wr.success()) {
             String tail = wr.errors().isEmpty()
                     ? "workspace build failed"
                     : wr.errors().get(0);
-            view.finishBuildPlanFailure(tail, deferredOutput);
+            view.finishBuildPlanFailure(tail, run.deferredOutput());
             return null;
         }
-        int n = Math.max(total[0], wr.modules().size());
-        view.finishBuildPlanExec(n + (n == 1 ? " module ready" : " modules ready"), deferredOutput);
+        // Exec, not success: the region hands off to the program instead of settling to a chip.
+        int n = Math.max(run.planned(), wr.modules().size());
+        view.finishBuildPlanExec(n + (n == 1 ? " module ready" : " modules ready"), run.deferredOutput());
         return wr;
     }
 

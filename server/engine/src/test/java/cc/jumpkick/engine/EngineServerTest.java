@@ -596,7 +596,7 @@ class EngineServerTest {
             String buildError = null;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
                 c.sendLine(ProtoJobs.auditRequest(
-                        project.toString(), cache.toString(), "LOW", base + "/querybatch", base + "/vulns/"));
+                        project.toString(), cache.toString(), "LOW", base + "/querybatch", base + "/vulns/", false));
                 String line;
                 while ((line = c.readLine()) != null) {
                     String type = EngineProtocol.typeOf(line);

@@ -123,7 +123,9 @@ public record BuildRecord(
      * only rows that reach here are the ones whose engine was killed, crashed, or lost its machine.
      * A user cannot act on that, so the code is {@link Exit#SOFTWARE}. Until JK-2417 it was 130 —
      * {@code 128 + SIGINT} — with {@code cancelled} set, reporting a machine's death as something
-     * the user did, and it was the only 130 in the journal even though a real cancel writes 1.
+     * the user did. Vacating it left the journal with no 130 at all for a whole release; since
+     * JK-2485 a genuinely cancelled row carries {@link Exit#INTERRUPTED} and this one still does
+     * not, which is the distinction the two codes exist to draw.
      *
      * <p>The in-flight step, module and diagnostic lists are dropped: a half-written plan is not a
      * result, and the row is kept only so the history does not show a run that never ends.

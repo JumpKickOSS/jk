@@ -21,7 +21,6 @@ import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -195,19 +194,11 @@ public final class EngineVerbBridge implements VerbHost {
     static Session resolve(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
         Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
         Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-        JkConfig config = new JkConfig(
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "verbose", false)),
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "force", false) || refresh),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        JkConfig config = JkConfig.empty()
+                .withOffline(Jsonl.bool(requestLine, "offline", false))
+                .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                .withVerbose(Jsonl.bool(requestLine, "verbose", false))
+                .withForce(Jsonl.bool(requestLine, "force", false) || refresh);
         return Session.defaults()
                 .withConfig(config)
                 .withWorkingDir(entryDir)

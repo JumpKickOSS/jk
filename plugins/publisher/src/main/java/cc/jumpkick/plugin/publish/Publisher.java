@@ -3,9 +3,12 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.http.OfflineException;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -80,6 +83,13 @@ public final class Publisher implements Plugin, PublishExtension {
             System.err.println("jk-publisher: could not read spec: " + e.getMessage());
             return Exit.NO_INPUT;
         }
+
+        // Make the transport's offline guard real inside this worker JVM. Http.checkOffline reads
+        // the ambient session, and a forked worker starts on Session.defaults() — so without this
+        // the guard MavenPublisher relies on is permanently disarmed and an `--offline` publish
+        // uploads. The value comes off the spec, never off this process's environment: a worker
+        // inherits the engine daemon's env, not the job's.
+        SessionContext.installConfig(JkConfig.empty().withOffline(spec.offline()));
 
         try {
             PublishResult result = publish(new SpecPublishContext(spec, out));
@@ -184,6 +194,14 @@ public final class Publisher implements Plugin, PublishExtension {
             return PublishResult.dryRun(artifacts.size());
         }
 
+        // Everything past here talks to someone else's server — the PUTs, and Sigstore's Fulcio/
+        // Rekor round trip when keyless signing is on. Refuse before any of it, naming the target,
+        // rather than discovering it one layer down: `--offline` that uploads anyway is worse than
+        // no `--offline` at all.
+        if (ctx.offline()) {
+            throw new OfflineException(repoUrl);
+        }
+
         // Load signing.
         SigningOptions signing;
         GpgSigner gpg = c.bool("signGpg", false)
@@ -262,6 +280,11 @@ public final class Publisher implements Plugin, PublishExtension {
         @Override
         public Path javaHome() {
             return spec.javaHome();
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override

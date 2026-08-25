@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -32,10 +31,10 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p><b>Node is mandatory.</b> Absent Node the class fails loudly. The single escape hatch is
  * {@code JK_WEB_JS_SKIP=1}, which CI never sets — a skip has to be asked for by name.
  *
- * <p>Staging: the SPA's {@code .js} files are copied once into a {@code type:module} temp dir (a
- * bare {@code .js} import is CommonJS, and every suite's top-level {@code import} would throw),
- * and each staged module is handed to Node as {@code JK_<NAME>_MJS} plus {@code JK_APP_DIR} for
- * the multi-module app suite. Adding a module or a suite needs no change here.
+ * <p>Staging: the SPA's shipped assets are copied once into a {@code type:module} temp dir (a bare
+ * {@code .js} import is CommonJS, and every suite's top-level {@code import} would throw).
+ * {@code JK_APP_DIR} names that directory, and a suite reaches any module or {@code index.html}
+ * through it. Adding a module or a suite needs no change here.
  *
  * <p>Paths resolve against the module root, not {@code user.dir}: workspace builds run tests with
  * the engine CWD at {@code ~/.local/state/jk/engine}, so bare {@code src/...} relatives miss
@@ -48,6 +47,10 @@ class WebClientJsTest {
     private static final String SKIP_ENV = "JK_WEB_JS_SKIP";
 
     private static final Path WEB_ASSETS = Path.of("src/main/resources/web");
+
+    /** The in-DOM Vue template and the SPA's single {@code <script type="module">} entry point. */
+    private static final String SHELL = "index.html";
+
     private static final Path JS_SUITES = Path.of("src/test/js");
 
     /** Node's TAP epilogue: {@code # tests 94}, {@code # fail 0}. */
@@ -73,18 +76,15 @@ class WebClientJsTest {
                     + "deliberately with " + SKIP_ENV + "=1.");
         }
 
-        Map<String, String> env = new LinkedHashMap<>();
-        for (Path module : filesEndingIn(moduleRoot().resolve(WEB_ASSETS), ".js")) {
-            String file = module.getFileName().toString();
-            Files.copy(module, stage.resolve(file));
-            String name = file.substring(0, file.length() - ".js".length());
-            env.put(
-                    "JK_" + name.toUpperCase(Locale.ROOT) + "_MJS",
-                    stage.resolve(file).toString());
+        Path assets = moduleRoot().resolve(WEB_ASSETS);
+        for (Path module : filesEndingIn(assets, ".js")) {
+            Files.copy(module, stage.resolve(module.getFileName().toString()));
         }
+        // The shell too: shell.test.mjs reads it to check that index.html's one module entry point
+        // reaches every file the dashboard ships, and calls nothing the root component dropped.
+        Files.copy(assets.resolve(SHELL), stage.resolve(SHELL));
         Files.writeString(stage.resolve("package.json"), "{\"type\":\"module\"}\n");
-        env.put("JK_APP_DIR", stage.toString());
-        nodeEnv = Map.copyOf(env);
+        nodeEnv = Map.of("JK_APP_DIR", stage.toString());
     }
 
     @ParameterizedTest(name = "{0}")
@@ -106,17 +106,54 @@ class WebClientJsTest {
 
     /**
      * Regression: the fold layer normalizes the wire's {@code task} vocabulary back to {@code
-     * step}/{@code steps} — app.js templates reading the FOLDED model must use the folded names or
-     * they silently render empty (Vue resolves unknown fields to undefined).
+     * step}/{@code steps}, and a component reading the FOLDED model must use the folded names or it
+     * silently renders empty (Vue resolves an unknown field to undefined). Scanned across every
+     * module rather than one file, so moving a template between modules cannot mute the check.
      */
     @Test
-    void app_templates_read_the_folded_vocabulary() throws Exception {
-        String app = Files.readString(moduleRoot().resolve(WEB_ASSETS).resolve("app.js"));
-        assertThat(app).contains("openPhase.steps").contains("mod.steps").contains("d.step)");
-        assertThat(app)
+    void components_read_the_folded_vocabulary() throws Exception {
+        String spa = concatModules();
+        assertThat(spa).contains("openPhase.steps").contains("mod.steps").contains("d.step)");
+        assertThat(spa)
                 .doesNotContain("openPhase.tasks")
                 .doesNotContain("mod.tasks")
                 .doesNotContain("d.task)");
+    }
+
+    /** Every shipped {@code .js} module, concatenated — for the checks that are about the SPA, not a file. */
+    private static String concatModules() throws IOException {
+        StringBuilder all = new StringBuilder();
+        for (Path module : filesEndingIn(moduleRoot().resolve(WEB_ASSETS), ".js")) {
+            all.append(Files.readString(module)).append('\n');
+        }
+        return all.toString();
+    }
+
+    /**
+     * The history table's Tests column renders from the journal's nested {@code tests} object — the
+     * one wire spelling of a test count (JK-2424). The SPA cannot import Java, so it hand-types every
+     * field name; naming the retired flat spellings here is what stops one creeping back into a
+     * template, where Vue resolves an unknown field to undefined and the column silently shows an
+     * em dash forever.
+     */
+    @Test
+    void the_history_table_reads_the_nested_test_counts() throws Exception {
+        String html = Files.readString(moduleRoot().resolve(WEB_ASSETS).resolve("index.html"));
+
+        assertThat(html).contains("r.tests.succeeded").contains("r.tests.total");
+        for (String retired : List.of(
+                "testsFailed",
+                "testFailed",
+                "testsTotal",
+                "testTotal",
+                "testsSucceeded",
+                "testSucceeded",
+                "testsSkipped",
+                "testSkipped")) {
+            assertThat(html)
+                    .as("index.html must not read the retired flat spelling %s", retired)
+                    .doesNotContain(retired);
+        }
     }
 
     /** One case per {@code *.test.mjs}, discovered — a new suite is picked up by existing. */

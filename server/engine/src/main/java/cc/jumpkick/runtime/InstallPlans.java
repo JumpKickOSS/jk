@@ -90,7 +90,7 @@ public final class InstallPlans {
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
         // client-resolved GraalVM so install does not re-resolve.
-        BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, true);
+        PlannerTails.appendDeclaredTails(builder, inputs, graalHome, true);
         appendCacheInstall(builder, proj, cache, m2Dir);
         return builder.build();
     }

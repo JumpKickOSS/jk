@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.audit;
 
 import cc.jumpkick.audit.AuditReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.command.Exit;
@@ -60,6 +61,16 @@ public final class Auditor implements Plugin {
 
         URI batchUrl = config.stringOpt("batchUrl").map(URI::create).orElse(null);
         URI vulnsUrl = config.stringOpt("vulnsUrl").map(URI::create).orElse(null);
+
+        // An audit IS a network query — there is no cached answer to fall back on, and a "clean"
+        // report produced without asking OSV would be a lie about safety. Refuse, naming the
+        // endpoint. `jk audit --offline` is also refused client-side; this covers the web/MCP
+        // trigger, which never passes through that check.
+        if (spec.offline()) {
+            URI endpoint = batchUrl != null ? batchUrl : OsvClient.DEFAULT_BATCH;
+            out.emit(PluginReply.error("offline", Errors.offlineRefusal(endpoint.toString())));
+            return 1;
+        }
 
         Lockfile lock;
         try {

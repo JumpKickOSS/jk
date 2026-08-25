@@ -41,7 +41,8 @@ final class EngineHosted {
                                 req.cache().toString(),
                                 req.severity(),
                                 req.osvBatchUrl() != null ? req.osvBatchUrl().toString() : null,
-                                req.osvVulnsUrl() != null ? req.osvVulnsUrl().toString() : null),
+                                req.osvVulnsUrl() != null ? req.osvVulnsUrl().toString() : null,
+                                req.offline()),
                         "audit",
                         listenerFactory,
                         (type, line) -> findings.onFinding(
@@ -135,6 +136,7 @@ final class EngineHosted {
                         user,
                         pass,
                         token,
+                        req.offline(),
                         req.verbose()),
                 "publish",
                 listenerFactory,
@@ -175,17 +177,8 @@ final class EngineHosted {
                         listenerFactory,
                         (type, line) -> {},
                         line -> {
-                            long total = Jsonl.longValue(line, "testTotal", -1);
-                            TestSummary testResult = total < 0
-                                    ? null
-                                    : new TestSummary(
-                                            total,
-                                            Jsonl.longValue(line, "testSucceeded", 0),
-                                            Jsonl.longValue(line, "testFailed", 0),
-                                            Jsonl.longValue(line, "testSkipped", 0),
-                                            List.of());
                             summaryOut[0] = new EngineRequests.ImageSummary(
-                                    testResult,
+                                    TestSummary.readCounts(line),
                                     Jsonl.str(line, "imageRef"),
                                     Jsonl.str(line, "imageTarball"),
                                     Jsonl.str(line, "imageName"),
@@ -230,12 +223,10 @@ final class EngineHosted {
      * this terminal's stdio, which the engine deliberately never touches).
      */
     static HostedEvents.Provision provision(
-            EnginePaths.Paths paths, Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
+            EnginePaths.Paths paths, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
             throws IOException {
         return EnginePluginAdapter.provision(
-                paths,
-                ProtoJobs.provisionRequest(
-                        cache.toString(), projectDir.toString(), toolsRoot.toString(), noDiscover, gradle));
+                paths, ProtoJobs.provisionRequest(projectDir.toString(), toolsRoot.toString(), noDiscover, gradle));
     }
 
     /**
@@ -296,7 +287,7 @@ final class EngineHosted {
     static WorkspaceResult runNative(
             EnginePaths.Paths paths, EngineRequests.NativeRequest req, WorkspaceBuildListener listener)
             throws IOException {
-        return EngineBuildListenerAdapter.runNative(paths, req, listener);
+        return EngineJobs.runNative(paths, req, listener);
     }
 
     /**
@@ -310,7 +301,7 @@ final class EngineHosted {
             Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary[] testResultOut)
             throws IOException {
-        return EngineBuildListenerAdapter.runInstall(paths, req, listenerFactory, testResultOut);
+        return EngineJobs.runInstall(paths, req, listenerFactory, testResultOut);
     }
 
     /**

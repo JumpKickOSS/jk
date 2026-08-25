@@ -1,8 +1,9 @@
 # size-baseline.txt — the ratchet behind `checkFileSizeCaps` (JK-2411).
 #
 # A shipped number is a floor, not a fact. `EngineServer` hit 1,064 lines at the end of its peel and
-# was back to 1,240 eleven days later; the `JkManager` triad went 2,467 -> 3,414 in ten days and is
-# now larger than the 2,204-line god class it replaced. A cap that is not re-checked is not a cap.
+# was back to 1,240 eleven days later; the `JkManager` triad went 2,467 -> 3,414 in ten days, past
+# the 2,204-line god class it replaced, before JK-2434 took it back to 2,380. A cap that is not
+# re-checked is not a cap.
 #
 # The caps (docs/contributors/code-as-art.md, "House rules -> Size") are per language:
 #
@@ -25,7 +26,7 @@
 #      one — in the same diff, right here.
 #
 # The band is not a second ceiling, and this file does not pretend otherwise: a handful of entries
-# below sit ABOVE the 1,200 exception band. They are named debt with peel tickets (JK-2433..2440),
+# below sit ABOVE the 1,200 exception band. They are named debt with peel tickets (JK-2433..2439),
 # not a band that moved. The ratchet is what holds them — each can only shrink from here.
 #
 # The count is `wc -l`: newline characters, the same number the scoreboard and commit messages
@@ -58,6 +59,14 @@
 # and the one `Files.move` that named the lock twice on a single line stopped fitting, which put
 # three back. The invariants below are unchanged.
 #
+# JK-2437 (T57) DELETED two entries rather than re-baselining them. `BuildCommand` 1,206 -> 676 and
+# `NewCommand` 1,121 -> 742 are both under the 800 hard cap, so neither is claiming the exception
+# band any more and neither belongs in this file. Both of the invariants they used to carry were
+# false when checked: BuildCommand's claimed the lock/sync/compile/test/package order lived in the
+# file (the engine owns that order — `BuildService.buildWorkspace`; the file was a renderer plus a
+# process-wide ProjectInfo memo), and NewCommand's claimed a template rollback lived there (there
+# is no rollback in the client at all). An invariant nobody re-derives is how a file stays big.
+#
 # JK-2418 moved four of them upward by exactly one line each — the `import` for
 # `cc.jumpkick.host.CacheTree`. `CacheTree.ACTIONS.under(cache)` is two characters shorter than
 # `cache.resolve("actions")`, so three of the four re-wrapped nothing; in `TaskForecaster` the two
@@ -65,19 +74,63 @@
 # is unchanged: its import cost a line and the shorter call let a wrapped constructor fit on one.
 # The invariants below are unchanged.
 #
+# JK-2440 DELETED three entries rather than re-baselining them. app.js (2,786), code.js (1,966) and
+# fold.js (1,734) are now 601, 775 and 971, under the 1,200 hard cap and off this list entirely. The
+# invariants that justified them cited a cost that does not exist: `clients/web` has no bundler, but
+# it has had a module system since before this file did. index.html loads exactly one script,
+# `<script src="/app.js" type="module">`, and every other file is reached through a static `import`,
+# so the browser orders the graph and a bad specifier is a link error. A JS split there costs an
+# import line, the same as Java. What it does cost is checked by clients/web/src/test/js/
+# shell.test.mjs: one entry point, no orphan module, and no name the in-DOM template calls that the
+# root component has stopped providing.
+#
+# JK-2438 DELETED three engine entries rather than re-baselining them. BuildPlanner (1,251 -> 777),
+# BuildJournal (837 -> 776) and ImagePlans (809 -> 797) are all under the 800 hard cap and off this
+# list. None of the three shrank by splitting: BuildPlanner lost a 425-line facade — 83 members under
+# 74 names, every one of them a single statement forwarding its own parameters, in their own order, to
+# PlannerTails / PlannerKsp / PlannerNative / PlannerPlugin / PlannerCompile / PlannerPackage /
+# PlannerLang / PlannerResources / PlannerSupport — plus the middle rung of a three-deep Inputs
+# constructor chain that no caller used. Thirty-one of the 83 had no caller through the facade at all;
+# the rest now name their owner in an `import static`, which is the point: a wildcard
+# `import static BuildPlanner.*` in twelve collaborators let any of them reach any other's helper
+# through a file that owned none of it. BuildJournal lost `appendHostSamples` (no
+# caller anywhere, and the sole writer of the `host.` keys MetricsHarvest still reads) together with
+# the METRICS_LOCKS map whose only reason to exist was that method racing `complete()`; ImagePlans
+# stopped re-deriving `Lockfile.Artifact.checksumHex()` by hand in two places.
+#
+# The invariants those three used to carry did not survive checking. BuildPlanner's said "coreBuilder
+# and appendDeclaredTails have to agree on DAG edge order" — appendDeclaredTails has lived in
+# PlannerTails for some time and BuildPlanner only forwarded to it, so the two halves were already in
+# different files and the entry was defending a pairing that no longer existed. BuildJournal's said
+# "the append path and the replay path must read and write the same record shape" — true, and both
+# are well under the cap now that a dead third writer is gone. ImagePlans' is unchanged in substance
+# and simply no longer needs an exception band.
+#
+# One BuildPlanner finding is worth keeping so it is not re-filed: the 5-argument
+# `PlannerSupport.testStampExtras` overload is NOT dead. Only the BuildPlanner trampoline in front of
+# it was; the owner's own 4-argument overload calls the 5-argument one, which is why deleting the
+# facade removed the trampoline without touching the overload.
+
 # FORMAT. One entry per line: `<lines>  <path from the repo root>`. The comment lines immediately
 # above an entry, with no blank line between, are that entry's invariant. A blank line separates
 # entries. Sorted by path.
 
-# T56: the wire-event decode order IS the contract — a `job-start` decoded after its first
-# `step-start` renders a module that never started. T56 deletes this file outright into
-# EngineJobs / EngineReads / EngineEventDecoder / EngineExplainDecoder; until then the ordering
-# lives in one switch.
-1327  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineBuildListenerAdapter.java
-
-# T56: request framing and the single socket writer stay together (JK-2385 made that one owner);
-# a split hands the writer to a second object and the synchronization with it.
-1010  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineClient.java
+# JK-2436: this file is the `cli.engine` package's only door, and that is the invariant — not a
+# line count. Nine types in the package are package-private (EngineJobs, EngineReads,
+# EngineEventDecoder, EngineExplainDecoder, EngineHosted, EngineResolveAdapter,
+# EnginePluginAdapter, EngineJarFetcher, WireStream), and the 64 production files outside the
+# package that talk to an engine reach exactly one public type. Deleting the forwarders below does
+# not relocate lines, it makes eight wire decoders public API of the package. So this number comes
+# down only by deleting members nothing calls, never by splitting the door: 1,010 -> 931 was dead
+# `calibrate` (both overloads, no caller in the tree — there is no `jk engine calibrate`, see
+# docs/contributors/install-optimize.md), dead `Status.httpEnabled()`, and ten pass-throughs to
+# EngineWire/EngineSpawn whose only readers were tests.
+#
+# The invariant this replaces claimed "request framing and the single socket writer stay together
+# (JK-2385 made that one owner)". That was not true of this file: JK-2385's WireWriter is in
+# `server/engine`, and each method here opened its own writer on its own channel. There was no
+# shared writer to keep together.
+931   clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineClient.java
 
 # Mode, artifact and `awaitStartup` stay together so a torn AOT cache cannot be mapped without the
 # self-heal retry that repairs it — the file's own javadoc names this. The AOT marker and refusal
@@ -89,97 +142,89 @@
 # the box drawing are aligned against each other column by column, and a split desynchronises them.
 1002  clients/cli/src/main/java/cc/jumpkick/cli/run/TestFailureHighlight.java
 
-# T54 — THE REGRESSION THIS FILE EXISTS TO STOP. The triad (this + JkManagerView 1191 +
-# JkManagerColor 678) is 3,414 lines against the 2,204-line class it replaced. The live region owns
-# animation state and the Ctrl-C handoff, which is why paint (JkManagerView) and token colour
-# (JkManagerColor) are already out and this facade is not further splittable at the seam.
-1548  clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManager.java
-
-# T54: paint and settle for the plan-mode frame. 47 dead static delegates go first; what is left is
-# one frame budget, and two files cannot share a frame budget.
-1193  clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManagerView.java
+# JK-2434. The triad (this + JkManagerView 689 + JkManagerColor 537) is 2,380 lines, against 3,414
+# at the peak and the 2,204-line class it replaced. Everything with its own device or its own state
+# machine is out: paint (JkManagerView), plain-mode cadence (JkManagerPlainView), token colour
+# (JkManagerColor), the Ctrl-O TTY (PeekKeys), the System.out swap (OutputCapture), the
+# remaining-work anchors (Countdown). What is left is the public surface commands hold plus one
+# lock over one `done` flag. settle, dismiss, close and the SIGINT renderCanceled all race to be the
+# thread that sets it, and each then does a different teardown; a second object that could also set
+# it, or read it and act, gives that flag two writers and the region settles twice.
+1154  clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManager.java
 
 # Incremental redraw of the active step only, with no alt-screen: the step ladder, the redraw
 # cursor arithmetic and the cancel path that restores cursor/SGR are one state machine. Split it
 # and a cancel mid-redraw leaves the shell prompt in inverse video.
 839  clients/cli/src/main/java/cc/jumpkick/cli/tui/Wizard.java
 
-# T57: the lock -> sync -> compile -> test -> package order is the command's contract, and every
-# early-exit arm has to leave the workspace in a state the next verb can resume from. T57 peels
-# ProjectPeek / BuildTails / WorkspaceRunView / BuildSelection off the edges, not the order.
-1206  clients/cli/src/main/java/cc/jumpkick/command/BuildCommand.java
-
-# T57: 91 forwarders and CURATED_IDS are deleted, and the wizard chrome peels to NewChrome /
-# NewPlans. The template-apply step and its rollback must stay in one place: a half-applied
-# giter8 template is a directory the user has to clean up by hand.
-1121  clients/cli/src/main/java/cc/jumpkick/command/NewCommand.java
-
-# T60: one root component and two views, and `clients/web` has no bundler — a split costs a
-# <script> tag and a load-order invariant no compiler checks, which is exactly why the JS band is
-# wider than Java's. Over even that band; T60 is the ticket.
-2786  clients/web/src/main/resources/web/app.js
-
-# T60: the Monaco AMD loader is SRI-pinned in exactly one place and then fetches editor.main.js,
-# the CSS and the per-language chunks itself with no integrity plumbing to pass down. The pin and
-# the loader configuration cannot be in different files.
-1966  clients/web/src/main/resources/web/code.js
-
-# T60: pure folds of (cards, event) with no browser globals — that purity is what makes the
-# activity feed testable headlessly under `node --test`, and the per-card bounds (MAX_CARDS,
-# MAX_OUTPUT_LINES, MAX_DIAGNOSTICS) only hold if one fold applies all of them.
-1734  clients/web/src/main/resources/web/fold.js
-
 # T59: the four positional overloads become one JavaCompileJob record. The incremental analysis
 # store and the compile invocation that writes it must agree on the key, so they stay together.
 1186  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java
 
-# `lifecycleLock` covers election, accept, drain and close as one lifecycle (JK-1470), and
-# `tryStartBuildPlan` IS that invariant — the proposal to peel it was withdrawn on purpose, because
-# any extraction hands the lock to a second object and spreads the invariant across two files.
-# T53 peels EngineElection + DrainReporter only, which do not touch the lock.
-1231  server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java
+# `lifecycleLock` covers the drain decision, the accept gate and the plan-slot claim as one
+# lifecycle (JK-1470), and `tryStartBuildPlan` IS that invariant: "not draining" and "one more plan
+# is running" must become true inside the same critical section the deciders read. The proposal to
+# peel it — with `yieldListeners`, `awaitDrainComplete` and the shutdown arm — was withdrawn on
+# purpose, because every version of it hands the lock to a second object and spreads one invariant
+# across two files. That withdrawal is recorded in the class javadoc, not left as a gap.
+# T53 peeled what could leave: EngineElection (identity on disk — mutex, incumbent probe,
+# generation, listener, pid file, endpoint; settled before the accept loop starts) and
+# DrainReporter (the drain-status channel, which reports the decision and makes none). Neither
+# touches the lock. 1,231 -> 881.
+881  server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java
 
 # The Host-header check, the admission semaphore and the bearer-token gate are one admission
 # decision made in one order. Splitting them splits a security control, and a request that passes
 # two of three is a request that got in.
 839  server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java
 
-# T55 — the largest file in the repo, and the least defensible. 63 tool names typed exactly twice,
-# five telescoping constructors and a 361-line `toolsList`. The only real invariant is that
-# `toolsList` / `toolsCall` / INSTRUCTIONS / PROMPTS agree on every name; T55 replaces that
-# coincidence with an McpTool registry and takes the file to about 150 lines.
-1673  server/engine/src/main/java/cc/jumpkick/engine/http/McpHandler.java
-
-# T58: the append path and the replay path must read and write the same record shape, and a
-# journal that replays differently from how it was written is a corrupted history.
-837  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildJournal.java
-
-# T58: `coreBuilder` and `appendDeclaredTails` have to agree on DAG edge order — a tail appended
-# against a stale edge set is a step that runs before its input exists.
-1251  server/engine/src/main/java/cc/jumpkick/runtime/BuildPlanner.java
-
 # T58: the probe bootstrap, the continuous learned-rate fold and the cold-ETA model are one model.
 # Micro-probes must never become absolute method costs (empty @Tests run in ~5 ms and would
 # under-shoot real suites by 10x), and that rule is only enforceable where both halves are visible.
-1389  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
+# JK-2438 took 1,389 -> 1,184 without touching that pairing: the 23-argument private constructor is
+# now `@Builder(toBuilder = true, access = PRIVATE)`, so the seven copy-withs that each re-spelled all
+# 23 fields positionally — `copy`, a 46-line pass-through to the constructor and nothing else, plus
+# withEngineColdStartMs / withLearned / touch / foldRefine — name only the fields they change, and the
+# four factories that spelled mostly zeros (minimalWithLearned / recordEngineColdStart / absent /
+# testInstance) name only the fields that are not. A positional
+# 23-argument call is how `loadAtCalibration` and `engineColdStartMs` — adjacent, both numeric —
+# would swap silently; the builder is what makes that unrepresentable, and it is why the remaining
+# length is model and not plumbing. The persistence half (readFrom / writeTo /
+# renderCalibrationSection and the TOML scalar readers, ~280 lines) is a file format rather than the
+# model and is the next peel, tracked but not taken here.
+1184  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
 
 # T58: the per-phase weight table is data that belongs in a resource, not code. No invariant holds
-# it here — this entry is a ratchet, not a justification.
-1203  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
+# it here — this entry is a ratchet, not a justification. JK-2438 took 1,203 -> 1,175 by deleting two
+# public static methods with no caller anywhere in the tree: `phaseRollupWeight` (no reference at
+# all) and `stepOkAvgMillis`, the own-then-host combiner — every one of the six call sites reaches
+# `stepOkAvgMillisOwn` / `stepOkAvgMillisHost` directly because each picks a different fallback, so
+# the combiner was a third answer nobody wanted. It also stopped re-deriving
+# `Lockfile.Artifact.checksumHex()` by hand in `predictSync`.
+1175  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
 
 # T58: one plan per verb, with the shared step bodies next to the plans that compose them.
+# JK-2438 examined it and took nothing, which is a weaker result than a withdrawal and is recorded as
+# such: every member here has a caller, the only repeated block is internal (the two
+# `projectJavaHome` reaches), and none of the shared/host owners spells anything it derives. The
+# available peel is the one the invariant above already names as deliberate, so taking it needs an
+# argument this ticket did not have.
 1080  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
 
-# The Jib path and the docker/podman Dockerfile path must produce the same structured success keys
-# (IMAGE_REF / TARBALL_PATH / ...) — two files means two key sets and a caller that can only handle
-# one of them. Registry credentials are NOT part of that invariant and live in ImageCredentials:
-# resolving a secret is not a plan, and keeping it out is what holds this number down.
-809  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
-
 # T58: step bodies shared by the Planner* collaborators. No invariant holds it here — ratchet only.
+# JK-2438 note: this is the file most of the deleted BuildPlanner facade forwarded to, and it did not
+# grow by a line — the delegates were re-exports, not relocated code. Every member here has at least
+# one caller (checked), so there is no free deletion; the honest next move is to split the file by
+# collaborator, which is a design decision rather than a cleanup.
 948  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
 
 # T58: plugin discovery, the contribution fold and the plugin step bodies. Ratchet only.
+# JK-2438 found the seam and could not take it in scope: `loadBomConstraints` spells the nine
+# `maven-resolver-*` artifact ids inline, and `LockOrchestrator.MAVEN_RESOLVER_FAMILY` (server/resolver)
+# already owns that exact list next to `alignMavenResolverFamily`. Two copies of one family list is
+# the defect class this campaign exists for — named-locks floating to a major line the api jar cannot
+# call — but the owner is `private` in another module, so closing it means widening a type this
+# ticket does not own. Worth about 15 lines and much more than 15 lines of correctness.
 826  server/engine/src/main/java/cc/jumpkick/runtime/PluginBuild.java
 
 # T58: what is left here is the WALK — dirty-marking a module and its consumers in one traversal, so
@@ -193,21 +238,51 @@
 1136  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
 
 # T58: workspace step execution and the target/ write-drain that `jk build` must not return ahead
-# of (JK-2451). Ratchet only.
-909  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
+# of (JK-2451). Ratchet only — JK-2438 took one line, which is not the point of the change it made:
+# the INSTALL arm and the compile/test arm each built `BuildPlanner.Inputs` with their own
+# twelve-line `inputsFor(...).withVariant(...).withEphemeralActions(...)` chain, so an arm that
+# forgot one of the three planned a module against a different manifest than its siblings.
+# `moduleInputs` is the single spelling now, and the helper costs back almost exactly what the two
+# copies saved. Two things it did NOT fix, recorded so they are not mistaken for done: the `decorate`
+# UnaryOperator above applies the same knob set in a third place (a different shape — it decorates an
+# Inputs rather than building one), and nothing in the fast tier goes red when `withVariant` is
+# dropped from `moduleInputs`, so that thread is compiler-checked and not test-checked.
+908  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
 
-# T58: the `##JKT:` fork protocol has exactly one writer and one reader, and they are the two ends
-# of the same wire format. The one-shot and pull-queue worker modes share it.
-1367  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
+# T58. The invariant this replaces said "the `##JKT:` fork protocol has exactly one writer and one
+# reader, and they are the two ends of the same wire format". Half of that is false: the writer is
+# `cc.jumpkick.testrunner.JsonEventWriter` in plugins/test-runner, a different MODULE, and this file
+# is only the reader. The two ends have never been in one file, so "keep them together" cannot be
+# what holds this number up.
+#
+# What is actually here, and does belong together: the fork (one-shot and pull-queue worker modes),
+# the line pump, and `ResultAggregator`, which is the reader — one prefix constant, one decode, and
+# one set of counters that the parallel path merges. The one-shot and pull-queue modes really do
+# share the aggregator, and a second decoder is how the two modes start disagreeing about what a
+# skip is.
+#
+# JK-2438 took 1,367 -> 1,202 by removing something that was never any of that: `QuarkusToolingPom`
+# (157 lines) writes the minimal Maven `pom.xml` a `@QuarkusTest` bootstrap insists on. It runs once
+# before the fork, reads jk.toml and jk-lock.toml, writes a file, and shares no state with the
+# launcher. The rule that must not be split went with it — only ever replace a POM jk generated
+# itself — because the check that decides that has to sit next to the write that would clobber a
+# user's own pom.xml.
+#
+# The remaining peel, identified and not taken here: `ResultAggregator` (347 lines) is a nested class
+# with its own test class already, and lifting it to a top-level type would move lines without
+# deleting a copy. That is a weaker claim than the two above and it is left for the ticket that can
+# pair it with plugins/test-runner's JUnitUniqueId, which parses the same [engine:…][class:…] segments
+# with the same percent-decode — the copy is cross-module, so a shared owner has to land in a module
+# both can reach, and that is a bigger change than a nested-class lift.
+1202  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
 
 # T59 + JK-2419: the three scope solves (main / test / processor) must stay independent of each
 # other and produce one lockfile — a shared mutable universe between them is how a test-only
 # version leaks into the main classpath, and splitting the solves apart to save lines is how that
-# universe gets shared. The one line over the previous 1,216 is the `RepositorySpec` import:
-# `attachSources` recognises a Central-sourced package by the owner's constant instead of a
-# re-typed `"central"`, and paying an import to delete a second spelling of a repository name is
-# the trade this ratchet is meant to allow.
-1217  server/resolver/src/main/java/cc/jumpkick/resolver/LockOrchestrator.java
+# universe gets shared. Thirteen lines under the previous 1,217: `attachSources` rebuilt the whole
+# `Lockfile` record by hand to swap its artifact rows, so every field the schema gained had to be
+# threaded through it. `Lockfile.withArtifacts` owns that copy now (JK-2476).
+1204  server/resolver/src/main/java/cc/jumpkick/resolver/LockOrchestrator.java
 
 # The per-solve version/dependency cache, the transitive prefetch and the preferred-version seeding
 # are one PubGrub PackageSource contract; the solver's determinism depends on all three answering
@@ -220,13 +295,21 @@
 1422  shared/core/src/main/java/cc/jumpkick/resolver/DependencyTree.java
 
 # T59: the parsed shape of jk.toml, one nested record per block. It splits cleanly by block and
-# there is no cross-block invariant — ratchet only.
-1218  shared/jk-api/src/main/java/cc/jumpkick/model/JkBuild.java
+# there is no cross-block invariant — ratchet only. Thirteen lines over the previous 1,218 because
+# jk.toml itself grew a key: `[native] metadata-repository` (JK-2476) took `NativeConfig` past the
+# width where a record header fits on one line. A manifest key that this file declines to model is
+# a key the parser drops on the floor and the renderer cannot round-trip, which is the defect
+# JK-2098 filed against `graal`; growing with the format is this file's job.
+1231  shared/jk-api/src/main/java/cc/jumpkick/model/JkBuild.java
 
 # T51 / T59: every wire key is typed twice, once to write and once to decode, and the pair must
 # agree. The fix is generation, not a split — two hand-written halves in two files is strictly
-# worse than two in one.
-1029  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
+# worse than two in one. JK-2448 took four lines back: `provisionResult` lost `diag`, which only
+# ever carried a forked worker's passthrough chatter.
+# JK-2431 took three more: `withCancelled` was one of six hand-rolled brace chops, each with its
+# own idea of what a malformed object means, and is now one call to `Jsonl.append`. The pairing
+# invariant is unchanged; the splicing is not part of it.
+1022  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
 
 # T51 / T59: same pairing as ProtoEvents, for the job verbs — and, since JK-2420, the place the
 # job verbs' shared field names are declared. `jdksDir` was typed by hand in sixteen places (seven
@@ -234,4 +317,11 @@
 # would have dropped the JDK override silently, against an engine that answered normally. The
 # constant plus the paragraph explaining which vocabulary it belongs to is the +10; splitting it
 # out would put the name in a third file and re-open the gap the pairing exists to close.
-1030  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
+# JK-2448 took three lines back: `provisionRequest` lost `cache`, which existed only so the engine
+# could locate a worker jar that no longer exists.
+# JK-2471 spent +9: `auditRequest` and `publishRequest` were the two job verbs whose request
+# carried no `offline` field, so `jk audit --offline` and `jk publish --offline` could not tell the
+# engine — and a publish uploaded. The field belongs on the request for the same reason `jdksDir`
+# does: the alternative is a verb reconstructing a session from something other than what the
+# client sent, and the two halves then disagree about one job.
+1036  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java

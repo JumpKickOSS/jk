@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
@@ -656,11 +657,11 @@ public final class ActionCache {
     }
 
     private Path keysDir() {
-        return root.resolve("keys");
+        return ActionTree.KEYS.under(root);
     }
 
     private Path tasksDir() {
-        return root.resolve("tasks");
+        return ActionTree.TASKS.under(root);
     }
 
     private static void deleteRecursively(Path target) throws IOException {

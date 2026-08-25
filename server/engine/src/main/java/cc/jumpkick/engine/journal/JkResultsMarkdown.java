@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.DirKeys;
@@ -557,13 +558,13 @@ public final class JkResultsMarkdown {
     private static String testIdentity(BuildRecord.Diag d) {
         if (notBlank(d.className()) || notBlank(d.method())) {
             StringBuilder b = new StringBuilder();
-            if (notBlank(d.module())) b.append(d.module()).append(" :: ");
             if (notBlank(d.className())) b.append(d.className());
             if (notBlank(d.method())) {
                 if (notBlank(d.className())) b.append('.');
                 b.append(d.method());
             }
-            return b.toString();
+            // TestFailureInfo.label owns the module separator — the markdown must not spell it itself.
+            return TestFailureInfo.label(d.module(), b.toString(), 0);
         }
         return d.test() == null ? "" : d.test();
     }

@@ -12,20 +12,11 @@ import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.run.AggregateContext;
-import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
-import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.DashboardCodeLink;
-import cc.jumpkick.cli.run.JsonlListener;
-import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.run.LiveProgress;
-import cc.jumpkick.cli.run.SessionMirrorListener;
-import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.SessionContext;
@@ -39,13 +30,8 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
@@ -53,16 +39,13 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@code jk test} — compile main + test sources and run JUnit Platform tests.
  *
- * <p>Runs the same core plan ({@code BuildPlanner.coreBuilder}) as {@code jk build}, in
+ * <p>Runs the same core plan ({@code TrainPlans.coreBuilder}) as {@code jk build}, in
  * {@code testOnly} mode: parse → sync → jdk → compile (Kotlin and/or Java, main and test) →
  * resources → compile-test → run-tests, stopping short of packaging a jar. Sharing the plan
  * means Kotlin test sources compile and run exactly as they do under {@code jk build} — no
@@ -191,7 +174,7 @@ public final class TestCommand implements CliCommand {
         TestSummary testResult;
         // Engine-hosted (Task 3): the wire has no real BuildPlan to attach a console listener to
         // ahead of time, so the listener is chosen once the step list arrives over the socket
-        // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
+        // see EngineJobs.runTest. testResultHolder is populated (if the run-tests
         // step actually ran) before the terminal plan-finish reaches that listener, exactly
         // mirroring how plan.get(TEST_RESULT) is already populated by the in-process path above.
         TestSummary[] testResultHolder = new TestSummary[1];
@@ -318,7 +301,7 @@ public final class TestCommand implements CliCommand {
         return runWorkspaceTestsLive(entryDir, cache, workerCount, modules, scopeNames);
     }
 
-    /** Live TTY: one JkManager "Test" region — mirrors {@link BuildCommand} workspace live path. */
+    /** Live TTY: one JkManager "Test" region — the same {@link WorkspaceRunView} {@code jk build} drives. */
     private int runWorkspaceTestsLive(
             Path entryDir, Path cache, int workerCount, List<String> modules, List<String> scopeNames) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
@@ -330,89 +313,11 @@ public final class TestCommand implements CliCommand {
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
         ModuleScopeHint.show("testing", scopeNames, global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
-        Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
-        List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
-        AtomicInteger completed = new AtomicInteger();
-        int[] total = {0};
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true, true), entryDir, session, false);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {
-            result = EngineClient.buildWorkspace(EnginePaths.current(), request, new WorkspaceBuildListener() {
-                @Override
-                public void onPreflight(String stage, int done, int totalUnits, String label) {
-                    agg.preflight(stage, done, totalUnits, label);
-                }
-
-                @Override
-                public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
-                    agg.applySnapshot(snap);
-                    if (snap.modulesTotal() > total[0]) total[0] = snap.modulesTotal();
-                    JsonlShape.emitJsonl(
-                            JsonlShape.workspaceProgress(
-                                    entryDir.toString(),
-                                    snap.numerator(),
-                                    snap.denominator(),
-                                    snap.phase(),
-                                    snap.modulesComplete(),
-                                    snap.modulesTotal()),
-                            false);
-                }
-
-                @Override
-                public void onPlan(List<ModulePlan> plan) {
-                    total[0] = plan.size();
-                    JsonlShape.emitJsonl(JsonlShape.workspaceStart(plan.size()), false);
-                }
-
-                @Override
-                public void onEtaEstimate(long millis) {
-                    view.setRemainingWorkEstimate(millis);
-                }
-
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan m) {
-                    List<String> buf = Collections.synchronizedList(new ArrayList<>());
-                    buffers.put(m.dir(), buf);
-                    var lis =
-                            new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
-                    lis.bufferOutputInto(buf);
-                    JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
-                    SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
-                    return CompositeBuildPlanListener.of(lis, mirror);
-                }
-
-                @Override
-                public void onModuleFinish(ModuleOutcome o) {
-                    JsonlShape.emitJsonl(
-                            JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()), false);
-                    List<String> buf = buffers.getOrDefault(o.dir(), List.of());
-                    String completion = BuildCommand.completionLine(
-                            o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
-                    if (view.animating()) {
-                        view.addCompletion(completion);
-                        // Paint with module link context now; snapshot() re-paint is a no-op
-                        // on already-styled lines (no Test Failure sentinel left).
-                        synchronized (buf) {
-                            if (!buf.isEmpty()) {
-                                try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
-                                    deferredOutput.addAll(TestFailureHighlight.paintLines(buf));
-                                }
-                            }
-                        }
-                    } else {
-                        List<String> painted;
-                        synchronized (buf) {
-                            try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
-                                painted = TestFailureHighlight.paintLines(buf);
-                            }
-                        }
-                        StringBuilder block = new StringBuilder();
-                        for (String l : painted) block.append(l).append('\n');
-                        block.append(completion);
-                        view.writeAbove(block.toString());
-                    }
-                }
-            });
+            result = EngineClient.buildWorkspace(EnginePaths.current(), request, run.live(view, agg));
         } catch (JobCancelledException e) {
             view.finishBuildPlanCancelled(List.of());
             if (session != null) session.wedge("Test job was cancelled");
@@ -422,129 +327,22 @@ public final class TestCommand implements CliCommand {
             if (session != null) session.error(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
-        if (session != null) {
-            for (var m : result.modules()) session.module(m.coord());
-            for (String err : result.errors()) session.error(err);
-            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
-                session.error(d.step(), d.code(), d.message());
-            }
-        }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-        List<String> above = snapshot(deferredOutput);
-        if (result.cancelled()) {
-            view.finishBuildPlanCancelled(above);
-            if (session != null) session.wedge("Test job was cancelled");
-            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
-            return 1;
-        }
-        if (!result.errors().isEmpty()) {
-            List<String> errs = new ArrayList<>(above);
-            for (String err : result.errors()) errs.add(ConsoleSpec.errorLine("composite", err));
-            view.finishBuildPlanFailure("dependency resolution failed", errs);
-            if (session != null) session.wedge("dependency resolution failed");
-            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
-            return result.exitCode();
-        }
-        if (!result.success()) {
-            List<String> failAbove = new ArrayList<>(above);
-            List<BuildPlanResult.Diagnostic> settleErrors = new ArrayList<>();
-            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
-                if ("test-failure".equals(d.code())) continue;
-                settleErrors.add(d);
-            }
-            ConsoleSpec.appendErrors(failAbove, settleErrors);
-            String failTail = workspaceTestFailureTail(result, elapsedMs);
-            view.finishBuildPlanFailure(failTail, failAbove);
-            if (session != null) session.wedge(failTail);
-            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
-            return result.exitCode();
-        }
-        String okTail = workspaceTestSuccessTail(result, total[0], elapsedMs);
-        view.finishBuildPlanSuccess(okTail, above);
-        if (session != null) session.wedge(okTail);
-        JsonlShape.emitJsonl(JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
-        return 0;
+        var tails = new WorkspaceRunView.Tails(
+                (r, planned) -> workspaceTestSuccessTail(r, planned, elapsedMs),
+                r -> workspaceTestFailureTail(r, elapsedMs));
+        return run.settleLive(view, agg, result, elapsedMs, tails, settled -> {});
     }
 
     /** Headless / JSON: same workspace RPC as live, no JkManager chrome. */
     private int runWorkspaceTestsHeadless(Path entryDir, Path cache, int workerCount, List<String> modules) {
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
-        int[] total = {0};
-        // Per-module console buffers (BuildCommand's headless pattern): modules stream
-        // concurrently, so output is buffered and printed as one block per module finish.
-        var buffers = new ConcurrentHashMap<Path, List<String>>();
-        var done = new AtomicInteger();
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true, true), entryDir, session, json);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {
-            result = EngineClient.buildWorkspace(EnginePaths.current(), request, new WorkspaceBuildListener() {
-                @Override
-                public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
-                    LiveProgress.get().apply(snap);
-                    JsonlShape.emitJsonl(
-                            JsonlShape.workspaceProgress(
-                                    entryDir.toString(),
-                                    snap.numerator(),
-                                    snap.denominator(),
-                                    snap.phase(),
-                                    snap.modulesComplete(),
-                                    snap.modulesTotal()),
-                            json);
-                }
-
-                @Override
-                public void onPlan(List<ModulePlan> plan) {
-                    total[0] = plan.size();
-                    JsonlShape.emitJsonl(JsonlShape.workspaceStart(plan.size()), json);
-                }
-
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan m) {
-                    JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
-                    if (json) {
-                        return new JsonlListener(System.out, false);
-                    }
-                    List<String> buf = Collections.synchronizedList(new ArrayList<>());
-                    buffers.put(m.dir(), buf);
-                    var outLis = new BuildPlanListener() {
-                        @Override
-                        public synchronized void output(String step, String line) {
-                            buf.add(line);
-                        }
-
-                        @Override
-                        public synchronized void warn(String step, String code, String message) {
-                            buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
-                        }
-
-                        @Override
-                        public synchronized void error(String step, String code, String message) {
-                            if ("test-failure".equals(code)) return;
-                            buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
-                        }
-                    };
-                    SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
-                    return CompositeBuildPlanListener.of(outLis, mirror);
-                }
-
-                @Override
-                public void onModuleFinish(ModuleOutcome o) {
-                    JsonlShape.emitJsonl(
-                            JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()), json);
-                    if (json) return;
-                    List<String> buf = buffers.getOrDefault(o.dir(), List.of());
-                    List<String> painted;
-                    try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
-                        painted = TestFailureHighlight.paintLines(buf);
-                    }
-                    synchronized (BuildCommand.OUT_LOCK) {
-                        for (String line : painted) CliOutput.out(line);
-                        CliOutput.out(BuildCommand.completionLine(
-                                o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
-                    }
-                }
-            });
+            result = EngineClient.buildWorkspace(EnginePaths.current(), request, run.headless());
         } catch (IOException e) {
             if (!json) {
                 CommandWedge.printFail("Test", e.getMessage());
@@ -553,14 +351,11 @@ public final class TestCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
         long ms = (System.nanoTime() - start) / 1_000_000;
-        JsonlShape.emitJsonl(JsonlShape.workspaceFinish(result.success(), ms, total[0]), json);
-        if (session != null) {
-            for (var m : result.modules()) session.module(m.coord());
-            for (String err : result.errors()) session.error(err);
-        }
+        run.finishEvent(result.success(), ms);
+        run.absorb(null, result);
         if (result.success()) {
             if (!json) {
-                CommandWedge.printOk("Test", workspaceTestSuccessTail(result, total[0], ms));
+                CommandWedge.printOk("Test", workspaceTestSuccessTail(result, run.planned(), ms));
             }
             return 0;
         }
@@ -595,12 +390,6 @@ public final class TestCommand implements CliCommand {
                 .withModules(modules);
     }
 
-    private static List<String> snapshot(List<String> deferred) {
-        synchronized (deferred) {
-            return new ArrayList<>(TestFailureHighlight.paintLines(deferred));
-        }
-    }
-
     private static String workspaceTestSuccessTail(WorkspaceResult result, int planned, long elapsedMs) {
         int n = result.modules() == null ? 0 : result.modules().size();
         if (n == 0 || planned == 0) {
@@ -614,14 +403,8 @@ public final class TestCommand implements CliCommand {
     }
 
     private static String workspaceTestFailureTail(WorkspaceResult result, long elapsedMs) {
-        String failed = result.modules() == null
-                ? "tests"
-                : result.modules().stream()
-                        .filter(m -> !m.success())
-                        .map(ModuleOutcome::coord)
-                        .findFirst()
-                        .orElse("tests");
-        return failed + " — failed " + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+        return WorkspaceRunView.failedCoord(result, "tests") + " — failed "
+                + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
     }
 
     /**

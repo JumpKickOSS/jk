@@ -55,8 +55,7 @@ public interface TaskContext {
             error(code, message);
             return;
         }
-        String label = failure.module().isEmpty() ? failure.method() : failure.module() + " :: " + failure.method();
-        error(code, message, label, failure.exceptionClass());
+        error(code, message, TestFailureInfo.label(failure.module(), failure.method(), 0), failure.exceptionClass());
     }
 
     /** True when cancelled (sibling failure or Ctrl-C); poll in long loops. */

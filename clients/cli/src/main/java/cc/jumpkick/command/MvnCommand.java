@@ -75,10 +75,9 @@ public final class MvnCommand implements CliCommand {
                 ? directory.toAbsolutePath().normalize()
                 : Path.of(".").toAbsolutePath().normalize();
         Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
-        Path cache = JkDirs.cache();
 
-        // Provision Maven via the compat-runner (engine-hosted), get back the bin path.
-        Path mvnBin = provision(cache, projectDir, toolsRoot, noDiscover, false);
+        // Provision Maven engine-side, get back the bin path.
+        Path mvnBin = provision(projectDir, toolsRoot, noDiscover, false);
         if (mvnBin == null) return 1;
 
         // Exec Maven directly so stdio is inherited cleanly.
@@ -98,15 +97,15 @@ public final class MvnCommand implements CliCommand {
 
     /**
      * Provision a Maven/Gradle distribution and return its launcher path, or {@code null} (with the
-     * error already rendered) on failure. Engine-hosted; the test-only in-process path runs the
-     * identical {@code CompatPlans.provision} code.
+     * error already rendered) on failure. Engine-hosted: {@code CompatPlans.provision} links or
+     * downloads the distribution in the engine JVM and answers with the launcher path.
      */
-    static Path provision(Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
+    static Path provision(Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
             throws IOException, InterruptedException {
         String tool = isGradle ? "gradle" : "mvn";
         HostedEvents.Provision p;
         try {
-            p = EngineClient.provision(EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
+            p = EngineClient.provision(EnginePaths.current(), projectDir, toolsRoot, noDiscover, isGradle);
         } catch (IOException e) {
             CommandWedge.printFail(tool, e.getMessage());
             return null;
@@ -117,10 +116,7 @@ public final class MvnCommand implements CliCommand {
             CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " "
                     + p.source().toLowerCase());
         }
-        if (p.exit() != 0) {
-            if (p.diag() != null && !p.diag().isBlank()) CliOutput.err(p.diag());
-            return null;
-        }
+        if (p.exit() != 0) return null;
         return p.bin() != null ? Path.of(p.bin()) : null;
     }
 }

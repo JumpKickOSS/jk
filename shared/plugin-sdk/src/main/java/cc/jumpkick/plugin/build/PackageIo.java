@@ -89,6 +89,15 @@ public interface PackageIo {
         return tool("java");
     }
 
+    /**
+     * Whether this job forbids network access — the user's {@code --offline}, decided once by the
+     * engine and stamped onto the spec at the fork. A worker that is about to reach out asks this
+     * first and refuses, naming what it wanted; it must never consult {@code JK_OFFLINE} or a
+     * system property, which inside a forked JVM describe the engine daemon's startup environment
+     * rather than this job.
+     */
+    boolean offline();
+
     /** Progress label surfaced in the build UI. */
     void label(String text);
 

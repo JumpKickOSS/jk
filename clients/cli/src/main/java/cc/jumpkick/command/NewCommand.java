@@ -1,33 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
-import cc.jumpkick.cli.tui.Choice;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Interactivity;
-import cc.jumpkick.cli.tui.JdkDownloadBar;
-import cc.jumpkick.cli.tui.JkWedge;
-import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
-import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JdkCatalog;
-import cc.jumpkick.jdk.JdkCatalogClient;
-import cc.jumpkick.jdk.JdkInstaller;
-import cc.jumpkick.jdk.JdkInventory;
-import cc.jumpkick.jdk.JdkKeywords;
-import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Arity;
@@ -44,7 +29,6 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.scaffold.NewInputs;
-import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
@@ -52,7 +36,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -144,6 +127,11 @@ public final class NewCommand implements CliCommand {
 
     private volatile Module registered;
 
+    /** The enclosing project's display name when this run registered a module in it, else null. */
+    private String parentProjectName() {
+        return registered == null ? null : registered.projectName();
+    }
+
     /**
      * The enclosing project/workspace this invocation will add a module to, or {@code null} when
      * we're creating a standalone project. Resolved once in {@link #call} and consumed by the
@@ -213,7 +201,7 @@ public final class NewCommand implements CliCommand {
      * cwd/&lt;name&gt;).
      */
     private Path detectionStartDir(Path cwd) {
-        if (directory == null || isCurrentDirArg(directory)) return cwd;
+        if (directory == null || NewWizard.isCurrentDirArg(directory)) return cwd;
         Path parentDir = cwd.resolve(directory).normalize().getParent();
         return parentDir != null ? parentDir : cwd;
     }
@@ -262,11 +250,13 @@ public final class NewCommand implements CliCommand {
         // For any other invocation we defer the existing-manifest check to
         // after the target is fully resolved (the project name may come from
         // the wizard or from `--name`).
-        if (directory != null && isCurrentDirArg(directory) && Files.exists(cwd.resolve(ManifestPaths.MANIFEST))) {
-            String existing = wizardPresetName(directory, cwd)
+        if (directory != null
+                && NewWizard.isCurrentDirArg(directory)
+                && Files.exists(cwd.resolve(ManifestPaths.MANIFEST))) {
+            String existing = NewWizard.wizardPresetName(directory, cwd)
                     .orElseGet(
                             () -> cwd.getFileName() != null ? cwd.getFileName().toString() : "this directory");
-            emitProjectExistsError(existing, parent != null, true, null);
+            NewChrome.projectExists(existing, parent != null, true, null);
             return Exit.CONFIG;
         }
 
@@ -274,92 +264,27 @@ public final class NewCommand implements CliCommand {
         // a standalone project? Search up from where the project will live (the
         // target's parent). Drives the wizard UX and inherited defaults.
         this.parent = resolveParent(detectionStartDir(cwd));
-        this.defaultJdk = readDefaultJdk();
+        this.defaultJdk = NewJdkChoice.defaultJdk();
 
         if (templateRef != null && !templateRef.isBlank()) {
-            return runTemplateBuildPlan(cwd);
+            return NewTemplate.apply(new NewTemplate.Args(
+                    templateRef,
+                    templateParams,
+                    name,
+                    group,
+                    lang,
+                    layoutFlag,
+                    directory,
+                    cwd,
+                    plugin,
+                    parent == null,
+                    global.offline));
         }
 
         if (shouldRunWizard()) {
             return runWizardBuildPlan(cwd);
         }
         return runFlagBuildPlan(cwd);
-    }
-
-    /**
-     * {@code jk new --template <local-path|short-name|git-uri|owner/repo>}.
-     */
-    private int runTemplateBuildPlan(Path cwd) {
-        if (plugin) {
-            CommandWedge.printFail("New", "--template cannot be combined with --plugin");
-            return Exit.USAGE;
-        }
-        Map<String, String> params = new LinkedHashMap<>();
-        for (String p : templateParams) {
-            int eq = p.indexOf('=');
-            if (eq <= 0) {
-                CommandWedge.printFail("New", "--param expects key=value, got: " + p);
-                return Exit.USAGE;
-            }
-            params.put(p.substring(0, eq), p.substring(eq + 1));
-        }
-        var presetName = wizardPresetName(directory, cwd);
-        String fileBase = Path.of(templateRef).getFileName().toString();
-        if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
-        String resolvedName =
-                (name != null && !name.isBlank()) ? name : params.getOrDefault("name", presetName.orElse(fileBase));
-        params.putIfAbsent("name", resolvedName);
-        if (group != null && !group.isBlank()) {
-            params.putIfAbsent("organization", group);
-            params.putIfAbsent("group", group);
-            params.putIfAbsent("package", group);
-        }
-        // Only an explicit --lang goes on the wire: template resolution searches every language
-        // for a bare name, and hardcoding java here made kotlin-only templates unreachable.
-        String resolvedLang = (lang != null && !lang.isBlank()) ? lang : null;
-        Path target = resolveTarget(directory, cwd, resolvedName);
-        Path parentDir = target.getParent() == null ? cwd : target.getParent();
-        if (officialTemplateShortName(templateRef)) {
-            EngineClient.freshenCatalog(EnginePaths.current(), "templates", global.offline, null, null);
-        }
-        try {
-            var ack = EngineClient.newProject(
-                    EnginePaths.current(),
-                    new EngineRequests.NewProjectRequest(
-                            resolvedName,
-                            parentDir.toString(),
-                            group,
-                            resolvedLang,
-                            layoutFlag == null || layoutFlag.isBlank() ? "traditional" : layoutFlag,
-                            templateRef,
-                            false,
-                            null,
-                            0,
-                            false,
-                            false,
-                            false,
-                            null,
-                            List.of(),
-                            true,
-                            parent == null,
-                            params,
-                            true,
-                            target.toString()));
-            if (ack.error() != null && !ack.error().isBlank()) {
-                CommandWedge.printFail("New", ack.error());
-                return ack.error().contains("not found") ? Exit.USAGE : Exit.SOFTWARE;
-            }
-            CommandWedge.envelopeStart();
-            CliOutput.out(JkWedge.chipLine(
-                    Glyphs.CHECK,
-                    "New Project",
-                    GlobalConfig.nerdFont(),
-                    "Applied template (" + ack.filesWritten() + " files) → " + target.getFileName()));
-            return Exit.SUCCESS;
-        } catch (IOException e) {
-            CommandWedge.printFail("New", e.getMessage());
-            return Exit.SOFTWARE;
-        }
     }
 
     /**
@@ -375,7 +300,7 @@ public final class NewCommand implements CliCommand {
                 .execute(ctx -> {
                     ctx.label("discover JDKs + fetch catalog + open terminal");
                     var jdkOptionsFuture = CompletableFuture.supplyAsync(NewJdkOptions::discover, JkThreads.io());
-                    var catalogFuture = CompletableFuture.supplyAsync(NewCommand::fetchCatalogQuiet, JkThreads.io());
+                    var catalogFuture = CompletableFuture.supplyAsync(NewJdkChoice::catalogQuiet, JkThreads.io());
                     TerminalSession terminal = Terminals.controlling();
                     ctx.put(TERMINAL, terminal);
                     var jdkOptions = jdkOptionsFuture.join();
@@ -383,7 +308,7 @@ public final class NewCommand implements CliCommand {
                     var candidates = NewJdkCandidate.build(
                             jdkOptions,
                             catalog,
-                            LATEST_LTS_MAJOR,
+                            NewWizard.LATEST_LTS_MAJOR,
                             HostPlatform.currentOs(),
                             HostPlatform.currentArch());
                     if (candidates.isEmpty()) {
@@ -405,7 +330,7 @@ public final class NewCommand implements CliCommand {
                     @SuppressWarnings("unchecked")
                     List<NewJdkCandidate> candidates = (List<NewJdkCandidate>) ctx.require(CANDIDATES);
 
-                    Answers preset = wizardPresetName(directory, cwd)
+                    Answers preset = NewWizard.wizardPresetName(directory, cwd)
                             .map(n -> Answers.of(Map.of("name", (Object) n)))
                             .orElseGet(() -> Answers.of(Map.of()));
                     var groupGuess = NewGroupGuess.guess(
@@ -413,13 +338,13 @@ public final class NewCommand implements CliCommand {
                             Optional.ofNullable(System.getProperty("user.home"))
                                     .map(Path::of)
                                     .orElse(null));
-                    var wizard = buildWizard(
+                    var wizard = NewWizard.buildWizard(
                             candidates,
                             ctx.get(CATALOG).orElse(null),
                             groupGuess,
                             parent,
                             defaultJdk.isPresent(),
-                            directory != null && isCurrentDirArg(directory));
+                            directory != null && NewWizard.isCurrentDirArg(directory));
                     var wizardResult = wizard.run(terminal, preset);
                     if (wizardResult.isEmpty()) {
                         // Cancelled via Ctrl-C. Wizard.printCancellation
@@ -432,7 +357,7 @@ public final class NewCommand implements CliCommand {
                         Runtime.getRuntime().halt(Exit.INTERRUPTED);
                     }
                     ctx.put(ANSWERS, wizardResult.get());
-                    ctx.put(PICKED, pickCandidate(wizardResult.get(), candidates));
+                    ctx.put(PICKED, NewJdkChoice.pick(wizardResult.get(), candidates, parent, defaultJdk));
                     ctx.progress(1);
                 })
                 .build();
@@ -449,7 +374,7 @@ public final class NewCommand implements CliCommand {
                         return;
                     }
                     ctx.label("install missing JDK");
-                    var installed = installCandidate(picked);
+                    var installed = NewJdkChoice.install(picked);
                     if (installed.isEmpty()) {
                         ctx.error("jdk-install", "JDK install failed");
                         throw new RuntimeException("jdk install failed");
@@ -494,15 +419,15 @@ public final class NewCommand implements CliCommand {
         if (!result.success()) {
             for (BuildPlanResult.Diagnostic d : result.errors()) {
                 if ("no-jdks".equals(d.code())) {
-                    emitNoJdksError();
+                    NewChrome.noJdks();
                     return Exit.CONFIG;
                 }
                 if ("exists".equals(d.code())) {
                     NewInputs partial = plan.get(INPUTS).orElse(null);
                     String coord = partial != null ? partial.group() + ":" + partial.name() : "project";
-                    boolean isInit = directory != null && isCurrentDirArg(directory);
+                    boolean isInit = directory != null && NewWizard.isCurrentDirArg(directory);
                     TerminalSession term = plan.get(TERMINAL).orElse(null);
-                    emitProjectExistsError(coord, parent != null, isInit, term);
+                    NewChrome.projectExists(coord, parent != null, isInit, term);
                     return Exit.CONFIG;
                 }
             }
@@ -510,11 +435,9 @@ public final class NewCommand implements CliCommand {
         }
 
         NewInputs inputs = plan.get(INPUTS).orElseThrow();
-        boolean isInit = directory != null && isCurrentDirArg(directory);
-        plan.get(TERMINAL)
-                .ifPresentOrElse(
-                        t -> emitSuccessOnTerminalSession(inputs, t, registered, isInit),
-                        () -> emitSuccessPlain(inputs, registered, isInit));
+        boolean isInit = directory != null && NewWizard.isCurrentDirArg(directory);
+        NewChrome.created(
+                inputs, parentProjectName(), isInit, plan.get(TERMINAL).orElse(null));
         return 0;
     }
 
@@ -536,10 +459,10 @@ public final class NewCommand implements CliCommand {
             return Exit.USAGE;
         }
         if (Files.exists(inputs.directory().resolve(ManifestPaths.MANIFEST))) {
-            emitProjectExistsError(
+            NewChrome.projectExists(
                     inputs.group() + ":" + inputs.name(),
                     parent != null,
-                    directory != null && isCurrentDirArg(directory),
+                    directory != null && NewWizard.isCurrentDirArg(directory),
                     null);
             return Exit.CONFIG;
         }
@@ -560,7 +483,8 @@ public final class NewCommand implements CliCommand {
         BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
         if (!global.outputIsJson())
-            emitSuccessPlain(inputs, registered, directory != null && isCurrentDirArg(directory));
+            NewChrome.created(
+                    inputs, parentProjectName(), directory != null && NewWizard.isCurrentDirArg(directory), null);
         return 0;
     }
 
@@ -644,9 +568,9 @@ public final class NewCommand implements CliCommand {
         if (plugin && nativeImage) {
             throw new IllegalArgumentException("--plugin can't be combined with --native");
         }
-        var presetName = wizardPresetName(directory, cwd);
+        var presetName = NewWizard.wizardPresetName(directory, cwd);
         var resolvedName = (name != null && !name.isBlank()) ? name : presetName.orElse("untitled");
-        Path target = resolveTarget(directory, cwd, resolvedName);
+        Path target = NewWizard.resolveTarget(directory, cwd, resolvedName);
         var resolvedGroup = (group != null && !group.isBlank())
                 ? group
                 : parent != null
@@ -663,7 +587,7 @@ public final class NewCommand implements CliCommand {
         // of jk.toml unless the user asked for it.
         NewJdkPlan.Spec jdkSpec;
         if (jdk != null && !jdk.isBlank()) {
-            jdkSpec = resolveJdkArg(jdk);
+            jdkSpec = NewJdkChoice.fromArg(jdk);
         } else if (parent != null && parent.jdkMajor() > 0) {
             int m = parent.jdkMajor();
             jdkSpec = new NewJdkPlan.Spec(m, Integer.toString(m));
@@ -671,7 +595,7 @@ public final class NewCommand implements CliCommand {
             int m = JkBuild.Project.majorOf(defaultJdk.get());
             jdkSpec = new NewJdkPlan.Spec(m, Integer.toString(m));
         } else {
-            jdkSpec = new NewJdkPlan.Spec(LATEST_LTS_MAJOR, Integer.toString(LATEST_LTS_MAJOR));
+            jdkSpec = new NewJdkPlan.Spec(NewWizard.LATEST_LTS_MAJOR, Integer.toString(NewWizard.LATEST_LTS_MAJOR));
         }
         var resolvedJdk = jdkSpec.pin();
         int resolvedJdkMajor = jdkSpec.major();
@@ -683,7 +607,7 @@ public final class NewCommand implements CliCommand {
         // ships yet (e.g. 26 today). Same two-track rule the wizard enforces, checked here for the
         // non-interactive flag path. Consult the catalog only when --native is set.
         if (nativeImage && resolvedJavaRelease > 0) {
-            int maxNative = maxNativeMajor(fetchCatalogQuiet().orElse(null));
+            int maxNative = NewWizard.maxNativeMajor(NewJdkChoice.catalogQuiet().orElse(null));
             if (resolvedJavaRelease > maxNative) {
                 throw new IllegalArgumentException("--native requires a GraalVM (native-image) JDK; the newest "
                         + "native-image-capable Java is " + maxNative + ", but Java " + resolvedJavaRelease
@@ -691,7 +615,7 @@ public final class NewCommand implements CliCommand {
             }
         }
         var resolvedLang = (lang != null && !lang.isBlank())
-                ? parseLanguage(lang)
+                ? NewWizard.parseLanguage(lang)
                 : (parent != null && parent.kotlin())
                         ? NewInputs.Language.KOTLIN
                         : (parent != null && parent.groovy())
@@ -705,11 +629,11 @@ public final class NewCommand implements CliCommand {
         var resolvedMain = plugin
                 ? Optional.<String>empty()
                 : isExecutable
-                        ? Optional.of(
-                                deriveMainFqcn(resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
+                        ? Optional.of(NewWizard.deriveMainFqcn(
+                                resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
                         : Optional.<String>empty();
         // A plugin's jk-plugin-sdk dependency is emitted by NewJkBuildRenderer, not via curated deps.
-        var resolvedDeps = plugin ? List.<String>of() : parseDeps(depsCsv);
+        var resolvedDeps = plugin ? List.<String>of() : NewWizard.parseDeps(depsCsv);
         var resolvedKotlinModule = (kotlinModule != null && !kotlinModule.isBlank())
                 ? Optional.of(kotlinModule)
                 : Optional.<String>empty();
@@ -732,274 +656,11 @@ public final class NewCommand implements CliCommand {
                 target);
     }
 
-    /**
-     * Pre-seed for the wizard's project-name step from the positional arg ({@code "."} → cwd leaf;
-     * a path → its file name; null → empty). Package-private for tests.
-     */
-    static Optional<String> wizardPresetName(Path directoryArg, Path cwd) {
-        return NewWizard.wizardPresetName(directoryArg, cwd);
-    }
-
-    /**
-     * Final target directory, given the positional arg, the cwd, and the resolved project name.
-     * Package-private for unit testing.
-     */
-    static Path resolveTarget(Path directoryArg, Path cwd, String projectName) {
-        return NewWizard.resolveTarget(directoryArg, cwd, projectName);
-    }
-
-    /** Match the literal {@code "."} forms the user might type. */
-    static boolean isCurrentDirArg(Path arg) {
-        return NewWizard.isCurrentDirArg(arg);
-    }
-
-    private static void emitProjectExistsError(
-            String coord, boolean isModule, boolean isInit, TerminalSession terminal) {
-        Theme t = Theme.active();
-        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-        String noun = isModule ? "module" : "project";
-
-        // Style the coord: group:name in coordGroup/coordName; bare name in coordName.
-        int colon = coord.indexOf(':');
-        String coordStyled = colon > 0
-                ? Theme.colorize(coord.substring(0, colon), t.coordGroup())
-                        + ":"
-                        + Theme.colorize(coord.substring(colon + 1), t.coordName())
-                : Theme.colorize(coord, t.coordName());
-
-        // Line 1: ‼ The group:name project already exists in this directory.
-        String warnLine = Theme.colorize(Glyphs.BANG, t.warning()) + " The " + coordStyled + " " + noun
-                + " already exists in this directory.";
-
-        // Line 2: ✘ New Project Failed to create project large. Project already exists.
-        // Use chipLine (not failureLine) — failureLine auto-prepends "Failed to {command}"
-        // which would double up if the tail also starts with "Failed to".
-        String chipCommand = isModule ? "New Module" : "New Project";
-        String bareName = colon > 0 ? coord.substring(colon + 1) : coord;
-        String failTail = "Failed to " + (isInit ? "initialize" : "create") + " " + noun + " " + bareName
-                + ". Project already exists.";
-        String chipLine = JkWedge.chipLine(Glyphs.CROSS, chipCommand, nerdFont, failTail);
-
-        if (terminal != null) {
-            var writer = terminal.ttyOut();
-            CommandWedge.markEnvelopeStarted();
-            writer.println(warnLine);
-            writer.println(chipLine);
-            writer.flush();
-        } else {
-            CommandWedge.envelopeStartErr();
-            CliOutput.err(warnLine);
-            CliOutput.err(chipLine);
-        }
-    }
-
-    /** Same styling as {@link #emitProjectExistsError} for the no-JDK case. */
-    private static void emitNoJdksError() {
-        var warn = Theme.active().warning();
-        var label = Theme.active().activeStep();
-        var body = Theme.active().normalGray();
-        CommandWedge.envelopeStartErr();
-        CliOutput.err(Theme.colorize(Glyphs.BANG, warn)
-                + " "
-                + Theme.colorize("Jk", label)
-                + Theme.colorize(": No JDKs found on this system. Run ", body)
-                + Theme.colorize("jk jdk install", warn)
-                + Theme.colorize(" first, then re-run ", body)
-                + Theme.colorize("jk new", warn)
-                + Theme.colorize(".", body));
-    }
-
-    static NewInputs.Language parseLanguage(String value) {
-        return NewWizard.parseLanguage(value);
-    }
-
-    static List<String> parseDeps(String csv) {
-        return NewWizard.parseDeps(csv);
-    }
-
-    static int parseJdkMajorOrDefault(String jdk) {
-        return NewWizard.parseJdkMajorOrDefault(jdk);
-    }
-
-    /** Current Java LTS feature release. Bumped on each new LTS. */
-    static final int LATEST_LTS_MAJOR = 25;
-
-    /** The user's global default JDK identifier, or empty (best-effort — never throws). */
-    private static Optional<String> readDefaultJdk() {
-        try {
-            return JdkInventory.current().defaultId();
-        } catch (Exception ignored) {
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * Resolve an explicit {@code --jdk <spec>} into its major + {@code jk.toml} pin. Keywords ({@code
-     * lts} / {@code stable} / {@code latest}) resolve to a major against the JetBrains feed (falling
-     * back to the latest LTS offline) and always pin a bare major; a {@code <vendor>-<major>} spec
-     * keeps its vendor; a bare major stays bare. Throws {@link IllegalArgumentException} (caught by
-     * the flag path) on a point release or a spec with no major.
-     */
-    private NewJdkPlan.Spec resolveJdkArg(String arg) {
-        String a = arg.trim();
-        if (JdkKeywords.isKeyword(a) && !"native".equalsIgnoreCase(a)) {
-            String os = HostPlatform.currentOs();
-            String arch = HostPlatform.currentArch();
-            int major = fetchCatalogQuiet()
-                    .flatMap(c -> JdkKeywords.resolveToMajorSpec(c, a, os, arch))
-                    .map(JkBuild.Project::majorOf)
-                    .filter(m -> m > 0)
-                    .orElse(LATEST_LTS_MAJOR);
-            return new NewJdkPlan.Spec(major, Integer.toString(major));
-        }
-        return NewJdkPlan.parseExplicit(a);
-    }
-
-    /**
-     * Best-effort catalog fetch for the wizard's "Select a JDK" step. Network failures (offline, DNS,
-     * 5xx) degrade to an empty optional rather than killing the wizard: the user still sees whatever
-     * installs are on disk.
-     */
-    private static Optional<JdkCatalog> fetchCatalogQuiet() {
-        try {
-            return Optional.of(new JdkCatalogClient().fetch());
-        } catch (Exception ignored) {
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * Resolve the wizard's {@code jdk} answer back to a candidate. The candidate's {@code id}
-     * matches one of the entries we surfaced via {@link NewJdkCandidate#filter}, so this is just a
-     * lookup.
-     */
-    private NewJdkCandidate pickCandidate(Answers answers, List<NewJdkCandidate> candidates) {
-        if (answers.has("jdk")) { // the "Select a JDK" step ran
-            var pickedId = answers.get("jdk");
-            return candidates.stream()
-                    .filter(c -> c.id().equals(pickedId))
-                    .findFirst()
-                    .orElseGet(() -> candidates.getFirst());
-        }
-        // Step was skipped — resolve silently: inherit the parent's major
-        // (module), adopt the global default's major, else auto-pick by the
-        // chosen Java level (sole eligible install, or lts to install).
-        int preferred = parent != null
-                ? (parent.jdkMajor() > 0 ? parent.jdkMajor() : parent.javaRelease())
-                : defaultJdk.map(JkBuild.Project::majorOf).orElse(0);
-        int floor = jdkFloor(answers, parent);
-        return NewJdkPlan.autoCandidate(candidates, floor, preferred, LATEST_LTS_MAJOR)
-                .orElseGet(() -> candidates.getFirst());
-    }
-
-    /**
-     * Download + extract an installable candidate. Reuses the same progress UI as {@code jk jdk
-     * install}. On success, returns the freshly-resolved installed candidate (so its {@code home}
-     * points at the new JDK). On failure, prints the error and returns empty so the caller exits.
-     */
-    private Optional<NewJdkCandidate> installCandidate(NewJdkCandidate candidate) {
-        if (!(candidate instanceof NewJdkCandidate.Installable installable)) {
-            return Optional.of(candidate);
-        }
-        try {
-            var entry = installable.entry();
-            var installer = new JdkInstaller(new Http(), new JdkRegistry());
-            // Download (progress bar) then extract (spinner).
-            var label = entry.vendor() + " " + entry.product() + " " + entry.majorVersion();
-            long total = entry.archiveSize();
-            try (var pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
-                var dl = installer.download(entry, bytes -> pb.update(bytes, total));
-                pb.finish();
-                try (var sp = Spinner.show(CliOutput.stdout(), "Installing " + label + "...")) {
-                    var installed = installer.extractInstalled(entry, dl);
-                    CliOutput.out("✓ Installed " + label + " → " + installed.home());
-                    var opt = new NewJdkOptions.Option(
-                            installed.identifier(),
-                            installed.identifier() + "  (JDK " + entry.majorVersion() + ")",
-                            installed.home(),
-                            entry.majorVersion(),
-                            "jk");
-                    return Optional.of(new NewJdkCandidate.Installed(opt, installable.vendor()));
-                }
-            }
-        } catch (Exception e) {
-            CommandWedge.printFail("New", "failed to install JDK: " + e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * Fully-qualified main class name for an executable project — must match where {@link
-     * NewScaffolder} actually writes the file.
-     *
-     * <ul>
-     * <li>Java (both layouts) → {@code <group>.Main}; the scaffolder always packages {@code Main}
-     * under {@code <group>}, even in the simple layout (it just lives in {@code src/<group>/}
-     * rather than {@code src/main/java/<group>/}).
-     * <li>Kotlin compact → {@code MainKt} (no package; Kotlin emits a {@code FilenameKt} synthetic
-     * class for top-level {@code fun main}).
-     * <li>Kotlin standard → {@code <group>.MainKt}.
-     * <li>Groovy compact → {@code Main} (package-less, like compact Kotlin); standard →
-     * {@code <group>.Main}.
-     * </ul>
-     */
-    static String deriveMainFqcn(String group, NewInputs.Language lang, boolean compact) {
-        return NewWizard.deriveMainFqcn(group, lang, compact);
-    }
-
-    static Wizard buildWizard(
-            List<NewJdkCandidate> candidates,
-            JdkCatalog catalog,
-            String groupGuess,
-            ParentInfo parent,
-            boolean hasDefaultJdk,
-            boolean isInit) {
-        return NewWizard.buildWizard(candidates, catalog, groupGuess, parent, hasDefaultJdk, isInit);
-    }
-
-    /** Curated defaults + host declared-dep frequency for the New wizard library picker. */
-    static List<Choice> libraryPickerChoices() {
-        return NewWizard.libraryPickerChoices();
-    }
-
-    static List<Choice> libraryPickerChoices(String lang) {
-        return NewWizard.libraryPickerChoices(lang);
-    }
-
-    /**
-     * Lowest JDK feature-release the "Select a JDK" step may offer: a JDK can't compile a release
-     * newer than itself. A module inherits the parent's {@code java} target; a standalone Java
-     * project uses the chosen Java Language Version; Kotlin (no Java target) imposes no floor.
-     */
-    /** {@code primary} unless it's empty, in which case {@code fallback} (the offline default). */
-    static List<Integer> orElseList(List<Integer> primary, List<Integer> fallback) {
-        return NewWizard.orElseList(primary, fallback);
-    }
-
-    /**
-     * Offline language-major list for one wizard track, from the compiled-in constants — used only
-     * when the catalog can't be fetched. LTS majors down to {@link cc.jumpkick.jdk.SupportedJdk#MIN_MAJOR},
-     * then (standard track only) the latest non-LTS stable. The native track caps at the latest LTS,
-     * since GraalVM tracks LTS releases and we can't know a newer native-capable major offline.
-     */
-    static List<Integer> offlineMajors(boolean nativeTrack) {
-        return NewWizard.offlineMajors(nativeTrack);
-    }
-
-    /** The newest native-image-capable (GraalVM) Java major, from the catalog or the offline cap. */
-    static int maxNativeMajor(JdkCatalog catalog) {
-        return NewWizard.maxNativeMajor(catalog);
-    }
-
-    static int jdkFloor(Answers answers, ParentInfo parent) {
-        return NewWizard.jdkFloor(answers, parent);
-    }
-
     private NewInputs fromAnswers(Answers answers, Path cwd, NewJdkOptions.Option pickedOpt) {
         var resolvedName = answers.has("name") && !answers.get("name").isBlank()
                 ? answers.get("name")
-                : wizardPresetName(directory, cwd).orElse("untitled");
-        Path target = resolveTarget(directory, cwd, resolvedName);
+                : NewWizard.wizardPresetName(directory, cwd).orElse("untitled");
+        Path target = NewWizard.resolveTarget(directory, cwd, resolvedName);
         var resolvedGroup = answers.has("group") && !answers.get("group").isBlank()
                 ? answers.get("group")
                 : parent != null ? parent.group() : "com.example";
@@ -1032,7 +693,7 @@ public final class NewCommand implements CliCommand {
         } else if ("java".equalsIgnoreCase(answers.get("lang"))
                 && answers.has("javaVersion")
                 && !answers.get("javaVersion").isBlank()) {
-            resolvedJavaRelease = parseJdkMajorOrDefault(answers.get("javaVersion"));
+            resolvedJavaRelease = NewWizard.parseJdkMajorOrDefault(answers.get("javaVersion"));
         } else {
             resolvedJavaRelease = resolvedJdkMajor;
         }
@@ -1058,7 +719,7 @@ public final class NewCommand implements CliCommand {
         }
 
         var resolvedMain = isExecutable
-                ? Optional.of(deriveMainFqcn(resolvedGroup, resolvedLang, "simple".equals(resolvedLayout)))
+                ? Optional.of(NewWizard.deriveMainFqcn(resolvedGroup, resolvedLang, "simple".equals(resolvedLayout)))
                 : Optional.<String>empty();
 
         return new NewInputs(
@@ -1077,45 +738,5 @@ public final class NewCommand implements CliCommand {
                 deps,
                 true,
                 target);
-    }
-
-    private static void emitSuccessOnTerminalSession(
-            NewInputs inputs, TerminalSession terminal, Module module, boolean isInit) {
-        var writer = terminal.ttyOut();
-        // Wizard already opened the envelope (leading blank + closing spacer).
-        CommandWedge.markEnvelopeStarted();
-        writer.println(successLine(inputs, module, isInit));
-        writer.flush();
-    }
-
-    private static void emitSuccessPlain(NewInputs inputs, Module module, boolean isInit) {
-        CommandWedge.printLine(successLine(inputs, module, isInit));
-    }
-
-    private static String successLine(NewInputs inputs, Module module, boolean isInit) {
-        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-        Style accent = Theme.active().brightCyan().bold();
-        if (module != null) {
-            String message = "New module "
-                    + Theme.colorize(inputs.name(), accent)
-                    + Theme.colorize(" added to project ", Theme.active().normalGray())
-                    + Theme.colorize(module.projectName(), accent);
-            return JkWedge.chipLine(Glyphs.CHECK, "New Module", nerdFont, message);
-        }
-        String chipCommand = isInit ? "Init" : "New Project";
-        String action = isInit ? "Initialized" : "Created new";
-        String message = action + " project " + Theme.colorize(inputs.name(), accent);
-        return JkWedge.chipLine(Glyphs.CHECK, chipCommand, nerdFont, message);
-    }
-
-    static final List<String> CURATED_IDS =
-            List.of("jspecify", "kotest", "commons-lang", "commons-io", "guava", "lombok");
-
-    /** Short-name shaped refs: the engine owns the catalog and freshen. */
-    private static boolean officialTemplateShortName(String id) {
-        if (id == null || id.isBlank()) return false;
-        return id.matches("[a-z][a-z0-9-]*")
-                || id.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
-                || id.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*");
     }
 }

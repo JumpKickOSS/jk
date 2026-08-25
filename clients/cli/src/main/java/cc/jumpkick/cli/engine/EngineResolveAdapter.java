@@ -41,7 +41,7 @@ final class EngineResolveAdapter {
      * no plan stream.
      */
     static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
-        return EngineBuildListenerAdapter.request(
+        return EngineReads.request(
                 paths,
                 ProtoReads.outdatedRequest(
                         req.entryDir().toString(),
@@ -109,7 +109,7 @@ final class EngineResolveAdapter {
 
     /**
      * Run {@code jk sync}'s single plan against the engine — the same listener-factory contract as
-     * {@link EngineBuildListenerAdapter#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
+     * {@link EngineJobs#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
      * holders) are populated from the terminal plan-finish <em>before</em> it reaches the factory's
      * listener, exactly mirroring how the in-process path's counters are already settled by the time
      * the console listener's own {@code planFinish} renders the summary line.
@@ -123,10 +123,10 @@ final class EngineResolveAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
+            BufferedReader reader = EngineWire.protocolReader(ch);
 
             send(
                     writer,
@@ -186,10 +186,10 @@ final class EngineResolveAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
+            BufferedReader reader = EngineWire.protocolReader(ch);
             send(writer, requestLine);
 
             // Cascade state: the module currently streaming. Modules are strictly sequential on the
@@ -288,7 +288,7 @@ final class EngineResolveAdapter {
 
     /**
      * Replay one standard single-plan wire event into {@code listener} (accumulating {@code
-     * plan-diagnostic}s aside, like {@link EngineBuildListenerAdapter} does) — the shared tail of
+     * plan-diagnostic}s aside, like {@link EngineEventDecoder} does) — the shared tail of
      * both stream loops. Unknown types are forward-compatible no-ops.
      */
     private static void dispatchBuildPlanEvent(

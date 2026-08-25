@@ -254,19 +254,18 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         return s == null || s.isBlank() ? "" : s.strip();
     }
 
+    /**
+     * Root-level {@code id} — an unadvertised escape hatch, deliberately not on {@code
+     * JkBuild.Project}. Scanned, not parsed, for the same reason {@link #coordOf} is: identity is
+     * resolved on the client for history and dashboard routes, and {@code checkCliNoParseTypes}
+     * keeps {@link cc.jumpkick.config.JkBuildParser} — and tomlj with it — off the native image
+     * (JK-2151).
+     */
     private static Optional<String> explicitId(Path projectDir) {
-        Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.isRegularFile(toml)) return Optional.empty();
-        try {
-            // Read raw TOML so root-level `id` stays an unadvertised escape hatch without widening
-            // JkBuild.Project (rare override; not on the happy-path model).
-            var result = org.tomlj.Toml.parse(toml);
-            String id = result.getString("id");
-            if (id == null || id.isBlank()) return Optional.empty();
-            return Optional.of(normalizeId(id));
-        } catch (Exception e) {
-            return Optional.empty();
-        }
+        String id =
+                TomlScan.scan(projectDir.resolve(ManifestPaths.MANIFEST), "id").get("id");
+        if (id == null || id.isBlank()) return Optional.empty();
+        return Optional.of(normalizeId(id));
     }
 
     private static Optional<String> lockId(Path projectDir) {

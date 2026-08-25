@@ -1182,20 +1182,7 @@ public final class LockOrchestrator {
             }
             updated.add(pkg);
         }
-        return new Lockfile(
-                lock.version(),
-                lock.generatedBy(),
-                lock.resolutionAlgorithm(),
-                lock.jdk(),
-                lock.kotlin(),
-                lock.scala(),
-                updated,
-                lock.plugins(),
-                lock.sdk(),
-                lock.modules(),
-                lock.jkMin(),
-                lock.manifestsSha256(),
-                lock.projectId());
+        return lock.withArtifacts(updated);
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */

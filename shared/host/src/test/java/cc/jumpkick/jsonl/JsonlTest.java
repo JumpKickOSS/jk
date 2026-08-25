@@ -2,6 +2,7 @@
 package cc.jumpkick.jsonl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
@@ -125,5 +126,52 @@ class JsonlTest {
         assertThat(Jsonl.quote(null)).isEqualTo("null");
         // "field":null is read back as an absent string by str().
         assertThat(Jsonl.str("{\"e\":" + Jsonl.quote(null) + "}", "e")).isNull();
+    }
+
+    @Test
+    void appendSplicesFieldsBeforeTheClosingBrace() {
+        assertThat(Jsonl.append("{\"a\":1}", "\"b\":2")).isEqualTo("{\"a\":1,\"b\":2}");
+        assertThat(Jsonl.append("{\"a\":1}", "\"b\":2,\"c\":\"x\"")).isEqualTo("{\"a\":1,\"b\":2,\"c\":\"x\"}");
+        // Round trip through the readers, not just the text: the result is parseable JSON.
+        String line = Jsonl.append(Jsonl.append("{\"type\":\"ping\"}", "\"jid\":7"), "\"cancelled\":true");
+        assertThat(Jsonl.str(line, "type")).isEqualTo("ping");
+        assertThat(Jsonl.intValue(line, "jid", -1)).isEqualTo(7);
+        assertThat(Jsonl.bool(line, "cancelled", false)).isTrue();
+    }
+
+    /**
+     * The empty object is the case every hand-rolled brace chop got wrong: a constant comma
+     * separator turns {@code {}} into the unparseable {@code {,"b":2}}. The separator is a
+     * function of the object, so it belongs to the splicer.
+     */
+    @Test
+    void appendToAnEmptyObjectDoesNotEmitALeadingComma() {
+        assertThat(Jsonl.append("{}", "\"b\":2")).isEqualTo("{\"b\":2}");
+        assertThat(Jsonl.intValue(Jsonl.append("{}", "\"b\":2"), "b", -1)).isEqualTo(2);
+    }
+
+    /** A blank fragment is a no-op so a caller can splice unconditionally — byte-identical. */
+    @Test
+    void appendWithNothingToAddReturnsTheObjectUnchanged() {
+        assertThat(Jsonl.append("{\"a\":1}", null)).isEqualTo("{\"a\":1}");
+        assertThat(Jsonl.append("{\"a\":1}", "")).isEqualTo("{\"a\":1}");
+        assertThat(Jsonl.append("{\"a\":1}", "   ")).isEqualTo("{\"a\":1}");
+    }
+
+    /**
+     * One policy for a malformed object. The three call sites this replaced had three: throw,
+     * return the input unchanged, and splice at whatever the last {@code }} happened to be — so
+     * the same mistake was loud in one place and silent in another.
+     */
+    @Test
+    void appendRejectsAnythingThatIsNotAnEncodedObject() {
+        assertThatThrownBy(() -> Jsonl.append("not-json", "\"b\":2")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Jsonl.append(null, "\"b\":2")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Jsonl.append("", "\"b\":2")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Jsonl.append("{\"a\":1}trailing", "\"b\":2"))
+                .isInstanceOf(IllegalArgumentException.class);
+        // Validated even when there is nothing to add: "that is not an object" is a programming
+        // error either way, and a no-op that swallows it hides the bug until the next caller.
+        assertThatThrownBy(() -> Jsonl.append("not-json", null)).isInstanceOf(IllegalArgumentException.class);
     }
 }

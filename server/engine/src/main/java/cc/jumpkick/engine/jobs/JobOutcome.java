@@ -37,9 +37,13 @@ public sealed interface JobOutcome {
     }
 
     /**
-     * The body stopped because the request was cancelled. Journals {@link Exit#FAILURE}, the same
-     * code every other cancel surface uses — {@link Exit#INTERRUPTED} is reserved for a real user
-     * interrupt, and a body cannot tell a user cancel from a wall-deadline one.
+     * The body stopped because the request was cancelled. Stamps a plain failure — {@code false}
+     * and {@link Exit#FAILURE} — and deliberately does not reach for the interrupt code: a body
+     * knows only that it was told to stop, not whether a user, a wall deadline or a socket race
+     * told it. Naming the cancel is the accumulator's cancel stamps' job, and a row they label
+     * cancelled is journaled as {@link Exit#INTERRUPTED} whatever this arm stamped. The
+     * {@link Exit#FAILURE} here is what survives when they do <em>not</em> — a cooperative
+     * fail-fast, or the benign end-of-request EOF — which is a failed build and should read as one.
      */
     record Cancelled() implements JobOutcome {}
 

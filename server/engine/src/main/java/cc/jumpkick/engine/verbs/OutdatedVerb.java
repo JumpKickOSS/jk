@@ -13,7 +13,6 @@ import cc.jumpkick.runtime.OutdatedPlans;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.Optional;
 
 public final class OutdatedVerb implements HostedVerb {
 
@@ -51,19 +50,10 @@ public final class OutdatedVerb implements HostedVerb {
                 Path dir = Path.of(Jsonl.str(requestLine, "dir"));
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
                 String repoUrl = Jsonl.str(requestLine, "repoUrl");
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                        Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "force", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(Jsonl.bool(requestLine, "offline", false))
+                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                        .withForce(Jsonl.bool(requestLine, "force", false));
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(dir)

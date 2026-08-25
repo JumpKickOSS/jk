@@ -163,20 +163,20 @@ class NewModuleTest {
 
     @Test
     void jdk_floor_uses_the_chosen_java_version() {
-        assertThat(NewCommand.jdkFloor(answers("lang", "java", "javaVersion", "25"), null))
+        assertThat(NewWizard.jdkFloor(answers("lang", "java", "javaVersion", "25"), null))
                 .isEqualTo(25);
-        assertThat(NewCommand.jdkFloor(answers("lang", "java", "javaVersion", "17"), null))
+        assertThat(NewWizard.jdkFloor(answers("lang", "java", "javaVersion", "17"), null))
                 .isEqualTo(17);
     }
 
     @Test
     void jdk_floor_is_unrestricted_for_kotlin() {
-        assertThat(NewCommand.jdkFloor(answers("lang", "kotlin"), null)).isZero();
+        assertThat(NewWizard.jdkFloor(answers("lang", "kotlin"), null)).isZero();
     }
 
     @Test
     void jdk_floor_defaults_to_latest_lts_when_unanswered() {
-        assertThat(NewCommand.jdkFloor(answers("lang", "java"), null)).isEqualTo(NewCommand.LATEST_LTS_MAJOR);
+        assertThat(NewWizard.jdkFloor(answers("lang", "java"), null)).isEqualTo(NewWizard.LATEST_LTS_MAJOR);
     }
 
     private static Answers answers(String... kv) {

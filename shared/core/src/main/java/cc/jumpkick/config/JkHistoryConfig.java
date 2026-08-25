@@ -3,14 +3,14 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.function.Function;
-import org.tomlj.TomlParseResult;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
  * Machine-scoped {@code [history]} journal policy (on by default). Retention: {@code max-age-days}
- * and {@code max-disk-mb}, whichever bites first. Not project-overridable; env overrides apply.
+ * and {@code max-disk-mb}, whichever bites first. Not project-overridable; env overrides apply,
+ * ranked by {@link MachineConfig}.
  */
 public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
 
@@ -23,6 +23,13 @@ public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
     public static final JkHistoryConfig DEFAULTS =
             new JkHistoryConfig(DEFAULT_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_DISK_MB);
 
+    private static final MachineConfig<Boolean> ENABLED = MachineConfig.of(DEFAULT_ENABLED);
+
+    /** A negative age or budget is meaningless, so it is not a value — it falls through. */
+    private static final MachineConfig<Integer> MAX_AGE_DAYS = MachineConfig.of(DEFAULT_MAX_AGE_DAYS, i -> i >= 0);
+
+    private static final MachineConfig<Integer> MAX_DISK_MB = MachineConfig.of(DEFAULT_MAX_DISK_MB, i -> i >= 0);
+
     /** Effective machine config: user-global file + {@code JK_HISTORY_*} env. */
     public static JkHistoryConfig resolve() {
         return resolve(JkDirs.userConfigFile(), System::getenv);
@@ -30,37 +37,34 @@ public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
 
     /** As {@link #resolve()} but against an explicit config file + env — for tests. */
     static JkHistoryConfig resolve(Path userConfig, Function<String, String> env) {
-        JkHistoryConfig base = fromToml(userConfig);
+        TomlTable history = historyTable(userConfig);
         return new JkHistoryConfig(
-                EnvValues.bool(env, "JK_HISTORY_ENABLED").orElse(base.enabled),
-                envNonNegativeInt(env, "JK_HISTORY_MAX_AGE_DAYS").orElse(base.maxAgeDays),
-                envNonNegativeInt(env, "JK_HISTORY_MAX_DISK_MB").orElse(base.maxDiskMb));
-    }
-
-    private static Optional<Integer> envNonNegativeInt(Function<String, String> env, String name) {
-        return EnvValues.intValue(env, name).filter(i -> i >= 0);
+                ENABLED.layer(
+                        EnvValues.bool(env, "JK_HISTORY_ENABLED").orElse(null),
+                        TomlValues.optBoolean(history, "enabled").orElse(null)),
+                MAX_AGE_DAYS.layer(
+                        EnvValues.intValue(env, "JK_HISTORY_MAX_AGE_DAYS").orElse(null),
+                        TomlValues.optInt(history, "max-age-days").orElse(null)),
+                MAX_DISK_MB.layer(
+                        EnvValues.intValue(env, "JK_HISTORY_MAX_DISK_MB").orElse(null),
+                        TomlValues.optInt(history, "max-disk-mb").orElse(null)));
     }
 
     /**
      * Load from a TOML file's {@code [history]} table — the explicit-path seam used by {@link
      * #resolve()} and by tests. Missing file, missing table, or malformed file → {@link #DEFAULTS}.
-     * Negative integers are rejected (a negative age/budget is meaningless) and fall back to the
-     * default.
      */
     public static JkHistoryConfig fromToml(Path file) {
-        Optional<TomlParseResult> parsed = TomlValues.parse(file);
-        if (parsed.isEmpty()) return DEFAULTS;
-        TomlTable history = parsed.get().getTable("history");
-        if (history == null) return DEFAULTS;
-
-        boolean enabled = TomlValues.optBoolean(history, "enabled").orElse(DEFAULTS.enabled);
-        int maxAge = nonNegative(TomlValues.optInt(history, "max-age-days")).orElse(DEFAULTS.maxAgeDays);
-        int maxDisk = nonNegative(TomlValues.optInt(history, "max-disk-mb")).orElse(DEFAULTS.maxDiskMb);
-        return new JkHistoryConfig(enabled, maxAge, maxDisk);
+        TomlTable history = historyTable(file);
+        return new JkHistoryConfig(
+                ENABLED.layer(TomlValues.optBoolean(history, "enabled").orElse(null)),
+                MAX_AGE_DAYS.layer(TomlValues.optInt(history, "max-age-days").orElse(null)),
+                MAX_DISK_MB.layer(TomlValues.optInt(history, "max-disk-mb").orElse(null)));
     }
 
-    private static Optional<Integer> nonNegative(Optional<Integer> value) {
-        return value.filter(i -> i >= 0);
+    /** The {@code [history]} table, or {@code null} for a missing/unreadable/table-less file. */
+    private static @Nullable TomlTable historyTable(Path file) {
+        return TomlValues.parse(file).map(root -> root.getTable("history")).orElse(null);
     }
 
     /** Age budget in milliseconds, or {@code 0} for "no age limit" (keep regardless of age). */

@@ -16,14 +16,13 @@ import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.RepoTransports;
+import cc.jumpkick.task.RunNotices;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.UnaryOperator;
 
 /**
@@ -174,25 +173,24 @@ public final class RepoGroupBuilder {
     }
 
     /**
-     * Once per {@link #buildFor} when the effective remote list has more than one repo and none
-     * end up with exclusive bindings (after Google defaults). Soft warn — resolve still proceeds.
+     * Once per run when the effective remote list has more than one repo and none end up with
+     * exclusive bindings (after Google defaults). Soft warn — resolve still proceeds.
+     *
+     * <p>Keyed by the repository names, not by a bare flag: two modules of one workspace may
+     * declare different remotes, and each unbound set is its own thing to say.
      */
     static void maybeWarnMultiRepoWithoutBindings(List<RepositorySpec> effective, List<List<String>> exclusive) {
         if (effective == null || effective.size() <= 1) return;
         if (ExclusiveGroups.anyBinding(exclusive)) return;
-        System.err.println("jk: warning: multiple repositories configured without exclusive `groups` bindings "
-                + "(dependency-confusion risk). Bind internal namespaces, e.g. "
-                + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
-                + "Google Android groups are bound by default when the Google Maven remote is present. "
-                + "See the guide § Auth and repositories.");
+        RunNotices.warnOnce(
+                "repo-groups-unbound:"
+                        + effective.stream().map(RepositorySpec::name).toList(),
+                () -> "jk: warning: multiple repositories configured without exclusive `groups` bindings "
+                        + "(dependency-confusion risk). Bind internal namespaces, e.g. "
+                        + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
+                        + "Google Android groups are bound by default when the Google Maven remote is present. "
+                        + "See the guide § Auth and repositories.");
     }
-
-    /**
-     * Repositories already warned about, so a lock that rebuilds this group once per module prints
-     * the note once and not once per module. Bounded and dropped whole when it fills — a machine
-     * with more than a few dozen credential-bearing repository URLs has a different problem.
-     */
-    private static final Set<String> WARNED_USER_INFO = ConcurrentHashMap.newKeySet();
 
     /**
      * Warn when a declared repository URL carries {@code user:password@}. jk removes it before the
@@ -200,13 +198,17 @@ public final class RepoGroupBuilder {
      * base URL is interpolated into every artifact's lockfile {@code source}, so keeping it would
      * commit a credential to version control. Removing it silently, though, leaves the user at a
      * {@code 401} from a URL that as they typed it holds a perfectly good credential.
+     *
+     * <p>Said once per run rather than once per {@link #buildFor}: a lock rebuilds this group for
+     * every module, and the resident engine would otherwise fall silent for every build after the
+     * first one it served.
      */
     static void maybeWarnUrlUserInfo(RepositorySpec spec, RepoCredential resolved) {
         if (spec == null || spec.url() == null || spec.url().getRawUserInfo() == null) return;
         String safeUrl = SafeUri.forMessage(spec.url());
-        if (WARNED_USER_INFO.size() > 64) WARNED_USER_INFO.clear();
-        if (!WARNED_USER_INFO.add(spec.name() + " " + safeUrl)) return;
-        System.err.println(urlUserInfoWarning(spec.name(), safeUrl, resolved));
+        RunNotices.warnOnce(
+                "repo-url-userinfo:" + spec.name() + " " + safeUrl,
+                () -> urlUserInfoWarning(spec.name(), safeUrl, resolved));
     }
 
     /**
@@ -232,11 +234,6 @@ public final class RepoGroupBuilder {
                 + "credential as " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix + "PASSWORD), "
                 + "`jk repo login " + repoId + "`, an inline ${VAR} credential in the [repositories." + repoId
                 + "] table, or a <server> in ~/.m2/settings.xml.";
-    }
-
-    /** Test seam: re-arm the once-per-repository warning. */
-    static void resetUserInfoWarnings() {
-        WARNED_USER_INFO.clear();
     }
 
     /**

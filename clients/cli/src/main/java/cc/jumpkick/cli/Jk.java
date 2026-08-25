@@ -77,7 +77,9 @@ public final class Jk {
             // interactive plans (Ctrl-O key listener / canPrompt probe).
             Terminals.shutdown();
         }
-        System.exit(code);
+        // A verb that unwound because the user pressed Ctrl-C exits 130 even though it returned an
+        // ordinary failure code — GlobalCancel's own halt is only the backup for a wedged verb.
+        System.exit(GlobalCancel.exitCodeFor(code));
     }
 
     /** Run jk with the given argv. The first positional is rewritten if it's a known alias. */
@@ -201,46 +203,48 @@ public final class Jk {
      * here; everything else flows through the dispatcher.
      */
     private static void applyCliOverrides(String[] args) {
-        Optional<JkConfig.ColorChoice> color = Optional.empty();
-        Optional<Boolean> offline = Optional.empty();
-        Optional<Boolean> force = Optional.empty();
-        Optional<Boolean> rebuild = Optional.empty();
-        Optional<Boolean> noProgress = Optional.empty();
-        Optional<Boolean> noAnsi = Optional.empty();
-        Optional<Boolean> noOsc = Optional.empty();
-        Optional<JkConfig.NotifyChoice> notify = Optional.empty();
-        Optional<Boolean> quiet = Optional.empty();
-        Optional<Boolean> verbose = Optional.empty();
-        Optional<Path> directory = Optional.empty();
+        JkConfig.ColorChoice color = null;
+        Boolean offline = null;
+        Boolean force = null;
+        Boolean rebuild = null;
+        Boolean noProgress = null;
+        Boolean noAnsi = null;
+        Boolean noOsc = null;
+        JkConfig.NotifyChoice notify = null;
+        Boolean quiet = null;
+        Boolean verbose = null;
+        Path directory = null;
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             switch (a) {
-                case "-q", "--quiet" -> quiet = Optional.of(true);
-                case "-v", "--verbose" -> verbose = Optional.of(true);
-                case "--offline" -> offline = Optional.of(true);
-                case "-F", "--force" -> force = Optional.of(true);
-                case "-r", "--redo", "--rebuild" -> rebuild = Optional.of(true);
-                case "--no-progress" -> noProgress = Optional.of(true);
+                case "-q", "--quiet" -> quiet = true;
+                case "-v", "--verbose" -> verbose = true;
+                case "--offline" -> offline = true;
+                case "-F", "--force" -> force = true;
+                case "-r", "--redo", "--rebuild" -> rebuild = true;
+                case "--no-progress" -> noProgress = true;
                 // --no-ansi: strip ALL ANSI (color + bold/italic + CSI). Progress still runs as
                 // multi-line plain frames — use --no-progress to silence chrome entirely.
                 // Distinct from --color never which strips color but preserves text attributes.
-                case "--no-ansi" -> noAnsi = Optional.of(true);
-                case "--no-osc" -> noOsc = Optional.of(true);
-                case "--notify" -> notify = Optional.of(JkConfig.NotifyChoice.ALWAYS);
-                case "--no-notify" -> notify = Optional.of(JkConfig.NotifyChoice.NEVER);
+                case "--no-ansi" -> noAnsi = true;
+                case "--no-osc" -> noOsc = true;
+                case "--notify" -> notify = JkConfig.NotifyChoice.ALWAYS;
+                case "--no-notify" -> notify = JkConfig.NotifyChoice.NEVER;
                 case "--color" -> {
-                    if (i + 1 < args.length) color = JkConfig.ColorChoice.parse(args[++i]);
+                    if (i + 1 < args.length)
+                        color = JkConfig.ColorChoice.parse(args[++i]).orElse(null);
                 }
                 case "-C", "--dir", "--directory" -> {
-                    if (i + 1 < args.length) directory = Optional.of(Path.of(args[++i]));
+                    if (i + 1 < args.length) directory = Path.of(args[++i]);
                 }
                 default -> {
                     if (a.startsWith("--color=")) {
-                        color = JkConfig.ColorChoice.parse(a.substring("--color=".length()));
+                        color = JkConfig.ColorChoice.parse(a.substring("--color=".length()))
+                                .orElse(null);
                     } else if (a.startsWith("--dir=")) {
-                        directory = Optional.of(Path.of(a.substring("--dir=".length())));
+                        directory = Path.of(a.substring("--dir=".length()));
                     } else if (a.startsWith("--directory=")) {
-                        directory = Optional.of(Path.of(a.substring("--directory=".length())));
+                        directory = Path.of(a.substring("--directory=".length()));
                     }
                 }
             }
@@ -257,7 +261,7 @@ public final class Jk {
                 noAnsi,
                 noOsc,
                 notify,
-                Optional.empty()); // build-output: config/env only
+                null); // build-output: config/env only
         SessionContext.installConfig(SessionContext.current().config().mergedWith(cli));
     }
 

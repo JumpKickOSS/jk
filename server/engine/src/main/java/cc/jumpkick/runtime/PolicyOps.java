@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.DenyPolicyParser;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.deny.PolicyChecker;
 import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.lock.LockPaths;
@@ -25,7 +25,7 @@ public final class PolicyOps {
 
     public static DenyReport denyCheck(Path dir) {
         try {
-            var policy = DenyPolicyParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            var policy = JkBuildParser.denyPolicy(dir.resolve(ManifestPaths.MANIFEST));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
             List<PolicyChecker.Violation> violations = new PolicyChecker(policy).check(lock);
             List<String> modules = new ArrayList<>(violations.size());

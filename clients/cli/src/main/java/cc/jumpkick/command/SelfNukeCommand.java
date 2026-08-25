@@ -69,6 +69,11 @@ public final class SelfNukeCommand implements CliCommand {
      * One display/delete row for the confirm table. {@code delegated} rows are wiped by the shared
      * {@code jk cache nuke} / {@code jk storage nuke} code paths rather than by this command's own
      * recursive delete, so {@link #run} skips them when walking the path rows.
+     *
+     * <p>Delegated or not, every row prints under <strong>Path to Delete</strong> and every row's
+     * path is <em>gone as a directory</em> when the command finishes. The two shared nukes each
+     * spent a release emptying their root instead of removing it (JK-2455 for the cache, JK-2500
+     * for the store), which is the same table saying "delete" and meaning "empty".
      */
     record PurgeRow(Path path, String what, Target target, boolean delegated) {}
 
@@ -304,9 +309,9 @@ public final class SelfNukeCommand implements CliCommand {
      * Data-root nuke: the artifact store plus every <em>other</em> child of {@code <data>}
      * ({@code JK_DATA_DIR}; default {@code ~/.local/share/jk}, or {@code $JK_HOME/data}). The store
      * is normally a child of that root, but is scheduled explicitly because {@code JK_STORE_DIR}
-     * can relocate it out of the data root, and because it is wiped whole-tree
-     * — including {@code store/lib} — by the engine-hosted {@code jk storage nuke} path, which the
-     * {@link #addRow} guards would otherwise refuse.
+     * can relocate it out of the data root, and because it is removed whole-tree — the root
+     * itself, {@code store/lib} included — by the engine-hosted {@code jk storage nuke} path,
+     * which the {@link #addRow} guards would otherwise refuse.
      *
      * <p>The remaining children do go through those guards, so the live engine jar
      * ({@code <data>/lib}) and the forge/repo credential stores survive.

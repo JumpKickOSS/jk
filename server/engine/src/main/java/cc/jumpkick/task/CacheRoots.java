@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -33,11 +34,9 @@ public final class CacheRoots {
      */
     public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir) throws IOException {
         Set<String> refs = new HashSet<>();
-        if (Files.isDirectory(actionsDir.resolve("keys"))) {
-            scanTextFilesRecursively(actionsDir.resolve("keys"), cas, refs);
-        }
-        if (Files.isDirectory(actionsDir.resolve(Sweep.SYNCED_SUBDIR))) {
-            scanTextFilesRecursively(actionsDir.resolve(Sweep.SYNCED_SUBDIR), cas, refs);
+        for (ActionTree root : List.of(ActionTree.KEYS, ActionTree.SYNCED)) {
+            Path dir = root.under(actionsDir);
+            if (Files.isDirectory(dir)) scanTextFilesRecursively(dir, cas, refs);
         }
         if (Files.isDirectory(toolsDir.resolve("envs"))) {
             scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs);

@@ -6,7 +6,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.compile.JavacLint;
-import cc.jumpkick.config.ImageConfigParser;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -358,12 +358,12 @@ public final class TaskForecaster {
             // lock — forecast action keys must match the keys the build will actually use.
             List<String> javacArgs = JavacLint.effectiveArgs(
                     project.build().lint(),
-                    PluginContributions.javacArgs(project, dir, BuildPlanner.lockModules(lock)),
+                    PluginContributions.javacArgs(project, dir, PlannerSupport.lockModules(lock)),
                     List.of());
             // Must mirror BuildPlanner' processor classpath exactly — workspace siblings
             // included — or the forecast hashes a different -processorpath than the
             // build and every KSP module forecasts a phantom rebuild.
-            List<Path> processorCp = BuildPlanner.processorClasspath(
+            List<Path> processorCp = PlannerSupport.processorClasspath(
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
 
             // Only compile-scope dirty siblings force main recompile (and package/native cascade).
@@ -404,7 +404,7 @@ public final class TaskForecaster {
             if (!mainSrc.isEmpty()) {
                 WorkspaceClasspath.Result sib =
                         WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-                List<Path> cp = BuildPlanner.mainCompileClasspath(lock, resolver, sib);
+                List<Path> cp = PlannerSupport.mainCompileClasspath(lock, resolver, sib);
                 Path out = layout.classesDir();
                 // Same stamp gate as BuildPlanner compile-main: a post-rebuild tree with a
                 // fresh.jstamp is cached even when action-cache keys were not rewritten
@@ -533,7 +533,7 @@ public final class TaskForecaster {
 
             producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
             try {
-                var img = ImageConfigParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                var img = JkBuildParser.imageConfig(dir.resolve(ManifestPaths.MANIFEST));
                 producesImage = img.base() != null || img.registry() != null;
             } catch (Exception ignored) {
             }
@@ -648,7 +648,7 @@ public final class TaskForecaster {
                                 dir, compact, layout, project, actionCache, compileMainKey, null);
                         if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
                     }
-                    String stampKey = BuildPlanner.runTestsStampKey(
+                    String stampKey = PlannerSupport.runTestsStampKey(
                             dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
                     boolean hit = stampKey != null && present(actionCache, stampKey);
@@ -722,7 +722,7 @@ public final class TaskForecaster {
                 byte[] sbom = null;
                 if (project.isApplication()) {
                     try {
-                        sbom = BuildPlanner.applicationSbom(project, lock, cas);
+                        sbom = PlannerPlugin.applicationSbom(project, lock, cas);
                     } catch (Exception ignored) {
                         // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
                     }
@@ -734,9 +734,9 @@ public final class TaskForecaster {
                 // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
                 // every module forecast permanent "repackage", cascade depDirty, and price a full
                 // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
-                List<Path> contributed = new ArrayList<>(BuildPlanner.existingContributedDirs(pkgDecls, layout));
+                List<Path> contributed = new ArrayList<>(PlannerSupport.existingContributedDirs(pkgDecls, layout));
                 contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project));
-                String contribTok = BuildPlanner.contributionsToken(contributed);
+                String contribTok = PlannerSupport.contributionsToken(contributed);
                 List<String> tokens = List.of(
                         "classes:" + classesTok,
                         "contrib:" + contribTok,
@@ -770,7 +770,7 @@ public final class TaskForecaster {
             }
 
             // ---- package-assembly (fat jar) — only when configured ----
-            // Same action-key recipe as BuildPlanner.assemblyStep (not "jar exists on disk").
+            // Same action-key recipe as PlannerTails.assemblyStep (not "jar exists on disk").
             if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 if (compileDirty) {
                     steps.add(new TaskForecast.Task(

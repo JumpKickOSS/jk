@@ -2,14 +2,21 @@
 package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Root-level {@code nerd-font} reading from ~/.config/jk/config.toml, leniently. */
+/**
+ * Root-level {@code nerd-font} reading from ~/.config/jk/config.toml, leniently, plus the
+ * {@code [repositories]} layer this file shares with the project manifest.
+ */
 class GlobalConfigTest {
 
     // Precedence is asserted through nerdFontMode, which is pure. nerdFont() resolves "auto" against
@@ -131,5 +138,107 @@ class GlobalConfigTest {
         Path f = Files.createTempFile(dir, "config", ".toml");
         Files.writeString(f, content);
         return f;
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // [repositories]: one reader, two policies
+    // ───────────────────────────────────────────────────────────────
+
+    /**
+     * The user-config layer and the project manifest read the same table with the same reader
+     * ({@link RepositoryToml#repositories}), differing only in {@link RepositoryToml.OnBad}. The
+     * same text therefore yields the same {@link RepositorySpec} on both sides.
+     */
+    @Test
+    void a_well_formed_table_reads_identically_in_both_layers(@TempDir Path dir) throws IOException {
+        String table = """
+                [repositories.internal]
+                url = "https://nexus.example.com/repo"
+                groups = ["com.acme", "com.acme.*"]
+                """;
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, table);
+        List<RepositorySpec> global = GlobalConfig.repositories(config);
+        List<RepositorySpec> project =
+                JkBuildParser.parse("name = \"demo\"\n" + table).repositories();
+
+        // Pinned to the declared values, not merely to each other: two readers that both went
+        // blank would compare equal and prove nothing.
+        assertThat(global).hasSize(1);
+        assertThat(global.getFirst().name()).isEqualTo("internal");
+        assertThat(global.getFirst().url()).hasToString("https://nexus.example.com/repo");
+        assertThat(global.getFirst().groups()).containsExactly("com.acme", "com.acme.*");
+        assertThat(project.getFirst().name()).isEqualTo(global.getFirst().name());
+        assertThat(project.getFirst().url()).isEqualTo(global.getFirst().url());
+        assertThat(project.getFirst().groups()).isEqualTo(global.getFirst().groups());
+    }
+
+    /**
+     * Where they differ is the policy and nothing else: a manifest that lies fails the build; the
+     * machine-local file drops the entry and carries on.
+     */
+    @Test
+    void a_malformed_entry_is_rejected_by_the_manifest_and_skipped_by_the_user_config(@TempDir Path dir)
+            throws IOException {
+        String table = """
+                [repositories.good]
+                url = "https://ok.example.com/repo"
+
+                [repositories.bad]
+                groups = ["com.acme"]
+                """;
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, table);
+        assertThat(GlobalConfig.repositories(config))
+                .extracting(RepositorySpec::name)
+                .containsExactly("good");
+
+        assertThatThrownBy(() -> JkBuildParser.parse("name = \"demo\"\n" + table))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.bad");
+    }
+
+    /** {@code jk-local} is the first-party install store: reserved in a manifest, ignored globally. */
+    @Test
+    void the_reserved_name_is_rejected_by_the_manifest_and_skipped_by_the_user_config(@TempDir Path dir)
+            throws IOException {
+        String table = "[repositories]\njk-local = \"https://elsewhere.example.com/\"\n";
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, table);
+        assertThat(GlobalConfig.repositories(config)).isEmpty();
+        assertThatThrownBy(() -> JkBuildParser.parse("name = \"demo\"\n" + table))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jk-local");
+    }
+
+    /**
+     * The two {@code ${VAR}} policies, from one {@link RepositoryToml.VarPolicy}. The user layer is
+     * lenient — an unset variable stays literal rather than failing a build — while the manifest
+     * defers expansion entirely, so a parsed manifest never carries a secret.
+     */
+    @Test
+    void unset_variables_are_left_literal_in_the_user_layer(@TempDir Path dir) throws IOException {
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, """
+                [repositories.internal]
+                url = "https://nexus.example.com/repo"
+                token = "${JK_TEST_DEFINITELY_UNSET_TOKEN}"
+                """);
+        // Read through secret(), not toString(): a credential no longer prints what it holds.
+        assertThat(GlobalConfig.repositories(config).getFirst().credential())
+                .get()
+                .extracting(c -> ((RepoCredential) c).secret())
+                .isEqualTo("${JK_TEST_DEFINITELY_UNSET_TOKEN}");
+
+        var manifest = JkBuildParser.parse("""
+                name = "demo"
+                [repositories.internal]
+                url = "https://nexus.example.com/repo"
+                token = "${JK_TEST_DEFINITELY_UNSET_TOKEN}"
+                """);
+        assertThat(manifest.repositories().getFirst().credential())
+                .get()
+                .extracting(c -> ((RepoCredential) c).secret())
+                .isEqualTo("${JK_TEST_DEFINITELY_UNSET_TOKEN}");
     }
 }

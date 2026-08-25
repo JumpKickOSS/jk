@@ -46,9 +46,6 @@ public enum CacheTree {
     /** Content hashes keyed by absolute path, sharded two hex digits deep. */
     HASH_MEMO("hash-memo"),
 
-    /** GraalVM reachability metadata, one extracted tree per bundle version. */
-    GRAAL_REACHABILITY("graal-reachability"),
-
     /** Kotlin ABI snapshots for the incremental classpath. */
     KOTLIN_CP_SNAPSHOTS("kotlin-cp-snapshots"),
 

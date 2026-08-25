@@ -1,43 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0
-// Headless tests for the dashboard's event-folding logic (docs/webclient.md). Run by
-// WebClientJsTest via `node --test`, which stages fold.js in a type:module dir (a bare .js import
-// would be CommonJS) and passes its path in JK_FOLD_MJS.
+// Headless tests for the dashboard's event-folding layer (docs/contributors/webclient.md). Run by
+// WebClientJsTest via `node --test`, which stages the SPA's modules in a type:module dir (a bare
+// .js import would be CommonJS) and passes the directory in JK_APP_DIR.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+
+const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
 
 const {
   foldEvent,
-  outcomeOf,
-  moduleSummary,
-  phaseChainOf,
   seedFromHistory,
+  historyCard,
   startAnchor,
   ioLines,
-  fmtBytes,
-  fmtStepMillis,
   stepTimingLabel,
-  detailForDisplay,
-  liveStepDetail,
-  detailSegments,
-  looksLikeJavaMember,
-  orderedModules,
   MAX_CARDS,
   MAX_OUTPUT_LINES,
   normalizeDiagnostic,
-  testFailureReport,
-  stackFrameLines,
-  isTestFailureDiag,
-  isCompilerDiag,
-  parseCompilerBlock,
-  compilerFailureReports,
-  snippetWindow,
-  parseAssertJMessage,
-  shortTestLabel,
+} = await spa('fold.js');
+const { moduleSummary, orderedModules, outcomeOf, phaseChainOf } = await spa('outcome.js');
+const { fmtBytes, fmtDuration } = await spa('format.js');
+const {
+  detailForDisplay,
+  detailSegments,
+  liveStepDetail,
+  looksLikeJavaMember,
   shortDisplayLabel,
+  shortTestLabel,
   simpleTypeName,
   simplifyMethodParams,
-} = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+} = await spa('label.js');
+const {
+  compilerFailureReports,
+  isCompilerDiag,
+  isTestFailureDiag,
+  parseAssertJMessage,
+  parseCompilerBlock,
+  snippetWindow,
+  stackFrameLines,
+  testFailureReport,
+} = await spa('failure.js');
 
 const historyRecord = (id, dir, extra = {}) => ({
   id,
@@ -282,7 +286,7 @@ test('a step-start without a phase stores an empty phase', () => {
 });
 
 test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK-1519)', async () => {
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
   foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
@@ -296,7 +300,7 @@ test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK
 });
 
 test('a stale running stub does not flip a finished live card back to running (JK-1519)', async () => {
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
   foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
@@ -312,7 +316,7 @@ test('a stale running stub does not flip a finished live card back to running (J
 });
 
 test('history backfill maps per-module steps; single-project synthesizes one module', async () => {
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   // workspace record: modules carry their own steps, and each diagnostic attaches to its module dir
   const ws = [];
   seedFromHistory(ws, [{
@@ -398,7 +402,7 @@ test('history seeding keeps a FAILED-step module failed inside a cancelled recor
   // cancelled → rec.cancelled=true. Live painted A failed; the reload seed graying A out to
   // 'cancelled' desynced the two and dropped A from the failure details. FAIL steps win, same
   // precedence as outcomeOf.
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   seedFromHistory(cards, [{
     id: 'c1', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 5000, success: false,
@@ -420,8 +424,7 @@ test('history seeding keeps a FAILED-step module failed inside a cancelled recor
 test('workspace history replay applies the per-kind diagnostic ceilings', async () => {
   // JK-1947: the single-project path was bounded (JK-1881) but the workspace path streamed a
   // pathological record's diagnostics into the card unbounded.
-  const mod = await import(pathToFileURL(process.env.JK_FOLD_MJS));
-  const { seedFromHistory, MAX_TEST_FAILURE_DIAGNOSTICS, MAX_DIAGNOSTICS } = mod;
+  const { seedFromHistory, MAX_TEST_FAILURE_DIAGNOSTICS, MAX_DIAGNOSTICS } = await spa('fold.js');
   const diagnostics = [];
   for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
     diagnostics.push({
@@ -458,7 +461,7 @@ test('output keeps a bounded tail and clears on finish', () => {
 });
 
 test('diagnostics attach to their module by dir, survive finish, and are capped per module', async () => {
-  const { MAX_DIAGNOSTICS } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { MAX_DIAGNOSTICS } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
@@ -500,7 +503,7 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
 });
 
 test('test-failure diagnostics are bounded by their own ceiling (JK-1881)', async () => {
-  const { MAX_TEST_FAILURE_DIAGNOSTICS } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { MAX_TEST_FAILURE_DIAGNOSTICS } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
@@ -1000,7 +1003,7 @@ test('seedFromHistory respects MAX_CARDS', () => {
 });
 
 test('weight progress aggregates numerator/denominator across modules', async () => {
-  const { weightNumerator, weightDenominator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { weightNumerator, weightDenominator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'plan', data: { jid: 1, weight: 300 } });
@@ -1012,7 +1015,7 @@ test('weight progress aggregates numerator/denominator across modules', async ()
 });
 
 test('weight denominator falls back to summed module dens when no plan (single build)', async () => {
-  const { weightDenominator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { weightDenominator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'progress', data: { jid: 1, dir: '', numerator: 4, denominator: 12 } });
@@ -1020,7 +1023,7 @@ test('weight denominator falls back to summed module dens when no plan (single b
 });
 
 test('plan-progress updates latest per dir (no double count on repeat)', async () => {
-  const { weightNumerator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { weightNumerator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'progress', data: { jid: 1, dir: '/w/a', numerator: 10, denominator: 100 } });
@@ -1039,7 +1042,7 @@ test('eta is captured and cleared on finish', () => {
 });
 
 test('etaTotalMillis anchors remaining work at the emission time, not request-start (JK-1517)', async () => {
-  const { etaTotalMillis } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { etaTotalMillis } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w'), at: 1000 });
   // 10s into the run (slow lock/prepare), the engine projects 30s of REMAINING work.
@@ -1193,13 +1196,14 @@ test('history seed preserves per-step millis for tooltips', () => {
   assert.equal(stepTimingLabel(steps[1]), 'resolve-deps (1.2s)');
 });
 
-test('fmtStepMillis is compact for tooltips', () => {
-  assert.equal(fmtStepMillis(null), '');
-  assert.equal(fmtStepMillis(0), '0ms');
-  assert.equal(fmtStepMillis(360), '360ms');
-  assert.equal(fmtStepMillis(1200), '1.2s');
-  assert.equal(fmtStepMillis(12_000), '12s');
-  assert.equal(fmtStepMillis(65_000), '1m 5s');
+test('the compact duration face is what the step chain shows', () => {
+  const compact = (ms) => fmtDuration(ms, { compact: true });
+  assert.equal(compact(null), '');
+  assert.equal(compact(0), '0ms');
+  assert.equal(compact(360), '360ms');
+  assert.equal(compact(1200), '1.2s');
+  assert.equal(compact(12_000), '12s');
+  assert.equal(compact(65_000), '1m 05s');
   assert.equal(stepTimingLabel({ name: 'compile-tests', millis: 212 }), 'compile-tests (212ms)');
   assert.equal(stepTimingLabel({ name: 'compile-tests', millis: null }), 'compile-tests');
 });

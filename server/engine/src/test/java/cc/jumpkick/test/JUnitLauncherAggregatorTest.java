@@ -3,7 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.run.TestFailureInfo;
 import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
@@ -31,10 +31,9 @@ class JUnitLauncherAggregatorTest {
         assertThat(result.failed()).isEqualTo(1);
         assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.testName()).isEqualTo("c()");
             assertThat(f.method()).isEqualTo("c()");
             assertThat(f.className()).isEqualTo("C");
-            assertThat(f.testEngine()).isEqualTo("junit-jupiter");
+            assertThat(f.engine()).isEqualTo("junit-jupiter");
             assertThat(f.exceptionClass()).isEqualTo("AssertionError");
             assertThat(f.message()).isEqualTo("nope");
             assertThat(f.stack()).contains("at C.c(C.java:1)");
@@ -111,7 +110,7 @@ class JUnitLauncherAggregatorTest {
                 + "\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
         var result = agg.toResult(0);
         assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.testName()).isEqualTo("floats the lock");
+            assertThat(f.method()).isEqualTo("floats the lock");
         });
     }
 
@@ -216,7 +215,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failures())
                 .singleElement()
-                .extracting(TestSummary.Failure::testName)
+                .extracting(TestFailureInfo::method)
                 .isEqualTo("(test run)");
     }
 
@@ -266,7 +265,7 @@ class JUnitLauncherAggregatorTest {
                 + "\tat cc.jumpkick.Boot.main(Boot.java:1)";
         var result = agg.toResult(1, crash); // no events, non-zero exit
         assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.testName()).isEqualTo("(test run)");
+            assertThat(f.method()).isEqualTo("(test run)");
             assertThat(f.stack()).contains("NoClassDefFoundError").contains("at cc.jumpkick.Boot.main");
         });
     }

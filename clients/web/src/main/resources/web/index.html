@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
-  <!-- Iconography is inline SVG via <jk-icon> (app.js). Brand: jumpkick-logo.webp in chrome;
+  <!-- Iconography is inline SVG via <jk-icon> (icons.js). Brand: jumpkick-logo.webp in chrome;
        jk-logo.svg monogram as favicon. -->
   <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
        builds. Update the integrity hash whenever the pin moves (docs/contributors/webclient.md). -->
@@ -22,9 +22,11 @@
   <script src="https://unpkg.com/echarts@5.5.1/dist/echarts.min.js"
           integrity="sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR"
           crossorigin="anonymous" defer></script>
-  <!-- Monaco (vs-dark) is the #project/<id>/files viewer; code.js lazy-loads it from the same CDN
-       on first open. It must load after these UMD globals — its AMD loader claims window.define
-       (docs/contributors/webclient.md). -->
+  <!-- Monaco (vs-dark) is the #project/<id>/files viewer; monaco.js lazy-loads it from the same
+       CDN on first open. It must load after these UMD globals — its AMD loader claims
+       window.define (docs/contributors/webclient.md). -->
+  <!-- The SPA's one entry point. Everything else is reached from it by static `import`, so the
+       browser orders the module graph and there is no load order to get wrong here. -->
   <script src="/app.js" type="module"></script>
 </head>
 <body>
@@ -150,7 +152,7 @@
             </span>
           </span>
           <span v-if="outcome(card) !== 'running'" class="ago"
-                :data-tip="fmtDateTime(card.finishedAt) || undefined">{{ ago(card) }}</span>
+                :data-tip="fmtDateTime(card.finishedAt) || undefined">{{ ago(card.finishedAt) }}</span>
         </div>
 
         <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar"
@@ -282,7 +284,7 @@
               <span>{{ p.total }} build{{ p.total === 1 ? '' : 's' }}</span>
               <template v-if="p.avgMillis"><span class="proj-sep">·</span><span>avg {{ duration(p.avgMillis) }}</span></template>
               <template v-if="p.lastFinishedAt"><span class="proj-sep">·</span><span class="when-tip"
-                :data-tip="fmtDateTime(p.lastFinishedAt) || undefined">{{ agoMillis(p.lastFinishedAt) }}</span></template>
+                :data-tip="fmtDateTime(p.lastFinishedAt) || undefined">{{ ago(p.lastFinishedAt) }}</span></template>
             </div>
           </div>
         </div>
@@ -356,7 +358,7 @@
         </div>
       </template>
 
-      <!-- JK-1542: above build history; closed by default; fetch + echarts only when open. -->
+      <!-- above build history; closed by default; fetch + echarts only when open. -->
       <section v-if="projectGraphOpen && selectedProjectDir" class="panel wide dep-graph-panel">
         <div class="panel-head">
           <span class="lbl">dependency graph</span>
@@ -380,7 +382,7 @@
                   <td><template v-if="r.tests">{{ r.tests.succeeded }} / {{ r.tests.total }}</template><template v-else>—</template></td>
                   <td :class="{ ok: r.savedPct >= 50 }"><template v-if="r.saved">{{ r.saved }} <span class="dim">({{ r.savedPct }}%)</span></template><template v-else>—</template></td>
                   <td>{{ duration(r.millis) }}</td>
-                  <td class="when-tip" :data-tip="fmtDateTime(r.finishedAt) || undefined">{{ agoMillis(r.finishedAt) }}</td>
+                  <td class="when-tip" :data-tip="fmtDateTime(r.finishedAt) || undefined">{{ ago(r.finishedAt) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -447,9 +449,9 @@
               <dl>
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ gib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
                 <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ gib(cache.actionsBytes) }}</dd>
-                <dt>incremental</dt><dd :data-tip="'Zinc analysis state vs [cache] incremental-max-size-gb (' + mib(cache.incrementalMaxBytes) + ')'">{{ count(cache.incrementalCount) }} · {{ mib(cache.incrementalBytes) }} · {{ incrementalUsedPct() }}% used</dd>
+                <dt>incremental</dt><dd :data-tip="'Zinc analysis state vs [cache] incremental-max-size-gb (' + mib(cache.incrementalMaxBytes, 1) + ')'">{{ count(cache.incrementalCount) }} · {{ mib(cache.incrementalBytes, 1) }} · {{ incrementalUsedPct() }}% used</dd>
                 <dt>format stamps</dt><dd :data-tip="'Count of empty stamp files vs cap (' + formatStampsMaxLabel() + ')'">{{ count(cache.formatStampsCount) }} · {{ formatStampsUsedPct() }}% used</dd>
-                <dt>derived</dt><dd data-tip="Small caches with their own retention (hash memos, format indexes, extracted trees) — bounded by count or supersession, so no budget bar">{{ count(cache.derivedCount) }} · {{ mib(cache.derivedBytes) }} apparent</dd>
+                <dt>derived</dt><dd data-tip="Small caches with their own retention (hash memos, format indexes, extracted trees) — bounded by count or supersession, so no budget bar">{{ count(cache.derivedCount) }} · {{ mib(cache.derivedBytes, 1) }} apparent</dd>
               </dl>
             </template>
             <div v-else class="dim small">Action cache loading…</div>
@@ -579,7 +581,7 @@
       </div>
     </div>
 
-    <!-- New project (JK-1193) -->
+    <!-- New project -->
     <div v-if="newProjectOpen" class="modal-bg" @click.self="closeNewProject()">
       <div class="modal new-project-modal">
         <div class="modal-head">
@@ -699,7 +701,7 @@
           <dt>Load</dt><dd class="mono">{{ loadPercent() }}</dd>
           <dt>Load avg (1m)</dt><dd class="mono">{{ loadAverageText() != null ? loadAverageText() : '—' }}</dd>
           <dt>System RAM</dt><dd class="mono">{{ status ? gib(status.totalMemoryBytes) : '—' }}</dd>
-          <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.availableMemoryBytes ?? status.freeMemoryBytes) : '—' }}</dd>
+          <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.availableMemoryBytes) : '—' }}</dd>
           <dt>Dashboard docs</dt><dd class="mono">docs/contributors/webclient.md</dd>
         </dl>
         <div class="modal-foot">

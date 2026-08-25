@@ -12,6 +12,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import cc.jumpkick.task.IoLedger;
 import java.io.BufferedReader;
@@ -163,6 +164,66 @@ class JobEnvelopeTest {
         env.enforceDeadline(7L, Session.CancelToken.live(), null, null, 1234L);
         assertThat(host.accumulator.wasCancelled()).isTrue();
         assertThat(host.accumulator.cancelReason()).contains("1234ms");
+    }
+
+    /**
+     * The row a Ctrl-C leaves behind. The CLI has exited {@code 130} since JK-2417 while the
+     * journal wrote {@code 1} for the same run, and no cancelled row said who stopped it — a user
+     * interrupt and a wall deadline both read as a bare {@code cancelled=true}. Asserted on the
+     * persisted record, because the process exit was already right; the journal is what lied.
+     */
+    @Test
+    void a_user_cancel_journals_the_interrupt_code_and_names_the_user() {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
+        JobEnvelope env = new JobEnvelope(host);
+
+        env.beginUserCancel(11L, Session.CancelToken.live(), null, 0L, true);
+
+        BuildRecord record = host.journalRecord();
+        assertThat(record.cancelled()).isTrue();
+        assertThat(record.exitCode()).isEqualTo(Exit.INTERRUPTED);
+        assertThat(host.accumulator.cancelReason()).contains("Ctrl-C");
+        assertThat(record.diagnostics())
+                .as("the reason rides the record, so a job with no wire writer still says who")
+                .anyMatch(d -> "cancelled".equals(d.code()) && d.message().contains("Ctrl-C"));
+    }
+
+    /**
+     * Two cancels, one flag: both rows say {@code cancelled} and both carry the interrupt code, so
+     * the only thing that can tell a user's Ctrl-C from a wall deadline is the reason.
+     */
+    @Test
+    void a_wall_deadline_is_distinguishable_in_the_record_from_a_user_cancel() {
+        FakeHost byUser = new FakeHost();
+        byUser.accumulator = new BuildAccumulator("build", "/p", null, "cli");
+        new JobEnvelope(byUser).beginUserCancel(1L, Session.CancelToken.live(), null, 0L, true);
+
+        FakeHost byDeadline = new FakeHost();
+        byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
+        new JobEnvelope(byDeadline).enforceDeadline(2L, Session.CancelToken.live(), null, null, 1234L);
+
+        assertThat(byUser.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);
+        assertThat(byDeadline.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);
+        assertThat(byUser.accumulator.cancelReason())
+                .isNotEqualTo(byDeadline.accumulator.cancelReason())
+                .doesNotContain("deadline");
+        assertThat(byDeadline.accumulator.cancelReason()).contains("wall deadline");
+    }
+
+    /**
+     * A client that vanished mid-job is a cancel, but it is not something the user asked for — the
+     * reason must not claim a Ctrl-C nobody pressed.
+     */
+    @Test
+    void a_client_that_disconnects_mid_job_is_not_recorded_as_a_deliberate_cancel() {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
+
+        new JobEnvelope(host).beginUserCancel(3L, Session.CancelToken.live(), null, 0L, false);
+
+        assertThat(host.accumulator.wasCancelled()).isTrue();
+        assertThat(host.accumulator.cancelReason()).contains("disconnected").doesNotContain("Ctrl-C");
     }
 
     @Test

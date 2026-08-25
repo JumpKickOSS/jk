@@ -19,10 +19,6 @@ public interface BuildPluginContext {
     /** Register a generated-artifact task. */
     void task(TaskSpec spec);
 
-    /** @deprecated use {@link #task(TaskSpec)} */
-    @Deprecated
-    default void step(TaskSpec spec) { task(spec); }
-
     /** Register the main-artifact packager (plan §3.3) — at most one per project. */
     void packaging(PackagerSpec spec);
 

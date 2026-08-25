@@ -39,6 +39,40 @@ class CacheInventoryOpsTest {
         assertThat(Files.exists(child)).isFalse();
     }
 
+    /**
+     * The store root itself, not an empty directory where it was. {@code jk storage nuke} and
+     * {@code jk self nuke --data} both print this path under "Path to Delete"; emptying it is the
+     * over-promise JK-2455 removed for the cache and state roots and left here. Nothing guarded is
+     * under it: {@code <store>/lib} (installed tools) is wiped by this pass already, and the
+     * engine jar and credentials the nuke keeps live beside the store, under the data root.
+     */
+    @Test
+    void wipe_store_removes_the_store_root_it_named(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path tool =
+                Files.createDirectories(store.resolve("lib/jk-java-compiler")).resolve("plugin.jar");
+        Files.writeString(tool, "plugin");
+
+        CacheInventoryAck wipe = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), false));
+
+        assertThat(wipe.files()).isEqualTo(1);
+        assertThat(store).doesNotExist();
+    }
+
+    /** A dry run counts and leaves the root standing — it is the confirm screen's pre-count. */
+    @Test
+    void wipe_store_dry_run_keeps_the_store_root(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Files.writeString(store.resolve("blob"), "abc");
+
+        CacheInventoryAck dry = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), true));
+
+        assertThat(dry.files()).isEqualTo(1);
+        assertThat(store).isDirectory();
+    }
+
     @Test
     void wipe_store_counts_hardlinked_blobs_once(@TempDir Path store) throws Exception {
         org.junit.jupiter.api.Assumptions.assumeTrue(probeHardLink(store), "hard links required");

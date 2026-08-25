@@ -2,11 +2,24 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerKsp.kotlinJavaSourceRoots;
+import static cc.jumpkick.runtime.PlannerKsp.kspGeneratedSources;
+import static cc.jumpkick.runtime.PlannerKsp.pluginContributedSources;
+import static cc.jumpkick.runtime.PlannerKsp.sourceGenStepSteps;
+import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
+import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
+import static cc.jumpkick.runtime.PlannerNative.groovySources;
+import static cc.jumpkick.runtime.PlannerNative.javaSources;
+import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
+import static cc.jumpkick.runtime.PlannerSupport.copyResources;
+import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
+import static cc.jumpkick.runtime.PlannerSupport.mainStampClasspath;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
@@ -305,9 +318,8 @@ public final class PlannerCompile {
                             groovyJar,
                             scalaSetup));
                     String taskId = ActionKey.qualifiedTaskId("compile-main", javaOut);
-                    Path javaStateDir = CacheTree.ACTIONS
-                            .under(in.cache())
-                            .resolve("incremental-java")
+                    Path javaStateDir = ActionTree.INCREMENTAL_JAVA
+                            .under(CacheTree.ACTIONS.under(in.cache()))
                             .resolve(taskId);
                     // Reweight the bar slice now that the real request is known: a CAS
                     // action-cache hit means a cheap hard-link restore (3), not a full
@@ -516,9 +528,8 @@ public final class PlannerCompile {
                     // dir with javac's output (it would delete the.class files).
                     Path ktOut = ctx.require(LAYOUT).kotlinClassesDir();
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, classes);
-                    Path workingDir = CacheTree.ACTIONS
-                            .under(in.cache())
-                            .resolve("incremental-kotlin")
+                    Path workingDir = ActionTree.INCREMENTAL_KOTLIN
+                            .under(CacheTree.ACTIONS.under(in.cache()))
                             .resolve(taskId);
                     // Mixed module: Kotlin reads the Java declarations from source
                     // (analysis only — it emits no Java bytecode; javac does next).

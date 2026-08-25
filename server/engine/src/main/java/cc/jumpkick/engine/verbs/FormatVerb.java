@@ -108,6 +108,11 @@ public final class FormatVerb implements HostedVerb {
                         rewriteConfig != null ? Path.of(rewriteConfig) : null,
                         (path, status, message, index, total) -> host.sendQuiet(
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
+                // `result.success()` is the run's verdict on every surface — this event, the journal
+                // row PlanBurst stamps from it, and the CLI's wedge. It is false when the worker
+                // died mid-run (FormatPlans.reconcile), so a partial format is never reported as a
+                // complete one. Note the counts below are three of five tallies: `unparseable` is
+                // plan-local by design, so changed+clean+errors need not sum to total.
                 return host.streamSinglePlan(
                         plan,
                         session,

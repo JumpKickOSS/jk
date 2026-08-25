@@ -186,7 +186,21 @@ public final class LockfileReader {
                 modules,
                 jkMin,
                 manifestsSha,
-                projectId);
+                projectId,
+                toNativeMetadata(result.getTable("native")));
+    }
+
+    /**
+     * The {@code [native]} pin, or null when the lock predates it or no module declares {@code
+     * [native]}. A table with no {@code metadata-repository} is the same as no table: there is
+     * nothing to extract without a version, and the checksum alone pins nothing.
+     */
+    private static Lockfile.NativeMetadata toNativeMetadata(TomlTable table) {
+        if (table == null) return null;
+        String version = table.getString("metadata-repository");
+        if (version == null || version.isBlank()) return null;
+        String checksum = table.getString("checksum");
+        return new Lockfile.NativeMetadata(version, checksum == null || checksum.isBlank() ? null : checksum);
     }
 
     private static Lockfile.Artifact toArtifact(TomlTable table) {

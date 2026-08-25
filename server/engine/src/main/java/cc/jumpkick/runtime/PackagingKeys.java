@@ -100,7 +100,7 @@ public final class PackagingKeys {
 
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the key the live step will
-     * compute. Dep jars must come from {@link BuildPlanner#assemblyDependencyJars} — never the
+     * compute. Dep jars must come from {@link PlannerSupport#assemblyDependencyJars} — never the
      * whole workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm
      * assembly. Sibling jars missing after clean are fingerprinted via CAS shas recovered from
      * each sibling's package record.
@@ -125,10 +125,10 @@ public final class PackagingKeys {
                 compileMainKey,
                 knownResourceDrift);
         // Same jar set as PlannerTails.assemblyStep (ModuleRuntimeClasspath).
-        List<Path> depJars = BuildPlanner.assemblyDependencyJars(dir, project, lockFile, cache);
+        List<Path> depJars = PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache);
         PluginBuild.Declarations pkgDecls;
         try {
-            pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
+            pkgDecls = PlannerSupport.pluginDeclarationsFor(project, layout, cache);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -138,7 +138,7 @@ public final class PackagingKeys {
                 dir,
                 project,
                 classesTok,
-                BuildPlanner.contributionsToken(BuildPlanner.existingContributedDirs(pkgDecls, layout)),
+                PlannerSupport.contributionsToken(PlannerSupport.existingContributedDirs(pkgDecls, layout)),
                 fingerprintDepJars(depJars, actionCache, restoredJarShas));
         return TaskForecaster.present(actionCache, keyed.key());
     }
@@ -416,7 +416,7 @@ public final class PackagingKeys {
         return owner != null
                 && owner.decls() != null
                 && owner.decls().packager() != null
-                && BuildPlanner.ownsMainArtifact(owner.active());
+                && PlannerPackage.ownsMainArtifact(owner.active());
     }
 
     private static String orEmpty(String s) {

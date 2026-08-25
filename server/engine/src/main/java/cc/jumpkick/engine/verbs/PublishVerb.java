@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.jobs.JobKind;
@@ -80,6 +82,7 @@ public final class PublishVerb implements HostedVerb {
                         null,
                         null,
                         null,
+                        false,
                         false),
                 "web");
     }
@@ -101,6 +104,14 @@ public final class PublishVerb implements HostedVerb {
                             case "bearer" -> new RepoCredential.Bearer(Jsonl.str(requestLine, "token"));
                             default -> RepoCredential.ANONYMOUS;
                         };
+                // The one credential the engine does not resolve: the CLI resolved it (env,
+                // keychain and settings.xml are read client-side by design) and shipped it over
+                // the socket. RepoCredentialResolver files every value it resolves, so this decode
+                // is the only path by which a live credential enters the engine unfiled — and a
+                // publish is exactly where a transport error quotes a 401 body or a header back at
+                // the user. Filed against the request's directory rather than the ambient session:
+                // the session below does not exist yet.
+                ResolvedSecrets.recordFor(entryDir, credential.secret());
                 PublishPlans.Request req = new PublishPlans.Request(
                         URI.create(Jsonl.str(requestLine, "repoUrl")),
                         Jsonl.str(requestLine, "region"),
@@ -115,6 +126,7 @@ public final class PublishVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "sbom", false),
                         credential);
                 Session session = Session.defaults()
+                        .withConfig(JkConfig.empty().withOffline(Jsonl.bool(requestLine, "offline", false)))
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache)
                         .withCancel(cancelToken);

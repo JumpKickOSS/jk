@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
@@ -565,7 +566,7 @@ class BuildLogicSupportTest {
                 logic = "off"
                 """);
         Files.writeString(project.resolve(".jk-build/src/X.java"), "class X {}");
-        assertTrue(BuildLogicSupport.config(project).isEmpty());
+        assertTrue(BuildLogicToml.resolve(project).isEmpty());
     }
 
     @Test

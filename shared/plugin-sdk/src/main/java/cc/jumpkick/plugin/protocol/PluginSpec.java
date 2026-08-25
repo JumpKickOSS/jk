@@ -44,6 +44,7 @@ public final class PluginSpec {
     private final Map<String, Path> extras = new LinkedHashMap<>();
     private final Map<String, String> secrets = new LinkedHashMap<>();
     private final List<String> commandArgs = new ArrayList<>();
+    private boolean offline = true;
 
     private PluginSpec() {}
 
@@ -143,6 +144,7 @@ public final class PluginSpec {
                             String.valueOf(Jsonl.str(line, PluginProtocol.KEY)),
                             String.valueOf(Jsonl.str(line, PluginProtocol.VALUE)));
                 case PluginProtocol.COMMAND_ARGS -> s.commandArgs.addAll(Jsonl.strArray(line, PluginProtocol.VALUES));
+                case PluginProtocol.OFFLINE -> s.offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
                 default -> {
                     // unknown line — forward-compat
                 }
@@ -275,5 +277,14 @@ public final class PluginSpec {
 
     public List<String> commandArgs() {
         return commandArgs;
+    }
+
+    /**
+     * Whether this job forbids network access — the engine's {@code --offline}, stamped onto the
+     * spec at the fork. True when the spec carries no {@link PluginProtocol#OFFLINE} line: a worker
+     * launched without a stated policy must not reach out.
+     */
+    public boolean offline() {
+        return offline;
     }
 }

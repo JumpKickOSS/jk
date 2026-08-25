@@ -20,7 +20,7 @@ class CacheReportBoundsTest {
 
     @Test
     void only_a_tier_bounded_by_bytes_publishes_a_byte_denominator() {
-        String json = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 << 20, 1 << 30, 0, 0, 0, 0, 0)
+        String json = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 << 20, 1 << 30, 0, 0, 0, 0, 0, 0, 0)
                 .toJson()
                 .toString();
 

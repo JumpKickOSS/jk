@@ -20,6 +20,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.JkDirs;
@@ -140,10 +141,8 @@ public final class StatusCommand implements CliCommand {
         int sources = forecast != null ? forecast.sourceCount : project.sourceCount;
         int tests = forecast != null ? forecast.testCount : project.testCount;
         // Prefer last history test totals when the journal recorded them.
-        if (lastHistory != null) {
-            long ht = Jsonl.longValue(lastHistory, "testsTotal", -1);
-            if (ht >= 0) tests = (int) ht;
-        }
+        TestSummary lastTests = TestSummary.readCounts(lastHistory);
+        if (lastTests != null) tests = (int) lastTests.total();
         kv("Sources", formatCount(sources));
         kv("Tests", formatCount(tests));
     }
@@ -261,7 +260,7 @@ public final class StatusCommand implements CliCommand {
             return new CacheSnapshot(
                     CacheCommand.fmtBytes(s.root().bytes()),
                     formatCount(s.cacheCas().files()),
-                    formatCount(s.actions().files()));
+                    formatCount(s.actionKeys().files()));
         } catch (IOException e) {
             return new CacheSnapshot("—", "—", "—");
         }

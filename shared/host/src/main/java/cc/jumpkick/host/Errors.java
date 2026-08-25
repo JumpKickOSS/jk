@@ -16,4 +16,19 @@ public final class Errors {
         String m = t.getMessage();
         return m == null || m.isBlank() ? t.toString() : m;
     }
+
+    /**
+     * The one sentence jk uses when it declines to reach the network because the run is offline.
+     * {@code target} is the URL, host or coordinate the caller wanted; naming it is the difference
+     * between a refusal a user can act on and one they have to guess at.
+     *
+     * <p>It lives here because the callers do not share anything else: {@code OfflineException}
+     * (the transport's typed form, in {@code shared/client-io}) renders this text, and so do the
+     * forked plugin workers that bypass jk's HTTP client entirely and can only reach {@code
+     * :host}. A refusal should read identically whichever of them produced it.
+     */
+    public static String offlineRefusal(String target) {
+        return "offline: refusing outbound request to " + target
+                + " (drop --offline / unset JK_OFFLINE to allow network)";
+    }
 }

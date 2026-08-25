@@ -16,6 +16,7 @@ import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -215,12 +216,10 @@ public final class HistoryCommand extends GroupCommand {
             }
             String jk = Jsonl.str(record, "jkVersion");
             if (jk != null) CliOutput.out("  jk:       " + jk);
-            long testsTotal = Jsonl.longValue(record, "testsTotal", -1);
-            if (testsTotal >= 0) {
-                CliOutput.out("  tests:    " + testsTotal + " total, "
-                        + Jsonl.longValue(record, "testsSucceeded", 0) + " passed, "
-                        + Jsonl.longValue(record, "testsFailed", 0) + " failed, "
-                        + Jsonl.longValue(record, "testsSkipped", 0) + " skipped");
+            TestSummary tests = TestSummary.readCounts(record);
+            if (tests != null) {
+                CliOutput.out("  tests:    " + tests.total() + " total, " + tests.succeeded() + " passed, "
+                        + tests.failed() + " failed, " + tests.skipped() + " skipped");
             }
 
             printRows(

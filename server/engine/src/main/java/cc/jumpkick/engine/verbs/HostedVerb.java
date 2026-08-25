@@ -29,10 +29,6 @@ public interface HostedVerb {
 
     String threadPrefix();
 
-    default VerbRequest decode(VerbInput in) {
-        return new VerbRequest(wireType(), jobKind().verb(), in.requestLine());
-    }
-
     /** HTTP/MCP job kinds this verb serves ({@code build}, {@code assemble}, …); empty = not exposed. */
     default List<String> jobKinds() {
         return List.of();

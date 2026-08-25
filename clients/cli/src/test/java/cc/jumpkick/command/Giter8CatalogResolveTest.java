@@ -63,7 +63,7 @@ class Giter8CatalogResolveTest {
     void help_known_lists_sources() {
         var cfg = new JkTemplatesConfig(
                 JkTemplatesConfig.DEFAULT_OFFICIAL,
-                List.of(new JkTemplatesConfig.Source("acme", "https://github.com/acme/t", Optional.empty())));
+                List.of(new JkTemplatesConfig.Source("acme", "https://github.com/acme/t")));
         String h = Giter8Catalog.helpKnown(cfg);
         assertThat(h).contains("cli").contains("jk-templates").contains("acme");
     }

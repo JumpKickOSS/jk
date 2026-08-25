@@ -2,8 +2,11 @@
 package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
@@ -244,7 +247,7 @@ class JvmOptionsTest {
                 string-dedup = false
                 args = ["-XX:+AlwaysPreTouch"]
                 """);
-        PluginTuning s = PluginTunings.fromToml(toml);
+        PluginTuning s = JkBuildParser.jvmTuning(toml);
         assertThat(s.maxRamPercent()).isEqualTo(33.0);
         assertThat(s.gc()).isEqualTo("g1");
         assertThat(s.stringDedup()).isFalse();
@@ -255,7 +258,25 @@ class JvmOptionsTest {
     void missing_jvm_table_is_empty(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, "group=\"x\"\nname=\"y\"\nversion=\"1\"\n");
-        assertThat(PluginTunings.fromToml(toml)).isEqualTo(PluginTuning.NONE);
+        assertThat(JkBuildParser.jvmTuning(toml)).isEqualTo(PluginTuning.NONE);
+    }
+
+    /**
+     * {@code [jvm]} is read by the manifest owner, so the owner's interpolation whitelist decides
+     * what a {@code [jvm]} value may contain. A JVM flag sourced from the environment is exactly
+     * what {@link cc.jumpkick.config.Interpolation} exists to refuse: it feeds a worker fork
+     * without feeding the action key.
+     */
+    @Test
+    void jvm_table_interpolation_is_rejected(@TempDir Path dir) throws Exception {
+        Path toml = dir.resolve("jk.toml");
+        Files.writeString(toml, """
+                [jvm]
+                gc = "${MY_GC}"
+                """);
+        assertThatThrownBy(() -> JkBuildParser.jvmTuning(toml))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jvm.gc");
     }
 
     @Test

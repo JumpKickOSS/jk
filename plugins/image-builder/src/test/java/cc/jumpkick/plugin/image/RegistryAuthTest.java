@@ -245,6 +245,11 @@ class RegistryAuthTest {
         }
 
         @Override
+        public boolean offline() {
+            return false;
+        }
+
+        @Override
         public ProjectFacts project() {
             return null;
         }

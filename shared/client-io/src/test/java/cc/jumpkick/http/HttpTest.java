@@ -18,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
@@ -108,7 +107,7 @@ class HttpTest {
     @Test
     void offline_short_circuits_with_offline_exception() {
         var prev = SessionContext.current().config();
-        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(Optional.of(true))));
+        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(true)));
         try {
             assertThatThrownBy(() -> http().get(base.resolve("/anything")))
                     .isInstanceOf(OfflineException.class)
@@ -143,7 +142,7 @@ class HttpTest {
     @Test
     void the_offline_refusal_carries_no_credential() {
         var prev = SessionContext.current().config();
-        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(Optional.of(true))));
+        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(true)));
         try {
             assertThatThrownBy(() -> http().get(URI.create("https://alice:s3cr3t-token@nexus.example.com/a.jar")))
                     .isInstanceOf(OfflineException.class)

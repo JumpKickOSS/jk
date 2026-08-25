@@ -39,11 +39,50 @@ dependencies {
     "testRuntimeOnly"(libs.findLibrary("junit-platform-launcher").orElseThrow())
 }
 
-// Two-tier tests (suite performance):
-//   ./gradlew test              — unit/fast (exclude integration|slow|bench|network); target <5 min
-//   ./gradlew integrationTest   — engine/e2e/network/worker suites
-// Tag classes with @Tag("integration"), @Tag("slow"), @Tag("bench"), or @Tag("network").
-val slowTags = listOf("integration", "slow", "bench", "network")
+// Four-tier tests, one tier per tag (docs/contributors/test-suite-tiers.md):
+//   ./gradlew test              — unit/fast, untagged only; target <5 min. The PR gate.
+//   ./gradlew integrationTest   — @Tag(integration|slow): engine/e2e/worker suites. In checkAll.
+//   ./gradlew networkTest       — @Tag(network): talks to a real remote. Nightly, NOT in checkAll.
+//   ./gradlew benchTest         — @Tag(bench): microbench, asserts no deltas. On demand.
+//
+// The filters below are GENERATED from `TestTiers` (buildSrc/src/main/kotlin/TestTiers.kt), which
+// is the single owner of the tag→task routing. Two half-tables here is what JK-2447 removed: `test`
+// excluded four tags and `integrationTest` re-included two, so `@Tag("bench")` was run by no task
+// at all. Guard G23 re-derives the partition from the same object, so the tiers and the guard
+// cannot drift.
+val slowTags = TestTiers.slowTags
+
+fun TestTier.applyTo(spec: org.gradle.api.tasks.testing.junitplatform.JUnitPlatformOptions) {
+    if (include.isNotEmpty()) spec.includeTags(*include.toTypedArray())
+    if (exclude.isNotEmpty()) spec.excludeTags(*exclude.toTypedArray())
+}
+
+fun tier(name: String): TestTier = TestTiers.all.first { it.task == name }
+
+// ---------------------------------------------------------------------------
+// Test tasks that exec a tool this build does not produce, and the tool each one runs.
+//
+// One table rather than a copy per module, for the reason JK-2465 was filed: the hole is generic
+// (any test that shells out to a binary jk does not build) and it was fixed once, here. Adding
+// `protoc` or `bundletool` is a line in this map, not a new pattern in a module script. The map is
+// keyed `<project path>:<task name>` because the answer is per *tier*, not per module — only
+// `:engine:integrationTest` forks git for the backend-parity matrix, but `:engine:test` reaches it
+// too through `GitFetcherBackendSelectionTest`, so both are listed rather than assumed.
+//
+// Measured 2026-08-24 by scanning every `src/test/**` for `ProcessBuilder`/`Runtime.exec` and
+// reading each call site: 21 test files fork a process, 19 of them a JDK tool out of
+// `System.getProperty("java.home")` (`java`, `jshell`, `keytool`) which Gradle already tracks as
+// the Test task's `javaLauncher`. The two that reach outside the JDK are the ones below.
+//   * `:web` — `WebClientJsTest` runs `node --test` over `src/test/js`.
+//   * `:engine` — `GitCliExtension.detect()` runs `git --version`, and the CLI arm of the
+//     backend-parity matrix simply vanishes when it comes back empty (`GitBackendsTestSupport`).
+//     A git that appears or disappears must therefore re-run the suite, which is exactly what an
+//     identity of "absent" vs a version line buys.
+// ---------------------------------------------------------------------------
+val externalTestRuntimes: Map<String, List<Pair<String, String?>>> = mapOf(
+        ":web:test" to listOf("node" to null),
+        ":engine:test" to listOf("git" to "JK_GIT"),
+        ":engine:integrationTest" to listOf("git" to "JK_GIT"))
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
@@ -87,42 +126,91 @@ tasks.withType<Test>().configureEach {
     val testTmp = layout.buildDirectory.dir("tmp")
     doFirst { testTmp.get().asFile.mkdirs() }
     systemProperty("java.io.tmpdir", testTmp.get().asFile.absolutePath)
+    // ServiceLoader-registered JUnit extensions are OFF unless a tier says otherwise, and every
+    // tier is now told rather than left to inherit (JK-2447). JUnit's own default is false, so
+    // this changes no behaviour today — what it changes is that a NEW tier cannot pick up a
+    // different answer by accident. Two modules register an extension this switch controls:
+    //   * `:cli` — `EngineTestExtension` (materialize the jar, stop the engine after every class).
+    //     `:cli:integrationTest` turns it back on; the unit tier must not spawn engines, so the
+    //     difference between those two tiers is deliberate and lives in clients/cli/build.gradle.kts.
+    //   * `:resolver` — `ResolveProcessCacheExtension` (drop process-wide resolve memos between
+    //     tests). Wanted in every tier, so server/resolver/build.gradle.kts turns it on for all of
+    //     them. It used to be a `junit-platform.properties` on the test classpath, which is a
+    //     second mechanism for the same policy and invisible to anyone reading the build.
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
+    // The external runtime this tier execs is an input (JK-2465); see `externalTestRuntimes`.
+    val declared = externalTestRuntimes["${project.path}:$name"].orEmpty()
+    if (declared.isNotEmpty()) {
+        val probeCache = rootProject.layout.buildDirectory.dir("external-tool-probe").get().asFile
+        // Through the provider API, not System.getenv: inside a long-lived daemon the latter is the
+        // environment the daemon *started* with, so pointing PATH at a different node would not be
+        // noticed until some later build restarted it. Same reason clients/web reads JK_WEB_JS_SKIP
+        // this way.
+        val searchPath = providers.environmentVariable("PATH").getOrElse("")
+        declared.forEach { (tool, envOverride) ->
+            val override = envOverride?.let { providers.environmentVariable(it).orNull }
+            inputs.property(
+                    "externalRuntime.$tool",
+                    ExternalToolVersions.identity(probeCache, tool, searchPath, override))
+        }
+    }
 }
 
 tasks.named<Test>("test") {
-    description = "Unit/fast tests (excludes @Tag integration|slow|bench|network)"
-    useJUnitPlatform {
-        excludeTags(*slowTags.toTypedArray())
-    }
+    description = "Unit/fast tests (excludes @Tag " + slowTags.joinToString("|") + ")"
+    useJUnitPlatform { tier(TestTiers.UNIT).applyTo(this) }
     // Parallel forks for pure unit modules. CLI overrides to 1 for integration only.
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
     // Suite budget: hang becomes a fail, not a 20+ min stall.
     timeout.set(Duration.ofMinutes(8))
 }
 
-// Same classpath/sources as test; different tag filter + longer budget.
-val integrationTest by tasks.registering(Test::class) {
-    description = "Integration/slow tests (@Tag integration|slow). Not part of check by default."
-    group = "verification"
-    val testSourceSet = sourceSets["test"]
-    testClassesDirs = testSourceSet.output.classesDirs
-    classpath = testSourceSet.runtimeClasspath
-    useJUnitPlatform {
-        includeTags("integration", "slow")
-        excludeTags("bench")
+/** A slow tier: same classpath and sources as `test`, its own tag filter and budget. */
+fun slowTier(tierName: String, budget: Duration, describe: String) {
+    tasks.register<Test>(tierName) {
+        description = describe
+        group = "verification"
+        val testSourceSet = sourceSets["test"]
+        testClassesDirs = testSourceSet.output.classesDirs
+        classpath = testSourceSet.runtimeClasspath
+        useJUnitPlatform { tier(tierName).applyTo(this) }
+        shouldRunAfter(tasks.named("test"))
+        systemProperty("junit.jupiter.execution.timeout.default", "300s")
+        systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
+        timeout.set(budget)
+        // Inherit hermetic env from withType<Test> configureEach above.
     }
-    shouldRunAfter(tasks.named("test"))
-    systemProperty("junit.jupiter.execution.timeout.default", "300s")
-    systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
-    timeout.set(Duration.ofMinutes(45))
-    // Inherit hermetic env from withType<Test> configureEach above.
 }
 
-// Optional: full verification including integration (nightly / merge gates).
+slowTier(
+        TestTiers.INTEGRATION,
+        Duration.ofMinutes(45),
+        "Integration/slow tests (@Tag integration|slow). Part of checkAll, not of check.")
+
+// @Tag("network") used to be excluded by `test` and re-included by nothing, so the only class
+// carrying it reached the gate through its second tag (`slow`) — which meant the documented
+// pre-merge bar hit Maven Central, and Sonatype's per-IP quota decided whether a PR was green
+// (JK-1277). Its own task, off the gate, is the honest answer: the tag runs, and it runs nightly.
+slowTier(
+        TestTiers.NETWORK,
+        Duration.ofMinutes(30),
+        "Tests that talk to a real remote (@Tag network). Nightly only — never in checkAll.")
+
+// @Tag("bench") is off the gate for a different reason: a microbench prints medians and asserts
+// nothing about deltas, so gating on it would gate on CI noise. Before JK-2447 that intent was
+// spelled as an exclusion in both tasks, which is indistinguishable from an accident and left
+// ForkedJavacAotBenchTest run by nothing. Now it has a task, and the reason is written down.
+slowTier(
+        TestTiers.BENCH,
+        Duration.ofMinutes(30),
+        "Microbenchmarks (@Tag bench). Prints medians, gates nothing — run on demand.")
+
+// Optional: full verification including integration (nightly / merge gates). Deliberately NOT
+// networkTest or benchTest — see TestTiers.NETWORK / TestTiers.BENCH for why each is off the gate.
 tasks.register("checkAll") {
     group = "verification"
     description = "Unit test + integrationTest for this module"
-    dependsOn(tasks.named("test"), integrationTest)
+    dependsOn(TestTiers.gating.map { tasks.named(it) })
 }
 
 // ---------------------------------------------------------------------------
@@ -732,7 +820,7 @@ fun ratchetVerdict(
 //
 // The owner is in `shared/host`, not `server/io` as the ticket first said. `:android` sees only
 // `:plugin-sdk` and `:toolchain-jdk` sees only `:core` + `:client-io`, so neither can reach
-// `server/io`; `:host` is the JDK-only floor all 31 modules already link (JK-2407), and JAXP is JDK.
+// `server/io`; `:host` is the JDK-only floor all 30 modules already link (JK-2407), and JAXP is JDK.
 //
 // Scope is `src/main/java` *and* `src/test/java`. A test parsing XML has the same posture to get
 // wrong, and the one that did — `PomExporterTest`, checking a POM it had just written — is one call
@@ -1016,7 +1104,7 @@ tasks.named("jar") { dependsOn(checkSingleTruthSet) }
 //
 // A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
 // measured, not assumed — since JK-2407 `Hashing` lives in `:host`, which `:plugin-sdk` re-exports
-// with `api`, so all 16 plugin workers see it; JK-2416 added `:host` to `:jk-api`, the last module
+// with `api`, so all 15 plugin workers see it; JK-2416 added `:host` to `:jk-api`, the last module
 // that could not reach it.
 //
 // Scope is `src/main/java`. A test that recomputes an expected digest by hand is checking jk's
@@ -1233,9 +1321,9 @@ tasks.named("jar") { dependsOn(checkNoHandRolledHex) }
 // 3 (`NativePreflight:90`, `NativeImageDriver:320`, `:379`) — all filename spellings, none a step.
 //
 // A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
-// measured, not assumed — 14 of the 31 modules carry `:jk-api` on their compile classpath (it is
+// measured, not assumed — 14 of the 30 modules carry `:jk-api` on their compile classpath (it is
 // an `api` dependency of both `:core` and `:wire`, which pulls in most of the tree), and those 14
-// are exactly the ones that name a step today. The other 17 are the plugin workers and the leaf
+// are exactly the ones that name a step today. The other 16 are the plugin workers and the leaf
 // libraries (`host`, `cli-terminal`, `dynamic-surface`, `plugin-sdk`, `web`, …). None of them
 // names a step, and the guard firing on one that starts to is the right outcome, not a trap:
 // either it takes the dependency — `:jk-api` is a pure model module, not `:core` — or the name
@@ -1411,7 +1499,7 @@ tasks.named("jar") { dependsOn(checkNoBareManifestName) }
 //
 // Reachability was measured, not assumed: the four modules with an exit site today are `:cli`,
 // `:engine`, `:plugin-sdk` and `:quarkus`, and since JK-2407 `Exit` lives in `:host`, which
-// `:plugin-sdk` re-exports with `api` — so all 16 plugins can see it. `Exit`'s values are
+// `:plugin-sdk` re-exports with `api` — so all 15 plugins can see it. `Exit`'s values are
 // `static final int` and inline at compile time, so even the `compileOnly` worker jars need
 // nothing extra on their runtime classpath.
 //
@@ -2135,38 +2223,22 @@ val treeLocalRepoName = "treeLocal"
 //      resolvable and still is not. The published set is collected from every `MavenPublication` in
 //      the tree, so adding or removing a publication moves the guard the same minute.
 //
-// A ratchet, not a ban, for exactly one reason: five worker publications still name `:core`,
-// `:io`, `:toolchain` and `:dynamic-surface`, which JK-2466 deliberately keeps internal
-// (publishing them is a stated non-goal). Those nine coordinates are listed below and nothing else
-// is allowed — a tenth, or a different coordinate in one of those five, fails the build. Delete an
-// entry when the module stops naming an unpublished sibling; the guard prints the stale ones.
+// A ban with no exceptions. It shipped as a nine-entry ratchet only because sixteen worker modules
+// also ran `maven-publish`, and Gradle rendered their project dependencies on `:core` / `:io` /
+// `:toolchain` / `:dynamic-surface` as `jk:core:unspecified` and friends. Those publications were a
+// second POM producer for a GAV whose real POM is written by `writeWorkerPom`, and nothing read
+// them; JK-2497 deleted them rather than allowlisting their output forever, so the allowlist went
+// 9 → 0. Measured 2026-08-24: two publications in the tree (`cc.jumpkick:jk-host`,
+// `cc.jumpkick:jk-plugin-sdk`), two generated POMs scanned, zero exceptions. A module that
+// reintroduces `maven-publish` gets the same ban — give the target a group, a version and a
+// publication, or do not name it.
 //
 // Scope is `build/publications/**/pom-default.xml`, i.e. every POM `maven-publish` generates in
 // this module. The flattened worker POM written next to the jar by `writeWorkerPom` is a different
-// producer with a different rule (it resolves the whole runtime classpath and installs every
-// coordinate it names into the local store) and is not in scope.
+// producer with a different rule — it resolves the whole runtime classpath and stages a jar for
+// every coordinate it names — and is covered instead by `PublishedWorkerPomTest` in `:auditor`,
+// which resolves that closure the way a worker launch does.
 // ---------------------------------------------------------------------------
-
-/**
- * POM dependencies on an internal module this build does not publish, one per line as
- * `<module> <group>:<artifact>`.
- *
- * Every entry is a worker publication naming `:core` / `:io` / `:toolchain` / `:dynamic-surface`.
- * Making them honest means publishing those modules, which JK-2466 lists as a non-goal — they are
- * engine internals, not a consumer surface. The worker install path does not use these POMs:
- * `writeWorkerPom` flattens the runtime classpath itself and stages every jar it names, so the
- * coordinates below are unreachable in practice as well as unpublished.
- */
-val unpublishedPomDeps = setOf(
-        ":auditor jk:core",
-        ":compat-bridge jk:core",
-        ":compat-bridge jk:io",
-        ":compat-bridge jk:toolchain",
-        ":image-builder jk:core",
-        ":image-builder jk:io",
-        ":minified jk:dynamic-surface",
-        ":publisher jk:core",
-        ":publisher jk:io")
 
 /** One `<tag>value</tag>` out of a POM fragment. */
 fun pomTag(fragment: String, tag: String): String? =
@@ -2202,7 +2274,6 @@ pluginManager.withPlugin("maven-publish") {
         val fallbackGroup = rootProject.name
         val fallbackVersion = Project.DEFAULT_VERSION
         val here = project.path
-        val ratchet = unpublishedPomDeps
         val treeRoot = rootProject.layout.projectDirectory.asFile
         val stamp = layout.buildDirectory.file("guards/published-pom-coordinates.ok")
         outputs.file(stamp)
@@ -2218,7 +2289,6 @@ pluginManager.withPlugin("maven-publish") {
             }
 
             val hits = mutableListOf<String>()
-            val seen = mutableSetOf<String>()
             fun fault(group: String?, artifact: String?, version: String?): String? = when {
                 version == fallbackVersion ->
                         "version is Gradle's $fallbackVersion default — the target module sets none"
@@ -2243,9 +2313,7 @@ pluginManager.withPlugin("maven-publish") {
                             val a = pomTag(block, "artifactId")
                             val v = pomTag(block, "version")
                             val reason = fault(g, a, v) ?: return@forEach
-                            val key = "$here $g:$a"
-                            seen.add(key)
-                            if (key !in ratchet) hits.add("  $rel: $g:$a:$v — $reason")
+                            hits.add("  $rel: $g:$a:$v — $reason")
                         }
             }
             if (hits.isNotEmpty()) {
@@ -2257,13 +2325,6 @@ pluginManager.withPlugin("maven-publish") {
                         + " depending on it from a published module. Pinning a groupId and a"
                         + " version onto a dependency whose target nobody publishes produces a POM"
                         + " that looks resolvable and still is not.")
-            }
-
-            val stale = ratchet.filter { it.startsWith("$here ") && it !in seen }
-            if (stale.isNotEmpty()) {
-                logger.lifecycle("unpublishedPomDeps is loose (these no longer violate — delete"
-                        + " them from jk.java-conventions.gradle.kts in this commit):")
-                stale.sorted().forEach { logger.lifecycle("  $it") }
             }
             stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
         }
@@ -2430,3 +2491,183 @@ val checkOneJsonCodec by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkOneJsonCodec) }
 tasks.named("jar") { dependsOn(checkOneJsonCodec) }
+
+// ---------------------------------------------------------------------------
+// Guard G23 (JK-2447): every @Tag is run by exactly one test task.
+//
+// Defect it prevents: a test that is never executed by anything, and is invisible because no task
+// goes red. A `@Tag` is a routing decision, and before this the routing lived in two half-tables —
+// `test` excluded four tags, `integrationTest` re-included two of them. `@Tag("bench")` was
+// excluded from both, so `ForkedJavacAotBenchTest` was run by no task in the repository; and
+// `@Tag("network")` reached the merge gate only because the one class carrying it also carried
+// `slow`, which is how the documented pre-merge bar came to depend on Maven Central (JK-1277).
+// Either half-table looks deliberate on its own. Only together do they show a hole.
+//
+// WHAT THIS GUARD WAS MEASURED AGAINST — 2026-08-24, whole tree, `src/test/java`:
+//     test source files                                                    914
+//     files importing org.junit.jupiter.api.Tag                            127
+//     files with at least one @Tag("...") literal                          127   <- arm 3's balance
+//     tagged elements (a class or method and its run of @Tag annotations)  130
+//     distinct tags   integration 107 · slow 21 · network 1 · bench 1 · [slow] 1 · brackets 1
+//     elements run by exactly one task, BEFORE                             129   (1 orphan: bench)
+//     elements run by exactly one task, AFTER                              130
+//
+// Three arms. They are not independent, and the header says so rather than implying three
+// detectors where there is one prover, one locator and one closure check:
+//   1. TOTALITY — the prover, and it does not read the tree at all. Every subset of
+//      `TestTiers.vocabulary` (every tag the table mentions, in an include, an exclude or
+//      `slowTags`) — all 2^4 of them today, enumerated, not sampled — must be run by exactly one
+//      tier. This is the arm that would have caught the original defect on the day `bench` was
+//      added to the exclude list without being added to an include list, with no tagged test in
+//      existence yet, and it is the arm that fires when a fifth tag arrives without a tier.
+//   2. NO ORPHAN IN THE TREE — the locator. Each run of `@Tag` annotations on one declaration is
+//      resolved through `TestTier.runs`, JUnit's own include/exclude semantics, against every
+//      tier. Zero tasks is an orphan; two is a test charged to two budgets. Granularity is the
+//      annotation run rather than the file, because a class-level tag and a method-level tag route
+//      independently — `LauncherPathTest` has one of each. Given arm 1 green and arm 3 green this
+//      arm cannot fail — the tag set of any element is then a subset of a proven-total vocabulary
+//      plus tags no tier filters on. That is the point: it exists to name the FILE AND LINE when
+//      arm 1 fires, because "@Tag[bench] — no task runs it" does not tell you that
+//      `ForkedJavacAotBenchTest` is the class you lost, and to keep proving the scan resolves real
+//      tags through the real evaluator. The arms are reported together for that reason; arm 1 does
+//      not short-circuit.
+//   3. NO UNOWNED VOCABULARY — the closure check, and the arm that catches a typo.
+//      `@Tag("intergration")` is excluded by nothing, so it silently runs in the fast tier and arm
+//      2 is happy with it; the 8-minute unit budget is not. Any tag outside
+//      `TestTiers.vocabulary` must therefore be named in `testTagFixtures` below. The same arm
+//      carries the blindness check: a file that imports `Tag` and yields no literal means the
+//      annotation shape moved (or a tag is written as a constant, which is unmatchable and equally
+//      unwanted) and arms 2 and 3 are reading nothing.
+//
+// The tier table is READ FROM THE OWNER, `TestTiers`, which is also what generates the
+// `useJUnitPlatform { }` filters above — so the guard cannot pass against a partition the build
+// does not actually use. A copy of the tag list in this script would be the second place to keep
+// in sync, which is the defect it exists to prevent.
+//
+// Scope is `src/test/java`; production code carries no `@Tag`, and the scan is over source rather
+// than over the compiled test classpath so it holds before anything is built.
+// ---------------------------------------------------------------------------
+
+/**
+ * Tags that are deliberately NOT tier routing, one per line as `tag — why`.
+ *
+ * `plugins/test-runner`'s `LauncherPathTest.Tagged` is a fixture: jk's own test-runner worker has
+ * to filter tags itself, and the fixture exists to prove it survives a tag containing regex
+ * metacharacters. They are untagged as far as Gradle is concerned — nothing excludes them, so the
+ * fixture runs in the fast tier with the rest of the class, which is where it belongs.
+ */
+val testTagFixtures = mapOf(
+        "[slow]" to "LauncherPathTest fixture: a tag with regex metacharacters in it",
+        "brackets" to "LauncherPathTest fixture: the sibling plain tag it is compared against")
+
+val checkNoOrphanTestTags by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a @Tag no test task runs, or one no tier owns"
+    val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
+    inputs.files(testJava).withPropertyName("testJava")
+    // The tier table is an input in its own right: edit TestTiers.kt and every module re-checks.
+    inputs.property("tierTable", TestTiers.all.toString())
+    inputs.property("tagFixtures", testTagFixtures.keys.sorted().toString())
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/no-orphan-test-tags.ok")
+    outputs.file(stamp)
+    doLast {
+        val problems = mutableListOf<String>()
+
+        // --- 1. the tier table is a total partition of the tag vocabulary --------------------
+        val faults = TestTiers.partitionFaults()
+        if (faults.isNotEmpty()) {
+            problems.add("Every tag combination must be run by exactly one test task"
+                    + " (JK-2447). TestTiers does not partition its own vocabulary:\n"
+                    + faults.joinToString("\n")
+                    + "\n  Adding a tag to TestTiers.slowTags takes it out of `test`; it needs a"
+                    + " tier that includes it, or the exclusion is a hole. Two tiers running the"
+                    + " same combination charges one test to two budgets.")
+        }
+
+        // --- 2 + 3. what the tree actually declares ------------------------------------------
+        val tagLiteral = Regex("""@Tag\("([^"]*)"\)""")
+        // Between two @Tag annotations of the SAME declaration there is only whitespace and other
+        // annotations. Anything else — a modifier, a type, a brace — starts a new declaration.
+        val sameDeclaration = Regex("""\s*(?:@\w+(?:\([^)]*\))?\s*)*""")
+        val orphans = mutableListOf<String>()
+        val unowned = mutableListOf<String>()
+        val blind = mutableListOf<String>()
+        var importers = 0
+        var literalFiles = 0
+        var elements = 0
+        testJava.files.sorted().forEach { f ->
+            val raw = f.readText()
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            val imports = Regex("""^\s*import\s+org\.junit\.jupiter\.api\.Tag\s*;""",
+                    RegexOption.MULTILINE).containsMatchIn(raw)
+            if (imports) importers++
+            val code = blankNonCode(raw, blankStrings = false)
+            val hits = tagLiteral.findAll(code).toList()
+            if (hits.isEmpty()) {
+                if (imports) {
+                    blind.add("  $rel: imports org.junit.jupiter.api.Tag and declares no"
+                            + " @Tag(\"...\") literal")
+                }
+                return@forEach
+            }
+            literalFiles++
+            var i = 0
+            while (i < hits.size) {
+                var j = i
+                while (j + 1 < hits.size
+                        && sameDeclaration.matchEntire(code.substring(hits[j].range.last + 1,
+                                hits[j + 1].range.first)) != null) {
+                    j++
+                }
+                val tags = hits.subList(i, j + 1).map { it.groupValues[1] }.toSet()
+                val line = code.take(hits[i].range.first).count { it == '\n' } + 1
+                elements++
+                val tiers = TestTiers.tiersFor(tags)
+                if (tiers.size != 1) {
+                    val what = if (tiers.isEmpty()) "NO task runs it" else "run by $tiers"
+                    orphans.add("  $rel:$line: @Tag${tags.sorted()} — $what")
+                }
+                tags.filterNot { it in TestTiers.vocabulary || it in testTagFixtures }
+                        .sorted()
+                        .forEach { unowned.add("  $rel:$line: @Tag(\"$it\")") }
+                i = j + 1
+            }
+        }
+
+        if (orphans.isNotEmpty()) {
+            problems.add("Every @Tag must be run by exactly one test task (JK-2447). These are"
+                    + " not:\n" + orphans.joinToString("\n")
+                    + "\n  A tag excluded from `test` and included by no other tier is a test that"
+                    + " never executes and never goes red. Give the tag a tier in"
+                    + " buildSrc/src/main/kotlin/TestTiers.kt, or stop excluding it.")
+        }
+        if (unowned.isNotEmpty()) {
+            problems.add("A @Tag that no tier owns runs in the fast tier by default, which is how"
+                    + " a typo becomes a slow `test` task (JK-2447). These tags are in neither"
+                    + " TestTiers.vocabulary nor testTagFixtures:\n" + unowned.sorted().joinToString("\n")
+                    + "\n  Spell it as one of " + TestTiers.vocabulary + ", give it a tier of its"
+                    + " own, or — if it is a fixture for jk's own tag filtering rather than a"
+                    + " routing decision — name it in testTagFixtures with the reason.")
+        }
+        if (blind.isNotEmpty()) {
+            problems.add("This guard reads @Tag(\"...\") literals out of the source. These files"
+                    + " import the annotation and yield none, so it is reading nothing about"
+                    + " them:\n" + blind.joinToString("\n")
+                    + "\n  Either the annotation is written as @Tag(SOME_CONSTANT) — which no scan"
+                    + " can route and which hides the tier a test runs in from anyone grepping —"
+                    + " or the import is dead. Write the tag as a literal, or drop the import.")
+        }
+        if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
+
+        logger.info("no-orphan-test-tags: {} files, {} importing Tag, {} with literals,"
+                + " {} tagged elements, each run by exactly one of {}",
+                testJava.files.size, importers, literalFiles, elements,
+                TestTiers.all.map { it.task })
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+// `check` only, not `jar`: this guard reads test sources, and hanging it off `jar` would make a
+// production artifact's task graph depend on them. Since JK-2498 `checkAll` depends on every
+// module's `check`, so `check` alone reaches the gate.
+tasks.named("check") { dependsOn(checkNoOrphanTestTags) }

@@ -73,7 +73,7 @@ export function loopback() {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(location.hostname);
 }
 
-/** Latched process generation for fail-closed API calls (JK-1724). */
+/** Latched process generation for fail-closed API calls. */
 export function engineEpoch() {
   return sessionStorage.getItem(EPOCH_KEY) || null;
 }
@@ -103,9 +103,9 @@ export function noteEngineEpoch(statusOrEpoch) {
     sessionStorage.setItem(EPOCH_KEY, next);
     return 'mismatch';
   }
-  // Epoch-consistent hydrate: the tab and engine agree, so any pending reload latch is stale
-  // (JK-1793). Clearing it here keeps the flag purely as an in-flight-reload latch — a genuine
-  // restart after this point must hard-refresh on first detection, not be swallowed.
+  // Epoch-consistent hydrate: the tab and engine agree, so any pending reload latch is stale.
+  // Clearing it here keeps the flag purely as an in-flight-reload latch — a genuine restart after
+  // this point must hard-refresh on first detection, not be swallowed.
   clearReloadLatch();
   return 'ok';
 }
@@ -115,7 +115,7 @@ function clearReloadLatch() {
 }
 
 /**
- * Unsaved-work probe (JK-1973). The editor owning a dirty buffer registers a zero-arg function
+ * Unsaved-work probe. The editor owning a dirty buffer registers a zero-arg function
  * returning truthy while unsaved edits exist; {@link hardRefreshForEpoch} then asks before
  * discarding them instead of silently reloading over the buffer. One guard is enough — the Files
  * pane is the only editable surface.
@@ -215,9 +215,8 @@ async function handleEpochConflict(resp) {
 
 /**
  * GET an /api path as parsed JSON. Throws {status, error?} on any non-2xx so callers can branch on
- * 401 or show the server's message (the engine puts a human-readable `error` in 4xx bodies —
- * JK-1624). Optional {@code opts.signal} (AbortSignal) cancels the fetch when a lazy panel is
- * closed. {@code opts.bootstrap} skips the epoch header (only for GET /api/status discovery).
+ * 401 or show the server's message (the engine puts a human-readable `error` in 4xx bodies).
+ * Optional {@code opts.signal} (AbortSignal) cancels the fetch when a lazy panel is closed. {@code opts.bootstrap} skips the epoch header (only for GET /api/status discovery).
  */
 export async function get(path, opts = {}) {
   const bootstrap = !!opts.bootstrap || path === '/api/status' || path.startsWith('/api/status?');
@@ -288,7 +287,7 @@ export async function del(path) {
 
 /**
  * Engine event types the dashboard listens for (EventSource needs a listener per named event).
- * Build activity is folded by fold.js; `status` / `cache` update chrome vitals (JK-1495+).
+ * Build activity is folded by fold.js; `status` / `cache` update chrome vitals.
  */
 const EVENT_TYPES = [
   'request-start',
@@ -329,7 +328,7 @@ const COALESCE_TYPES = new Set([
  * connection comes and goes. EventSource reconnects on its own after NETWORK errors only — any
  * non-200 response (503 while the engine respawns or the SSE budget is exhausted, 421 bad Host)
  * closes it permanently, so the caller's offline poll re-creates the source when it finds
- * readyState CLOSED (JK-1518). An HTTP-enabled engine never idles out (docs/http.md), so
+ * readyState CLOSED. An HTTP-enabled engine never idles out (docs/http.md), so
  * 'offline' only ever means an explicit stop, an upgrade respawn, or a crash. EventSource cannot
  * send headers, so non-loopback origins carry the token as a query parameter.
  *
@@ -356,7 +355,7 @@ export function events(onEvent, onState) {
     const rid = data && data.jid != null ? data.jid : '';
     // progress is per-module; label targets a specific STEP row — with parallel workers in
     // one plan, a (type, rid, dir) key let step B's pending label overwrite step A's before the
-    // drain, leaving A's detail stale until its next tick (JK-1848).
+    // drain, leaving A's detail stale until its next tick.
     if (type === 'label') {
       return type + ':' + rid + ':' + ((data && data.dir) || '') + ':' + ((data && (data.task || data.step)) || '');
     }
@@ -420,7 +419,7 @@ export function events(onEvent, onState) {
 
   // A drain armed on rAF never fires once the tab hides (background tabs get no animation
   // frames): drainScheduled stayed true, every later scheduleDrain() no-opped, and an overnight
-  // build's frames piled up unapplied for hours (JK-1838). Re-arm on a macrotask at the hide
+  // build's frames piled up unapplied for hours. Re-arm on a macrotask at the hide
   // transition; drain() clears the flag first, so a stale rAF firing on the next show just
   // drains whatever is left. The listener unhooks itself once the stream is closed.
   const rearmOnHide = () => {
@@ -445,7 +444,7 @@ export function events(onEvent, onState) {
   return source;
 }
 
-/** Shared ECharts tooltip chrome (JK-1726) — soft Jk Dark panel, not a harsh black slab. */
+/** Shared ECharts tooltip chrome — soft Jk Dark panel, not a harsh black slab. */
 export function echartsTooltipChrome(cssVar) {
   const mono = cssVar('--mono', 'monospace');
   return {

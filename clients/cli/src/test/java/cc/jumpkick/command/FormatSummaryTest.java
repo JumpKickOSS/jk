@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.model.command.Exit;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
@@ -90,6 +91,19 @@ class FormatSummaryTest {
 
         assertThat(line.replaceAll("\u001B\\[[;\\d]*m", ""))
                 .isEqualTo(Glyphs.cross() + " unparseable: src/main/java/A.java");
+    }
+
+    /**
+     * A plan failure and {@code --check} drift must not arrive at the shell as the same number.
+     * Drift exits with the worker's own {@code 1}; a plan that did not run to completion — since
+     * JK-2474 that includes a worker that died mid-format — exits {@link Exit#SOFTWARE}. When these
+     * two collapse onto one value, no script can tell "your files need formatting" from "the
+     * formatter died", which is exactly the eight-meanings-for-one-integer problem {@code Exit} was
+     * created to end.
+     */
+    @Test
+    void a_failed_plan_and_check_drift_do_not_share_an_exit_code() {
+        assertThat(FormatCommand.PLAN_FAILED).isEqualTo(Exit.SOFTWARE).isNotEqualTo(Exit.FAILURE);
     }
 
     @Test

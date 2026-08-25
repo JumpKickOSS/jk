@@ -13,8 +13,11 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code jk new --plugin} writes a hardcoded jk-plugin-sdk version; this tripwire keeps
- * the renderer pin, {@code PluginSdkVersion.VERSION}, and the plugin-sdk Gradle version in sync.
+ * {@code jk new --plugin} writes a hardcoded jk-plugin-sdk version; this tripwire holds it against
+ * the one owner of that version, the {@code version} line {@code :plugin-sdk} publishes under. A
+ * Gradle script cannot read a Java constant, so the renderer's copy cannot be deleted — but it can
+ * be checked, and this is the check. (JK-2430 deleted the third copy, {@code
+ * PluginSdkVersion.VERSION}: no production code read it.)
  */
 class PluginSdkScaffoldVersionTest {
 
@@ -23,16 +26,12 @@ class PluginSdkScaffoldVersionTest {
         Path repo = findRepoRoot();
         assumeTrue(repo != null, "not running inside the jk repo");
 
-        String sdkSource = Files.readString(
-                repo.resolve("shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/PluginSdkVersion.java"));
-        Matcher m = Pattern.compile("VERSION = \"([^\"]+)\"").matcher(sdkSource);
-        assertThat(m.find()).as("PluginSdkVersion.VERSION literal").isTrue();
-        String sdk = m.group(1);
-
         String gradle = Files.readString(repo.resolve("shared/plugin-sdk/build.gradle.kts"));
-        assertThat(gradle)
-                .as("plugin-sdk artifact version mirrors PluginSdkVersion.VERSION")
-                .contains("version = \"" + sdk + "\"");
+        Matcher m = Pattern.compile("(?m)^version = \"([^\"]+)\"$").matcher(gradle);
+        assertThat(m.find())
+                .as("shared/plugin-sdk/build.gradle.kts declares the published SDK version")
+                .isTrue();
+        String sdk = m.group(1);
 
         NewInputs plugin = new NewInputs(
                 "com.example",

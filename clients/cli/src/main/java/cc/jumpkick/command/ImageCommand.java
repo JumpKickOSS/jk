@@ -9,7 +9,6 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.AggregateContext;
-import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
@@ -24,13 +23,9 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -250,39 +245,22 @@ public final class ImageCommand implements CliCommand {
         ModuleScopeHint.show(
                 "building", ModuleScopeHint.namesFrom(moduleInfo), global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
-        int[] finished = {0};
         ModuleOutcome.Image[] imageOut = {null};
         long start = System.nanoTime();
+        // Not buffered and no JSONL: like `jk compile`, this region is opened dormant under
+        // `--output json` and must write nothing above it.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Image", false, false), moduleDir, null, false);
         WorkspaceResult result;
         try {
-            result = EngineClient.runImageWorkspace(EnginePaths.current(), imageReq, new WorkspaceBuildListener() {
-                @Override
-                public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
-                    agg.applySnapshot(snap);
-                }
-
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan m) {
-                    return new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
-                }
-
-                @Override
-                public void onModuleFinish(ModuleOutcome o) {
-                    int n = ++finished[0];
-                    if (o.success() && o.image() != null) imageOut[0] = o.image();
-                    String completion =
-                            BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
-                    if (view.animating()) {
-                        view.addCompletion(completion);
-                    }
-                }
-            });
+            result = EngineClient.runImageWorkspace(EnginePaths.current(), imageReq, run.live(view, agg, o -> {
+                if (o.success() && o.image() != null) imageOut[0] = o.image();
+            }));
         } catch (IOException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!result.success()) {
-            view.finishBuildPlanFailure("image failed " + BuildCommand.elapsedSince(start));
+            view.finishBuildPlanFailure("image failed " + BuildTails.elapsedSince(start));
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
         // Same Pushed/Wrote/Loaded tail as the single-project chip (JK-2100).
@@ -290,7 +268,7 @@ public final class ImageCommand implements CliCommand {
         String tail = img != null
                 ? imageSuccessTail(img.tarball(), img.name(), img.version(), img.daemonExe(), img.ref())
                 : "image built";
-        view.finishBuildPlanSuccess(tail + " " + BuildCommand.elapsedSince(start));
+        view.finishBuildPlanSuccess(tail + " " + BuildTails.elapsedSince(start));
         return 0;
     }
 }

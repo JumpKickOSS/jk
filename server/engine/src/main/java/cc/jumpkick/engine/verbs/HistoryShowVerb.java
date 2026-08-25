@@ -11,6 +11,7 @@ import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.TestSummary;
 import java.io.BufferedWriter;
 import java.util.Objects;
 import java.util.Optional;
@@ -77,10 +78,11 @@ public final class HistoryShowVerb implements HostedVerb {
                             .put("cancelled", r.cancelled())
                             .put("exitCode", r.exitCode())
                             .put("jkVersion", r.jkVersion())
-                            .put("testsTotal", t != null ? t.total() : -1)
-                            .put("testsSucceeded", t != null ? t.succeeded() : -1)
-                            .put("testsFailed", t != null ? t.failed() : -1)
-                            .put("testsSkipped", t != null ? t.skipped() : -1)
+                            .putObject(
+                                    TestSummary.WIRE_KEY,
+                                    t == null
+                                            ? null
+                                            : TestSummary.countsMap(t.total(), t.succeeded(), t.failed(), t.skipped()))
                             .put("savedMillis", b != null ? b.savedMillis() : -1)
                             .put("estimatedUncachedMillis", b != null ? b.estimatedUncachedMillis() : -1)
                             .put("coveredSkips", b != null ? b.coveredSkips() : -1)

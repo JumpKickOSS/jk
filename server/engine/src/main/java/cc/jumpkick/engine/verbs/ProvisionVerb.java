@@ -45,7 +45,6 @@ public final class ProvisionVerb implements HostedVerb {
         try {
             try {
                 var outcome = CompatPlans.provision(
-                        Path.of(Jsonl.str(requestLine, "cache")),
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Path.of(Jsonl.str(requestLine, "toolsRoot")),
                         Jsonl.bool(requestLine, "noDiscover", false),
@@ -53,12 +52,7 @@ public final class ProvisionVerb implements HostedVerb {
                 host.sendQuiet(
                         writer,
                         ProtoEvents.provisionResult(
-                                outcome.bin(),
-                                outcome.version(),
-                                outcome.source(),
-                                outcome.error(),
-                                outcome.exit(),
-                                outcome.diag()));
+                                outcome.bin(), outcome.version(), outcome.source(), outcome.error(), outcome.exit()));
                 return outcome.exit() == Exit.SUCCESS ? JobOutcome.ok() : JobOutcome.failed(outcome.exit());
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));

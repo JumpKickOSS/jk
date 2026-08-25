@@ -119,7 +119,7 @@ class BuildLogicAnchorGatingTest {
         // Core + tails, same as jk build: since JK-2211 run-tests is a terminal LEAF joined by
         // the tails (never a package prerequisite), so a core-only build would prune it.
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
-        BuildPlanner.appendDeclaredTails(b, in);
+        PlannerTails.appendDeclaredTails(b, in);
         return b.build();
     }
 

@@ -15,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,7 +37,7 @@ class RebuildPackageStoreParityTest {
     }
 
     private static JkConfig rebuildConfig() {
-        return JkConfig.empty().withRebuild(Optional.of(true));
+        return JkConfig.empty().withRebuild(true);
     }
 
     @Test
@@ -58,7 +57,7 @@ class RebuildPackageStoreParityTest {
         Session session = Session.defaults().withConfig(rebuildConfig()).withCacheDir(cache);
         SessionContext.where(session, () -> {
             // Same store path the package step uses (must not no-op under rebuild).
-            BuildPlanner.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), true);
+            PlannerSupport.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), true);
             return null;
         });
 
@@ -83,7 +82,7 @@ class RebuildPackageStoreParityTest {
 
         Session session = Session.defaults().withCacheDir(cache);
         SessionContext.where(session, () -> {
-            BuildPlanner.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), false);
+            PlannerSupport.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), false);
             return null;
         });
 

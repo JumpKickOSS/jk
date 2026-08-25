@@ -199,6 +199,7 @@ public final class SyncPlans {
                     if (report.hasErrors()) {
                         throw new RuntimeException("dep fetch had errors");
                     }
+                    materializeNativeMetadata(ctx, lock, build, cache, repoUrl, dir, cas);
                 })
                 .build();
 
@@ -396,6 +397,37 @@ public final class SyncPlans {
      * it can't be had — a silent POM 404 used to surface only at worker launch as "has no Maven
      * POM; run `jk install`".
      */
+    /**
+     * Unpack the lock's {@code [native]} reachability-metadata pin into the artifact store.
+     *
+     * <p>{@code jk sync}'s promise is that a materialized store plus a lock is enough to build with
+     * the network off, and the pin is a locked download like any other — leaving it out would make
+     * an offline {@code jk native} silently drop every third-party reflection config the image
+     * needs. It rides {@code sync-cas} rather than a step of its own because the extracted tree,
+     * not a CAS blob, is what a build reads: extraction is the materialization.
+     *
+     * <p>{@code build} and {@code repoUrl} may be null — the manifest is re-read and the default
+     * repositories used, exactly as {@code sync-plugins} does.
+     *
+     * <p>Best-effort. A native build already degrades without the repository, so a sync that could
+     * not reach it warns rather than failing the whole materialization.
+     */
+    private static void materializeNativeMetadata(
+            TaskContext ctx, Lockfile lock, JkBuild build, Path cache, URI repoUrl, Path dir, Cas cas) {
+        Lockfile.NativeMetadata pin = lock.nativeMetadata();
+        if (pin == null) return;
+        ctx.label("sync reachability metadata " + pin.version());
+        try {
+            JkBuild project = build != null ? build : JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            ReachabilityMetadata.ensureExtracted(
+                    JkStores.storeRootFor(cache), RepoGroupBuilder.buildFor(project, repoUrl, cas), pin);
+        } catch (IOException | RuntimeException e) {
+            ctx.warn("native", "reachability metadata not materialized: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private static void ensureSiblingPom(TaskContext ctx, RepoGroup repos, Coordinate coord) {
         try {
             var pom = repos.tryFetchArtifact(

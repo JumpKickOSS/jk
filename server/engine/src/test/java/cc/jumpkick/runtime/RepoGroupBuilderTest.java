@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.task.RunNotices;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.URI;
@@ -19,10 +22,41 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class RepoGroupBuilderTest {
+
+    @BeforeEach
+    @AfterEach
+    void forgetRunNotices() {
+        RunNotices.clear();
+    }
+
+    /**
+     * One run, the way the engine scopes one: a fresh {@code Session} carries a fresh
+     * {@code IoLedger}, which is what {@code RunNotices} counts "once" against.
+     */
+    private static String inOneRun(Runnable body) {
+        var err = new ByteArrayOutputStream();
+        var original = System.err;
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        try {
+            SessionContext.runWhere(Session.defaults(), body);
+        } finally {
+            System.setErr(original);
+        }
+        return err.toString(StandardCharsets.UTF_8);
+    }
+
+    private static int occurrencesOf(String haystack, String needle) {
+        int n = 0;
+        for (int at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + needle.length())) n++;
+        return n;
+    }
 
     @Test
     void empty_declaration_defaults_to_jumpkick_central_google() {
@@ -99,26 +133,66 @@ class RepoGroupBuilderTest {
         assertThat(effective).extracting(RepositorySpec::name).containsExactly("jumpkick", "google", "central");
     }
 
+    private static final String UNBOUND_MARKER = "multiple repositories configured without exclusive";
+
+    private static final List<RepositorySpec> UNBOUND_PAIR = List.of(
+            new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/")),
+            new RepositorySpec("corp", URI.create("https://corp.example/maven/")));
+
+    private static final List<List<String>> NO_BINDINGS = List.of(List.of(), List.of());
+
+    /**
+     * {@code buildFor} runs once per module per planner — twenty call sites in the engine — so a
+     * warning it emits per call is a warning printed a dozen times for one fact. Both directions
+     * are asserted: exactly once across many calls, and not zero.
+     */
     @Test
-    void multi_repo_without_groups_emits_warn() {
-        List<RepositorySpec> multi = List.of(
-                new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/")),
-                new RepositorySpec("corp", URI.create("https://corp.example/maven/")));
-        // Smoke: does not throw; warn goes to stderr (once per call).
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(multi, List.of(List.of(), List.of()));
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(RepositorySpec.MAVEN_CENTRAL), List.of(List.of()));
-        // With exclusive bindings (JumpKick/Google defaults or user groups) — no warn.
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
-                List.of(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN),
-                List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
-                List.of(new RepositorySpec(
-                        "internal",
-                        URI.create("https://i.example/"),
-                        Optional.empty(),
-                        Optional.empty(),
-                        List.of("com.acme"))),
-                List.of(List.of("com.acme")));
+    void the_unbound_multi_repo_warning_is_said_once_however_many_times_the_group_is_built() {
+        String out = inOneRun(() -> {
+            for (int i = 0; i < 15; i++) {
+                RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(UNBOUND_PAIR, NO_BINDINGS);
+            }
+        });
+        assertThat(occurrencesOf(out, UNBOUND_MARKER)).isEqualTo(1);
+        assertThat(out).contains("dependency-confusion risk");
+    }
+
+    /**
+     * The other half of "once per run": the engine is a resident daemon, so a note armed with a
+     * process-wide flag is said to the first build after a restart and to nobody afterwards.
+     */
+    @Test
+    void the_next_run_says_it_again() {
+        assertThat(occurrencesOf(
+                        inOneRun(() -> RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(UNBOUND_PAIR, NO_BINDINGS)),
+                        UNBOUND_MARKER))
+                .isEqualTo(1);
+        assertThat(occurrencesOf(
+                        inOneRun(() -> RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(UNBOUND_PAIR, NO_BINDINGS)),
+                        UNBOUND_MARKER))
+                .as("a second build of the same project is a second run, and gets told too")
+                .isEqualTo(1);
+    }
+
+    /** A single repo, or any set with an exclusive binding, has nothing to warn about. */
+    @Test
+    void a_bound_or_single_repo_set_stays_quiet() {
+        String out = inOneRun(() -> {
+            RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
+                    List.of(RepositorySpec.MAVEN_CENTRAL), List.of(List.of()));
+            RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
+                    List.of(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN),
+                    List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
+            RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
+                    List.of(new RepositorySpec(
+                            "internal",
+                            URI.create("https://i.example/"),
+                            Optional.empty(),
+                            Optional.empty(),
+                            List.of("com.acme"))),
+                    List.of(List.of("com.acme")));
+        });
+        assertThat(out).doesNotContain(UNBOUND_MARKER);
     }
 
     private static final String USER = "alice";
@@ -168,22 +242,20 @@ class RepoGroupBuilderTest {
      */
     @Test
     void the_warning_is_emitted_once_per_repository_and_never_for_a_clean_url() {
-        var err = new ByteArrayOutputStream();
-        var original = System.err;
-        RepoGroupBuilder.resetUserInfoWarnings();
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
-        try {
+        String out = inOneRun(() -> {
             RepoGroupBuilder.maybeWarnUrlUserInfo(WITH_USER_INFO, RepoCredential.ANONYMOUS);
             RepoGroupBuilder.maybeWarnUrlUserInfo(WITH_USER_INFO, RepoCredential.ANONYMOUS);
             RepoGroupBuilder.maybeWarnUrlUserInfo(RepositorySpec.MAVEN_CENTRAL, RepoCredential.ANONYMOUS);
-        } finally {
-            System.setErr(original);
-        }
-        String out = err.toString(StandardCharsets.UTF_8);
+        });
         String marker = "jk: warning: repository `nexus`";
-        assertThat(out).contains(marker).doesNotContain(PASSWORD).doesNotContain("central");
-        assertThat(out.indexOf(marker)).isEqualTo(out.lastIndexOf(marker));
-        RepoGroupBuilder.resetUserInfoWarnings();
+        assertThat(out).doesNotContain(PASSWORD).doesNotContain("central");
+        assertThat(occurrencesOf(out, marker)).isEqualTo(1);
+
+        // And the next build hears it too — the dedup is scoped to the run, not to the daemon.
+        assertThat(occurrencesOf(
+                        inOneRun(() -> RepoGroupBuilder.maybeWarnUrlUserInfo(WITH_USER_INFO, RepoCredential.ANONYMOUS)),
+                        marker))
+                .isEqualTo(1);
     }
 
     /**
@@ -204,21 +276,16 @@ class RepoGroupBuilderTest {
         var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
         Files.writeString(tmp.resolve("config.toml"), "");
         System.setProperty("jk.env.JK_CONFIG_FILE", tmp.resolve("config.toml").toString());
-        RepoGroupBuilder.resetUserInfoWarnings();
 
-        var err = new ByteArrayOutputStream();
-        var original = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
-        RepoGroup group;
+        var built = new AtomicReference<RepoGroup>();
+        String out;
         try {
-            group = RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")), name -> null);
+            out = inOneRun(() ->
+                    built.set(RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")), name -> null)));
         } finally {
-            System.setErr(original);
             System.clearProperty("jk.env.JK_CONFIG_FILE");
-            RepoGroupBuilder.resetUserInfoWarnings();
         }
-
-        String out = err.toString(StandardCharsets.UTF_8);
+        RepoGroup group = built.get();
         assertThat(out)
                 .contains("jk: warning: repository `nexus`")
                 .doesNotContain(USER)

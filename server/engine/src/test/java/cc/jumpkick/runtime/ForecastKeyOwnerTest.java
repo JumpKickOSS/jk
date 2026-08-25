@@ -160,7 +160,7 @@ class ForecastKeyOwnerTest {
 
         List<String> expectedTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
-                "contrib:" + BuildPlanner.contributionsToken(List.of()),
+                "contrib:" + PlannerSupport.contributionsToken(List.of()),
                 "deps:" + ClasspathFingerprint.of(List.of()),
                 "main:t.Main",
                 "manifest:" + project.manifest(),
@@ -174,7 +174,7 @@ class ForecastKeyOwnerTest {
                 module,
                 project,
                 ClasspathFingerprint.entry(classes),
-                BuildPlanner.contributionsToken(List.of()),
+                PlannerSupport.contributionsToken(List.of()),
                 ClasspathFingerprint.of(List.of()));
         assertThat(keyed.tokens()).isEqualTo(expectedTokens);
         assertThat(keyed.key()).isEqualTo(expectedKey);

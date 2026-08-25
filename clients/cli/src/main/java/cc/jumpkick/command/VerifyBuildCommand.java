@@ -47,7 +47,6 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * {@code jk verify} — rebuild into a scratch copy and SHA-256-diff artifacts against {@code
@@ -255,19 +254,8 @@ public final class VerifyBuildCommand implements CliCommand {
 
     /** A config layer that sets only {@code rerun} — laid over the invocation's config. */
     private static JkConfig withRerun() {
-        return new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true), // rebuild: bypass jk's caches, but never re-fetch (offline-safe)
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        // rebuild: bypass jk's caches, but never re-fetch (offline-safe)
+        return JkConfig.empty().withRebuild(true);
     }
 
     // ---- module + artifact enumeration -------------------------------------

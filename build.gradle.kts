@@ -8,11 +8,31 @@ tasks.wrapper {
     distributionType = Wrapper.DistributionType.BIN
 }
 
-// Aggregate integration suite across all subprojects that register the task.
+// Aggregate the slow tiers across all subprojects that register them. One tier per tag; the table
+// is buildSrc/src/main/kotlin/TestTiers.kt and `checkAll` below runs `integrationTest` only.
 tasks.register("integrationTest") {
     group = "verification"
     description = "Run @Tag(integration|slow) tests in every module (not part of check)"
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "integrationTest" } })
+}
+
+// Deliberately NOT reachable from checkAll (JK-2447). These tests talk to a real remote, and
+// Sonatype enforces a per-IP quota on Maven Central that this repo has already been bitten by
+// (JK-1277) — a merge gate that needs the network fails for reasons the change did not cause.
+// Runs nightly in ci-nightly.yml, where a 429 costs a re-run rather than a blocked PR.
+tasks.register("networkTest") {
+    group = "verification"
+    description = "Run @Tag(network) tests in every module (nightly only, never in checkAll)"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "networkTest" } })
+}
+
+// Also not reachable from checkAll, for the opposite reason: a microbench prints medians and
+// asserts nothing about deltas, so gating on it would gate on CI noise. It still has to run
+// somewhere, which before JK-2447 it did not — @Tag("bench") was excluded from both tiers.
+tasks.register("benchTest") {
+    group = "verification"
+    description = "Run @Tag(bench) microbenchmarks in every module (on demand, gates nothing)"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "benchTest" } })
 }
 
 // JK-2498: `check`, not just `test`. Measured 2026-08-24: every build-failing guard in

@@ -46,26 +46,10 @@ final class HttpReadApi {
     void handleStatus(HttpExchange exchange) throws IOException {
         StatusSnapshot s = status.get();
         String served = url.get();
-        String body = JsonOut.object()
-                .put("version", s.version())
-                .put("pid", s.pid())
-                .put("startedAt", s.startedAtMillis())
-                .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
-                .put("activeRequests", s.activeRequests())
-                .put("activeBuildPlans", s.activeBuildPlans())
-                .put("peakActiveRequests", s.peakActiveRequests())
-                .put("peakActiveBuildPlans", s.peakActiveBuildPlans())
-                .put("heapUsedBytes", s.heapUsedBytes())
-                .put("heapCommittedBytes", s.heapCommittedBytes())
-                .put("heapMaxBytes", s.heapMaxBytes())
-                .put("rssBytes", s.rssBytes())
-                .put("aotTrainingPid", s.aotTrainingPid())
-                .put("cores", s.cores())
-                .put("totalMemoryBytes", s.totalMemoryBytes())
-                .put("availableMemoryBytes", s.availableMemoryBytes())
-                .put("systemCpuLoad", s.systemCpuLoad())
-                .put("systemLoadAverage", s.systemLoadAverage())
-                .put("engineEpoch", s.engineEpoch())
+        // Vitals come from StatusSnapshot.toJson() — the one serializer, shared with the SSE
+        // `status` frame. Only the fields below it are REST-only: URLs and config limits that do
+        // not change on a 2s tick and so never ride the live stream.
+        String body = s.toJson()
                 .put("httpUrl", served)
                 .put("mcpUrl", config.mcp().enabled() && served != null ? served.replaceAll("/+$", "") + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())

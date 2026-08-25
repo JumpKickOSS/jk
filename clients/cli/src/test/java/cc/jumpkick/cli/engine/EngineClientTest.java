@@ -273,27 +273,27 @@ class EngineClientTest {
         EngineInstall install = new EngineInstall(dir.resolve("lib"));
 
         // no override, nothing materialized: empty (caller must materialize or set JK_ENGINE_EXE)
-        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
+        assertThat(EngineSpawn.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
 
         // a version-skewed materialization never launches — the version match is the contract
         materialize(install, dir, "0.1.0");
-        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
+        assertThat(EngineSpawn.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
 
         // <data>/lib/jk-engine/<jar>: the JVM-hosted engine's fat jar
         Path engineJar = materialize(install, dir, "1.2.3");
         EngineSpawn.EngineArtifact viaLib =
-                EngineClient.resolveEngineArtifact(null, "1.2.3", install).orElseThrow();
+                EngineSpawn.resolveEngineArtifact(null, "1.2.3", install).orElseThrow();
         assertThat(viaLib.kind()).isEqualTo(EngineSpawn.EngineArtifact.Kind.JAR);
         assertThat(viaLib.path()).isEqualTo(engineJar.toString());
 
         // JK_ENGINE_EXE wins over the materialized jar, always a dedicated executable
-        EngineSpawn.EngineArtifact viaEnv = EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", install)
+        EngineSpawn.EngineArtifact viaEnv = EngineSpawn.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", install)
                 .orElseThrow();
         assertThat(viaEnv.kind()).isEqualTo(EngineSpawn.EngineArtifact.Kind.EXE);
         assertThat(viaEnv.path()).isEqualTo("/opt/jk/jk-engine");
 
         // a blank override is ignored, not obeyed
-        assertThat(EngineClient.resolveEngineArtifact("  ", "1.2.3", install)
+        assertThat(EngineSpawn.resolveEngineArtifact("  ", "1.2.3", install)
                         .orElseThrow()
                         .path())
                 .isEqualTo(viaLib.path());

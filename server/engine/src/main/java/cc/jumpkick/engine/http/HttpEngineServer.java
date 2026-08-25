@@ -232,7 +232,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * Bind, retrying briefly on {@link BindException}. The predecessor yields HTTP before sending
-     * {@code bye}, and {@code drainDisplaced} waits for that line, so the common path binds first
+     * {@code bye}, and {@code EngineElection.askPredecessorToYield} waits for that line, so the common path binds first
      * try. A bounded retry still covers a hair-trigger race or an unrelated occupant; if the port
      * is genuinely held, we give up quickly and serve without HTTP. (Port {@code 0} is OS-assigned
      * and never collides, so this is a no-op there.)

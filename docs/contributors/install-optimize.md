@@ -89,7 +89,9 @@ jk engine aot -O json      # machine-readable
 
 ### Training failure and retry semantics
 
-Worker training failures back off, but never permanently:
+Training failures back off, but never permanently. The claim-file backoff below is the worker
+trainer's own; the `.noaot` marker rules are shared with the engine's key, which lives in the same
+directory under the same marker:
 
 - **Trainer fails** (nonzero exit): a sticky `.noaot` marker sibling is written and the key is
   skipped — no retry storm from retrying on every compile.
@@ -98,7 +100,12 @@ Worker training failures back off, but never permanently:
   blocks retrains for ~10 minutes; the next compile after that retries.
 - **Marker TTL**: a `.noaot` marker older than **7 days** is treated as absent at read time and
   removed, giving a once-failed key a fresh training attempt. (A JDK/Kotlin/GC bump mints a new
-  key and retries immediately, marker or not.)
+  key and retries immediately, marker or not.) This applies to the engine's marker too: its key is
+  stable for the life of an install, so without the expiry one bad minute would disable engine AOT
+  until the next engine or JDK upgrade.
+- **Pending-row TTL**: a killed trainer leaves a `pending` row in `aot.toml` whose `.aot` file will
+  never appear, so no on-disk sweep can see it. A pending row older than **1 hour** — well past the
+  two-minute cap either trainer runs under — is dropped the next time the manifest is reconciled.
 
 Work runs on a **daemon idle thread** when `activeBuildPlans == 0` so client builds are not blocked.
 Within a maintenance workset, **`System.gc()` is always last** — after prune, journal/metrics

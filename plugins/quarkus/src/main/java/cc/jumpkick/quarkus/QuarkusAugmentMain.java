@@ -2,6 +2,7 @@
 package cc.jumpkick.quarkus;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.model.command.Exit;
 import io.quarkus.bootstrap.app.AugmentResult;
 import io.quarkus.bootstrap.app.CuratedApplication;
@@ -31,7 +32,7 @@ import java.util.Set;
  * Forked entry point for Quarkus production packaging.
  *
  * <p>Args: {@code projectRoot classesDir targetDir baseName group artifact version runtimeListFile
- * quarkusVersion}
+ * quarkusVersion offline}
  *
  * <p>Pure bootstrap — no {@code mvn} CLI. Builds an {@code ApplicationModel} via Quarkus's
  * embedded Maven resolver (BootstrapAppModelResolver), injects platform properties/descriptor,
@@ -45,10 +46,10 @@ import java.util.Set;
 public final class QuarkusAugmentMain {
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 9) {
+        if (args.length != 10) {
             System.err.println(
                     "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version"
-                            + " runtimeListFile quarkusVersion");
+                            + " runtimeListFile quarkusVersion offline");
             System.exit(Exit.USAGE);
         }
         Path appProjectRoot = Path.of(args[0]).toAbsolutePath().normalize();
@@ -60,15 +61,13 @@ public final class QuarkusAugmentMain {
         String version = args[6];
         Path runtimeList = Path.of(args[7]).toAbsolutePath().normalize();
         String quarkusVersion = args[8];
+        // Offline is a per-invocation decision the engine owns. It arrives as an argument, from
+        // TaskExec.offline() -> the plugin spec -> the engine's session. Reading JK_OFFLINE or a
+        // system property here would read the *engine daemon's* startup environment instead, so
+        // one `JK_OFFLINE=1 jk build` would silently pin every later build in that session.
+        boolean offline = EnvValues.parseBool(args[9]).orElse(false);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
-        // Offline is a per-invocation decision the engine owns. It reaches the augment as a system
-        // property and nothing else: reading JK_OFFLINE here would read the *engine daemon's*
-        // startup environment, so one `JK_OFFLINE=1 jk build` would silently pin every later build
-        // in that session offline. The engine cannot set it yet — TaskExec exposes no offline()
-        // accessor, so `--offline` stops at the engine's JkConfig (JK-2450 follow-up).
-        boolean offline =
-                EnvValues.parseBool(System.getProperty("jk.quarkus.offline")).orElse(false);
         System.err.println("jk-quarkus-augment: locked runtime closure="
                 + locked.artifacts().size() + (offline ? " offline" : "") + " pure-bootstrap");
 
@@ -136,7 +135,7 @@ public final class QuarkusAugmentMain {
                 + model.getDependencies().size());
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
-        injectPlatform(model, quarkusVersion, tails, maven);
+        injectPlatform(model, quarkusVersion, tails, maven, offline);
 
         String packageType = normalizePackageType(System.getProperty("jk.quarkus.package.type", "fast-jar"));
         Properties bsp = new Properties();
@@ -247,7 +246,8 @@ public final class QuarkusAugmentMain {
             io.quarkus.bootstrap.model.ApplicationModel model,
             String quarkusVersion,
             List<String> tails,
-            MavenArtifactResolver maven)
+            MavenArtifactResolver maven,
+            boolean offline)
             throws Exception {
         if (!(model.getPlatforms() instanceof PlatformImportsImpl platforms)) {
             System.err.println("jk-quarkus-augment: warning: cannot inject platform props (platforms type "
@@ -269,6 +269,15 @@ public final class QuarkusAugmentMain {
             }
         }
         if (propsPath == null) {
+            String coordinate =
+                    "io.quarkus.platform:quarkus-bom-quarkus-platform-properties:" + quarkusVersion + "!properties";
+            if (offline) {
+                // The tails are jk's store mirrors plus ~/.m2, and jk has never fetched a
+                // `properties`-typed platform descriptor into either — so on this path the scan
+                // always misses and the Aether fallback is the only branch. Under --offline that
+                // fallback would go to Central behind the flag's back; name the coordinate instead.
+                throw new IOException(Errors.offlineRefusal(coordinate));
+            }
             var art = new org.eclipse.aether.artifact.DefaultArtifact(
                     "io.quarkus.platform", "quarkus-bom-quarkus-platform-properties", "", "properties", quarkusVersion);
             propsPath = resolvedArtifactPath(maven.resolve(art).getArtifact());

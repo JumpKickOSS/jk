@@ -3,50 +3,47 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+
+const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
 
 const {
-  parseHashQuery,
-  routeFromHash,
-  buildProjectHash,
-  langFromPath,
-  codePathForFailure,
-  relativizeUnder,
-  posixJoin,
-  monacoLang,
-  viewerOptions,
-  lineDecorations,
-  columnSpan,
-  clipHashMsg,
-  hoverMessage,
-  locusLabel,
-  consoleBackground,
-  themeDefinition,
-  buildFileTree,
-  visibleRows,
-  ancestorDirs,
-  defaultFilePath,
-  DEFAULT_FILE,
-  canHighlight,
-  plainRows,
-  MONACO_THEME,
   CONSOLE_BG_FALLBACK,
   HIGHLIGHT_MAX_BYTES,
   HIGHLIGHT_MAX_LINES,
-  isPreviewable,
-  previewKind,
-  isImagePath,
-  isTextWritableLang,
+  MONACO_THEME,
+  canHighlight,
+  columnSpan,
+  consoleBackground,
+  hoverMessage,
+  lineDecorations,
+  markedParse,
+  monacoLang,
+  themeDefinition,
+  viewerOptions,
+} = await spa('monaco.js');
+const {
+  baseFileName,
+  codePathForFailure,
   extractMermaidFences,
   injectMermaidSvgs,
-  sanitizeDiagramSvg,
-  saveErrorMessage,
-  markedParse,
-  baseFileName,
+  isImagePath,
+  isPreviewable,
+  isRemoteHttpUrl,
+  isTextWritableLang,
+  langFromPath,
+  posixJoin,
+  previewKind,
+  relativizeUnder,
   resolveMarkdownImagePath,
   resolveMarkdownLinkPath,
   resolveWorkspaceRelPath,
-  isRemoteHttpUrl,
-} = await import(pathToFileURL(process.env.JK_CODE_MJS));
+  sanitizeDiagramSvg,
+  saveErrorMessage,
+} = await spa('paths.js');
+const { buildProjectHash, clipHashMsg, locusLabel, parseHashQuery, routeFromHash } = await spa('route.js');
+const { DEFAULT_FILE, ancestorDirs, buildFileTree, defaultFilePath, plainRows, visibleRows } =
+  await spa('tree.js');
 
 test('routeFromHash nests files under #project/<id>', () => {
   assert.deepEqual(routeFromHash('#project/ab12'), {
@@ -199,7 +196,7 @@ test('monaco partial-failure retry does not re-inject loader.js', async () => {
   // loader.js loads and installs AMD require, but editor.main rejects once; the retry must
   // reuse the installed loader instead of appending a duplicate script tag. Fresh module
   // instance: a successful load memoizes, which would latch the shared instance's memo.
-  const { ensureMonaco } = await import(pathToFileURL(process.env.JK_CODE_MJS).href + '?jk-monaco-retry');
+  const { ensureMonaco } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'monaco.js')).href + '?jk-monaco-retry');
   const tags = [];
   let mainLoads = 0;
   let failFirst = true;
@@ -532,7 +529,7 @@ test('a failed monaco load does not latch — the next open retries', async () =
   // JK-1953: the memoized promise previously cached its own rejection, so one CDN hiccup
   // meant plain text for the tab's life. Headless node has no document, so every attempt
   // rejects — which is exactly the shape that must not latch.
-  const { ensureMonaco } = await import(pathToFileURL(process.env.JK_CODE_MJS));
+  const { ensureMonaco } = await spa('monaco.js');
   const p1 = ensureMonaco();
   await assert.rejects(p1);
   const p2 = ensureMonaco();

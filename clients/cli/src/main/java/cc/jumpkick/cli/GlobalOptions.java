@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Global flags that apply to every {@code jk} subcommand. Populated from a parsed {@link
@@ -118,7 +119,7 @@ public final class GlobalOptions {
     public Path workingDir() {
         Path raw = directory;
         if (raw == null) {
-            raw = SessionContext.current().config().directory().orElse(Path.of(""));
+            raw = SessionContext.current().config().directoryOr(Path.of(""));
         }
         // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
         // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir
@@ -178,7 +179,7 @@ public final class GlobalOptions {
         Confirm.setAssumeYes(g.yes);
         g.force = in.isSet("force") || cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
-        g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
+        g.rebuild = in.isSet("redo") || Boolean.TRUE.equals(cfg.rebuild());
         g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false);
         // Progress is independent of --no-ansi: plain multi-line chrome still runs
         // unless --no-progress / quiet / json mute it.
@@ -195,22 +196,20 @@ public final class GlobalOptions {
         g.noTimeline = in.isSet("no-timeline");
         // Re-fold CLI/config OSC+notify into the session so mid-run readers see the same policy.
         // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
-        JkConfig cliOverlay = new JkConfig(
-                Optional.empty(),
-                // offline + rebuild ride the overlay too: the engine reads them off the
-                // session wire, and Jk.applyCliOverrides only catches exact tokens — a bundled
-                // `-rq` or abbreviated `--red` / `--offl` lands here, in the parsed Invocation.
-                g.offline ? Optional.of(true) : Optional.empty(),
-                g.rebuild ? Optional.of(true) : Optional.empty(),
-                g.noProgress ? Optional.of(true) : Optional.empty(),
-                g.quiet ? Optional.of(true) : Optional.empty(),
-                g.verbose ? Optional.of(true) : Optional.empty(),
-                Optional.empty(),
-                g.force ? Optional.of(true) : Optional.empty(),
-                g.noAnsi ? Optional.of(true) : Optional.empty(),
-                g.noOsc ? Optional.of(true) : Optional.empty(),
-                Optional.of(g.notify),
-                Optional.empty()); // build-output: config/env only (no CLI flag)
+        // offline + rebuild ride the overlay too: the engine reads them off the session wire, and
+        // Jk.applyCliOverrides only catches exact tokens — a bundled `-rq` or abbreviated `--red` /
+        // `--offl` lands here, in the parsed Invocation. `directory` and `build-output` are absent
+        // on purpose: the first is not a config layer and the second is config/env only.
+        JkConfig cliOverlay = JkConfig.empty()
+                .withOffline(flag(g.offline))
+                .withRebuild(flag(g.rebuild))
+                .withNoProgress(flag(g.noProgress))
+                .withQuiet(flag(g.quiet))
+                .withVerbose(flag(g.verbose))
+                .withForce(flag(g.force))
+                .withNoAnsi(flag(g.noAnsi))
+                .withNoOsc(flag(g.noOsc))
+                .withNotifyPolicy(g.notify);
         SessionContext.installConfig(cfg.mergedWith(cliOverlay));
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
         TimelineOpts.setNoTimeline(g.noTimeline);
@@ -296,5 +295,13 @@ public final class GlobalOptions {
      */
     public int jobsEffective() {
         return Jobs.resolve(Optional.ofNullable(jobs), JkEngineConfig.resolve(), System::getenv);
+    }
+
+    /**
+     * A CLI switch as a config layer value: set means {@code true}, unset means <em>unset</em>. Never
+     * an explicit {@code false} — that would out-rank the file layer this overlay sits on top of.
+     */
+    private static @Nullable Boolean flag(boolean set) {
+        return set ? Boolean.TRUE : null;
     }
 }

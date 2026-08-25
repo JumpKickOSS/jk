@@ -11,7 +11,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Width;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
@@ -129,7 +128,7 @@ class BoxTableRenderTest {
     }
 
     private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
         Session original = SessionContext.current();
         try {
             return SessionContext.where(original.withConfig(noAnsi), body::get);

@@ -98,7 +98,8 @@ public final class AuditCommand implements CliCommand {
         try {
             result = EngineClient.runAudit(
                     EnginePaths.current(),
-                    new EngineRequests.AuditRequest(projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl),
+                    new EngineRequests.AuditRequest(
+                            projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl, global.offline),
                     steps -> BuildPlanConsole.chooseConsoleListener("audit", steps, mode),
                     observer);
         } catch (IOException e) {

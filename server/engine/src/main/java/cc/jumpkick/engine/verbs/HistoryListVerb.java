@@ -10,6 +10,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.TestSummary;
 import java.io.BufferedWriter;
 import java.util.List;
 
@@ -94,8 +95,11 @@ public final class HistoryListVerb implements HostedVerb {
                         .put("cancelled", r.cancelled())
                         .put("running", r.running())
                         .put("exitCode", r.exitCode())
-                        .put("testsTotal", t != null ? t.total() : -1)
-                        .put("testsFailed", t != null ? t.failed() : -1)
+                        .putObject(
+                                TestSummary.WIRE_KEY,
+                                t == null
+                                        ? null
+                                        : TestSummary.countsMap(t.total(), t.succeeded(), t.failed(), t.skipped()))
                         .put("moduleCount", r.modules().size())
                         .put("failedModules", failedModules)
                         .put("savedMillis", b != null ? b.savedMillis() : -1)

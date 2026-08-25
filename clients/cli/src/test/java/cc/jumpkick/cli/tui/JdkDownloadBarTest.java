@@ -11,7 +11,6 @@ import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
@@ -53,7 +52,7 @@ class JdkDownloadBarTest {
     }
 
     private static <T> T withNoProgress(Supplier<T> body) throws Exception {
-        JkConfig cfg = JkConfig.empty().withNoProgress(Optional.of(true));
+        JkConfig cfg = JkConfig.empty().withNoProgress(true);
         Session original = SessionContext.current();
         try {
             return SessionContext.where(original.withConfig(cfg), body::get);

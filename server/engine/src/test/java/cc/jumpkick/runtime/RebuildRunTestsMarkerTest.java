@@ -17,7 +17,6 @@ import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
 class RebuildRunTestsMarkerTest {
 
     private static JkConfig rebuildConfig() {
-        return JkConfig.empty().withRebuild(Optional.of(true));
+        return JkConfig.empty().withRebuild(true);
     }
 
     @Test
@@ -111,7 +110,7 @@ class RebuildRunTestsMarkerTest {
                 // Core + tails, like jk build: post-JK-2211 run-tests is a terminal-join leaf and
                 // a core-only plan prunes the whole test branch (no run, no marker).
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
-                BuildPlanner.appendDeclaredTails(builder, inputs);
+                PlannerTails.appendDeclaredTails(builder, inputs);
                 BuildPlanResult result = builder.build().run();
                 assertThat(result.errors()).isEmpty();
                 assertThat(result.success()).isTrue();

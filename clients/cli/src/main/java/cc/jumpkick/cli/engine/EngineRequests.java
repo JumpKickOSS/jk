@@ -271,7 +271,8 @@ public final class EngineRequests {
     // ---- hosted worker commands -------------------------------------------------------------------
 
     /** Everything an engine-hosted {@code jk audit} needs — mirrors {@code AuditCommand}'s local fields. */
-    public record AuditRequest(Path entryDir, Path cache, String severity, URI osvBatchUrl, URI osvVulnsUrl) {}
+    public record AuditRequest(
+            Path entryDir, Path cache, String severity, URI osvBatchUrl, URI osvVulnsUrl, boolean offline) {}
 
     /** Everything an engine-hosted {@code jk format} needs — resolved styles, not raw flags. */
     public record FormatRequest(
@@ -311,6 +312,7 @@ public final class EngineRequests {
             boolean slsa,
             boolean sbom,
             RepoCredential credential,
+            boolean offline,
             boolean verbose) {}
 
     /** A hosted {@code jk publish} run's summary, decoded from the terminal plan-finish. */

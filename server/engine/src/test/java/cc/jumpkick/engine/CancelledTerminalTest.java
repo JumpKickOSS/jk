@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,7 @@ class CancelledTerminalTest {
 
     @Test
     void workspace_stream_gets_a_cancelled_workspace_finish() {
-        String line = EngineServer.cancelledTerminalLine(true, "/ws");
+        String line = JobEnvelope.cancelledTerminalLine(true, "/ws");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.WORKSPACE_FINISH);
         assertThat(Jsonl.bool(line, "cancelled", false)).isTrue();
         assertThat(Jsonl.bool(line, "success", true)).isFalse();
@@ -25,7 +26,7 @@ class CancelledTerminalTest {
 
     @Test
     void single_pipeline_stream_gets_a_cancelled_pipeline_finish() {
-        String line = EngineServer.cancelledTerminalLine(false, "/proj");
+        String line = JobEnvelope.cancelledTerminalLine(false, "/proj");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(line, "cancelled", false)).isTrue();
         assertThat(Jsonl.str(line, "dir")).isEqualTo("/proj");
@@ -33,7 +34,7 @@ class CancelledTerminalTest {
 
     @Test
     void a_null_dir_still_encodes() {
-        String line = EngineServer.cancelledTerminalLine(false, null);
+        String line = JobEnvelope.cancelledTerminalLine(false, null);
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
     }
 }

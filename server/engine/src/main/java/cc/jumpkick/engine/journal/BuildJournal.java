@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.BuildHistoryKinds;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.TaskPhases;
@@ -132,12 +133,12 @@ public final class BuildJournal {
             }
             Path target = home.resolve(ProjectBuilds.RUNS).resolve(dirName);
             Path tmp = home.resolve(ProjectBuilds.RUNS).resolve("." + dirName + ".tmp");
-            deleteTreeQuietly(tmp);
+            PathUtil.deleteRecursively(tmp);
             try {
                 Files.createDirectory(tmp);
             } catch (FileAlreadyExistsException e) {
                 // concurrent same number should not happen under allocator lock; last write wins via replace
-                deleteTreeQuietly(tmp);
+                PathUtil.deleteRecursively(tmp);
                 Files.createDirectory(tmp);
             }
             try {
@@ -148,14 +149,14 @@ public final class BuildJournal {
                 if (Files.exists(target)) {
                     // Replacing an existing run dir (complete path uses complete(); append for finished
                     // orphan may overwrite). Prefer atomic replace of contents.
-                    deleteTreeQuietly(target);
+                    PathUtil.deleteRecursively(target);
                 }
                 move(tmp, target);
                 if (!record.running() && !record.synthetic() && BuildHistoryKinds.isBuildLike(record.kind()))
                     MetricsHarvest.get().request();
                 return dirName;
             } catch (IOException e) {
-                deleteTreeQuietly(tmp);
+                PathUtil.deleteRecursively(tmp);
                 return null;
             }
         } catch (IOException | RuntimeException e) {
@@ -185,7 +186,7 @@ public final class BuildJournal {
         String dirName = target.getFileName().toString();
         Path tmp = parent.resolve("." + dirName + ".complete.tmp");
         try {
-            deleteTreeQuietly(tmp);
+            PathUtil.deleteRecursively(tmp);
             Files.createDirectory(tmp);
             String timestamp = finished.id();
             if (timestamp == null || timestamp.isBlank()) {
@@ -204,14 +205,11 @@ public final class BuildJournal {
             writeRunMetricsToml(tmp, toWrite);
             Files.move(tmp.resolve(RECORD), target.resolve(RECORD), StandardCopyOption.REPLACE_EXISTING);
             if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {
-                synchronized (metricsLock(target)) {
-                    Files.move(
-                            tmp.resolve(ProjectBuilds.METRICS),
-                            target.resolve(ProjectBuilds.METRICS),
-                            StandardCopyOption.REPLACE_EXISTING);
-                }
+                Files.move(
+                        tmp.resolve(ProjectBuilds.METRICS),
+                        target.resolve(ProjectBuilds.METRICS),
+                        StandardCopyOption.REPLACE_EXISTING);
             }
-            METRICS_LOCKS.remove(target.toAbsolutePath().normalize());
             if (snapshot != null) {
                 if (snapshot.resultsMd() != null && Files.isRegularFile(tmp.resolve(RESULTS_MD))) {
                     Files.move(
@@ -230,14 +228,14 @@ public final class BuildJournal {
                             StandardCopyOption.REPLACE_EXISTING);
                 }
             }
-            deleteTreeQuietly(tmp);
+            PathUtil.deleteRecursively(tmp);
             // Synthetic optimize/calibrate fixtures must not train host ETA aggregates.
             if (!toWrite.synthetic() && BuildHistoryKinds.isBuildLike(toWrite.kind())) {
                 MetricsHarvest.get().request();
             }
             return true;
         } catch (IOException | RuntimeException e) {
-            deleteTreeQuietly(tmp);
+            PathUtil.deleteRecursively(tmp);
             return false;
         }
     }
@@ -251,57 +249,11 @@ public final class BuildJournal {
             Path projectPath = Path.of(projectDir == null || projectDir.isBlank() ? "." : projectDir);
             String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord;
             Path home = ProjectBuilds.projectHome(buildsRoot, c, projectPath);
-            if (Files.isDirectory(home)) deleteTreeQuietly(home);
+            if (Files.isDirectory(home)) PathUtil.deleteRecursively(home);
         } catch (RuntimeException ignored) {
             // best-effort
         }
     }
-
-    /**
-     * Serializes every mutation of a run's {@code metrics.toml}: {@link #appendHostSamples} is a
-     * read-modify-write and {@code complete()} moves a freshly written file over the same path, so
-     * without this one of the two silently loses. Keyed by run dir; entries are dropped
-     * once the run is complete.
-     */
-    private static final ConcurrentHashMap<Path, Object> METRICS_LOCKS = new ConcurrentHashMap<>();
-
-    private static Object metricsLock(Path runDir) {
-        // complete() removes entries, but a crashed/cancelled run leaks its key — bound the
-        // residue (same bound as ProjectIds).
-        if (METRICS_LOCKS.size() >= 4_096) METRICS_LOCKS.clear();
-        return METRICS_LOCKS.computeIfAbsent(runDir.toAbsolutePath().normalize(), k -> new Object());
-    }
-
-    public void appendHostSamples(String locator, List<HostSampleLine> samples) {
-        if (!validLocator(locator) || samples == null || samples.isEmpty()) return;
-        Path run = findRunDir(locator).orElse(null);
-        if (run == null) return;
-        Path metrics = run.resolve(ProjectBuilds.METRICS);
-        synchronized (metricsLock(run)) {
-            try {
-                StringBuilder sb = new StringBuilder();
-                if (Files.isRegularFile(metrics)) {
-                    sb.append(Files.readString(metrics, StandardCharsets.UTF_8));
-                    if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
-                } else {
-                    sb.append("# run metrics\n");
-                }
-                for (HostSampleLine s : samples) {
-                    if (s == null || s.key() == null || s.key().isBlank() || !(s.ms() > 0)) continue;
-                    sb.append("host.")
-                            .append(sanitize(s.key()))
-                            .append(" = ")
-                            .append(Math.round(s.ms()))
-                            .append('\n');
-                }
-                Files.writeString(metrics, sb.toString(), StandardCharsets.UTF_8);
-            } catch (IOException ignored) {
-                // best-effort: host samples are diagnostics, never worth failing a build
-            }
-        }
-    }
-
-    public record HostSampleLine(String key, double ms) {}
 
     private static void writeRunMetricsToml(Path dir, BuildRecord finished) throws IOException {
         if (finished == null || finished.running()) return;
@@ -626,7 +578,7 @@ public final class BuildJournal {
     public boolean delete(String idOrLocator) {
         Path dir = getRunPath(idOrLocator).orElse(null);
         if (dir == null || !Files.isDirectory(dir)) return false;
-        deleteTreeQuietly(dir);
+        PathUtil.deleteRecursively(dir);
         return true;
     }
 
@@ -647,7 +599,7 @@ public final class BuildJournal {
                 Optional<Path> scoped = runDir(coord, dir, n);
                 if (scoped.isPresent()) {
                     if (!Files.isDirectory(scoped.get())) return false;
-                    deleteTreeQuietly(scoped.get());
+                    PathUtil.deleteRecursively(scoped.get());
                     return true;
                 }
                 // A per-project number that does not exist under this project is not ours to
@@ -674,7 +626,7 @@ public final class BuildJournal {
         List<Entry> kept = new ArrayList<>();
         for (Entry e : entries) {
             if (maxAgeMillis > 0 && nowMillis - e.millis > maxAgeMillis) {
-                deleteTreeQuietly(e.dir);
+                PathUtil.deleteRecursively(e.dir);
                 removed++;
                 removedBytes += e.size;
             } else {
@@ -687,7 +639,7 @@ public final class BuildJournal {
                 kept.sort(Comparator.comparingLong(Entry::millis));
                 for (Entry e : kept) {
                     if (total <= maxDiskBytes) break;
-                    deleteTreeQuietly(e.dir);
+                    PathUtil.deleteRecursively(e.dir);
                     removed++;
                     removedBytes += e.size;
                     total -= e.size;
@@ -801,19 +753,6 @@ public final class BuildJournal {
             Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException e) {
             Files.move(from, to);
-        }
-    }
-
-    private static void deleteTreeQuietly(Path dir) {
-        if (!Files.exists(dir)) return;
-        try (Stream<Path> w = Files.walk(dir)) {
-            w.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException ignored) {
         }
     }
 

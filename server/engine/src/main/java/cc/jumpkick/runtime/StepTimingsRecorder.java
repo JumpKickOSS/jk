@@ -5,6 +5,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -168,7 +169,7 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     private static int distinctClassCount(TestSummary sum) {
         if (sum.failures() == null || sum.failures().isEmpty()) return 0;
         LinkedHashSet<String> names = new LinkedHashSet<>();
-        for (TestSummary.Failure f : sum.failures()) {
+        for (TestFailureInfo f : sum.failures()) {
             if (f.className() != null && !f.className().isBlank()) names.add(f.className());
         }
         return names.size();

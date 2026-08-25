@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
@@ -104,6 +105,15 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         String tag = c.stringOpt("tag").orElse(null);
         String dockerExecutable = c.stringOpt("dockerExecutable").orElse(null);
         boolean aotCache = c.bool("aotCache").orElse(false);
+
+        // Every mode — tarball, daemon load, push — starts by pulling a base image through Jib,
+        // which has no notion of jk's --offline and revalidates a mutable tag whatever the local
+        // cache holds. The engine's own digest pin already refuses offline (BaseImageDigest), so
+        // refusing here keeps the two halves of an image build saying the same thing.
+        if (ctx.offline()) {
+            throw new IOException(Errors.offlineRefusal((base == null ? "the default base image" : base)
+                    + (registry == null ? "" : " (and the push to " + registry + ")")));
+        }
 
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
         List<Path> depJars = new ArrayList<>();
@@ -233,6 +243,11 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         @Override
         public List<PackageIo.RuntimeEntry> runtimeEntries() {
             return spec.entries();
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override

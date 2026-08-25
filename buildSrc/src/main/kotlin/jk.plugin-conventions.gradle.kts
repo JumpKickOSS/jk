@@ -14,7 +14,6 @@ import java.security.MessageDigest
 
 plugins {
     id("jk.java-conventions")
-    `maven-publish`
 }
 
 /**
@@ -51,27 +50,20 @@ version = "0.12.0"
 
 val workerArtifact = "jk-${project.name}"
 
-publishing {
-    publications {
-        create<MavenPublication>("worker") {
-            artifactId = workerArtifact
-            from(components["java"])
-            pom.withXml {
-                val firstParty = rootProject.subprojects.map { it.name }.toSet()
-                fun remap(node: groovy.util.Node) {
-                    if (node.name().toString() == "artifactId") {
-                        val v = node.text()
-                        if (v != null && !v.startsWith("jk-") && v in firstParty) {
-                            node.setValue("jk-$v")
-                        }
-                    }
-                    node.children().filterIsInstance<groovy.util.Node>().forEach { remap(it) }
-                }
-                remap(asNode())
-            }
-        }
-    }
-}
+// No `maven-publish` here, deliberately (JK-2497). A worker's POM is the flattened one
+// `writeWorkerPom` builds further down: it resolves the entire runtime classpath itself, names
+// every coordinate in it, and `stageWorkerRepo` / `installLocal` stage a jar for each — which is
+// what lands in store/repos/jk-local and what scripts/publish-maven-repo.sh uploads. A
+// `MavenPublication` alongside it was a second producer of a POM for the same GAV that nothing in
+// the tree, the scripts or CI ever read, and its answer disagreed: Gradle renders a project
+// dependency from the target's own coordinates, so `:core`, `:io` and `:dynamic-surface` — no
+// group, no version, no publication — came out as `jk:core:unspecified`, which no repository can
+// serve. The `pom.withXml` block meant to repair that never matched a node in its life:
+// `asNode()` parses namespace-aware, so `node.name()` is a `groovy.namespace.QName` whose
+// `toString()` is `{http://maven.apache.org/POM/4.0.0}artifactId`, never the bare `"artifactId"`
+// it was compared against. Had it matched it would have written `jk:jk-core:unspecified`, no more
+// resolvable than before. One producer, the one that ships; PublishedWorkerPomTest in :auditor
+// resolves its closure the way a worker launch does.
 
 // Table-owning plugins ship their own jk-plugin.toml (+ scaffold/) at the jar root —
 // the same shape as a third-party plugin. Sibling catalogs are not copied here.

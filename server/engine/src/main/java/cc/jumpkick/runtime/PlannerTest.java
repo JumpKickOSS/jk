@@ -2,9 +2,23 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerKsp.contributedProvidedFor;
+import static cc.jumpkick.runtime.PlannerKsp.pluginTestClasspath;
+import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
+import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
+import static cc.jumpkick.runtime.PlannerSupport.copyResources;
+import static cc.jumpkick.runtime.PlannerSupport.effectiveSelection;
+import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
+import static cc.jumpkick.runtime.PlannerSupport.groovyRuntime;
+import static cc.jumpkick.runtime.PlannerSupport.kotlinStdlib;
+import static cc.jumpkick.runtime.PlannerSupport.needsNestedEngineIsolation;
+import static cc.jumpkick.runtime.PlannerSupport.nestedEngineTestEnv;
+import static cc.jumpkick.runtime.PlannerSupport.testStampExtras;
+import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -170,9 +184,8 @@ public final class PlannerTest {
                     if (!ktTest.isEmpty()) {
                         ctx.label("compiling " + ktTest.size() + " Kotlin test sources");
                         String ktTaskId = ActionKey.qualifiedTaskId("compile-test-kotlin", testClasses);
-                        Path ktWorkingDir = CacheTree.ACTIONS
-                                .under(in.cache())
-                                .resolve("incremental-kotlin")
+                        Path ktWorkingDir = ActionTree.INCREMENTAL_KOTLIN
+                                .under(CacheTree.ACTIONS.under(in.cache()))
                                 .resolve(ktTaskId);
                         KotlinCompile.Result kr = compileKotlinSources(
                                 ctx,

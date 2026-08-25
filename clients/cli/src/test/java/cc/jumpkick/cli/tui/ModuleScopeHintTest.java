@@ -12,7 +12,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class ModuleScopeHintTest {
@@ -47,7 +46,7 @@ class ModuleScopeHintTest {
 
     @Test
     void print_prefixes_plain_caption_with_jk() {
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             CliOutput.beginCommand(false);
             var buf = new ByteArrayOutputStream();

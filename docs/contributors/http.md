@@ -362,7 +362,7 @@ Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`c
 actionMaxBytes, artifactStorageBytes, mavenLocalBytes, lastPrunedMillis }` — enough for the
 footer; change-gated on MiB quanta.
 
-**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes` is the combined sum.
+**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes`/`totalCount` are the **cache root walked as one tree** — the same fact `jk status` prints as *Size on Disk* and the same one `jk cache nuke` frees. They are not the sum of the section fields (that sum both counted store bytes a nuke leaves and missed every cache tier nobody had added to it); the store's own figure is `artifactStorageBytes`.
 
 Capture is a full exclusive walk of the store/cache trees (hardlink-aware). The engine memoizes it
 with a **30 s TTL and single-flight** so concurrent `GET /api/cache` calls do not re-walk multi‑GiB

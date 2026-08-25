@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-// Headless tests for api.js epoch/dirty-guard behavior (JK-1973). The module reads
+// Headless tests for api.js epoch and dirty-guard behaviour. The module reads
 // sessionStorage/location/window lazily, so plain stubs are enough.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const store = new Map();
@@ -36,7 +37,7 @@ const {
   registerDirtyGuard,
   unregisterDirtyGuard,
   releaseDeferredEpochReload,
-} = await import(pathToFileURL(process.env.JK_API_MJS));
+} = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'api.js')));
 
 beforeEach(() => {
   store.clear();

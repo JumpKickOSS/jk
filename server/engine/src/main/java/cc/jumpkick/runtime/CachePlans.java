@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -233,7 +234,7 @@ public final class CachePlans {
                         Set<String> deletedTaskIds = new LinkedHashSet<>();
 
                         // 1) key records: match by qualified-task tag, or by an INPUT path under a module dir.
-                        Path keysDir = actionsDir.resolve("keys");
+                        Path keysDir = ActionTree.KEYS.under(actionsDir);
                         if (Files.isDirectory(keysDir)) {
                             try (var stream = Files.list(keysDir)) {
                                 for (Path key : (Iterable<Path>) stream::iterator) {
@@ -252,9 +253,10 @@ public final class CachePlans {
                         }
 
                         // 2) task pointers + incremental state, keyed by the same qualified-task id.
-                        deleteQualified(actionsDir.resolve("tasks"), tags, deletedTaskIds, dryRun, acc);
-                        deleteQualified(actionsDir.resolve("incremental-java"), tags, deletedTaskIds, dryRun, acc);
-                        deleteQualified(actionsDir.resolve("incremental-kotlin"), tags, deletedTaskIds, dryRun, acc);
+                        deleteQualified(ActionTree.TASKS.under(actionsDir), tags, deletedTaskIds, dryRun, acc);
+                        for (Path tree : ActionTree.incrementalUnder(actionsDir)) {
+                            deleteQualified(tree, tags, deletedTaskIds, dryRun, acc);
+                        }
                     }
                     // 3) preflight memos — their "clean" conclusions were derived from the
                     // action keys just deleted; a surviving memo turns clear into a no-op.

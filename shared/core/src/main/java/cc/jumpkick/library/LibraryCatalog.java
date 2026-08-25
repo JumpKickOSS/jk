@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.library;
 
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -34,6 +35,9 @@ import org.tomlj.TomlTable;
  * <p>Per-name shadowing; the bundled layer is always present. There is no host-local catalog file.
  */
 public final class LibraryCatalog {
+
+    /** {@link TomlScan} key for the workspace module list. */
+    private static final String WORKSPACE_MODULES = "workspace.modules";
 
     private static final String BUNDLED_RESOURCE = "/cc/jumpkick/library/libraries.toml";
 
@@ -155,113 +159,18 @@ public final class LibraryCatalog {
     }
 
     /**
-     * Lightweight probe: does {@code jkToml} declare a non-empty {@code [workspace] modules}
-     * array? Line-scanned so catalog loading never re-enters full {@code JkBuild} parse. Handles
-     * both single-line ({@code modules = ["a"]}) and multi-line array forms.
+     * Does {@code jkToml} declare a non-empty {@code [workspace] modules} array? Scanned rather
+     * than parsed, because catalog loading runs <em>inside</em> a full parse and re-entering it
+     * would recurse. {@link cc.jumpkick.config.WorkspaceScan} is the owner of that scan — this used to be a private
+     * copy of it, and the copy could not see the dotted {@code workspace.modules = [...]} form.
      */
     static boolean declaresWorkspaceModules(Path jkToml) {
-        try {
-            boolean inWorkspace = false;
-            boolean inModulesArray = false;
-            for (String raw : Files.readString(jkToml, StandardCharsets.UTF_8).split("\n", -1)) {
-                String line = raw.strip();
-                if (line.isEmpty() || line.startsWith("#")) continue;
-                if (line.startsWith("[")) {
-                    int close = line.indexOf(']');
-                    String section = close > 1
-                            ? line.substring(line.startsWith("[[") ? 2 : 1, close)
-                                    .replace("]", "")
-                                    .strip()
-                            : "";
-                    inWorkspace = section.equals("workspace");
-                    inModulesArray = false;
-                    continue;
-                }
-                if (!inWorkspace) continue;
-                if (line.startsWith("modules")) {
-                    int open = line.indexOf('[');
-                    if (open < 0) continue;
-                    int end = line.lastIndexOf(']');
-                    if (end > open) {
-                        // modules = [ "a", "b" ] on one line
-                        if (!line.substring(open + 1, end).strip().isEmpty()) return true;
-                        continue;
-                    }
-                    // modules = [  … multi-line
-                    inModulesArray = true;
-                    continue;
-                }
-                if (inModulesArray) {
-                    if (line.contains("\"")) return true; // at least one quoted module path
-                    if (line.contains("]")) inModulesArray = false;
-                }
-            }
-            return false;
-        } catch (IOException e) {
-            return false;
-        }
+        return !workspaceModulePaths(jkToml).isEmpty();
     }
 
-    /** Quoted paths in {@code [workspace] modules} of {@code jkToml}. Empty on unreadable. */
+    /** Paths in {@code [workspace] modules} of {@code jkToml}. Empty on unreadable. */
     static Set<String> workspaceModulePaths(Path jkToml) {
-        Set<String> out = new LinkedHashSet<>();
-        try {
-            boolean inWorkspace = false;
-            boolean inModulesArray = false;
-            for (String raw : Files.readString(jkToml, StandardCharsets.UTF_8).split("\n", -1)) {
-                String line = raw.strip();
-                if (line.isEmpty() || line.startsWith("#")) continue;
-                if (line.startsWith("[")) {
-                    int close = line.indexOf(']');
-                    String section = close > 1
-                            ? line.substring(line.startsWith("[[") ? 2 : 1, close)
-                                    .replace("]", "")
-                                    .strip()
-                            : "";
-                    inWorkspace = section.equals("workspace");
-                    inModulesArray = false;
-                    continue;
-                }
-                if (!inWorkspace) continue;
-                if (line.startsWith("modules")) {
-                    int open = line.indexOf('[');
-                    if (open < 0) continue;
-                    int end = line.lastIndexOf(']');
-                    if (end > open) {
-                        collectQuoted(line.substring(open + 1, end), out);
-                        continue;
-                    }
-                    inModulesArray = true;
-                    collectQuoted(line.substring(open + 1), out);
-                    continue;
-                }
-                if (inModulesArray) {
-                    int close = line.indexOf(']');
-                    if (close >= 0) {
-                        collectQuoted(line.substring(0, close), out);
-                        inModulesArray = false;
-                    } else {
-                        collectQuoted(line, out);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            return Set.of();
-        }
-        return out;
-    }
-
-    private static void collectQuoted(String s, Set<String> out) {
-        int i = 0;
-        while (i < s.length()) {
-            int a = s.indexOf('"', i);
-            if (a < 0) return;
-            int b = s.indexOf('"', a + 1);
-            if (b < 0) return;
-            String v = s.substring(a + 1, b).strip();
-            if (!v.isEmpty()) out.add(v);
-            i = b + 1;
-        }
+        return new LinkedHashSet<>(TomlScan.scan(jkToml, WORKSPACE_MODULES).stringArray(WORKSPACE_MODULES));
     }
 
     /** Test seam: build a catalog from a single in-memory map. */

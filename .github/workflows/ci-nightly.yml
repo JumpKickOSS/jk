@@ -31,6 +31,25 @@ jobs:
       - name: Integration test
         run: ./gradlew integrationTest --no-daemon
 
+  # @Tag("network") lives here and nowhere else (JK-2447). It is off `checkAll` on purpose:
+  # Sonatype enforces a per-IP quota on Maven Central and this repo has a documented history of
+  # 429s from it (JK-1277), so a PR gate that needs the network fails for reasons the change did
+  # not cause. Nightly, a 429 costs a re-run instead of a blocked merge.
+  network:
+    name: Gradle network test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - name: Network test
+        run: ./gradlew networkTest --no-daemon
+
   lombok-scope-guard:
     name: Lombok scope guard
     runs-on: ubuntu-latest

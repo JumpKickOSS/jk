@@ -18,7 +18,6 @@ import cc.jumpkick.runtime.ExplainReport;
 import cc.jumpkick.runtime.TaskForecast;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
-import java.util.Optional;
 
 public final class ExplainVerb implements HostedVerb {
 
@@ -63,19 +62,11 @@ public final class ExplainVerb implements HostedVerb {
                 boolean offline = Jsonl.bool(requestLine, "offline", false);
                 boolean verbose = Jsonl.bool(requestLine, "verbose", false);
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(offline),
-                        Optional.of(rebuild),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(verbose),
-                        Optional.empty(),
-                        Optional.of(force),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(offline)
+                        .withRebuild(rebuild)
+                        .withVerbose(verbose)
+                        .withForce(force);
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)

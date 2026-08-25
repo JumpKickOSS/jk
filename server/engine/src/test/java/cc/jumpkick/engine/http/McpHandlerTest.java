@@ -3,6 +3,8 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.http.mcp.McpHistoryViews;
+import cc.jumpkick.engine.http.mcp.McpVitals;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
@@ -184,7 +186,7 @@ class McpHandlerTest {
                 "/b",
                 "c",
                 now - 10 * 60_000,
-                now - McpHandler.STALL_MS - 5_000,
+                now - McpVitals.STALL_MS - 5_000,
                 40.0,
                 "j-2",
                 0,
@@ -203,7 +205,9 @@ class McpHandlerTest {
                 List::of,
                 "0.12.0",
                 new ProgressTokenRegistry(),
-                () -> List.of(healthy, silent, young));
+                () -> List.of(healthy, silent, young),
+                AdmissionYield.NONE,
+                null);
         String body = withLive.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
@@ -255,7 +259,8 @@ class McpHandlerTest {
                         yields.incrementAndGet();
                         return blocking.get();
                     }
-                });
+                },
+                null);
         String body = waiting.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"wait\":true}}}");
         assertThat(body).contains("\"finished\":true");
@@ -284,7 +289,10 @@ class McpHandlerTest {
                 dir -> Map.of("coord", "com.example:demo"),
                 List::of,
                 "0.12.0",
-                tokens);
+                tokens,
+                List::of,
+                AdmissionYield.NONE,
+                null);
         String body = withTokens.handleBody("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
                 + "\"_meta\":{\"progressToken\":\"tok-1\"}}}");
@@ -404,8 +412,8 @@ class McpHandlerTest {
      */
     @Test
     void a_dir_key_keeps_its_absolute_shape_on_every_host() {
-        assertThat(McpHandler.dirKey("C:/ws/../app")).isEqualTo("C:/app");
-        assertThat(McpHandler.dirKey("/ws/../other")).isEqualTo("/other");
+        assertThat(McpHistoryViews.dirKey("C:/ws/../app")).isEqualTo("C:/app");
+        assertThat(McpHistoryViews.dirKey("/ws/../other")).isEqualTo("/other");
     }
 
     @Test

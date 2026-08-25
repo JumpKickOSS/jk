@@ -90,10 +90,13 @@ public final class NewWizard {
     }
 
     static int parseJdkMajorOrDefault(String jdk) {
-        return NewJdkOptions.parseMajor(jdk).orElse(25);
+        return NewJdkOptions.parseMajor(jdk).orElse(LATEST_LTS_MAJOR);
     }
 
-    /** Current Java LTS feature release. Bumped on each new LTS. */
+    /**
+     * Current Java LTS feature release, and the one place it is written down. Bumped on each new
+     * LTS — a second copy is a wizard that offers 25 while the flag path pins 21.
+     */
     static final int LATEST_LTS_MAJOR = 25;
 
     static String deriveMainFqcn(String group, NewInputs.Language lang, boolean compact) {

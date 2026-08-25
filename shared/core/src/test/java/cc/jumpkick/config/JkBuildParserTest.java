@@ -223,11 +223,11 @@ class JkBuildParserTest {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
 
                 [build]
-                test-plugin-jars = ["publisher", "compat-bridge"]
+                test-plugin-jars = ["publisher", "image-builder"]
                 """);
-        assertThat(parsed.build().testPluginJars()).containsExactly("publisher", "compat-bridge");
+        assertThat(parsed.build().testPluginJars()).containsExactly("publisher", "image-builder");
         // test-plugin-jars modules must build first → they're order-after prerequisites
-        assertThat(parsed.build().allOrderAfter()).contains("publisher", "compat-bridge");
+        assertThat(parsed.build().allOrderAfter()).contains("publisher", "image-builder");
     }
 
     @Test
@@ -1388,6 +1388,36 @@ class JkBuildParserTest {
         var tags = JkBuildParser.parseTestTags(dir.resolve("jk.toml"));
         assertThat(tags.includeTags()).containsExactly("unit");
         assertThat(tags.excludeTags()).containsExactly("slow", "bench");
+    }
+
+    @Test
+    void parse_test_tags_is_empty_when_the_manifest_is_absent(@TempDir Path dir) {
+        assertThat(JkBuildParser.parseTestTags(dir.resolve("jk.toml"))).isEqualTo(JkBuildParser.TestTomlTags.EMPTY);
+    }
+
+    /**
+     * A manifest that exists and does not parse is an error. It used to be swallowed into
+     * {@code TestTomlTags.EMPTY}, which the planner reads as "this project filters no tags" — so a
+     * typo in {@code [test]} silently widened the suite instead of failing the command.
+     */
+    @Test
+    void parse_test_tags_refuses_a_malformed_manifest(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), PROJECT + "[test\n");
+        assertThatThrownBy(() -> JkBuildParser.parseTestTags(dir.resolve("jk.toml")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("failed to parse jk.toml");
+    }
+
+    /** The owner's interpolation whitelist reaches the test-tag baseline like every other table. */
+    @Test
+    void parse_test_tags_rejects_interpolation_outside_the_whitelist(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), PROJECT + """
+                        [test]
+                        exclude-tags = ["${SKIP_TAG}"]
+                        """);
+        assertThatThrownBy(() -> JkBuildParser.parseTestTags(dir.resolve("jk.toml")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("test.exclude-tags");
     }
 
     // ───────────────────────────────────────────────────────────────

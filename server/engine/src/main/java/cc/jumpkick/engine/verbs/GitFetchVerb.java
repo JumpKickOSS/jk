@@ -13,7 +13,6 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.InstallPlans;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
-import java.util.Optional;
 
 public final class GitFetchVerb implements HostedVerb {
 
@@ -49,19 +48,7 @@ public final class GitFetchVerb implements HostedVerb {
             try {
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
                 boolean refresh = Jsonl.bool(requestLine, "refresh", false);
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(refresh),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty().withForce(refresh);
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withCacheDir(cache)

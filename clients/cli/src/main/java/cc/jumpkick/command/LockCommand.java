@@ -285,10 +285,4 @@ public final class LockCommand implements CliCommand {
                 + " dependenc" + (pkgs == 1 ? "y" : "ies") + " "
                 + ConsoleSpec.took(Duration.ofMillis((System.nanoTime() - startNanos) / 1_000_000));
     }
-
-    /** @deprecated tests may call the 2-arg form */
-    @Deprecated
-    static String lockSuccessTail(int pkgs, long startNanos) {
-        return lockSuccessTail(pkgs, startNanos, Path.of("."));
-    }
 }

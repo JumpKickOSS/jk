@@ -49,7 +49,8 @@ class PluginSpecTest {
                 .stepOutput("android-res", dir.resolve("res"))
                 .extra("protoc", dir.resolve("protoc"))
                 .secret("gpgPassphrase", "hunter2")
-                .commandArgs(List.of("--fast"));
+                .commandArgs(List.of("--fast"))
+                .offline(false);
 
         Path spec = dir.resolve("worker.spec");
         Files.write(spec, w.lines(), StandardCharsets.UTF_8);
@@ -101,5 +102,24 @@ class PluginSpecTest {
         assertThat(s.extra("protoc")).contains(dir.resolve("protoc").toAbsolutePath());
         assertThat(s.secret("gpgPassphrase")).contains("hunter2");
         assertThat(s.commandArgs()).containsExactly("--fast");
+        assertThat(s.offline()).isFalse();
+    }
+
+    /**
+     * The one line whose absence is not "unset". Every other field defaults to empty or zero, but a
+     * spec that never states a network policy has to read as the restrictive answer: the failure
+     * mode of a fork path that forgot to stamp it must be a refusal a developer sees, not a request
+     * a user was told would not happen.
+     */
+    @Test
+    void a_spec_with_no_policy_line_reads_as_offline(@TempDir Path dir) throws Exception {
+        Path spec = dir.resolve("bare.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PACKAGE, null, "jk-quarkus")
+                        .lines(),
+                StandardCharsets.UTF_8);
+        assertThat(PluginSpec.read(spec).offline()).isTrue();
     }
 }

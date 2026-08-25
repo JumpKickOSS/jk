@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
 
@@ -57,6 +58,28 @@ final class TerminalReflow {
         if (term.equals("xterm-kitty") || term.equals("xterm-ghostty") || term.equals("foot")) return true;
         // xterm, linux console, screen, tmux, unknown: treat as clipping.
         return false;
+    }
+
+    /**
+     * Physical rows occupied by {@code lines} after the terminal reflows from {@code fromCols} to
+     * {@code toCols}. Each line was painted at most {@link RenderContext#rowColumnBudget(int)} of
+     * {@code fromCols} wide (one row then); after a shrink, reflow wraps that text to
+     * {@code ceil(painted / toCols)} rows.
+     */
+    static int physicalRows(List<String> lines, int fromCols, int toCols) {
+        if (lines == null || lines.isEmpty()) return 0;
+        int width = Math.max(1, toCols);
+        int fromBudget = RenderContext.rowColumnBudget(Math.max(1, fromCols));
+        int rows = 0;
+        for (String line : lines) {
+            int painted = Math.min(RenderContext.visibleWidth(line), fromBudget);
+            if (painted <= 0) {
+                rows += 1; // blank logical line still occupies a row
+            } else {
+                rows += (painted + width - 1) / width;
+            }
+        }
+        return rows;
     }
 
     /** Test hook: pin the answer ({@code null} re-detects from the real environment). */

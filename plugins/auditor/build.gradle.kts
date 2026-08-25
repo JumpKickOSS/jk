@@ -16,3 +16,19 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)
 }
+
+// PublishedWorkerPomTest reads the worker POM the way a launch does — out of the Maven repo
+// `stageWorkerRepo` writes, which is what `installLocal` copies into store/repos/jk-local and what
+// scripts/publish-maven-repo.sh uploads. This module is the sample: its closure spans all four
+// first-party rungs (:core, :plugin-sdk, :host, :jk-api) plus third-party jars, so a coordinate
+// rendered from a Gradle default shows up here first (JK-2497).
+val stagedWorkerRepo = layout.buildDirectory.dir("worker-repo/repos/jk-local")
+
+tasks.named<Test>("test") {
+    dependsOn("stageWorkerRepo")
+    // The staged repo is a test INPUT, not just a dependency: without it the suite stays
+    // up-to-date across a coordinate change and reports green having re-run nothing.
+    inputs.dir(stagedWorkerRepo).withPropertyName("stagedWorkerRepo")
+    systemProperty("jk.worker.repo", stagedWorkerRepo.get().asFile.absolutePath)
+    systemProperty("jk.worker.project", project.name)
+}

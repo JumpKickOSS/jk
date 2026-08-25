@@ -3,6 +3,7 @@ package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.TestSummary;
 import java.util.List;
 
 /**
@@ -586,10 +587,12 @@ public final class ProtoEvents {
 
     /**
      * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk test} run's counts
-     * (total/succeeded/failed/skipped) — absent (-1) for a plain {@code buildWorkspace} plan-finish.
-     * Bundled into the same message rather than a separate terminal one because the client must know
-     * these counts <em>before</em> dispatching this event to its console listener: the listener's own
-     * {@code planFinish} handler is what renders the "Passed N tests" summary line.
+     * as the one {@link TestSummary#WIRE_KEY} object — omitted entirely (rather than written as -1)
+     * for a plain {@code buildWorkspace} plan-finish, which is how the client tells "no test phase"
+     * from "zero tests ran". Bundled into the same message rather than a separate terminal one
+     * because the client must know these counts <em>before</em> dispatching this event to its
+     * console listener: the listener's own {@code planFinish} handler is what renders the
+     * "Passed N tests" summary line.
      */
     public static String planFinish(
             String dir, boolean success, long total, long succeeded, long failed, long skipped) {
@@ -614,15 +617,19 @@ public final class ProtoEvents {
                 + success
                 + ",\"buildOutcome\":"
                 + Jsonl.quote(buildOutcome)
-                + ",\"testTotal\":"
-                + total
-                + ",\"testSucceeded\":"
-                + succeeded
-                + ",\"testFailed\":"
-                + failed
-                + ",\"testSkipped\":"
-                + skipped
+                + testCounts(total, succeeded, failed, skipped)
                 + "}";
+    }
+
+    /**
+     * The one encoding of test counts on the wire: {@code ,"tests":{…}} when a test phase ran, the
+     * empty string when it did not. Every {@code plan-finish} flavour splices this — a second
+     * spelling cannot appear without deleting this method.
+     */
+    private static String testCounts(long total, long succeeded, long failed, long skipped) {
+        return total < 0
+                ? ""
+                : ",\"" + TestSummary.WIRE_KEY + "\":" + TestSummary.countsJson(total, succeeded, failed, skipped);
     }
 
     /**
@@ -778,11 +785,9 @@ public final class ProtoEvents {
     /**
      * Terminal for {@link EngineProtocol#PROVISION_REQUEST}. {@code bin} is the provisioned tool's launcher path
      * ({@code null} on failure); {@code source}/{@code version} feed the client's one-line
-     * "Maven X downloaded" note; {@code diag} is the worker's passthrough chatter, carried only when
-     * {@code exit != 0}.
+     * "Maven X downloaded" note; {@code error} carries the failure text when {@code exit != 0}.
      */
-    public static String provisionResult(
-            String bin, String version, String source, String error, int exit, String diag) {
+    public static String provisionResult(String bin, String version, String source, String error, int exit) {
         return "{\"type\":\""
                 + EngineProtocol.PROVISION_RESULT
                 + "\",\"bin\":"
@@ -795,8 +800,6 @@ public final class ProtoEvents {
                 + Jsonl.quote(error)
                 + ",\"exit\":"
                 + exit
-                + ",\"diag\":"
-                + Jsonl.quote(diag)
                 + "}";
     }
 
@@ -893,10 +896,10 @@ public final class ProtoEvents {
     public static String planFinishImage(
             String dir,
             boolean success,
-            long testTotal,
-            long testSucceeded,
-            long testFailed,
-            long testSkipped,
+            long total,
+            long succeeded,
+            long failed,
+            long skipped,
             String ref,
             String tarball,
             String name,
@@ -908,14 +911,7 @@ public final class ProtoEvents {
                 + Jsonl.quote(dir)
                 + ",\"success\":"
                 + success
-                + ",\"testTotal\":"
-                + testTotal
-                + ",\"testSucceeded\":"
-                + testSucceeded
-                + ",\"testFailed\":"
-                + testFailed
-                + ",\"testSkipped\":"
-                + testSkipped
+                + testCounts(total, succeeded, failed, skipped)
                 + ",\"imageRef\":"
                 + Jsonl.quote(ref)
                 + ",\"imageTarball\":"
@@ -1018,12 +1014,9 @@ public final class ProtoEvents {
 
     /**
      * Append {@code "cancelled":true|false} to a plan-finish (or similar) JSON object. Additive
-     * field for without churning every {@code planFinish*} overload.
+     * field, so the {@code planFinish*} overloads do not each grow one.
      */
     public static String withCancelled(String jsonLine, boolean cancelled) {
-        if (jsonLine == null || jsonLine.isEmpty()) return jsonLine;
-        int end = jsonLine.lastIndexOf('}');
-        if (end <= 0) return jsonLine;
-        return jsonLine.substring(0, end) + ",\"cancelled\":" + cancelled + "}";
+        return Jsonl.append(jsonLine, "\"cancelled\":" + cancelled);
     }
 }

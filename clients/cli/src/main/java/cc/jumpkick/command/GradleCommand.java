@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@code jk gradle ...} — passthrough to Gradle. Provisions via the compat worker, then execs
+ * {@code jk gradle ...} — passthrough to Gradle. Provisions engine-side, then execs
  * {@code bin/gradle} client-side (same split as {@link MvnCommand}).
  */
 public final class GradleCommand implements CliCommand {
@@ -65,9 +65,8 @@ public final class GradleCommand implements CliCommand {
                 ? directory.toAbsolutePath().normalize()
                 : Path.of(".").toAbsolutePath().normalize();
         Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
-        Path cache = JkDirs.cache();
 
-        Path gradleBin = MvnCommand.provision(cache, projectDir, toolsRoot, noDiscover, true);
+        Path gradleBin = MvnCommand.provision(projectDir, toolsRoot, noDiscover, true);
         if (gradleBin == null) return 1;
 
         Optional<InstalledJdk> jdk = JdkResolver.forProject(projectDir, jdksDir);

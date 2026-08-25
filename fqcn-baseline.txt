@@ -5,7 +5,7 @@
 # parser with no classpath, so it resolved nothing and shortened nothing, and twelve module audits
 # each filed the same finding independently. JK-2408 threaded the classpath in; JK-2412 swept the
 # tree. 4,306 package-qualified references across 622 files became 878 across 253, and the
-# round-3 owner sweeps took it to 817 across 224 — the count below, which the guard prints
+# round-3 owner sweeps took it to 810 across 220 — the count below, which the guard prints
 # whenever a listed file shrinks. Retighten from that printout; never retype it.
 #
 # What a package-qualified reference is, for counting: two or more all-lowercase dot-separated
@@ -122,14 +122,13 @@
     1  server/engine/src/main/java/cc/jumpkick/task/CacheRetention.java
     7  server/engine/src/test/java/cc/jumpkick/runtime/AndroidReleaseTest.java
     5  server/engine/src/test/java/cc/jumpkick/runtime/AndroidWorkspaceTest.java
-   13  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java
+   12  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java
     3  server/io/src/main/java/cc/jumpkick/repo/s3/SigV4Signer.java
     3  server/resolver/src/main/java/cc/jumpkick/resolver/pubgrub/PubGrubSolver.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java
     3  shared/client-io/src/main/java/cc/jumpkick/repo/M2Dirs.java
     9  shared/core/src/main/java/cc/jumpkick/builds/ProjectBuilds.java
     5  shared/core/src/main/java/cc/jumpkick/config/ManifestProject.java
-    7  shared/core/src/main/java/cc/jumpkick/glob/GlobSet.java
     1  shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginDescriptors.java
    22  shared/core/src/main/java/cc/jumpkick/resolver/DependencyTree.java
     2  shared/dynamic-surface/src/main/java/cc/jumpkick/surface/DynamicSurface.java
@@ -174,7 +173,6 @@
     2  clients/cli/src/main/java/cc/jumpkick/command/CleanCommand.java
     1  clients/cli/src/main/java/cc/jumpkick/command/ScriptRunner.java
     1  clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineTestSupport.java
-    4  clients/cli/src/test/java/cc/jumpkick/cli/tui/JkManagerColorOscTest.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TerminalSizeTest.java
     3  clients/cli/src/test/java/cc/jumpkick/command/AotCacheStalenessTest.java
@@ -187,14 +185,12 @@
     3  plugins/quarkus/src/main/java/cc/jumpkick/quarkus/QuarkusAugmentMain.java
     3  plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java
     1  server/engine/src/main/java/cc/jumpkick/engine/EngineHttpFront.java
-    3  server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java
     1  server/engine/src/main/java/cc/jumpkick/engine/EngineVerbBridge.java
     2  server/engine/src/main/java/cc/jumpkick/engine/EngineVitals.java
     1  server/engine/src/main/java/cc/jumpkick/engine/TerminalSignals.java
     4  server/engine/src/main/java/cc/jumpkick/engine/http/HttpHistoryApi.java
    16  server/engine/src/main/java/cc/jumpkick/engine/http/HttpProjectApi.java
     7  server/engine/src/main/java/cc/jumpkick/engine/http/HttpReadApi.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/http/McpHandler.java
     9  server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpMachine.java
     3  server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpManifest.java
     4  server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpReads.java
@@ -251,7 +247,6 @@
     2  server/engine/src/main/java/cc/jumpkick/runtime/PlannerTest.java
     1  server/engine/src/main/java/cc/jumpkick/runtime/PluginCommands.java
     1  server/engine/src/main/java/cc/jumpkick/runtime/PolicyOps.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/ReachabilityMetadata.java
     1  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
     3  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
     1  server/engine/src/main/java/cc/jumpkick/task/ActionCache.java
@@ -296,16 +291,14 @@
     1  shared/client-io/src/test/java/cc/jumpkick/http/HostCooldownTest.java
     3  shared/client-io/src/test/java/cc/jumpkick/repo/RepoArtifactStoreTest.java
     1  shared/client-io/src/test/java/cc/jumpkick/repo/RepoCredentialResolverTest.java
-    1  shared/core/src/main/java/cc/jumpkick/builds/ProjectIdentity.java
     1  shared/core/src/main/java/cc/jumpkick/config/SecretRedactor.java
     1  shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java
     5  shared/core/src/test/java/cc/jumpkick/config/JkBuildParserTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/JkBuildWorkspaceTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/ModuleDotGraphTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/NerdFontDetectCostTest.java
-    1  shared/core/src/test/java/cc/jumpkick/config/TrainConfigParserTest.java
+    1  shared/core/src/test/java/cc/jumpkick/config/ManifestTrainTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/WorkspaceClasspathTest.java
-    2  shared/core/src/test/java/cc/jumpkick/deny/PolicyCheckerTest.java
     4  shared/core/src/test/java/cc/jumpkick/diagnostic/CompilerLocusTest.java
     1  shared/core/src/test/java/cc/jumpkick/layout/BuildLayoutTest.java
     4  shared/core/src/test/java/cc/jumpkick/lock/LockManifestDigestTest.java

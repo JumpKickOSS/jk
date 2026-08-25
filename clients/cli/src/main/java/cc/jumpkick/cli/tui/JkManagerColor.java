@@ -6,14 +6,22 @@ import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.jdk.JdkProgressLabel;
-import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
-import cc.jumpkick.terminal.Width;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
 
-/** Token coloring and format helpers for JkManager tree/header rows. */
+/**
+ * Token colouring and label vocabulary for the live tree and header rows: what a step's detail text
+ * means (a coordinate, a path, a count, a size, a Java member) and therefore what colour it takes.
+ *
+ * <p>Invariant: <b>one classification pass decides both the colour and the boundary</b>. {@code
+ * colorProseDetail} walks the string once, and each arm both paints a token and consumes it —
+ * classifying in one place and slicing in another is how "12 MiB" ends up with a yellow 12 and a
+ * yellow MiB, or how a trailing {@code )} joins the coordinate it follows.
+ *
+ * <p>Measuring and clipping an ANSI string is {@link RenderContext}'s, not this file's.
+ */
 @NullMarked
 public final class JkManagerColor {
 
@@ -27,17 +35,6 @@ public final class JkManagerColor {
             msg = msg.substring(mod.length() + 4).trim();
         }
         return msg;
-    }
-
-    /**
-     * Brief under a failed tree row: dim rail/indent, red message only (not the whole line).
-     *
-     * @param last whether this is the last tree entry (closing branch → space indent)
-     */
-    static String renderBriefErrorLine(boolean last, String brief) {
-        String errIndent = last ? "    " : " │  ";
-        Theme t = Theme.active();
-        return Theme.colorize(errIndent, t.darkGray()) + Theme.colorize(brief == null ? "" : brief, t.error());
     }
 
     /**
@@ -94,7 +91,7 @@ public final class JkManagerColor {
      * Paint {@code downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%} / {@code installing … 100%}: verb and
      * percent mid-gray, product name cyan, filled bar cells blue, empty cells dark gray.
      */
-    static String colorJdkProgressDetail(String detail, Theme t) {
+    private static String colorJdkProgressDetail(String detail, Theme t) {
         JdkProgressLabel.Parsed p = JdkProgressLabel.tryParse(detail);
         if (p == null) return null;
         StringBuilder out = new StringBuilder(detail.length() + 64);
@@ -118,7 +115,7 @@ public final class JkManagerColor {
      * (periwinkle), size number bold bright-white, prose mid-gray. Returns null when the detail
      * is not this shape so the generic prose painter handles it.
      */
-    static String colorNativeClasspathSizeDetail(String detail, Theme t) {
+    private static String colorNativeClasspathSizeDetail(String detail, Theme t) {
         if (detail == null) return null;
         final String marker = " · classpath input size: ~";
         int sep = detail.indexOf(marker);
@@ -143,7 +140,7 @@ public final class JkManagerColor {
      * the module segment) and never uses dim bright-black ({@link Theme#darkGray}) for default
      * prose.
      */
-    static String colorProseDetail(String text, Theme t) {
+    private static String colorProseDetail(String text, Theme t) {
         if (text == null || text.isEmpty()) return "";
         Style gray = t.midGray(); // #A0A0A0 — ordinary gray, not dim chrome
         Style number = t.warning(); // yellow counts (e.g. "Compiling N sources")
@@ -269,23 +266,23 @@ public final class JkManagerColor {
     }
 
     /** End index of the token starting at {@code i} (exclusive). Stops at whitespace. */
-    static int scanTokenEnd(String text, int i) {
+    private static int scanTokenEnd(String text, int i) {
         int n = text.length();
         int j = i;
         while (j < n && !Character.isWhitespace(text.charAt(j))) j++;
         return j;
     }
 
-    static boolean isHex(char c) {
+    private static boolean isHex(char c) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
-    static boolean isTrailingPunct(char c) {
+    private static boolean isTrailingPunct(char c) {
         return c == ',' || c == ')' || c == ';' || c == '(' || c == '[' || c == ']';
     }
 
     /** {@code MiB}, {@code KB}, {@code ms}, … — stay gray after a blue number. */
-    static boolean looksLikeSizeUnit(String unit) {
+    private static boolean looksLikeSizeUnit(String unit) {
         if (unit == null || unit.isEmpty()) return false;
         return switch (unit) {
             case "B",
@@ -327,7 +324,7 @@ public final class JkManagerColor {
     }
 
     /** Verbs whose following token is often a library / package id. */
-    static boolean isFetchOrResolveVerb(String word) {
+    private static boolean isFetchOrResolveVerb(String word) {
         if (word == null || word.isEmpty()) return false;
         return switch (word) {
             case "fetched",
@@ -357,7 +354,7 @@ public final class JkManagerColor {
      * Bare library short-name ({@code jackson-core}, {@code junit}) — not prose, not a path, not a
      * pure number.
      */
-    static boolean looksLikeLibraryShortName(String tok) {
+    private static boolean looksLikeLibraryShortName(String tok) {
         if (tok == null || tok.length() < 2) return false;
         if (looksLikePathOrArtifact(tok) || looksLikeCoord(tok)) return false;
         // Must start with a letter; allow letters, digits, dots, hyphens, underscores.
@@ -437,7 +434,7 @@ public final class JkManagerColor {
     }
 
     /** Paint {@code g:a} / {@code g:a:v} with the same colors as dependency trees. */
-    static String colorCoord(String tok) {
+    private static String colorCoord(String tok) {
         String[] parts = tok.split(":", -1);
         if (parts.length == 2) return Coords.ga(parts[0], parts[1]);
         if (parts.length >= 3) {
@@ -537,144 +534,4 @@ public final class JkManagerColor {
         String spaced = stepKey.replace('-', ' ').replace('_', ' ');
         return Character.toUpperCase(spaced.charAt(0)) + spaced.substring(1);
     }
-
-    /** "(1m 52s)" content: minutes+seconds past a minute, else just seconds. */
-    static String fmtElapsed(long millis) {
-        long totalSec = Math.max(0, millis) / 1000;
-        long m = totalSec / 60;
-        long s = totalSec % 60;
-        return m > 0 ? m + "m " + s + "s" : s + "s";
-    }
-
-    /**
-     * Columns safe to paint on a single row of a {@code terminalCols}-wide terminal. Leaves the last
-     * column free so a full-width write does not trip DEC auto-wrap (which can park the trailing
-     * {@code …} on the next row where EL / the next tree line erase it).
-     */
-    static int rowColumnBudget(int terminalCols) {
-        if (terminalCols <= 1) return Math.max(1, terminalCols);
-        return terminalCols - 1;
-    }
-
-    /**
-     * Hard-truncate an ANSI-colored string to {@code maxCols} visible columns (never wraps). When
-     * cut, ends with {@code …} so long test member names stay on one line. Copies escape sequences
-     * without counting them and appends a reset if the text was cut.
-     *
-     * <p>Callers painting to a live TTY should pass {@link #rowColumnBudget(int)} of the terminal
-     * width, not the raw column count — see that method.
-     *
-     * <p>Width metric: {@code WCWidth} per code point (CJK = 2 columns), matching
-     * {@link RenderContext#visibleWidth} and the resize reflow estimator — the two metrics
-     * disagreeing inside one paint path let a CJK-heavy row exceed its painted budget, wrap, and
-     * desync the cursor bookkeeping. WCWidth's tables are already linked into the
-     * native image via {@code AttributedString.columnLength}; the ANSI scanning stays hand-rolled
-     * ({@code AttributedString.fromAnsi} would add its parser, measured at +187–312 KB).
-     * Surrogate pairs are consumed whole, so a cut can never emit a lone high surrogate.
-     */
-    static String truncateVisible(String s, int maxCols) {
-        if (maxCols <= 0) return "";
-        // No maxCols==1 shortcut: the reserve logic below already handles it — a 1-column
-        // string fits as-is, only longer input degrades to the bare ellipsis.
-        int budget = maxCols;
-        StringBuilder sb = new StringBuilder(s.length());
-        int visible = 0;
-        boolean truncated = false;
-        boolean linkOpen = false;
-        for (int i = 0; i < s.length(); ) {
-            char c = s.charAt(i);
-            if (c == '\033') { // copy the whole escape (CSI or OSC) verbatim — zero columns
-                int j = RenderContext.skipEscape(s, i);
-                boolean unterminatedOsc = i + 1 < s.length()
-                        && s.charAt(i + 1) == ']'
-                        && !(j - 1 > i
-                                && (s.charAt(j - 1) == '\u0007'
-                                        || (j - 2 > i && s.charAt(j - 2) == '\u001b' && s.charAt(j - 1) == '\\')));
-                // A live unterminated OSC must never reach the terminal — it would swallow the
-                // following output up to the next BEL. Non-SGR CSI (cursor motion ESC[1A, erase
-                // ESC[2K, …) from raw tool output would move the real cursor mid-region-paint
-                // and desync row bookkeeping — drop it too; only SGR coloring passes (JK-2109).
-                boolean motionCsi = i + 1 < s.length() && s.charAt(i + 1) == '[' && j > i + 1 && s.charAt(j - 1) != 'm';
-                if (!unterminatedOsc && !motionCsi) {
-                    sb.append(s, i, j);
-                    // Track OSC-8 hyperlink state: a cut inside the linked label drops the close
-                    // that follows it, and SGR RESET does not end a hyperlink — the ellipsis, EL,
-                    // and later rows would all become part of the link.
-                    int state = osc8LinkState(s, i, j);
-                    if (state != 0) linkOpen = state > 0;
-                }
-                i = j;
-            } else {
-                // One code point per step (never splitting a surrogate pair), wcwidth columns.
-                int cp = s.codePointAt(i);
-                int cpLen = Character.charCount(cp);
-                int w = Width.wcwidth(cp);
-                if (w < 0) {
-                    // C0/C1 controls (stray tab/backspace/CR in a step message — @DisplayName
-                    // content flows in unsanitized). Emitting one at weight 0 advances real
-                    // columns past the charged budget, wraps the row, and desyncs the cursor
-                    // bookkeeping — drop it.
-                    i += cpLen;
-                    continue;
-                }
-                // Reserve one column for … only when the tail still costs columns.
-                // need=1 ⇒ stop while the ellipsis still fits in budget.
-                boolean moreAfter = hasVisibleFrom(s, i + cpLen);
-                int need = moreAfter ? 1 : 0;
-                if (visible + w + need > budget) {
-                    truncated = true;
-                    break;
-                }
-                sb.appendCodePoint(cp);
-                visible += w;
-                i += cpLen;
-            }
-        }
-        if (truncated) {
-            if (linkOpen) sb.append("\u001b]8;;\u0007"); // synthetic close before the ellipsis
-            sb.append(JkManager.ELLIPSIS);
-            sb.append(Ansi.RESET);
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Classifies a complete escape at {@code s[i..j)}: {@code 1} when it opens an OSC-8 hyperlink
-     * (non-empty URI), {@code -1} when it closes one (empty URI), {@code 0} for anything else.
-     */
-    private static int osc8LinkState(String s, int i, int j) {
-        if (j - i < 5 || s.charAt(i + 1) != ']' || s.charAt(i + 2) != '8' || s.charAt(i + 3) != ';') {
-            return 0;
-        }
-        int end = j;
-        if (s.charAt(end - 1) == '\u0007') {
-            end--;
-        } else if (end - 2 >= i && s.charAt(end - 2) == '\u001b' && s.charAt(end - 1) == '\\') {
-            end -= 2;
-        }
-        int semi = s.indexOf(';', i + 4); // end of the params section
-        if (semi < 0 || semi >= end) return 0; // malformed OSC-8 — no URI section
-        return semi + 1 < end ? 1 : -1;
-    }
-
-    /**
-     * True when {@code s[from..]} still spends at least one terminal column — skips ANSI escapes
-     * (CSI or OSC) and zero-/negative-width code points (combining marks, VS16, ZWJ, controls).
-     * Feeds the ellipsis reserve: a tail that costs nothing (cafe + combining acute at budget 4,
-     * emoji + VS16 at its exact width) must render fully, not lose its last glyph to a {@code …}.
-     */
-    static boolean hasVisibleFrom(String s, int from) {
-        for (int i = from; i < s.length(); ) {
-            if (s.charAt(i) == '\033') {
-                i = RenderContext.skipEscape(s, i);
-                continue;
-            }
-            int cp = s.codePointAt(i);
-            if (Width.wcwidth(cp) > 0) return true;
-            i += Character.charCount(cp);
-        }
-        return false;
-    }
-
-    /** Restores {@code System.out}/{@code System.err} when closed (no checked exception). */
 }

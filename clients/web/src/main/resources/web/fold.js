@@ -2,6 +2,10 @@
 // Folds the /api/events stream into activity cards — pure functions of (cards, event), no browser
 // globals, so the logic is testable headlessly with `node --test` (see docs/webclient.md).
 
+import { isTestFailureDiag } from './failure.js';
+import { fmtDuration } from './format.js';
+import { stepState } from './outcome.js';
+
 /** Cards kept in the activity feed — a long-lived tab must not grow the page without limit. */
 export const MAX_CARDS = 50;
 
@@ -13,7 +17,7 @@ export const MAX_DIAGNOSTICS = 12;
 
 /**
  * Client-side ceiling for rich test-failure diagnostics per module. The live SSE feed is already
- * server-capped (JK-1880), but journal history replay is not — a pathological record must not
+ * server-capped, but journal history replay is not — a pathological record must not
  * inject thousands of snippet+stack payloads into one card.
  */
 export const MAX_TEST_FAILURE_DIAGNOSTICS = 120;
@@ -36,7 +40,7 @@ export function isBuildLikeKind(kind) {
 /**
  * Latch the card's client-epoch start anchor. `startedAt` is engine wall clock; comparing it
  * with the browser clock on a skewed remote dashboard shifts elapsed/bar/deadline by the skew
- * (JK-1839). When a frame carries the engine's own `serverNow`, elapsed = serverNow - startedAt
+ *. When a frame carries the engine's own `serverNow`, elapsed = serverNow - startedAt
  * is skew-free and receipt time converts it to the client epoch. Earliest wins, like startedAt.
  */
 function noteStartAnchor(card, d, at) {
@@ -113,7 +117,7 @@ export function foldEvent(cards, event) {
         buildNumber: d.buildNumber || null,
         state: 'running',
         startedAt: engineStart ?? event.at ?? null,
-        // Client-epoch anchor (JK-1839): skew-corrected when serverNow rides the frame, else a
+        // Client-epoch anchor: skew-corrected when serverNow rides the frame, else a
         // live request-start's receipt time is the admission instant to within transit latency.
         startedAtClient:
           engineStart != null && typeof d.serverNow === 'number' && d.serverNow >= engineStart
@@ -128,7 +132,7 @@ export function foldEvent(cards, event) {
         // module rather than one merged strip.
         modules: [],
         // Fine-grained per-module plan ticks (detail only). Request-level bar uses
-        // progressPercent from engine workspace-progress (JK-1120) — dumb client, no re-sum.
+        // progressPercent from engine workspace-progress — dumb client, no re-sum.
         mods: {},
         planWeight: 0,
         progressPercent: typeof d.progress === 'number' ? d.progress : null,
@@ -210,7 +214,7 @@ export function foldEvent(cards, event) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
         // Residual RemainingWork: adaptive bar + countdown re-anchor. Prefer CURRENT remainingMs
-        // for first seed (reconnect/late join — JK-1820): seeding from original R0 restarted a
+        // for first seed (reconnect or late join): seeding from original R0 restarted a
         // full-length countdown mid-build. A fresh run's first snapshot has remainingMs == R0.
         const rem = typeof d.remainingMs === 'number' && d.remainingMs >= 0 ? d.remainingMs : null;
         if (rem != null) {
@@ -237,13 +241,13 @@ export function foldEvent(cards, event) {
     case 'eta': {
       const card = resolveCard(cards, d);
       if (card && typeof d.millis === 'number') {
-        // Always record remaining@emission for etaTotalMillis (JK-1517 re-projections).
+        // Always record remaining@emission for etaTotalMillis re-projections.
         card.etaMillis = d.millis;
         card.etaAt = event.at ?? null;
         // Seed R0 — and, matching the CLI's "positive re-seeds allowed pre-execute" rule, let a
         // later eta REPLACE a provisional seed until any module work has folded: a contended
         // build's coarse lock+prior figure otherwise stayed R0 for the whole run and the
-        // R0-fallback bar paced against the wrong total (JK-1854). Mid-run, residual re-anchors
+        // R0-fallback bar paced against the wrong total. Mid-run, residual re-anchors
         // via residualRemainingMs/residualAt and R0 stays frozen.
         const preExecute = card.modules.length === 0 && !(card.progressNum > 0);
         if (d.millis > 0 && (card.r0Ms == null || preExecute)) {
@@ -271,7 +275,7 @@ export function foldEvent(cards, event) {
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
         const nd = normalizeDiagnostic(d);
-        // Per-kind ceilings (server policy, JK-1880): a test-failure flood must not evict the
+        // Per-kind ceilings (server policy): a test-failure flood must not evict the
         // compile/resolve slice, and vice versa.
         const kindCount = mod.diagnostics.filter((x) => isTestFailureDiag(x) === isTestFailureDiag(nd)).length;
         if (kindCount < (isTestFailureDiag(nd) ? MAX_TEST_FAILURE_DIAGNOSTICS : MAX_DIAGNOSTICS)) {
@@ -292,7 +296,7 @@ export function foldEvent(cards, event) {
       const card = resolveCard(cards, d);
       if (card) {
         const row = moduleRow(card, d.dir, event.at);
-        // didWork=false → pure cache check (JK-1296); treat as success but label checked.
+        // didWork=false → pure cache check; treat as success but label checked.
         row.didWork = d.didWork !== false;
         row.state = d.success
           ? row.didWork
@@ -342,7 +346,7 @@ export function foldEvent(cards, event) {
 function applyRunSnapshot(cards, d, at) {
   if (!d || d.jid == null) return;
   // A snapshot captured while the run was still live can arrive after the finish frame in a
-  // reconnect race — it must never resurrect a finished card as running (JK-1837).
+  // reconnect race — it must never resurrect a finished card as running.
   const pre = cards.find((c) => c.id === d.jid);
   if (pre && pre.state !== 'running') return;
   // Ensure a running card exists (same paths as request-start rehydrate).
@@ -363,7 +367,7 @@ function applyRunSnapshot(cards, d, at) {
   const card = resolveCard(cards, d);
   if (!card) return;
   // The engine sends the journal id — apply it so dedupe/delete reconciliation works even for
-  // runs without a buildNumber (e.g. lock jobs), instead of waiting for a history GET (JK-1846).
+  // runs without a buildNumber (e.g. lock jobs), instead of waiting for a history GET.
   if (typeof d.historyId === 'string' && d.historyId && !card.historyId) card.historyId = d.historyId;
   if (typeof d.startedAt === 'number' && d.startedAt > 0) {
     if (card.startedAt == null || d.startedAt < card.startedAt) card.startedAt = d.startedAt;
@@ -381,7 +385,7 @@ function applyRunSnapshot(cards, d, at) {
   // chains and progress (history stub is empty; live card may still be empty if this is the
   // first frame) — but MERGE into existing rows: the snapshot never carries diagnostics or
   // didWork, which are published exactly once as live events, so a reconnect replace would
-  // lose them for the rest of the run (JK-1834).
+  // lose them for the rest of the run.
   const mods = historyModules({
     running: true,
     dir: d.dir || card.dir || '',
@@ -391,7 +395,7 @@ function applyRunSnapshot(cards, d, at) {
     startedAt: card.startedAt,
     modules: d.modules,
     tasks: d.tasks,
-    diagnostics: d.diagnostics,
+    diagnostics: [],
   });
   if (mods.length > 0) card.modules = mergeSnapshotModules(card.modules, mods);
 }
@@ -435,7 +439,7 @@ function mergeSnapshotModules(existing, snapshot) {
 }
 
 /**
- * Aggregate numerator for the request bar (JK-1120). Prefers engine workspace-progress units;
+ * Aggregate numerator for the request bar. Prefers engine workspace-progress units;
  * falls back to summing module ticks only when no aggregate event has arrived yet.
  */
 /**
@@ -443,7 +447,7 @@ function mergeSnapshotModules(existing, snapshot) {
  * REMAINING work at emission time (BuildService remaining-work semantics), so the total is
  * (etaAt - startedAt) + etaMillis: the same elapsed+remaining conversion the CLI does. Without
  * it, a slow lock/prepare window or an ETA re-projection double-counts already-elapsed time and
- * the countdown hits "0s" while the build is on schedule (JK-1517). Journal-seeded cards carry
+ * the countdown hits "0s" while the build is on schedule. Journal-seeded cards carry
  * no etaAt: their etaMillis is treated as the total (legacy shape).
  */
 export function etaTotalMillis(card) {
@@ -482,7 +486,7 @@ export function weightDenominator(card) {
  * the durable string id, so the two never collide and are reconciled here by (dir, buildNumber) —
  * structurally, since `finishedAt` on a live card is browser receipt time while the record carries
  * engine time, and clock skew on a remote dashboard would otherwise duplicate every finished build
- * (JK-1519). The ±2s time window remains only as a fallback for cards without a buildNumber.
+ *. The ±2s time window remains only as a fallback for cards without a buildNumber.
  */
 export function seedFromHistory(cards, records) {
   for (const rec of records || []) {
@@ -501,7 +505,7 @@ export function seedFromHistory(cards, records) {
           c.dir === rec.dir &&
           c.finishedAt != null &&
           Math.abs(c.finishedAt - rec.finishedAt) < 2000) ||
-        // JK-1251: match a live SSE card to a durable in-flight journal row
+        // match a live SSE card to a durable in-flight journal row
         (c.state === 'running' &&
           rec.running &&
           c.dir === rec.dir &&
@@ -515,7 +519,7 @@ export function seedFromHistory(cards, records) {
       if (rec.running) live.state = 'running';
       else if (live.state === 'running') {
         // The journal says this run is over: a finish frame lost to a connect/reconnect race
-        // (JK-1837) must not leave the card spinning forever — history is the durable truth.
+        // must not leave the card spinning forever — history is the durable truth.
         live.state = 'finished';
         live.finishedAt = rec.finishedAt || live.finishedAt || null;
         live.millis = rec.millis ?? live.millis;
@@ -551,7 +555,7 @@ export function seedFromHistory(cards, records) {
     }
     if (cards.some((c) => c.id === 'h:' + rec.id)) continue; // already seeded
     // A running stub for a run this tab already saw finish is stale (reconcile raced the journal
-    // write) — seeding it would add a phantom running row next to the finished card (JK-1519).
+    // write) — seeding it would add a phantom running row next to the finished card.
     if (
       rec.running &&
       rec.buildNumber &&
@@ -567,15 +571,13 @@ export function seedFromHistory(cards, records) {
 }
 
 /** One persisted record → a card matching {@link foldEvent}'s shape (finished or still running). */
-function historyCard(rec) {
+export function historyCard(rec) {
   const running = !!rec.running;
   // Prefer the live engine jid (enriched by GET /api/history) so SSE events rebind without
   // waiting for a second request-start after a hard refresh mid-build.
   const liveId = rec.jid ?? rec.requestId;
   const id = running && typeof liveId === 'number' && liveId > 0 ? liveId : 'h:' + rec.id;
-  let progressPercent = null;
-  if (typeof rec.progress === 'number') progressPercent = rec.progress;
-  else if (typeof rec.progressPercent === 'number') progressPercent = rec.progressPercent;
+  const progressPercent = typeof rec.progress === 'number' ? rec.progress : null;
   const card = {
     id,
     historyId: rec.id,
@@ -599,7 +601,7 @@ function historyCard(rec) {
     progressNum: typeof rec.numerator === 'number' ? rec.numerator : 0,
     progressDen: typeof rec.denominator === 'number' ? rec.denominator : 0,
     peakPct: typeof progressPercent === 'number' ? Math.min(99, Math.round(progressPercent)) : undefined,
-    etaMillis: typeof rec.etaMillis === 'number' ? rec.etaMillis : null,
+    etaMillis: null,
     etaAt: null,
     io: rec.io ? normalizeIo(rec.io) : null,
   };
@@ -617,7 +619,7 @@ function applyLiveEtaFields(card, rec) {
   const rem = typeof rec.remainingMs === 'number' && rec.remainingMs >= 0 ? rec.remainingMs : null;
   const now = Date.now();
   // Latch the client-epoch anchor when the payload carries serverNow (no-op otherwise) so the
-  // r0At seeds below land in the client epoch (JK-1839).
+  // r0At seeds below land in the client epoch.
   noteStartAnchor(card, rec, now);
   if (rem != null) {
     card.residualRemainingMs = rem;
@@ -680,24 +682,6 @@ export function ioLines(card) {
   return lines;
 }
 
-/**
- * Human byte size, 1024-based, picking the unit that keeps the number small: `512 B`, `100 KiB`,
- * `12.4 MiB`, `1.5 GiB` — never `1533 MiB`. One decimal below 100, whole numbers above it, and a
- * trailing `.0` is dropped.
- */
-export function fmtBytes(bytes) {
-  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '0 B';
-  if (bytes < 1024) return Math.round(bytes) + ' B';
-  const units = ['KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
-  let v = bytes;
-  let u = -1;
-  do {
-    v /= 1024;
-    u++;
-  } while (v >= 1024 && u < units.length - 1);
-  const n = v >= 100 ? String(Math.round(v)) : v.toFixed(1).replace(/\.0$/, '');
-  return n + ' ' + units[u];
-}
 
 /** A persisted diagnostic → the client's flat failure-output shape (errors only; warnings dropped). */
 function historyDiags(diags, dir) {
@@ -724,7 +708,7 @@ export function normalizeDiagnostic(d) {
     stack: d.stack || '',
     file: d.file || '',
     line: typeof d.line === 'number' ? d.line : 0,
-    col: typeof d.col === 'number' ? d.col : typeof d.column === 'number' ? d.column : 0,
+    col: typeof d.col === 'number' ? d.col : 0,
     snippetStart: typeof d.snippetStart === 'number' ? d.snippetStart : 0,
     snippet,
     worker: typeof d.worker === 'number' ? d.worker : 0,
@@ -742,7 +726,7 @@ function historyModules(rec) {
   const toSteps = (ps) =>
     (ps || []).map((p) => {
       // Absent or negative millis = unknown duration (renders plain); 0 is the true-no-op
-      // signal that renders dashed (JK-1855 — the journal no longer stamps unknown as 0).
+      // signal that renders dashed (the journal no longer stamps unknown as 0).
       const millis = typeof p.millis === 'number' && p.millis >= 0 ? p.millis : null;
       return {
         name: p.name || '?',
@@ -759,7 +743,7 @@ function historyModules(rec) {
       const steps = toSteps(m.tasks);
       let state;
       if (typeof m.finished === 'boolean') {
-        // Engine's explicit lifecycle bit (JK-1846): success=false alone was ambiguous between
+        // Engine's explicit lifecycle bit: success=false alone was ambiguous between
         // "still running" and "failed", and a module-level failure with no FAIL task was
         // misclassified as running by the status-guessing below.
         state = !m.finished
@@ -772,7 +756,7 @@ function historyModules(rec) {
               : 'success'
             : steps.some((s) => s.state === 'failed')
               // A real FAIL recorded before the cancel still reads as failed — same precedence
-              // as outcomeOf and the legacy branch below (JK-2094): a compile failure followed
+              // as outcomeOf and the legacy branch below: a compile failure followed
               // by a workspace cancel must not gray out to 'cancelled' on reload.
               ? 'failed'
               : rec.cancelled || m.cancelled || steps.some((s) => s.state === 'cancelled')
@@ -800,13 +784,13 @@ function historyModules(rec) {
         state,
         millis: m.millis ?? null,
         steps,
-        // Same per-kind ceilings as the single-project path below (JK-1947): a pathological
+        // Same per-kind ceilings as the single-project path below: a pathological
         // workspace record must not inject thousands of snippet+stack payloads into one card.
         diagnostics: boundDiagnostics(historyDiags(rec.diagnostics, m.dir || '')),
         // Preserve journal order as a tie-break (later modules slightly higher lastActivity).
         lastActivity: activity + i,
       };
-      // Carry the engine's cache-check bit so checked rendering survives merges (JK-1834/1846).
+      // Carry the engine's cache-check bit so checked rendering survives merges.
       if (typeof m.didWork === 'boolean') row.didWork = m.didWork;
       return row;
     });
@@ -858,135 +842,6 @@ function boundDiagnostics(list) {
   return out;
 }
 
-/** True when any step actually failed (FAIL) — not merely cancelled mid-flight. */
-function hasFailedStep(card) {
-  for (const m of card.modules || []) {
-    for (const s of m.steps || []) {
-      if (s.state === 'failed') return true;
-    }
-  }
-  return false;
-}
-
-/**
- * A finished card's outcome badge: the engine's explicit success when it sent one (HTTP-triggered
- * builds do), else derived from module rows (socket requests encode their outcome in wire
- * messages, not events): any failed module → failed; all finished and some succeeded → success.
- *
- * <p>A real test/compile FAIL recorded before cancel still reads as failed. Modules that ended
- * because the session was cancelled ({@code state === 'cancelled'}) do not flip the badge.
- */
-export function outcomeOf(card) {
-  if (card.state === 'running') return 'running';
-  // FAIL steps / failed modules first — a cancel bit alone must not mask a real test failure.
-  if (hasFailedStep(card) || (card.modules || []).some((m) => m.state === 'failed')) return 'failed';
-  if (card.cancelled || (card.modules || []).some((m) => m.state === 'cancelled')) return 'cancelled';
-  if (card.success === true) return 'success';
-  if (card.success === false) return 'failed';
-  // success + checked are both green outcomes (JK-1296: pure cache re-entry is "checked")
-  if (
-    card.modules.length > 0
-    && card.modules.every((m) => m.state === 'success' || m.state === 'checked')
-  ) {
-    return 'success';
-  }
-  return 'finished';
-}
-
-/**
- * Group a module's step rows into a coarse **phase-chain**, in first-encounter order (which is
- * plan order): the first step of a not-yet-seen phase appends a phase node; later steps of that
- * phase attach to it. The client stays "dumb" — it keys on whatever `phase` wire-string the steps
- * carry, so a future/plugin phase just appears as its own node with no code change here. A step with
- * no phase (`''`) forms a node keyed by its own name so it is never dropped (shouldn't happen once
- * every emitted step is phase-tagged). Each node's `state` is derived from its steps
- * (failed › running › skipped/cancelled › success) and it keeps its `steps` for click-to-expand.
- */
-export function phaseChainOf(module) {
-  const nodes = [];
-  const byKey = new Map();
-  for (const s of (module && module.steps) || []) {
-    const key = s.phase || s.name; // '' phase → keyed by the step name (last-resort, never merged)
-    let node = byKey.get(key);
-    if (!node) {
-      node = { key, phase: s.phase || '', label: phaseLabel(s.phase || s.name), steps: [], state: 'running' };
-      byKey.set(key, node);
-      nodes.push(node);
-    }
-    node.steps.push(s);
-  }
-  for (const node of nodes) node.state = phaseState(node.steps);
-  // Resolve is setup noise on a happy path. Keep it only when a resolve step failed
-  // so the chain starts at Generate (or the next real phase) otherwise.
-  return nodes.filter((n) => !isQuietResolve(n));
-}
-
-/**
- * True for a completed-successfully {@code resolve} phase node (hide from the strip). Failed
- * resolves stay (the user must see where it broke), and so do running/cancelled ones — during a
- * cold-cache resolution (~18s) the resolve node is the ONLY live indicator; hiding it left the
- * phase chain empty until compile steps appeared (JK-2112).
- */
-function isQuietResolve(node) {
-  const phase = (node.phase || '').toLowerCase();
-  if (phase !== 'resolve') return false;
-  return node.state !== 'failed' && node.state !== 'running' && node.state !== 'cancelled';
-}
-
-/** Display label for a phase wire-name: capitalize the first letter ('compile' → 'Compile'). */
-function phaseLabel(wire) {
-  return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '?';
-}
-
-/**
- * Stamp / resource / build-logic tails. A 1–2ms SUCCESS here is not "the compiler ran" —
- * {@link #phaseState} judges skip/success from the other steps in the phase.
- */
-function isHousekeepingStep(step) {
-  const n = step && step.name ? String(step.name) : '';
-  return n === 'copy-resources' || n.startsWith('write-stamp') || n.startsWith('build-logic-');
-}
-
-/** A phase node's aggregate state from its steps: failed › running › skipped/cancelled › success. */
-function phaseState(steps) {
-  if (!steps.length) return 'running';
-  if (steps.some((s) => s.state === 'failed')) return 'failed';
-  if (steps.some((s) => s.state === 'running')) return 'running';
-  // Judge productive work only. copy-resources SUCCESS@2ms must not turn Compile green
-  // when compile-java was SKIPPED (action-cache / stamp hit).
-  const primary = steps.filter((s) => !isHousekeepingStep(s));
-  const judged = primary.length ? primary : steps;
-  if (judged.every((s) => s.state === 'skipped')) return 'skipped';
-  if (judged.every((s) => s.state === 'skipped' || s.state === 'cancelled')) return 'cancelled';
-  // Idle bookkeeping only (explicit 0ms success + skips): paint the phase as skipped so
-  // Generate with a 0ms empty generate is not solid "success". Missing millis is not
-  // treated as idle (history/tests often omit duration).
-  if (judged.every((s) => s.state === 'skipped' || (s.state === 'success' && s.millis === 0))) {
-    return 'skipped';
-  }
-  return 'success';
-}
-
-/**
- * One line summarizing a card's module work, e.g. "3 modules · 1 failed",
- * "checked 2 modules, all up to date", "built 1 · checked 2", "built 27 modules" — '' when
- * nothing to say. Past tense for finished work so it does not read as the bare kind label
- * "build" plus a count ("build 27 modules").
- */
-export function moduleSummary(card) {
-  const n = card.modules.length;
-  if (n === 0) return '';
-  const failed = card.modules.filter((m) => m.state === 'failed').length;
-  const checked = card.modules.filter((m) => m.state === 'checked').length;
-  const built = card.modules.filter((m) => m.state === 'success').length;
-  const noun = (k) => (k === 1 ? 'module' : 'modules');
-  if (failed > 0) return `${n} ${noun(n)} · ${failed} failed`;
-  if (built === 0 && checked > 0) return `checked ${checked} ${noun(checked)}, all up to date`;
-  if (built > 0 && checked > 0) return `built ${built} · checked ${checked}`;
-  if (built > 0) return `built ${built} ${noun(built)}`;
-  // Still running / unknown terminal mix — bare count only.
-  return `${n} ${noun(n)}`;
-}
 
 /**
  * Find the card for an SSE payload. Live cards key on the numeric engine {@code jid}.
@@ -1092,643 +947,25 @@ function stepRow(card, dir, step, phase, at) {
 }
 
 /**
- * Step wall-clock from a finish payload: prefer engine {@code millis}, then CLI {@code duration_ms},
- * else client receipt delta from {@code task-start} (best-effort for older engines).
+ * Step wall-clock from a finish payload: the engine's {@code millis} when it sent one, else the
+ * client's receipt delta from {@code task-start}.
  */
 function stepMillisOf(d, row, at) {
   if (typeof d.millis === 'number' && Number.isFinite(d.millis)) return Math.max(0, d.millis);
-  if (typeof d.duration_ms === 'number' && Number.isFinite(d.duration_ms)) {
-    return Math.max(0, d.duration_ms);
-  }
   if (row && row.startedAt != null && at != null && Number.isFinite(at) && Number.isFinite(row.startedAt)) {
     return Math.max(0, at - row.startedAt);
   }
   return row && row.millis != null ? row.millis : null;
 }
 
-/**
- * Compact duration for phase/step tooltips: {@code 360ms}, {@code 1.2s}, {@code 1m 5s}.
- * Slightly tighter than the card-level {@code duration()} (no space before the unit).
- */
-export function fmtStepMillis(millis) {
-  if (millis == null || !Number.isFinite(millis)) return '';
-  const ms = Math.max(0, Math.round(millis));
-  if (ms < 1000) return ms + 'ms';
-  if (ms < 60_000) {
-    const s = ms / 1000;
-    // One decimal under 10s ("1.2s"), whole seconds from there ("12s").
-    return (s < 10 ? s.toFixed(1) : String(Math.round(s))) + 's';
-  }
-  const totalSec = Math.floor(ms / 1000);
-  return Math.floor(totalSec / 60) + 'm ' + (totalSec % 60) + 's';
-}
 
 /**
  * One step's tooltip fragment: {@code compile-tests (212ms)}, or just the name while still running.
  */
 export function stepTimingLabel(step) {
   if (!step || !step.name) return '';
-  const t = fmtStepMillis(step.millis);
+  const t = fmtDuration(step.millis, { compact: true });
   return t ? step.name + ' (' + t + ')' : step.name;
 }
 
-/**
- * Display order for multi-module cards (CLI tree parity): running first (most recently active
- * first), then failed, then finished (success / checked / cancelled) at the bottom.
- */
-export function orderedModules(modules) {
-  return (modules || []).slice().sort((a, b) => {
-    const ra = moduleOrderRank(a);
-    const rb = moduleOrderRank(b);
-    if (ra !== rb) return ra - rb;
-    return (b.lastActivity || 0) - (a.lastActivity || 0);
-  });
-}
 
-/** 0 = active, 1 = failed, 2 = finished. */
-function moduleOrderRank(m) {
-  if (!m) return 2;
-  if (m.state === 'running') return 0;
-  if (m.state === 'failed' || (m.diagnostics && m.diagnostics.length > 0)) return 1;
-  return 2;
-}
-
-/**
- * Engine StepStatus → chain-node state. {@code millis === 0} SUCCESS is painted skipped: pure
- * no-ops (stamp unchanged, empty generate, ensure-jdk already present) often still land as
- * SUCCESS when older engines omit {@code ctx.cached()}; 0ms wall matches the skip mental model.
- */
-function stepState(status, millis) {
-  switch (status) {
-    case 'SUCCESS':
-    case 'success':
-      if (millis === 0) return 'skipped';
-      return 'success';
-    case 'FAIL':
-    case 'failed':
-      return 'failed';
-    case 'CANCELLED':
-    case 'cancelled':
-      return 'cancelled';
-    case 'SKIPPED':
-    case 'skipped':
-      return 'skipped';
-    default:
-      return 'running';
-  }
-}
-
-/**
- * Live detail after the running phase node (CLI tree-row parity). Strips a leading
- * {@code module :: } prefix when the engine embeds the coordinate in test labels, and
- * shortens any package FQCNs so the UI never paints wire-shaped type names.
- */
-export function detailForDisplay(module, message) {
-  if (message == null || message === '') return '';
-  let msg = String(message).trim();
-  const mod = module == null ? '' : String(module).trim();
-  if (mod && msg.startsWith(mod + ' :: ')) {
-    msg = msg.slice(mod.length + 4).trim();
-  }
-  return shortDisplayLabel(msg);
-}
-
-/**
- * The live message of the rightmost running phase's running step (or ''), after
- * {@link detailForDisplay}. {@code module} is the coord used to strip redundant prefixes.
- */
-export function liveStepDetail(module, steps) {
-  const phases = phaseChainOf({ steps: steps || [] });
-  for (let i = phases.length - 1; i >= 0; i--) {
-    const p = phases[i];
-    if (p.state !== 'running') continue;
-    for (let j = p.steps.length - 1; j >= 0; j--) {
-      const s = p.steps[j];
-      if (s.state === 'running' && s.message) {
-        return detailForDisplay(module, s.message);
-      }
-    }
-  }
-  return '';
-}
-
-/** {@code FooTest}, {@code FooTest.bar()}, or {@code FooTest.bar(Path)} — not free prose. */
-const JAVA_MEMBER = /^[A-Z][\w$]*(?:\.[A-Za-z_][\w$]*(?:\([^)]*\))?)?$/;
-
-export function looksLikeJavaMember(s) {
-  return !!(s && JAVA_MEMBER.test(s));
-}
-
-/**
- * Color segments for a live step detail (CLI {@code colorDetail} roles).
- * Each segment is {@code { text, cls }} with cls in:
- * {@code det-type | det-fn | det-num | det-path | det-coord | det-mid | det-dim}.
- * FQCNs in the text are shortened before segmentation.
- */
-export function detailSegments(detail) {
-  if (detail == null || detail === '') return [];
-  let body = shortDisplayLabel(String(detail));
-  let worker = '';
-  // progressLabel appends "  [w2]" — keep it outside the Java highlighter.
-  const w = body.lastIndexOf('  [w');
-  if (w > 0 && body.endsWith(']')) {
-    worker = body.slice(w);
-    body = body.slice(0, w);
-  }
-  const jdk = jdkProgressSegments(body);
-  const segs = jdk || (looksLikeJavaMember(body) ? javaMemberSegments(body) : proseSegments(body));
-  if (worker) segs.push({ text: worker, cls: 'det-mid' });
-  return segs;
-}
-
-/** {@code downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%} — CLI JdkProgressLabel / colorJdkProgressDetail. */
-const JDK_PROGRESS =
-  /^(downloading|installing) (.+?)(?: ([▰▱]+) (\d+)%)?$/;
-
-export function jdkProgressSegments(detail) {
-  if (detail == null || detail === '') return null;
-  const m = String(detail).trim().match(JDK_PROGRESS);
-  if (!m) return null;
-  const segs = [
-    { text: m[1], cls: 'det-mid' },
-    { text: ' ', cls: 'det-mid' },
-    { text: m[2], cls: 'det-jdk' },
-  ];
-  if (m[3]) {
-    segs.push({ text: ' ', cls: 'det-mid' });
-    for (const ch of m[3]) {
-      segs.push({ text: ch, cls: ch === '▰' ? 'det-bar-fill' : 'det-bar-empty' });
-    }
-    segs.push({ text: ' ', cls: 'det-mid' });
-    segs.push({ text: `${m[4]}%`, cls: 'det-mid' });
-  }
-  return segs;
-}
-
-/** Capitalized id → type; lower id before `(` → function; else mid-gray. */
-function javaMemberSegments(s) {
-  const segs = [];
-  let i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (/[A-Z]/.test(c)) {
-      let j = i + 1;
-      while (j < s.length && /[\w$]/.test(s[j])) j++;
-      segs.push({ text: s.slice(i, j), cls: 'det-type' });
-      i = j;
-      continue;
-    }
-    if (/[a-z_]/.test(c)) {
-      let j = i + 1;
-      while (j < s.length && /[\w$]/.test(s[j])) j++;
-      let k = j;
-      while (k < s.length && s[k] === ' ') k++;
-      const cls = k < s.length && s[k] === '(' ? 'det-fn' : 'det-mid';
-      segs.push({ text: s.slice(i, j), cls });
-      i = j;
-      continue;
-    }
-    segs.push({ text: c, cls: 'det-mid' });
-    i++;
-  }
-  return segs;
-}
-
-/**
- * Prose detail: mid-gray body with numbers, path-like tokens, and g:a coords picked out
- * (simplified CLI {@code colorProseDetail}).
- */
-function proseSegments(text) {
-  const segs = [];
-  const re =
-    /(\b\d+(?:\.\d+)?\b)|((?:~\/|\/|\.\/|\.\.\/)[\w./+\-]+|[\w.-]+\.(?:jar|war|ear|zip|class|kt|java|groovy)\b)|(\b[\w.-]+:[\w.-]+(?::[\w.-]+)?\b)|([^\s]+)|(\s+)/g;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    if (m[1] != null) segs.push({ text: m[1], cls: 'det-num' });
-    else if (m[2] != null) segs.push({ text: m[2], cls: 'det-path' });
-    else if (m[3] != null && m[3].includes(':')) segs.push({ text: m[3], cls: 'det-coord' });
-    else if (m[4] != null) segs.push({ text: m[4], cls: 'det-mid' });
-    else if (m[5] != null) segs.push({ text: m[5], cls: 'det-mid' });
-  }
-  return segs;
-}
-
-// ---- test-failure report (CLI TestFailureHighlight parity, no thick rail) ----
-
-/** Simple class name from FQCN. */
-export function simpleTypeName(fqcn) {
-  if (!fqcn) return '';
-  const s = String(fqcn);
-  const d = s.lastIndexOf('.');
-  return d >= 0 ? s.slice(d + 1) : s;
-}
-
-/**
- * Human-facing member label: drop package FQCNs so the UI never paints wire-shaped names.
- * {@code cc.jumpkick.FooTest.bar(java.nio.file.Path)} → {@code FooTest.bar(Path)}.
- * Preserves a trailing {@code  [wN]} worker tag when present. Leaves ordinary prose, versions,
- * and jar names untouched.
- */
-export function shortDisplayLabel(raw) {
-  if (raw == null || raw === '') return raw == null ? '' : raw;
-  let worker = '';
-  let body = String(raw).trim();
-  const w = body.lastIndexOf('  [w');
-  if (w > 0 && body.endsWith(']')) {
-    worker = body.slice(w);
-    body = body.slice(0, w).trim();
-  }
-  if (!looksLikeJavaishLabel(body)) return worker ? body + worker : body;
-  body = simplifyMethodParams(body);
-  const paren = body.indexOf('(');
-  const searchEnd = paren >= 0 ? paren : body.length;
-  const dot = body.lastIndexOf('.', searchEnd - 1);
-  if (dot > 0 && dot < body.length - 1) {
-    const after = body.slice(dot + 1, searchEnd);
-    if (after && (/^[a-z_]/.test(after) || after.startsWith('<'))) {
-      const cls = simpleTypeName(body.slice(0, dot));
-      const method = simplifyMethodParams(body.slice(dot + 1));
-      body = cls ? cls + '.' + method : method;
-    } else {
-      body = simpleTypeName(body.slice(0, searchEnd)) + body.slice(searchEnd);
-    }
-  }
-  return worker ? body + worker : body;
-}
-
-/** True for Java member / type labels we may shorten — not versions, jar names, or free prose. */
-export function looksLikeJavaishLabel(body) {
-  if (!body) return false;
-  // Spaces only allowed inside a trailing param list: Foo.bar(A, B).
-  const open = body.indexOf('(');
-  const head = open >= 0 ? body.slice(0, open) : body;
-  if (head.indexOf(' ') >= 0) return false;
-  if (open >= 0) {
-    const close = body.lastIndexOf(')');
-    if (close < open) return false;
-    if (close + 1 < body.length && body.slice(close + 1).indexOf(' ') >= 0) return false;
-  }
-  const c0 = body[0];
-  if (!/[A-Za-z_$]/.test(c0)) return false;
-  if (open >= 0) {
-    return body.indexOf('.') >= 0 || /[A-Z]/.test(c0);
-  }
-  if (body.indexOf('.') < 0) return /[A-Z]/.test(c0);
-  return /^(?:[a-z][\w$]*\.)*[A-Z][\w$]*(?:\.[A-Za-z_][\w$]*)?$/.test(body);
-}
-
-/** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — package stripped, params simplified. */
-export function shortTestLabel(d) {
-  let cls = simpleTypeName(d.className || '');
-  let method = (d.method || d.test || '').trim();
-  const gt = method.lastIndexOf(' > ');
-  if (gt >= 0) method = method.slice(gt + 3).trim();
-  method = simplifyMethodParams(method);
-  // method may still look like Class.method / pkg.Class.method — peel the class segment.
-  const paren = method.indexOf('(');
-  let dot = method.lastIndexOf('.');
-  if (paren >= 0 && dot > paren) dot = method.lastIndexOf('.', paren);
-  if (dot > 0 && dot < method.length - 1) {
-    const after = method.slice(dot + 1, paren >= 0 ? paren : method.length);
-    if (after && (/^[a-z_]/.test(after) || after.startsWith('<'))) {
-      if (!cls) cls = simpleTypeName(method.slice(0, dot));
-      method = method.slice(dot + 1);
-    }
-  }
-  method = simplifyMethodParams(method);
-  if (method && method.indexOf('(') < 0 && method !== '(test run)') method += '()';
-  if (!cls && !method) return shortDisplayLabel(d.test || '') || '?';
-  let label = !cls ? shortDisplayLabel(method) : !method ? cls : shortDisplayLabel(cls + '.' + method);
-  const worker = typeof d.worker === 'number' ? d.worker : 0;
-  if (worker > 0 && !label.includes('  [w')) label = label + '  [w' + worker + ']';
-  return label;
-}
-
-/** Keep {@code (…)} but strip package prefixes inside params. */
-export function simplifyMethodParams(method) {
-  if (!method) return '';
-  const open = method.indexOf('(');
-  const close = method.lastIndexOf(')');
-  if (open < 0 || close <= open) return String(method).trim();
-  const name = method.slice(0, open).trim();
-  const inside = method.slice(open + 1, close).trim();
-  const suffix = method.slice(close + 1);
-  if (!inside) return name + '()' + suffix;
-  const parts = inside.split(',').map((raw) => {
-    let p = raw.trim();
-    let suffix = '';
-    while (p.endsWith('...') || p.endsWith('[]')) {
-      if (p.endsWith('...')) {
-        suffix = '...' + suffix;
-        p = p.slice(0, -3).trim();
-      } else {
-        suffix = '[]' + suffix;
-        p = p.slice(0, -2).trim();
-      }
-    }
-    const d = p.lastIndexOf('.');
-    if (d >= 0) p = p.slice(d + 1);
-    return p + suffix;
-  });
-  return name + '(' + parts.join(', ') + ')' + suffix;
-}
-
-/**
- * Parse AssertJ-style messages into { desc, expected, actual } or null.
- * Matches CLI {@code tryPaintAssertJ}.
- */
-export function parseAssertJMessage(message) {
-  if (!message) return null;
-  let rest = String(message).trim();
-  let desc = null;
-  if (rest.startsWith('[')) {
-    const close = rest.indexOf(']');
-    if (close > 0) {
-      desc = rest.slice(1, close).trim();
-      rest = rest.slice(close + 1).trim();
-    }
-  }
-  let m = rest.match(/^expected:\s*([^\n]+?)\s*\n\s*but was:\s*([^\n]+?)\s*$/i);
-  if (!m) {
-    m = rest.match(/^expected:\s*(.+?)\s+but was:\s*(.+?)\s*$/i);
-  }
-  if (!m) return null;
-  return { desc, expected: stripValueQuotes(m[1].trim()), actual: stripValueQuotes(m[2].trim()) };
-}
-
-function stripValueQuotes(v) {
-  if (!v) return '';
-  const s = v.trim();
-  if (s.length >= 2) {
-    const a = s[0];
-    const b = s[s.length - 1];
-    if ((a === '"' && b === '"') || (a === "'" && b === "'")) return s.slice(1, -1);
-    if (a === '<' && b === '>') return s.slice(1, -1);
-  }
-  return s;
-}
-
-/**
- * Build a structured report model for a test-failure diagnostic (CLI flat report, no rail).
- * Non-test-failure diags return null — callers keep the legacy one-line render.
- *
- * @param {object} d normalized diagnostic
- * @param {{ count?: number, showHeader?: boolean }} [opts]
- *   {@code count} — total test failures in the module (header "N test failed").
- *   {@code showHeader} — false for subsequent failures in the same module so only the first
- *   report carries {@code ✘ Test failure in … › N tests failed} (CLI multi-failure parity).
- */
-export function testFailureReport(d, opts) {
-  if (!d || d.code !== 'test-failure') return null;
-  const count = opts && opts.count > 0 ? opts.count : 1;
-  const showHeader = !opts || opts.showHeader !== false;
-  const assertj = parseAssertJMessage(d.message);
-  const simpleEx = simpleTypeName(d.exceptionClass);
-  const label = shortTestLabel(d);
-  const snippet = Array.isArray(d.snippet) ? d.snippet : [];
-  const start = d.snippetStart > 0 ? d.snippetStart : 1;
-  const errorLine = d.line > 0 ? d.line : 0;
-  let maxCode = 0;
-  for (const line of snippet) maxCode = Math.max(maxCode, String(line).length);
-  // Gutter sizes to the widest line number — a fixed 4ch overflows into the rail at
-  // five digits (large generated test files), where the CLI's %4s widens naturally (JK-1913).
-  const gutter = Math.max(4, String(start + Math.max(0, snippet.length - 1)).length);
-  const rows = snippet.map((code, i) => {
-    const num = start + i;
-    const text = String(code);
-    const pad = Math.max(0, maxCode - text.length);
-    return {
-      num,
-      gutter: String(num).padStart(gutter, ' '),
-      error: errorLine > 0 && num === errorLine,
-      code: text,
-      pad,
-    };
-  });
-  return {
-    module: d.module || '',
-    count,
-    showHeader,
-    label,
-    assertj,
-    message: d.message || '',
-    file: d.file || '',
-    line: errorLine,
-    exceptionClass: simpleEx,
-    rows,
-    // CLI paints `at …` frames when there is no snippet; hide them when source is present.
-    frames: d.file && snippet.length ? [] : stackFrameLines(d.stack),
-  };
-}
-
-/** {@code at …} / {@code ... N more} lines from a printStackTrace string. */
-export function stackFrameLines(stack) {
-  if (!stack) return [];
-  const out = [];
-  for (const line of String(stack).split('\n')) {
-    const t = line.trimStart();
-    if (t.startsWith('at ') || t.startsWith('...')) out.push(line);
-  }
-  return out;
-}
-
-/** True when the diagnostic should use the rich test-failure report. */
-export function isTestFailureDiag(d) {
-  return !!(d && d.code === 'test-failure');
-}
-
-/** javac / kotlinc / groovyc — same set as CLI {@code ConsoleSpec.isCompilerCode}. */
-export function isCompilerDiag(d) {
-  const c = d && d.code;
-  return c === 'javac' || c === 'kotlinc' || c === 'groovyc';
-}
-
-/**
- * {@code path.ext:line[:col]:rest} — same shape as {@code CompilerLocus.HEADER}. The optional
- * space after the first colon is groovyc's shape ({@code /w/Foo.groovy: 5: …}) — JK-2113.
- */
-const COMPILER_HEADER =
-  /^(?<file>.+?\.(?:java|kt|kts|groovy|gvy|gy)): ?(?<line>\d+)(?::(?<col>\d+))?:(?<rest>.*)$/;
-/** groovyc's column trailer: {@code … @ line 5, column 1.} (no inline col in the header). */
-const GROOVY_TRAILER = /@ line \d+, column (\d+)\.?\s*$/;
-const COMPILER_CARET = /^\s*\^\s*$/;
-const COMPILER_KV = /^\s*([^:]+):(.*)$/;
-
-/**
- * Split a compiler block into units (one per header). Empty when the message has no locus header.
- *
- * @param {string} raw
- * @param {string} [severity]
- * @returns {Array<{file:string,line:number,col:number,kvs:Array<{key:string,value:string}>,extras:string[],snippet:string|null}>}
- */
-export function parseCompilerBlock(raw, severity = 'error') {
-  if (!raw) return [];
-  const lines = String(raw).split('\n');
-  const headers = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (COMPILER_HEADER.test(lines[i])) headers.push(i);
-  }
-  if (!headers.length) return [];
-  const units = [];
-  for (let h = 0; h < headers.length; h++) {
-    const start = headers[h];
-    const end = h + 1 < headers.length ? headers[h + 1] : lines.length;
-    units.push(parseCompilerUnit(lines, start, end, severity));
-  }
-  return units;
-}
-
-function parseCompilerUnit(lines, start, end, severity) {
-  const m = COMPILER_HEADER.exec(lines[start]);
-  if (!m) {
-    return { file: '', line: 0, col: 0, kvs: [], extras: [], snippet: null };
-  }
-  const file = m.groups.file;
-  const line = parsePositiveInt(m.groups.line);
-  let col = parsePositiveInt(m.groups.col);
-  const rest = (m.groups.rest || '').trim();
-  if (col <= 0) {
-    const tr = GROOVY_TRAILER.exec(rest);
-    if (tr) col = parsePositiveInt(tr[1]);
-  }
-  const kvs = [];
-  if (rest) kvs.push(splitCompilerKv(rest, severity));
-  let snippet = null;
-  const extras = [];
-  for (let i = start + 1; i < end; i++) {
-    const row = lines[i];
-    if (COMPILER_CARET.test(row)) {
-      const at = row.indexOf('^');
-      if (at >= 0 && col <= 0) col = at + 1;
-      continue;
-    }
-    if (i + 1 < end && COMPILER_CARET.test(lines[i + 1])) {
-      snippet = row;
-      continue;
-    }
-    const kv = COMPILER_KV.exec(row);
-    if (kv && looksLikeCompilerTrailer(kv[1])) {
-      kvs.push({ key: kv[1].trim(), value: (kv[2] || '').trim() });
-      continue;
-    }
-    if (row != null && row.trim()) extras.push(row);
-  }
-  return { file, line, col, kvs, extras, snippet };
-}
-
-function splitCompilerKv(rest, severity) {
-  const s = String(rest).trim();
-  const colon = s.indexOf(':');
-  if (colon <= 0) return { key: severity || 'error', value: s };
-  return { key: s.slice(0, colon).trim(), value: s.slice(colon + 1).trim() };
-}
-
-function looksLikeCompilerTrailer(rawKey) {
-  if (!rawKey) return false;
-  const k = rawKey.trim();
-  if (!k || k.length > 24) return false;
-  return /^[A-Za-z][A-Za-z0-9_-]*$/.test(k);
-}
-
-function parsePositiveInt(raw) {
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-/**
- * Editor-style window around {@code errorLine} (1-based): two lines of context each side, or a
- * single numbered row when only the compiler's one-line snippet is available.
- *
- * @param {string[]} fileLines
- * @param {number} errorLine
- */
-export function snippetWindow(fileLines, errorLine) {
-  const n = fileLines == null ? 0 : fileLines.length;
-  if (n === 0) return [];
-  const err = Math.max(1, errorLine || 1);
-  const snippetOnly = n === 1 && err > 1;
-  const lo = snippetOnly ? 1 : Math.max(1, err - 2);
-  const hi = snippetOnly ? 1 : Math.min(n, err + 2);
-  const slice = [];
-  let maxCode = 0;
-  for (let line = lo; line <= hi; line++) {
-    const raw = fileLines[line - 1] == null ? '' : String(fileLines[line - 1]);
-    slice.push(raw);
-    maxCode = Math.max(maxCode, raw.length);
-  }
-  const gutter = Math.max(4, String(snippetOnly ? err : hi).length);
-  return slice.map((text, i) => {
-    const num = snippetOnly ? err : lo + i;
-    return {
-      num,
-      gutter: String(num).padStart(gutter, ' '),
-      error: snippetOnly || num === err,
-      code: text,
-      pad: Math.max(0, maxCode - text.length),
-    };
-  });
-}
-
-/**
- * Structured compile-failure report (CLI CompilerDiagnostic body, web test-failure chrome).
- * Returns one report per header in the message. Non-compiler diags return [].
- *
- * @param {object} d normalized diagnostic
- * @param {{ showHeader?: boolean, module?: string }} [opts]
- */
-export function compilerFailureReports(d, opts) {
-  if (!isCompilerDiag(d)) return [];
-  const showHeader = !opts || opts.showHeader !== false;
-  const module = (opts && opts.module) || d.module || '';
-  const units = parseCompilerBlock(d.message || '', 'error');
-  if (!units.length) {
-    const rest = String(d.message || '').trim();
-    return [
-      makeCompilerReport({
-        showHeader,
-        module,
-        file: d.file || '',
-        line: d.line || 0,
-        col: d.col || 0,
-        kvs: rest ? [{ key: 'error', value: rest }] : [],
-        extras: [],
-        snippet: null,
-      }),
-    ];
-  }
-  return units.map((unit, i) =>
-    makeCompilerReport({
-      showHeader: showHeader && i === 0,
-      module,
-      // Diag-level file applies to the FIRST unit only (same rule as line/col): a multi-header
-      // blob labeled every later unit with the first file — wrong locus, wrong deep link, and
-      // loadSource fetched the wrong file for the context window (JK-2115). CLI parity:
-      // CompilerDiagnostic.paintUnit uses each unit's own file.
-      file: i === 0 ? d.file || unit.file || '' : unit.file || d.file || '',
-      line: d.line > 0 && i === 0 ? d.line : unit.line,
-      col: d.col > 0 && i === 0 ? d.col : unit.col,
-      kvs: unit.kvs,
-      extras: unit.extras,
-      snippet: unit.snippet,
-    }),
-  );
-}
-
-function makeCompilerReport({ showHeader, module, file, line, col, kvs, extras, snippet }) {
-  let rows = [];
-  if (snippet != null && snippet !== '') {
-    rows = snippetWindow([snippet], line > 0 ? line : 1);
-  }
-  return {
-    kind: 'compile',
-    showHeader,
-    headerLabel: 'Compile failure',
-    module,
-    kvs: kvs || [],
-    extras: extras || [],
-    file: file || '',
-    line: line || 0,
-    col: col || 0,
-    rows,
-  };
-}

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
@@ -92,13 +91,7 @@ public final class EngineClient {
             String httpUrl,
             String httpError,
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
-            String mcpUrl) {
-
-        /** {@code true} when the engine has an {@code [http]} table — serving or bind-failed. */
-        public boolean httpEnabled() {
-            return httpUrl != null || httpError != null;
-        }
-    }
+            String mcpUrl) {}
 
     /**
      * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
@@ -106,8 +99,8 @@ public final class EngineClient {
      * answered something unexpected."
      */
     public static boolean ping(Path socket) {
-        try (SocketChannel ch = connect(socket)) {
-            String reply = exchange(ch, ProtoLifecycle.ping());
+        try (SocketChannel ch = EngineWire.connect(socket)) {
+            String reply = EngineWire.exchange(ch, ProtoLifecycle.ping());
             return EngineProtocol.PONG.equals(EngineProtocol.typeOf(reply));
         } catch (IOException e) {
             return false;
@@ -116,8 +109,8 @@ public final class EngineClient {
 
     /** Connect and perform the {@code hello}/{@code hello-ack} handshake; empty if unreachable. */
     public static Optional<Handshake> handshake(Path socket, String clientVersion) {
-        try (SocketChannel ch = connect(socket)) {
-            String ack = exchange(ch, ProtoLifecycle.hello(clientVersion));
+        try (SocketChannel ch = EngineWire.connect(socket)) {
+            String ack = EngineWire.exchange(ch, ProtoLifecycle.hello(clientVersion));
             if (!EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             // Protocol-zero's teeth: an engine speaking a NEWER protocol than this client is not
             // usable — treat it as unreachable so the ensure path elects/starts a matching one
@@ -144,7 +137,7 @@ public final class EngineClient {
      * {@link #status} alone cannot make that distinction: it returns empty for both.
      */
     public static boolean reachable(Path socket) {
-        try (SocketChannel ch = connect(socket)) {
+        try (SocketChannel ch = EngineWire.connect(socket)) {
             return true;
         } catch (IOException e) {
             return false;
@@ -153,9 +146,9 @@ public final class EngineClient {
 
     /** Connect and request a status snapshot; empty if no engine is reachable. */
     public static Optional<Status> status(Path socket) {
-        try (SocketChannel ch = connect(socket)) {
-            exchange(ch, ProtoLifecycle.hello(Jk.VERSION, "probe")); // handshake first, response discarded
-            String ack = exchange(ch, ProtoLifecycle.statusRequest());
+        try (SocketChannel ch = EngineWire.connect(socket)) {
+            EngineWire.exchange(ch, ProtoLifecycle.hello(Jk.VERSION, "probe")); // handshake first, response discarded
+            String ack = EngineWire.exchange(ch, ProtoLifecycle.statusRequest());
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             String httpUrl = Jsonl.str(ack, "httpUrl");
             String mcpUrl = Jsonl.str(ack, "mcpUrl"); // null = MCP disabled
@@ -187,12 +180,12 @@ public final class EngineClient {
     public static boolean stop(Path socket) {
         SocketChannel ch;
         try {
-            ch = connect(socket);
+            ch = EngineWire.connect(socket);
         } catch (IOException e) {
             return true; // nothing reachable — a no-op "stop" is success
         }
         try (ch) {
-            String bye = exchange(ch, ProtoLifecycle.shutdown());
+            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown());
             return EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
         } catch (IOException e) {
             return false; // reachable but didn't behave — a real problem, not "already stopped"
@@ -205,8 +198,8 @@ public final class EngineClient {
      * now), or {@code -1} when nothing was reachable (a no-op stop).
      */
     public static int drain(Path socket) {
-        try (SocketChannel ch = connect(socket)) {
-            String bye = exchange(ch, ProtoLifecycle.shutdown(false));
+        try (SocketChannel ch = EngineWire.connect(socket)) {
+            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(false));
             if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return -1;
             return Jsonl.intValue(bye, "plans", 0);
         } catch (IOException e) {
@@ -226,14 +219,14 @@ public final class EngineClient {
         long pid = readPidForSocket(socket);
         SocketChannel ch;
         try {
-            ch = connect(socket);
+            ch = EngineWire.connect(socket);
         } catch (IOException e) {
             // Nothing accepting — still wait out a leftover pid if the file is stale-but-alive.
             if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
             return true;
         }
         try (ch) {
-            String bye = exchange(ch, ProtoLifecycle.shutdown(true));
+            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(true));
             boolean ok = EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
             if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
             else if (!ok) {
@@ -401,7 +394,7 @@ public final class EngineClient {
      * @param forgetJid when ≥ 0, removed from {@link ActiveJobs} on a positive ack
      */
     private static Optional<String> cancelOnce(Path socket, String requestLine, long forgetJid) throws IOException {
-        try (SocketChannel ch = connect(socket)) {
+        try (SocketChannel ch = EngineWire.connect(socket)) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader =
@@ -471,48 +464,17 @@ public final class EngineClient {
         return streamHistory(paths, ProtoSession.metricsRequest(dir));
     }
 
-    /**
-     * Run host hardware calibration on the engine. {@code engineColdStartMs} ≤0 omits the
-     * client-measured cold-spawn component. Returns the {@code calibrate-ack} JSONL line, or empty
-     * on protocol failure.
-     */
-    public static Optional<String> calibrate(EnginePaths.Paths paths, boolean force, long engineColdStartMs)
-            throws IOException {
-        // Network on by default (match Calibration.ensure); callers pass false under --offline.
-        return calibrate(paths, force, engineColdStartMs, true);
-    }
-
-    public static Optional<String> calibrate(
-            EnginePaths.Paths paths, boolean force, long engineColdStartMs, boolean allowNetwork) throws IOException {
-        ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            writer.write(ProtoLifecycle.calibrateRequest(force, engineColdStartMs, allowNetwork));
-            writer.write('\n');
-            writer.flush();
-            BufferedReader reader = protocolReader(ch);
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.CALIBRATE_ACK.equals(type)) return Optional.of(line);
-                if (EngineProtocol.ERROR.equals(type)) return Optional.empty();
-            }
-        }
-        return Optional.empty();
-    }
-
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
     private static List<String> streamHistory(EnginePaths.Paths paths, String request) throws IOException {
         ensureRunning(paths, Jk.VERSION);
         List<String> out = new ArrayList<>();
-        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             writer.write(request);
             writer.write('\n');
             writer.flush();
-            BufferedReader reader = protocolReader(ch);
+            BufferedReader reader = EngineWire.protocolReader(ch);
             String line;
             while ((line = reader.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -544,26 +506,26 @@ public final class EngineClient {
      */
     public static WorkspaceResult buildWorkspace(
             EnginePaths.Paths paths, WorkspaceRequest req, WorkspaceBuildListener listener) throws IOException {
-        return EngineBuildListenerAdapter.buildWorkspace(paths, req, listener);
+        return EngineJobs.buildWorkspace(paths, req, listener);
     }
 
     /** Workspace-member {@code jk image} — workspace events, image terminal on the module. */
     public static WorkspaceResult runImageWorkspace(
             EnginePaths.Paths paths, EngineRequests.ImageRequest req, WorkspaceBuildListener listener)
             throws IOException {
-        return EngineBuildListenerAdapter.runImageWorkspace(paths, req, listener);
+        return EngineJobs.runImageWorkspace(paths, req, listener);
     }
 
     /** Workspace {@code jk compile} — workspace events, compile-only terminal on the selection. */
     public static WorkspaceResult runCompileWorkspace(
             EnginePaths.Paths paths, EngineRequests.CompileRequest req, WorkspaceBuildListener listener)
             throws IOException {
-        return EngineBuildListenerAdapter.runCompileWorkspace(paths, req, listener);
+        return EngineJobs.runCompileWorkspace(paths, req, listener);
     }
 
     /**
      * Run a single project's test plan against the engine (Task 3) — see {@link
-     * EngineBuildListenerAdapter#runTest} for the exact contract.
+     * EngineJobs#runTest} for the exact contract.
      */
     public static BuildPlanResult runTest(
             EnginePaths.Paths paths,
@@ -571,13 +533,13 @@ public final class EngineClient {
             Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary[] testResultOut)
             throws IOException {
-        return EngineBuildListenerAdapter.runTest(paths, req, listenerFactory, testResultOut);
+        return EngineJobs.runTest(paths, req, listenerFactory, testResultOut);
     }
 
     /**
      * Run a single (non-workspace) project's build against the engine — the engine equivalent of
      * {@code BuildCommand.runForDir}'s {@code agg == null} branch — see {@link
-     * EngineBuildListenerAdapter#runSingleBuild} for the exact contract.
+     * EngineJobs#runSingleBuild} for the exact contract.
      */
     public static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
@@ -586,17 +548,17 @@ public final class EngineClient {
             TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
-        return EngineBuildListenerAdapter.runSingleBuild(paths, req, listenerFactory, testResultOut, buildOutcomeOut);
+        return EngineJobs.runSingleBuild(paths, req, listenerFactory, testResultOut, buildOutcomeOut);
     }
 
     /** One engine-hosted jk.toml edit (EDIT_REQUEST): returns changed; throws on error. */
     public static boolean edit(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
-        return EngineBuildListenerAdapter.edit(paths, file, op, args);
+        return EngineReads.edit(paths, file, op, args);
     }
 
     public static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args)
             throws IOException {
-        return EngineBuildListenerAdapter.editDetail(paths, file, op, args);
+        return EngineReads.editDetail(paths, file, op, args);
     }
 
     public static CacheInventoryAck cacheInventory(
@@ -608,13 +570,13 @@ public final class EngineClient {
             List<String> coords,
             boolean dryRun)
             throws IOException {
-        return EngineBuildListenerAdapter.cacheInventory(paths, query, cache, store, terms, coords, dryRun);
+        return EngineReads.cacheInventory(paths, query, cache, store, terms, coords, dryRun);
     }
 
     /** Engine-hosted {@code jk new} / init scaffold. */
     public static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req)
             throws IOException {
-        return EngineBuildListenerAdapter.newProject(paths, req);
+        return EngineReads.newProject(paths, req);
     }
 
     /**
@@ -637,8 +599,7 @@ public final class EngineClient {
         } catch (IOException e) {
             return; // no engine to host the freshen — local resolution proceeds against the cache
         }
-        EngineBuildListenerAdapter.freshenCatalog(
-                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString(), false);
+        EngineReads.freshenCatalog(paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString(), false);
     }
 
     /**
@@ -648,8 +609,7 @@ public final class EngineClient {
     public static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, Path cacheFile)
             throws IOException {
         ensureRunning(paths, Jk.VERSION);
-        return EngineBuildListenerAdapter.freshenCatalogNow(
-                paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
+        return EngineReads.freshenCatalogNow(paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
     }
 
     /**
@@ -666,15 +626,14 @@ public final class EngineClient {
      */
     public static boolean freshenCatalogIfRunning(EnginePaths.Paths paths, String catalog, String url, Path cacheFile) {
         if (!reachable(EnginePaths.activeSocket(paths))) return false;
-        EngineBuildListenerAdapter.freshenCatalog(
-                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
+        EngineReads.freshenCatalog(paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
         return true;
     }
 
     /** Module DAG for {@code jk explain --graph}. */
     public static ModuleGraphAck moduleGraph(
             EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
-        return EngineBuildListenerAdapter.moduleGraph(paths, dir, format, modules, affectedSince);
+        return EngineReads.moduleGraph(paths, dir, format, modules, affectedSince);
     }
 
     /** Layered library catalog (list / search / wizard picker). */
@@ -688,8 +647,7 @@ public final class EngineClient {
             boolean includeCached,
             boolean bundledOnly)
             throws IOException {
-        return EngineBuildListenerAdapter.catalogRead(
-                paths, dir, cache, query, terms, offline, includeCached, bundledOnly);
+        return EngineReads.catalogRead(paths, dir, cache, query, terms, offline, includeCached, bundledOnly);
     }
 
     /**
@@ -709,7 +667,7 @@ public final class EngineClient {
     public static ProjectInfo projectInfo(
             EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
             throws IOException {
-        return EngineBuildListenerAdapter.projectInfo(paths, dir, modules, affectedSince, counts);
+        return EngineReads.projectInfo(paths, dir, modules, affectedSince, counts);
     }
 
     /**
@@ -719,40 +677,40 @@ public final class EngineClient {
     /** Thin-client IDE model: engine computes the workspace model, client generates the files. */
     public static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir)
             throws IOException {
-        return EngineBuildListenerAdapter.ideModel(paths, dir, cache, jdksDir);
+        return EngineReads.ideModel(paths, dir, cache, jdksDir);
     }
 
     /** A plugin-declared command, worker-executed engine-side (found=false → normal help). */
     public static PluginCommandReport pluginCommand(
             EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args) throws IOException {
-        return EngineBuildListenerAdapter.pluginCommand(paths, dir, cache, command, args);
+        return EngineReads.pluginCommand(paths, dir, cache, command, args);
     }
 
     /** Thin-client generator run: engine renders content, client guards/writes/prints. */
     public static GeneratedFiles generate(EnginePaths.Paths paths, Path dir, String kind) throws IOException {
-        return EngineBuildListenerAdapter.generate(paths, dir, kind, Map.of());
+        return EngineReads.generate(paths, dir, kind, Map.of());
     }
 
     /** As above with generator parameters (scaffold inputs etc.). */
     public static GeneratedFiles generate(EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params)
             throws IOException {
-        return EngineBuildListenerAdapter.generate(paths, dir, kind, params);
+        return EngineReads.generate(paths, dir, kind, params);
     }
 
     /** Thin-client tree render: engine walks the graph, client substitutes its Theme into the tags. */
     public static String treeRender(
             EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
             throws IOException {
-        return EngineBuildListenerAdapter.treeRender(paths, dir, maxDepth, flatten, stack, scopes);
+        return EngineReads.treeRender(paths, dir, maxDepth, flatten, stack, scopes);
     }
 
     /** Thin-client why lookup: lock matching + provenance paths, engine-side. */
     public static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
-        return EngineBuildListenerAdapter.why(paths, dir, query);
+        return EngineReads.why(paths, dir, query);
     }
 
     public static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
-        return EngineBuildListenerAdapter.denyCheck(paths, dir);
+        return EngineReads.denyCheck(paths, dir);
     }
 
     /**
@@ -762,7 +720,7 @@ public final class EngineClient {
     public static ExecPlan execPlan(
             EnginePaths.Paths paths, Path dir, Path cache, String kind, String mainOverride, String binName)
             throws IOException {
-        return EngineBuildListenerAdapter.execPlan(paths, dir, cache, kind, mainOverride, binName, null, null);
+        return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, null, null);
     }
 
     /** As above with install-destination overrides ({@code --bin-dir}/{@code --lib-dir}). */
@@ -776,21 +734,21 @@ public final class EngineClient {
             Path binDir,
             Path libDir)
             throws IOException {
-        return EngineBuildListenerAdapter.execPlan(paths, dir, cache, kind, mainOverride, binName, binDir, libDir);
+        return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, binDir, libDir);
     }
 
     /**
      * Pre-flight a build's dirty forecast against the engine — {@code jk build}'s fully-cached
-     * shortcut and dirty hint (see {@link EngineBuildListenerAdapter#forecast}).
+     * shortcut and dirty hint (see {@link EngineReads#forecast}).
      */
     public static BuildForecast forecast(EnginePaths.Paths paths, Path entryDir, Path cache, boolean skipTests)
             throws IOException {
-        return EngineBuildListenerAdapter.forecast(paths, entryDir, cache, skipTests);
+        return EngineReads.forecast(paths, entryDir, cache, skipTests);
     }
 
     /**
      * Forecast a build against the engine ({@code jk explain}) — see {@link
-     * EngineBuildListenerAdapter#explain} for the exact contract. {@code etaOut} (may be
+     * EngineExplainDecoder#explain} for the exact contract. {@code etaOut} (may be
      * {@code null}) receives engine-computed estimates in millis, {@code 0} = unknown:
      * slot {@code [0]} the remaining-work ETA, and — when the array has a second slot — slot
      * {@code [1]} the full-rebuild ETA (the rebuild-effort denominator). Length-guarded, so a
@@ -798,7 +756,7 @@ public final class EngineClient {
      */
     public static ExplainPlan explain(EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long[] etaOut)
             throws IOException {
-        return EngineBuildListenerAdapter.explain(paths, req, etaOut);
+        return EngineExplainDecoder.explain(paths, req, etaOut);
     }
 
     /**
@@ -901,9 +859,9 @@ public final class EngineClient {
     }
 
     public static HostedEvents.Provision provision(
-            EnginePaths.Paths paths, Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
+            EnginePaths.Paths paths, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
             throws IOException {
-        return EngineHosted.provision(paths, cache, projectDir, toolsRoot, noDiscover, gradle);
+        return EngineHosted.provision(paths, projectDir, toolsRoot, noDiscover, gradle);
     }
 
     public static BuildPlanResult runCompile(
@@ -969,42 +927,5 @@ public final class EngineClient {
             EngineRequests.CacheMaintSummary[] summaryOut)
             throws IOException {
         return EngineHosted.runCacheMaintenance(paths, req, listenerFactory, onWait, summaryOut);
-    }
-
-    static BufferedReader protocolReader(SocketChannel ch) {
-        return EngineWire.protocolReader(ch);
-    }
-
-    static SocketChannel connect(Path socket) throws IOException {
-        return EngineWire.connect(socket);
-    }
-
-    static String exchange(SocketChannel ch, String line) throws IOException {
-        return EngineWire.exchange(ch, line);
-    }
-
-    static Optional<EngineSpawn.EngineArtifact> resolveEngineArtifact(String envOverride, String version) {
-        return EngineSpawn.resolveEngineArtifact(envOverride, version);
-    }
-
-    static Optional<EngineSpawn.EngineArtifact> resolveEngineArtifact(
-            String envOverride, String version, EngineInstall install) {
-        return EngineSpawn.resolveEngineArtifact(envOverride, version, install);
-    }
-
-    static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineSpawn.EngineJdk jdk) {
-        return EngineSpawn.aotCachePath(paths, engineJar, jdk);
-    }
-
-    static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineSpawn.EngineJdk jdk, String version) {
-        return EngineSpawn.aotCachePath(paths, engineJar, jdk, version);
-    }
-
-    static EngineSpawn.AotMode chooseAotMode(EngineSpawn.EngineTarget t) {
-        return EngineSpawn.chooseAotMode(t);
-    }
-
-    static boolean scanLogForAotError(Path log) {
-        return EngineSpawn.scanLogForAotError(log);
     }
 }

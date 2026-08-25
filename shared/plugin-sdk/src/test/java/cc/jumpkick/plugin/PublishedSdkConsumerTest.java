@@ -40,6 +40,13 @@ class PublishedSdkConsumerTest {
     /** Where the build staged the publications. Set by {@code :plugin-sdk:test}. */
     private static final String REPO_PROPERTY = "jk.tree.local.repo";
 
+    /**
+     * The version the build published, handed over by {@code :plugin-sdk:test} from the {@code
+     * version} it publishes under. Read from the build rather than a constant in {@code src/main}:
+     * a constant can disagree with what was published and this test would still resolve a jar.
+     */
+    private static final String VERSION_PROPERTY = "jk.plugin.sdk.version";
+
     private static final String GROUP = "cc.jumpkick";
     private static final String SDK = "jk-plugin-sdk";
     private static final String HOST = "jk-host";
@@ -79,9 +86,14 @@ class PublishedSdkConsumerTest {
                 .isNotNull();
         Path repo = Path.of(repoPath);
 
+        String version = System.getProperty(VERSION_PROPERTY);
+        assertThat(version)
+                .as("-D%s must carry the version :plugin-sdk publishes under", VERSION_PROPERTY)
+                .isNotBlank();
+
         Map<String, Path> jars = new LinkedHashMap<>();
         List<String> unresolvable = new ArrayList<>();
-        collect(repo, GROUP, SDK, PluginSdkVersion.VERSION, jars, unresolvable);
+        collect(repo, GROUP, SDK, version, jars, unresolvable);
 
         assertThat(unresolvable)
                 .as(

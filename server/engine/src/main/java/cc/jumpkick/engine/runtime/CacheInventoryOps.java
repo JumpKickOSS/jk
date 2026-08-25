@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
@@ -66,7 +67,7 @@ public final class CacheInventoryOps {
 
         Cas cas = new Cas(cacheRoot);
         Set<String> seenShas = new HashSet<>();
-        Path keysDir = CacheTree.ACTIONS.under(cacheRoot).resolve("keys");
+        Path keysDir = ActionTree.KEYS.under(CacheTree.ACTIONS.under(cacheRoot));
         if (Files.isDirectory(keysDir)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(keysDir)) {
                 for (Path keyFile : stream) {
@@ -160,8 +161,8 @@ public final class CacheInventoryOps {
     private static DiskUsage.Stats incrementalStats(Path actionsDir) throws IOException {
         long files = 0;
         long bytes = 0;
-        for (String name : List.of("incremental-java", "incremental-kotlin")) {
-            DiskUsage.Stats tree = DiskUsage.of(actionsDir.resolve(name));
+        for (Path dir : ActionTree.incrementalUnder(actionsDir)) {
+            DiskUsage.Stats tree = DiskUsage.of(dir);
             files += tree.files();
             bytes += tree.bytes();
         }
@@ -277,18 +278,27 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.repoRefresh(lines, evicted, missed);
     }
 
+    /**
+     * {@code jk storage nuke} / the store leg of {@code jk self nuke --data}: the store root goes,
+     * not only its children. Both commands print that path under <strong>Path to Delete</strong>,
+     * and a row in a confirm table has to name something that is actually gone afterwards —
+     * JK-2455 made that true for the cache and state roots and left this one emptied.
+     *
+     * <p>Nothing guarded lives under the store. Of {@code SelfNukeCommand.Guards}, only
+     * {@code <store>/lib} (installed tools) is a child, and this pass already deletes it; the two
+     * the nuke really keeps — {@code <data>/lib}, the live engine jar, and the forge/repo
+     * credential stores — are siblings of the store, under the data root, which is not a row.
+     *
+     * <p>Removing the directory is safe for the same reason a fresh install is: every writer under
+     * the store creates its own subtree ({@code sha256/ab/…}, {@code repos/<name>/…}), which
+     * creates the root along with it.
+     */
     private static CacheInventoryAck wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         if (storeRoot == null || !Files.isDirectory(storeRoot)) return CacheInventoryAck.wipe(0, 0);
         // Unique-inode bytes (POSIX ino/dev or Windows fileKey) so leftover hard links under
         // sha256/ and repos/ are not counted twice.
         DiskUsage.Stats stats = DiskUsage.of(storeRoot);
-        if (!dryRun) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(storeRoot)) {
-                for (Path child : stream) {
-                    PathUtil.deleteRecursivelyOrThrow(child);
-                }
-            }
-        }
+        if (!dryRun) PathUtil.deleteRecursivelyOrThrow(storeRoot);
         return CacheInventoryAck.wipe(stats.files(), stats.bytes());
     }
 

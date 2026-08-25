@@ -7,16 +7,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalDouble;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Machine-scoped {@code [cache]} policy from {@code ~/.config/jk/config.toml} (not project-overridable).
- * Precedence: {@code JK_*} env &gt; user file &gt; defaults. Malformed values fall back to defaults.
+ * Precedence: {@code JK_*} env &gt; user file &gt; defaults, ranked by {@link MachineConfig}.
+ * Malformed values fall back to defaults.
  *
  * <p>{@link #maxCacheSizeGb} is the <strong>action cache</strong> budget ({@code jk cache usage}:
  * key records + cache CAS) and {@link #incrementalMaxSizeGb} bounds the Zinc analysis trees
@@ -29,7 +29,8 @@ import java.util.function.Supplier;
  * fractional values are allowed ({@code 0.5} = 512 MiB). The logical default is 4 GiB; when {@code
  * CI=1} or {@code CI=true}, 8 GiB. On volumes with total capacity under 10 GiB, that default is
  * replaced by {@code (free × 0.8) / 2} — 40 % of free space, leaving the other half of the 80 %
- * margin for the artifact store. Explicit file/env sizes are never disk-clamped.
+ * margin for the artifact store. Explicit file/env sizes are never disk-clamped: the clamp moves
+ * the floor {@link MachineConfig#layerOver} falls back to, not the precedence above it.
  */
 public record JkCacheConfig(
         boolean autoPrune, int pruneIntervalDays, double maxCacheSizeGb, double incrementalMaxSizeGb) {
@@ -68,6 +69,18 @@ public record JkCacheConfig(
     public static final JkCacheConfig DEFAULTS =
             new JkCacheConfig(true, 7, DEFAULT_MAX_CACHE_SIZE_GB, DEFAULT_INCREMENTAL_MAX_SIZE_GB);
 
+    private static final MachineConfig<Boolean> AUTO_PRUNE = MachineConfig.of(DEFAULTS.autoPrune());
+
+    private static final MachineConfig<Integer> PRUNE_INTERVAL_DAYS =
+            MachineConfig.of(DEFAULTS.pruneIntervalDays(), days -> days >= 0);
+
+    /** A size budget of {@code 0} or less means unset, so only a positive value is a value. */
+    private static final MachineConfig<Double> MAX_CACHE_SIZE_GB =
+            MachineConfig.of(DEFAULT_MAX_CACHE_SIZE_GB, gb -> gb > 0);
+
+    private static final MachineConfig<Double> INCREMENTAL_MAX_SIZE_GB =
+            MachineConfig.of(DEFAULT_INCREMENTAL_MAX_SIZE_GB, gb -> gb > 0);
+
     /** Total and usable bytes on a volume (for default clamp tests and probes). */
     public record DiskSpace(long totalBytes, long freeBytes) {
         public DiskSpace {
@@ -76,7 +89,7 @@ public record JkCacheConfig(
         }
 
         /** Probe the volume hosting {@code path} (or its nearest existing ancestor). */
-        public static DiskSpace probe(Path path) {
+        public static @Nullable DiskSpace probe(Path path) {
             if (path == null) return null;
             try {
                 Path p = path.toAbsolutePath().normalize();
@@ -107,40 +120,30 @@ public record JkCacheConfig(
      * Fully injectable resolve for tests: file + env + optional disk snapshot ({@code null} disk
      * skips the small-volume clamp).
      */
-    static JkCacheConfig resolve(Path userConfig, Function<String, String> env, DiskSpace disk) {
+    static JkCacheConfig resolve(Path userConfig, Function<String, String> env, @Nullable DiskSpace disk) {
         return resolve(userConfig, env, () -> disk);
     }
 
-    static JkCacheConfig resolve(Path userConfig, Function<String, String> env, Supplier<DiskSpace> cacheDisk) {
+    static JkCacheConfig resolve(
+            Path userConfig, Function<String, String> env, @Nullable Supplier<DiskSpace> cacheDisk) {
         Objects.requireNonNull(env, "env");
-        Parsed p = parse(userConfig);
-        OptionalDouble envCache = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_GB");
-        if (envCache.isEmpty()) {
-            OptionalDouble mb = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_MB");
-            if (mb.isPresent()) {
-                warnLegacyOnce("JK_MAX_CACHE_SIZE_MB is the pre-rename spelling — use JK_MAX_CACHE_SIZE_GB");
-                envCache = OptionalDouble.of(mb.getAsDouble() / 1024.0);
-            }
-        }
+        TomlScan scan = scan(userConfig);
 
         double logicalCache = isCi(env) ? CI_MAX_CACHE_SIZE_GB : DEFAULT_MAX_CACHE_SIZE_GB;
         DiskSpace cacheSpace = cacheDisk != null ? cacheDisk.get() : null;
         double defaultCache = clampDefaultGb(logicalCache, cacheSpace, () -> usedBytes(JkDirs.cache()));
-
-        double cacheGb =
-                envCache.isPresent() ? envCache.getAsDouble() : p.cacheGb().orElse(defaultCache);
-
         double defaultIncremental = Math.min(DEFAULT_INCREMENTAL_MAX_SIZE_GB, defaultCache * INCREMENTAL_DEFAULT_SHARE);
-        OptionalDouble envIncremental = envPositiveDouble(env, "JK_INCREMENTAL_MAX_SIZE_GB");
-        double incrementalGb = envIncremental.isPresent()
-                ? envIncremental.getAsDouble()
-                : p.incrementalGb().orElse(defaultIncremental);
 
         return new JkCacheConfig(
-                EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(p.autoPrune()),
-                envNonNegativeInt(env, "JK_PRUNE_INTERVAL_DAYS").orElse(p.pruneIntervalDays()),
-                cacheGb,
-                incrementalGb);
+                AUTO_PRUNE.layer(EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(null), tomlBool(scan, "cache.auto-prune")),
+                PRUNE_INTERVAL_DAYS.layer(
+                        EnvValues.intValue(env, "JK_PRUNE_INTERVAL_DAYS").orElse(null),
+                        scanInt(scan, "cache.prune-interval-days")),
+                MAX_CACHE_SIZE_GB.layerOver(defaultCache, envCacheGb(env), fileCacheGb(scan)),
+                INCREMENTAL_MAX_SIZE_GB.layerOver(
+                        defaultIncremental,
+                        EnvValues.doubleValue(env, "JK_INCREMENTAL_MAX_SIZE_GB").orElse(null),
+                        scanDouble(scan, "cache.incremental-max-size-gb")));
     }
 
     /**
@@ -151,7 +154,7 @@ public record JkCacheConfig(
         return resolve(Path.of("/__jk_no_config__"), env, () -> DiskSpace.probe(JkDirs.cache()));
     }
 
-    static JkCacheConfig resolvedDefaults(Function<String, String> env, DiskSpace disk) {
+    static JkCacheConfig resolvedDefaults(Function<String, String> env, @Nullable DiskSpace disk) {
         return resolve(Path.of("/__jk_no_config__"), env, disk);
     }
 
@@ -163,7 +166,7 @@ public record JkCacheConfig(
      * budget and is never pruned: the cache budget is the only lever left on a small volume, so
      * claiming the whole margin for the one tier we can bound would starve the one we cannot.
      */
-    static double clampDefaultGb(double logicalGb, DiskSpace disk, LongSupplier tierUsedBytes) {
+    static double clampDefaultGb(double logicalGb, @Nullable DiskSpace disk, LongSupplier tierUsedBytes) {
         if (disk == null || disk.totalBytes() >= SMALL_DISK_THRESHOLD_BYTES) {
             return logicalGb;
         }
@@ -199,64 +202,61 @@ public record JkCacheConfig(
         return EnvValues.bool(env, "CI").orElse(false);
     }
 
-    private static Optional<Integer> envNonNegativeInt(Function<String, String> env, String name) {
-        return EnvValues.intValue(env, name).filter(i -> i >= 0);
-    }
-
-    /** Size budgets: {@code 0} means unset (default applies), so only positive values count. */
-    private static OptionalDouble envPositiveDouble(Function<String, String> env, String name) {
-        return EnvValues.doubleValue(env, name)
-                .filter(d -> d > 0)
-                .map(OptionalDouble::of)
-                .orElseGet(OptionalDouble::empty);
-    }
-
     /**
      * Parse {@code [cache]} without CI/disk defaults — a missing size uses the {@link #DEFAULTS}
      * logical 4 GiB. Prefer {@link #resolve()} for the effective budget.
      */
     public static JkCacheConfig fromToml(Path file) {
-        Parsed p = parse(file);
+        TomlScan scan = scan(file);
         return new JkCacheConfig(
-                p.autoPrune(),
-                p.pruneIntervalDays(),
-                p.cacheGb().orElse(DEFAULT_MAX_CACHE_SIZE_GB),
-                p.incrementalGb().orElse(DEFAULT_INCREMENTAL_MAX_SIZE_GB));
+                AUTO_PRUNE.layer(tomlBool(scan, "cache.auto-prune")),
+                PRUNE_INTERVAL_DAYS.layer(scanInt(scan, "cache.prune-interval-days")),
+                MAX_CACHE_SIZE_GB.layer(fileCacheGb(scan)),
+                INCREMENTAL_MAX_SIZE_GB.layer(scanDouble(scan, "cache.incremental-max-size-gb")));
     }
 
-    private record Parsed(
-            boolean autoPrune, int pruneIntervalDays, OptionalDouble cacheGb, OptionalDouble incrementalGb) {}
-
-    private static Parsed parse(Path file) {
-        TomlScan scan = TomlScan.scan(
+    private static TomlScan scan(Path file) {
+        return TomlScan.scan(
                 file,
                 "cache.auto-prune",
                 "cache.prune-interval-days",
                 "cache.max-cache-size-gb",
                 "cache.max-cache-size-mb",
                 "cache.incremental-max-size-gb");
-        boolean autoPrune =
-                switch (String.valueOf(scan.get("cache.auto-prune"))) {
-                    case "true" -> true;
-                    case "false" -> false;
-                    default -> DEFAULTS.autoPrune();
-                };
-        int interval = nonNegative(scanInt(scan, "cache.prune-interval-days")).orElse(DEFAULTS.pruneIntervalDays());
-        OptionalDouble cacheGb = positiveDouble(scanDouble(scan, "cache.max-cache-size-gb"));
-        // The pre-rename `-mb` key still pins the budget (converted) — ignoring it silently would
-        // grow a deliberately small cache to the multi-GiB default on upgrade.
-        if (cacheGb.isEmpty()) {
-            cacheGb = legacyMbAsGb(scan, "cache.max-cache-size-mb");
-        }
-        OptionalDouble incrementalGb = positiveDouble(scanDouble(scan, "cache.incremental-max-size-gb"));
-        return new Parsed(autoPrune, interval, cacheGb, incrementalGb);
     }
 
-    private static OptionalDouble legacyMbAsGb(TomlScan scan, String key) {
-        OptionalDouble mb = positiveDouble(scanDouble(scan, key));
-        if (mb.isEmpty()) return OptionalDouble.empty();
-        warnLegacyOnce(key + " is the pre-rename spelling — use " + key.replace("-mb", "-gb"));
-        return OptionalDouble.of(mb.getAsDouble() / 1024.0);
+    /**
+     * The env cache budget. The pre-rename {@code -MB} spelling ranks directly under the {@code -GB}
+     * one on the same substrate, so a machine that still sets it is not overridden by the file —
+     * {@link MachineConfig#accept} judges the preferred key first so an out-of-range value there
+     * falls through to the legacy key rather than suppressing it.
+     */
+    private static @Nullable Double envCacheGb(Function<String, String> env) {
+        Double gb = MAX_CACHE_SIZE_GB.accept(
+                EnvValues.doubleValue(env, "JK_MAX_CACHE_SIZE_GB").orElse(null));
+        if (gb != null) return gb;
+        return legacyMbAsGb(
+                MAX_CACHE_SIZE_GB.accept(
+                        EnvValues.doubleValue(env, "JK_MAX_CACHE_SIZE_MB").orElse(null)),
+                "JK_MAX_CACHE_SIZE_MB is the pre-rename spelling — use JK_MAX_CACHE_SIZE_GB");
+    }
+
+    /**
+     * The file cache budget. Ignoring the pre-rename {@code -mb} key silently would grow a
+     * deliberately small cache to the multi-GiB default on upgrade.
+     */
+    private static @Nullable Double fileCacheGb(TomlScan scan) {
+        Double gb = MAX_CACHE_SIZE_GB.accept(scanDouble(scan, "cache.max-cache-size-gb"));
+        if (gb != null) return gb;
+        return legacyMbAsGb(
+                MAX_CACHE_SIZE_GB.accept(scanDouble(scan, "cache.max-cache-size-mb")),
+                "cache.max-cache-size-mb is the pre-rename spelling — use cache.max-cache-size-gb");
+    }
+
+    private static @Nullable Double legacyMbAsGb(@Nullable Double mb, String warning) {
+        if (mb == null) return null;
+        warnLegacyOnce(warning);
+        return mb / 1024.0;
     }
 
     private static final AtomicBoolean LEGACY_WARNED = new AtomicBoolean();
@@ -294,32 +294,35 @@ public record JkCacheConfig(
         return s;
     }
 
-    private static OptionalDouble scanDouble(TomlScan scan, String key) {
+    /**
+     * TOML's booleans, not jk's env truth set: a config file is parsed by the spec it is written to,
+     * so {@code yes} / {@code on} are not booleans here and read as absent.
+     */
+    private static @Nullable Boolean tomlBool(TomlScan scan, String key) {
+        return switch (String.valueOf(scan.get(key))) {
+            case "true" -> Boolean.TRUE;
+            case "false" -> Boolean.FALSE;
+            default -> null;
+        };
+    }
+
+    private static @Nullable Double scanDouble(TomlScan scan, String key) {
         String v = scan.get(key);
-        if (v == null) return OptionalDouble.empty();
+        if (v == null) return null;
         try {
-            return OptionalDouble.of(Double.parseDouble(v.trim()));
+            return Double.parseDouble(v.trim());
         } catch (NumberFormatException e) {
-            return OptionalDouble.empty();
+            return null;
         }
     }
 
-    private static Optional<Integer> scanInt(TomlScan scan, String key) {
+    private static @Nullable Integer scanInt(TomlScan scan, String key) {
         String v = scan.get(key);
-        if (v == null) return Optional.empty();
+        if (v == null) return null;
         try {
-            return Optional.of(Integer.valueOf(v));
+            return Integer.valueOf(v);
         } catch (NumberFormatException e) {
-            return Optional.empty();
+            return null;
         }
-    }
-
-    private static Optional<Integer> nonNegative(Optional<Integer> value) {
-        return value.filter(i -> i >= 0);
-    }
-
-    private static OptionalDouble positiveDouble(OptionalDouble value) {
-        if (value.isEmpty() || value.getAsDouble() <= 0) return OptionalDouble.empty();
-        return value;
     }
 }

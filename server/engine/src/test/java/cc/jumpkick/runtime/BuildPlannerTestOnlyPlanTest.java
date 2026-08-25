@@ -107,7 +107,7 @@ class BuildPlannerTestOnlyPlanTest {
 
         BuildPlanner.Inputs testOnly = inputs(dir, true, false);
         BuildPlan.Builder tb = BuildPlanner.coreBuilder(testOnly);
-        BuildPlanner.appendDeclaredTails(tb, testOnly);
+        PlannerTails.appendDeclaredTails(tb, testOnly);
         Set<String> testNames = tb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(testNames)
                 .as("test plan terminates at run-tests; no assembly tail, no package-jar")
@@ -116,7 +116,7 @@ class BuildPlannerTestOnlyPlanTest {
 
         BuildPlanner.Inputs compileOnly = inputs(dir, false, true);
         BuildPlan.Builder cb = BuildPlanner.coreBuilder(compileOnly);
-        BuildPlanner.appendDeclaredTails(cb, compileOnly);
+        PlannerTails.appendDeclaredTails(cb, compileOnly);
         Set<String> compileNames =
                 cb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(compileNames)
@@ -207,7 +207,7 @@ class BuildPlannerTestOnlyPlanTest {
         BuildPlanner.Inputs in = inputs(dir, false, false);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
         // Tails keep the test branch in a full plan (JK-2211 terminal join).
-        BuildPlanner.appendDeclaredTails(b, in);
+        PlannerTails.appendDeclaredTails(b, in);
         var plan = b.build();
         var compileTest = plan.steps().stream()
                 .filter(s -> s.name().equals(TaskNames.COMPILE_TEST))
@@ -274,7 +274,7 @@ class BuildPlannerTestOnlyPlanTest {
         // packaging prerequisite, and a core-only build would prune the whole test branch.
         BuildPlanner.Inputs in = inputs(dir, testOnly, false);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
-        if (!testOnly) BuildPlanner.appendDeclaredTails(b, in);
+        if (!testOnly) PlannerTails.appendDeclaredTails(b, in);
         return b.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
     }
 

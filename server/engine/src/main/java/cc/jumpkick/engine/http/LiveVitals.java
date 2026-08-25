@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import cc.jumpkick.engine.JsonOut;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -109,9 +108,10 @@ public final class LiveVitals implements AutoCloseable {
                 if (present.equals(prev)) return;
             }
             lastStatus.set(present);
-            // SSE status payload matches GET /api/status core vitals (see StatusSnapshot fields).
-            // httpUrl / config knobs stay REST-only — they do not change on a 2s tick.
-            events.publishDashboard("status", statusJson(s));
+            // One serializer: StatusSnapshot.toJson() is the same object GET /api/status returns,
+            // minus the REST-only httpUrl / config knobs it chains on — they do not change on a 2s
+            // tick, so they never ride the live stream.
+            events.publishDashboard("status", s.toJson());
         } catch (RuntimeException ignored) {
             // Sampler must never kill the schedule thread
         }
@@ -168,7 +168,7 @@ public final class LiveVitals implements AutoCloseable {
             StatusSnapshot s = status.get();
             if (s != null) {
                 lastStatus.set(PresentStatus.of(s));
-                events.deliverTo(sub, "status", statusJson(s));
+                events.deliverTo(sub, "status", s.toJson());
             }
         } catch (RuntimeException ignored) {
             // status sampling is best-effort on the connect path
@@ -210,30 +210,6 @@ public final class LiveVitals implements AutoCloseable {
             cacheTask = null;
             if (!scheduler.isShutdown()) scheduler.shutdownNow();
         }
-    }
-
-    /** Core vitals JSON (shared shape with a subset of {@code GET /api/status}). */
-    static JsonOut statusJson(StatusSnapshot s) {
-        return JsonOut.object()
-                .put("version", s.version())
-                .put("pid", s.pid())
-                .put("startedAt", s.startedAtMillis())
-                .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
-                .put("activeRequests", s.activeRequests())
-                .put("activeBuildPlans", s.activeBuildPlans())
-                .put("peakActiveRequests", s.peakActiveRequests())
-                .put("peakActiveBuildPlans", s.peakActiveBuildPlans())
-                .put("heapUsedBytes", s.heapUsedBytes())
-                .put("heapCommittedBytes", s.heapCommittedBytes())
-                .put("heapMaxBytes", s.heapMaxBytes())
-                .put("rssBytes", s.rssBytes())
-                .put("aotTrainingPid", s.aotTrainingPid())
-                .put("cores", s.cores())
-                .put("totalMemoryBytes", s.totalMemoryBytes())
-                .put("availableMemoryBytes", s.availableMemoryBytes())
-                .put("systemCpuLoad", s.systemCpuLoad())
-                .put("systemLoadAverage", s.systemLoadAverage())
-                .put("engineEpoch", s.engineEpoch());
     }
 
     /**

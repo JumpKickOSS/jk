@@ -150,6 +150,13 @@ public final class JkBuildRenderer {
         if (nc.graal() != null && !nc.graal().equals("graalvm")) {
             sb.append("graal      = ").append(quote(nc.graal())).append('\n');
         }
+        // Same rule as graal: the parser substitutes METADATA_REPOSITORY_DEFAULT for an omitted
+        // key, so eliding exactly that selector keeps a round-trip minimal without losing a
+        // deliberate pin — `=1.1.4` and `^1` both survive.
+        VersionSelector metadata = nc.metadataRepository();
+        if (metadata != null && !metadata.raw().equals(JkBuild.NativeConfig.METADATA_REPOSITORY_DEFAULT.raw())) {
+            sb.append("metadata-repository = ").append(quote(metadata.raw())).append('\n');
+        }
     }
 
     private static void renderWorkspace(StringBuilder sb, JkBuild jkBuild) {

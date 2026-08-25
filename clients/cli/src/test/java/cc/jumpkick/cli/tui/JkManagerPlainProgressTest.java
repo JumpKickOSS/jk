@@ -13,7 +13,6 @@ import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /** Window-title OSC handling and plain (no-ANSI) progress output of the JkManager component. */
@@ -51,7 +50,7 @@ class JkManagerPlainProgressTest {
     @Test
     void window_title_suppressed_in_no_ansi_mode() {
         // --no-ansi on a real TTY: still animated, but ANSI sequences are promised away.
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);
@@ -63,7 +62,7 @@ class JkManagerPlainProgressTest {
 
     @Test
     void plain_progress_emits_stage_changes_not_percent_ticks() {
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Format", true);
@@ -92,17 +91,17 @@ class JkManagerPlainProgressTest {
 
     @Test
     void plain_progress_line_helper_shape() {
-        assertThat(JkManager.plainProgressLine("Format", "Examining source files", 0, false))
+        assertThat(JkManagerPlainView.progressLine("Format", "Examining source files", 0, false))
                 .isEqualTo("jk: * Format > Examining source files :: 0% - prepare");
-        assertThat(JkManager.plainProgressLine("Format", "Examining source files", 100, true))
+        assertThat(JkManagerPlainView.progressLine("Format", "Examining source files", 100, true))
                 .isEqualTo("jk: * Format > Examining source files :: 100% - done");
-        assertThat(JkManager.plainIndeterminateLine("Format", "Examining source files", false))
+        assertThat(JkManagerPlainView.indeterminateLine("Format", "Examining source files", false))
                 .isEqualTo("jk: * Format > Examining source files");
     }
 
     @Test
     void plain_progress_announces_eta_as_soon_as_it_is_known() {
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);
@@ -120,7 +119,7 @@ class JkManagerPlainProgressTest {
 
     @Test
     void plain_progress_emits_phase_and_built_immediately() {
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);
@@ -159,7 +158,7 @@ class JkManagerPlainProgressTest {
 
     @Test
     void plain_progress_heartbeats_long_running_stages_every_30s() {
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);
@@ -181,7 +180,7 @@ class JkManagerPlainProgressTest {
                 assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("running 759 tests");
 
                 // At/after 30s: reprint with live details (percent may be clock-based).
-                cm.plainLastPrintedNanos = System.nanoTime() - JkManager.PLAIN_HEARTBEAT_MS * 1_000_000L - 1;
+                cm.plain.lastPrintedNanos = System.nanoTime() - JkManagerPlainView.HEARTBEAT_MS * 1_000_000L - 1;
                 cm.maybeEmitPlainHeartbeat();
                 String out = buf.toString(StandardCharsets.UTF_8);
                 assertThat(out).contains("cc.jumpkick:jk-cli ::");
@@ -196,7 +195,7 @@ class JkManagerPlainProgressTest {
 
     @Test
     void plain_native_detail_is_verbose_only() {
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);
@@ -207,7 +206,7 @@ class JkManagerPlainProgressTest {
             assertThat(quiet).contains("- native compiling");
             assertThat(quiet).doesNotContain("classpath input size");
         });
-        var verbose = JkConfig.empty().withNoAnsi(Optional.of(true)).withVerbose(Optional.of(true));
+        var verbose = JkConfig.empty().withNoAnsi(true).withVerbose(true);
         SessionContext.runWhere(Session.defaults().withConfig(verbose), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);
@@ -221,7 +220,7 @@ class JkManagerPlainProgressTest {
 
     @Test
     void plain_process_output_is_suppressed_unless_verbose() {
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);
@@ -237,7 +236,7 @@ class JkManagerPlainProgressTest {
     void plain_process_output_surfaces_on_step_failure() {
         // JK-2163: plain mode has no Ctrl-O and no settle dump — a tool crash must dump the
         // buffered ring, or its only evidence stays invisible.
-        var noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             var buf = new ByteArrayOutputStream();
             var cm = JkManager.plan(stream(buf), "Build", true);

@@ -40,15 +40,6 @@ class VerbRegistryTest {
         assertThat(reg.find("not-a-verb")).isNull();
     }
 
-    @Test
-    void decode_carries_the_wire_line() {
-        HostedVerb v = new TestVerb(new FakeHost());
-        VerbRequest req = v.decode(new VerbInput("{\"type\":\"test-request\",\"dir\":\"/p\"}"));
-        assertThat(req.wireType()).isEqualTo(EngineProtocol.TEST_REQUEST);
-        assertThat(req.kind()).isEqualTo("test");
-        assertThat(req.requestLine()).contains("test-request");
-    }
-
     private static final class FakeHost implements VerbHost {
         @Override
         public long eventRequestId() {

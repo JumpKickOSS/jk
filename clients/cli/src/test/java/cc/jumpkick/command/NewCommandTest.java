@@ -306,54 +306,52 @@ class NewCommandTest {
 
     @Test
     void wizard_preset_name_is_empty_when_no_positional() {
-        assertThat(NewCommand.wizardPresetName(null, Path.of("/home/bob/myapp")))
-                .isEmpty();
+        assertThat(NewWizard.wizardPresetName(null, Path.of("/home/bob/myapp"))).isEmpty();
     }
 
     @Test
     void wizard_preset_name_uses_cwd_leaf_for_dot_arg() {
-        assertThat(NewCommand.wizardPresetName(Path.of("."), Path.of("/home/bob/myapp")))
+        assertThat(NewWizard.wizardPresetName(Path.of("."), Path.of("/home/bob/myapp")))
                 .contains("myapp");
     }
 
     @Test
     void wizard_preset_name_uses_arg_leaf_for_named_arg() {
         // Relative arg.
-        assertThat(NewCommand.wizardPresetName(Path.of("my-project"), Path.of("/home/bob")))
+        assertThat(NewWizard.wizardPresetName(Path.of("my-project"), Path.of("/home/bob")))
                 .contains("my-project");
         // Absolute path: still use the leaf, not the full path.
-        assertThat(NewCommand.wizardPresetName(Path.of("/tmp/foo/my-project"), Path.of("/home/bob")))
+        assertThat(NewWizard.wizardPresetName(Path.of("/tmp/foo/my-project"), Path.of("/home/bob")))
                 .contains("my-project");
     }
 
     @Test
     void wizard_preset_name_falls_back_when_dot_at_filesystem_root() {
         // Defensive: filesystem root has no leaf name; don't blow up.
-        assertThat(NewCommand.wizardPresetName(Path.of("."), Path.of("/"))).isEmpty();
+        assertThat(NewWizard.wizardPresetName(Path.of("."), Path.of("/"))).isEmpty();
     }
 
     @Test
     void resolve_target_with_dot_uses_cwd() {
-        assertThat(NewCommand.resolveTarget(Path.of("."), Path.of("/home/bob/myapp"), "myapp"))
+        assertThat(NewWizard.resolveTarget(Path.of("."), Path.of("/home/bob/myapp"), "myapp"))
                 .isEqualTo(Path.of("/home/bob/myapp"));
     }
 
     @Test
     void resolve_target_with_relative_arg_resolves_against_cwd() {
-        assertThat(NewCommand.resolveTarget(Path.of("widget"), Path.of("/home/bob"), "widget"))
+        assertThat(NewWizard.resolveTarget(Path.of("widget"), Path.of("/home/bob"), "widget"))
                 .isEqualTo(Path.of("/home/bob/widget"));
     }
 
     @Test
     void resolve_target_with_absolute_arg_uses_it_as_is() {
-        assertThat(NewCommand.resolveTarget(Path.of("/tmp/foo/widget"), Path.of("/home/bob"), "widget"))
+        assertThat(NewWizard.resolveTarget(Path.of("/tmp/foo/widget"), Path.of("/home/bob"), "widget"))
                 .isEqualTo(Path.of("/tmp/foo/widget"));
     }
 
     @Test
     void resolve_target_with_no_arg_creates_subdir_named_after_project() {
-        assertThat(NewCommand.resolveTarget(null, Path.of("/home/bob"), "myapp"))
-                .isEqualTo(Path.of("/home/bob/myapp"));
+        assertThat(NewWizard.resolveTarget(null, Path.of("/home/bob"), "myapp")).isEqualTo(Path.of("/home/bob/myapp"));
     }
 
     @Test

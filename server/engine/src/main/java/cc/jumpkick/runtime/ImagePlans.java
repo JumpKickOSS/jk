@@ -4,7 +4,9 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
-import cc.jumpkick.config.ImageConfigParser;
+import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ManifestImage;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.plugin.PluginClient;
@@ -30,7 +32,6 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -334,18 +335,9 @@ public final class ImagePlans {
      */
     private static ImageConfig buildConfig(
             Path jkBuild, JkBuild project, String registry, String tag, String dockerExecutableArg) throws IOException {
-        ImageConfigParser.ImageConfigData data = ImageConfigParser.parse(jkBuild);
-
         // Merge user-global [image] from ~/.config/jk/config.toml underneath the project layer.
-        Path globalConfig = JkDirs.userConfigFile();
-        if (Files.isRegularFile(globalConfig)) {
-            try {
-                ImageConfigParser.ImageConfigData global = ImageConfigParser.parse(globalConfig);
-                data = ImageConfigParser.merge(data, global);
-            } catch (Exception ignored) {
-                // malformed global config → proceed with project layer only
-            }
-        }
+        ManifestImage.ImageConfigData data =
+                ManifestImage.merge(JkBuildParser.imageConfig(jkBuild), GlobalConfig.image());
 
         // Resolve the java major version for template substitution.
         int javaMajor = project.project().javaRelease();
@@ -744,9 +736,7 @@ public final class ImagePlans {
         Map<Path, Lockfile.Artifact> rows = new java.util.LinkedHashMap<>();
         for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
             if (pkg.checksum() == null) continue;
-            String hex = pkg.checksum().startsWith("sha256:")
-                    ? pkg.checksum().substring("sha256:".length())
-                    : pkg.checksum();
+            String hex = pkg.checksumHex();
             rows.put(cas.pathFor(hex), pkg);
         }
         return jarNames(rows);
@@ -798,9 +788,7 @@ public final class ImagePlans {
         Cas cas = JkStores.cas(cache);
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue;
-            String hex = pkg.checksum().startsWith("sha256:")
-                    ? pkg.checksum().substring("sha256:".length())
-                    : pkg.checksum();
+            String hex = pkg.checksumHex();
             Path candidate = cas.pathFor(hex);
             if (Files.exists(candidate)) result.add(candidate);
         }

@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -63,9 +64,6 @@ public final class ActionCachePrune {
 
     private static final Pattern TASK = Pattern.compile("^TASK (\\S+)", Pattern.MULTILINE);
     private static final Pattern OUTPUT_SHA = Pattern.compile("^OUTPUT ([0-9a-fA-F]{64}) ", Pattern.MULTILINE);
-
-    /** Zinc analysis trees, evicted a directory at a time. */
-    private static final List<String> INCREMENTAL_DIRS = List.of("incremental-java", "incremental-kotlin");
 
     private ActionCachePrune() {}
 
@@ -179,8 +177,8 @@ public final class ActionCachePrune {
         Map<String, Long> blobMtime = new HashMap<>();
         long used = scanCas(cacheCas, alreadyFreedShas, blobSize, blobMtime);
 
-        Path keysDir = actionsDir.resolve("keys");
-        Path tasksDir = actionsDir.resolve("tasks");
+        Path keysDir = ActionTree.KEYS.under(actionsDir);
+        Path tasksDir = ActionTree.TASKS.under(actionsDir);
         Scan scan = scanActions(actionsDir, keysDir, tasksDir);
         used += scan.bytes();
 
@@ -473,7 +471,8 @@ public final class ActionCachePrune {
     private static boolean underIncremental(Path actionsDir, Path file) {
         Path relative = actionsDir.relativize(file);
         return relative.getNameCount() > 0
-                && INCREMENTAL_DIRS.contains(relative.getName(0).toString());
+                && ActionTree.incremental().stream()
+                        .anyMatch(t -> t.entry().equals(relative.getName(0).toString()));
     }
 
     /**
@@ -515,8 +514,7 @@ public final class ActionCachePrune {
         record Tree(Path dir, long bytes, long mtime) {}
         List<Tree> trees = new ArrayList<>();
         long used = 0L;
-        for (String name : INCREMENTAL_DIRS) {
-            Path root = actionsDir.resolve(name);
+        for (Path root : ActionTree.incrementalUnder(actionsDir)) {
             if (!Files.isDirectory(root)) continue;
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
                 for (Path dir : stream) {

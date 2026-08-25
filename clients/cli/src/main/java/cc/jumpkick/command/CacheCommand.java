@@ -14,6 +14,7 @@ import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
@@ -93,13 +94,19 @@ public final class CacheCommand extends GroupCommand {
      * {@code JK_STORE_DIR} and survive a nuke, so adding them to a figure printed under a heading
      * that says "Cache" is how a 235&nbsp;MB reading preceded a nuke that freed 115.
      *
+     * <p>"Actions Cached" counts {@link ActionTree#KEYS} and nothing else, because that tree holds
+     * exactly one file per cached action. The whole {@code actions/} tree read 315 on the live
+     * dogfood cache where 123 actions were cached — 123 key records, 106 task pointers and 86
+     * files of Zinc analysis, three populations summed under one heading. The footprint above is
+     * deliberately the opposite choice: a size is honest as a superset, a count is not.
+     *
      * <p>Bytes are unique-inode within the walk: a cache-CAS blob hard-linked into
      * {@code actions/} is counted once, exactly as the nuke's own measurement counts it.
      */
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
         return new SectionStats(
                 statsOf(CacheTree.CACHE_CAS.under(cacheRoot)),
-                statsOf(CacheTree.ACTIONS.under(cacheRoot)),
+                statsOf(ActionTree.KEYS.under(CacheTree.ACTIONS.under(cacheRoot))),
                 statsOf(cacheRoot));
     }
 
@@ -172,12 +179,15 @@ public final class CacheCommand extends GroupCommand {
     /**
      * The three numbers {@code jk status} prints under "Cache", in row order.
      *
-     * <p>{@code root} is not the sum of the two above it and is not meant to be: those name the
-     * two tiers the section reports a count for, and the root holds every other tier plus whatever
-     * the retention sweep has yet to reclaim. Summing rows is the shape this record had when it
-     * silently dropped a tier.
+     * <p>{@code root} is not the sum of the two above it and is not meant to be: those count
+     * entries in two named populations — CAS blobs and cached actions — and the root holds every
+     * other tier plus whatever the retention sweep has yet to reclaim. Summing rows is the shape
+     * this record had when it silently dropped a tier.
+     *
+     * @param actionKeys one entry per cached action ({@link ActionTree#KEYS}), not the whole
+     *     {@code actions/} tree, which also holds task pointers and Zinc analysis
      */
-    record SectionStats(Stats cacheCas, Stats actions, Stats root) {}
+    record SectionStats(Stats cacheCas, Stats actionKeys, Stats root) {}
 
     /** Rows for {@code jk storage usage} (store-tier only). */
     record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers, Stats mavenLocal) {
@@ -345,7 +355,18 @@ public final class CacheCommand extends GroupCommand {
      * {@code CachePlans.purgeActionCache} — the last delete of a nuke either way.
      *
      * <p>Recreating the tier directories empty was the old shape, and it is what made a nuke that
-     * printed {@code ~/.cache/jk} under "Path to Delete" leave {@code ~/.cache/jk} standing.
+     * printed {@code ~/.cache/jk} under "Path to Delete" leave {@code ~/.cache/jk} standing. The
+     * engine no longer mints it back either: {@code CacheMaintenanceLocks} stopped creating the
+     * tree just to have somewhere for {@code .prune.lock}, so a live engine's next maintenance
+     * pass leaves a nuked root nuked (JK-2499).
+     *
+     * <p><strong>Windows.</strong> The engine emits its plan-finish line from inside the
+     * maintenance lock, so this delete can start while the engine's {@code .prune.lock} handle is
+     * still open. POSIX unlinks it regardless; Windows leaves the entry delete-pending until the
+     * handle closes and then refuses to remove the parent, so the {@code IOException} surfaces and
+     * the command reports failure over a cache whose contents are already gone. Deliberately not
+     * papered over with a retry loop: the fix is to emit the finish line after the lock is
+     * released, which is {@code CacheMaintenanceVerb}'s call to make, not this one's.
      */
     static void removeCacheRoot(Path root) throws IOException {
         cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(root);

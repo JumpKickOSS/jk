@@ -2,7 +2,6 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.host.CacheTree;
-import cc.jumpkick.runtime.ReachabilityMetadata;
 import java.time.Duration;
 
 /**
@@ -51,14 +50,6 @@ public final class CacheTier {
             // likely to ask for. The cap instead takes the entries whose recorded source path no
             // longer exists — exact, and enough on its own: one `jk clean` supersedes most of it.
             case HASH_MEMO -> Bound.files(null, Bound.countCap(32_768, Bound.VictimRule.SUPERSEDED_THEN_OLDEST));
-
-            // `ensureExtracted` resolves a compile-time constant, so exactly one bundle tree can
-            // ever be read and the others are dead the moment the constant moves — no clock
-            // required, and none would be right: the live tree is untouched between native builds,
-            // and eviction costs a fetch plus 4,012 file creates. The same rule reclaims a
-            // `<version>.extract-*` directory left by an interrupted extract, since it too is a
-            // child that is not the live one.
-            case GRAAL_REACHABILITY -> Bound.subtrees(null, Bound.keepOnly(ReachabilityMetadata.VERSION));
 
             // Written once and never rewritten on reuse, so mtime cannot rank them.
             case KOTLIN_CP_SNAPSHOTS -> Bound.files(null, Bound.resetOverBytes(128L * 1024 * 1024));

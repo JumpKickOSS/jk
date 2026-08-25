@@ -9,7 +9,6 @@ import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.AggregateContext;
-import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
@@ -24,12 +23,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -155,31 +149,13 @@ public final class CompileCommand implements CliCommand {
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
         ModuleScopeHint.show("compiling", scopeNames, global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
-        int[] finished = {0};
         long start = System.nanoTime();
+        // Not buffered and no JSONL: `jk compile` has no headless renderer of its own, so under
+        // `--output json` this same region is opened dormant and must write nothing.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false, false), entryDir, null, false);
         WorkspaceResult result;
         try {
-            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, new WorkspaceBuildListener() {
-                @Override
-                public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
-                    agg.applySnapshot(snap);
-                }
-
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan m) {
-                    return new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
-                }
-
-                @Override
-                public void onModuleFinish(ModuleOutcome o) {
-                    int n = ++finished[0];
-                    String completion =
-                            BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
-                    if (view.animating()) {
-                        view.addCompletion(completion);
-                    }
-                }
-            });
+            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, run.live(view, agg));
         } catch (EngineWireException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.CONFIG;
@@ -189,13 +165,13 @@ public final class CompileCommand implements CliCommand {
         }
         if (!result.success()) {
             String detail = result.errors().isEmpty()
-                    ? "compilation failed " + BuildCommand.elapsedSince(start)
+                    ? "compilation failed " + BuildTails.elapsedSince(start)
                     : result.errors().getFirst();
             view.finishBuildPlanFailure(detail);
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
         view.finishBuildPlanSuccess(
-                Theme.colorize("Compiled", Theme.active().focused()) + " " + BuildCommand.elapsedSince(start));
+                Theme.colorize("Compiled", Theme.active().focused()) + " " + BuildTails.elapsedSince(start));
         return 0;
     }
 }

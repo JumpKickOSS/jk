@@ -42,6 +42,26 @@ public final class AotCacheFiles {
     public static final String MARKER = ".noaot";
 
     /**
+     * How long a refusal is believed, for every key — engine and worker alike. Past this age a
+     * marker is expired at read time by {@link #blocked} and the key gets one fresh training
+     * attempt.
+     *
+     * <p>A refusal is usually environmental: a loaded machine, a transient mapping failure, a
+     * trainer that lost a race for memory. Without an expiry the first bad minute disables AOT for
+     * that key until something else mints a new one. For a worker key "something else" is a JDK,
+     * Kotlin or GC change; for the engine it is a new engine jar or JDK, which is every day for
+     * someone building jk and possibly never for someone running a release. The key that outlives
+     * the window is exactly the key whose owner is not going to change it, so a single policy is
+     * the honest one, and it costs one training start a week on a process started rarely.
+     *
+     * <p>This is not the window a {@code pending} row in {@code aot.toml} lives under. That one
+     * asks how long a claim that a train is <em>running</em> stays credible, and a train is bounded
+     * by its own two-minute hard limit; this one asks how long a finished failure stays believed.
+     * Two questions, two clocks — see {@code AotManifest.PENDING_TTL_MILLIS}.
+     */
+    public static final long MARKER_TTL_MILLIS = 7L * 24 * 60 * 60 * 1_000;
+
+    /**
      * The level field of a {@code -Xlog} line is padded to the widest enabled level, so an error
      * arrives as {@code [error  ]} whenever a {@code warning} is also enabled — which is the
      * common case.
@@ -63,6 +83,30 @@ public final class AotCacheFiles {
     /** The cache file name a marker belongs to, or {@code null} when {@code name} is not one. */
     public static String cacheOf(String markerName) {
         return isMarker(markerName) ? markerName.substring(0, markerName.length() - MARKER.length()) : null;
+    }
+
+    /**
+     * Does {@code cache}'s refusal marker still block training? The engine's spawn decision and
+     * the worker trainer both decide here, so a refusal expires on one schedule
+     * ({@link #MARKER_TTL_MILLIS}) rather than on whichever file the read landed in.
+     *
+     * <p>An expired marker is deleted here rather than merely ignored, so the answer and the disk
+     * cannot drift apart, and a sweep that never runs cannot resurrect it. An unreadable marker
+     * blocks: skipping one train is cheaper than failing a build over a sidecar.
+     */
+    public static boolean blocked(Path cache) {
+        if (cache == null) return false;
+        Path marker = marker(cache);
+        try {
+            if (!Files.exists(marker)) return false;
+            long age = System.currentTimeMillis()
+                    - Files.getLastModifiedTime(marker).toMillis();
+            if (age <= MARKER_TTL_MILLIS) return true;
+            Files.deleteIfExists(marker);
+            return false;
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /**

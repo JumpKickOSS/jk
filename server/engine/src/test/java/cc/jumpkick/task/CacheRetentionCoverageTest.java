@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.CacheTree;
-import cc.jumpkick.runtime.ReachabilityMetadata;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -59,7 +58,6 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.FORMAT_STAMPS, root -> in(root, CacheTree.FORMAT_STAMPS, "ab/cd/stamp", "", OLD));
         m.put(CacheTree.FORMAT_FRESHNESS, root -> in(root, CacheTree.FORMAT_FRESHNESS, "orphan.idx", "x", OLD));
         m.put(CacheTree.HASH_MEMO, root -> overCountCap(root, CacheTree.HASH_MEMO, 32_768));
-        m.put(CacheTree.GRAAL_REACHABILITY, root -> subtree(root, CacheTree.GRAAL_REACHABILITY, "0.0.1", OLD));
         m.put(CacheTree.KOTLIN_CP_SNAPSHOTS, root -> overByteBudget(root, CacheTree.KOTLIN_CP_SNAPSHOTS));
         m.put(CacheTree.JSHELL_CP, root -> in(root, CacheTree.JSHELL_CP, "alias.jar", "x", FRESH));
         m.put(CacheTree.BASE_JRE, root -> subtree(root, CacheTree.BASE_JRE, "sha256-dead", OLD));
@@ -152,24 +150,6 @@ class CacheRetentionCoverageTest {
 
             assertThat(kept).as("%s is unbounded and must survive", tier).exists();
         }
-    }
-
-    /**
-     * Exactly one metadata bundle can ever be read, so the tier keeps that one and nothing else —
-     * including the directory an interrupted extract leaves beside it.
-     */
-    @Test
-    void the_reachability_tier_keeps_only_the_bundle_in_use(@TempDir Path root) throws IOException {
-        CacheTree tier = CacheTree.GRAAL_REACHABILITY;
-        Path live = subtree(root, tier, ReachabilityMetadata.VERSION, OLD);
-        Path superseded = subtree(root, tier, "0.0.1", OLD);
-        Path leaked = subtree(root, tier, ReachabilityMetadata.VERSION + ".extract-7f3a", OLD);
-
-        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
-
-        assertThat(live).as("the version this jk resolves is never old").exists();
-        assertThat(superseded).doesNotExist();
-        assertThat(leaked).doesNotExist();
     }
 
     /** {@code path-artifacts} is keyed twice, and the cap belongs to the inner key. */

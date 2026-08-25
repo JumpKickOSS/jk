@@ -118,7 +118,7 @@ public final class BuildPlanConsole {
     /**
      * The listener {@link #runBuildPlan} picks per {@code mode} — split out so a caller that doesn't have
      * a real {@code BuildPlan} yet (a engine-hosted test run reconstructing the step list from wire
-     * events; see {@code EngineBuildListenerAdapter}) can choose the same listener from just {@code
+     * events; see {@code EngineEventDecoder}) can choose the same listener from just {@code
      * steps} once it knows them, instead of duplicating this switch.
      */
     public static BuildPlanListener chooseConsoleListener(

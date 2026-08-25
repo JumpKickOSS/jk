@@ -204,7 +204,27 @@ public final class ManifestBuild {
         String graal = ManifestProject.parseGraalSpec(native_);
         if (graal == null) graal = "graalvm";
         JkBuild.NativeMode enabled = parseNativeEnabled(native_);
-        return Optional.of(new JkBuild.NativeConfig(mainClass, name, args, graal, enabled));
+        return Optional.of(
+                new JkBuild.NativeConfig(mainClass, name, args, graal, enabled, parseMetadataRepository(native_)));
+    }
+
+    /**
+     * {@code [native].metadata-repository} — the GraalVM reachability-metadata repository release,
+     * in the dependency version grammar. Null (key omitted) leaves {@link
+     * JkBuild.NativeConfig#METADATA_REPOSITORY_DEFAULT} in place. Bare versions float like a
+     * dependency's ({@code "1.1"} is a caret floor); write {@code "=1.1.4"} to nail one release.
+     */
+    private static VersionSelector parseMetadataRepository(TomlTable native_) {
+        String raw = native_.getString("metadata-repository");
+        if (raw == null) return null;
+        if (raw.isBlank()) {
+            throw new JkBuildParseException("[native].metadata-repository must not be blank");
+        }
+        try {
+            return VersionSelector.parseFloating(raw);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException("[native].metadata-repository: " + e.getMessage());
+        }
     }
 
     /**

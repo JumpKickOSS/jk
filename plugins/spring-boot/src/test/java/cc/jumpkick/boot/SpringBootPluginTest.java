@@ -120,6 +120,11 @@ class SpringBootPluginTest {
         }
 
         @Override
+        public boolean offline() {
+            return false;
+        }
+
+        @Override
         public Path classesDir() {
             return tmp.resolve("classes");
         }

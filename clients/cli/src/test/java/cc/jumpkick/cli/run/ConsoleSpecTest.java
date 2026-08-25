@@ -8,7 +8,6 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.time.Duration;
-import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
@@ -90,7 +89,7 @@ class ConsoleSpecTest {
     }
 
     private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
         Session original = SessionContext.current();
         try {
             return SessionContext.where(original.withConfig(noAnsi), body::get);

@@ -423,7 +423,12 @@ public final class LockPlans {
                 List.of(),
                 newLock.jkMin(),
                 newLock.manifestsSha256(),
-                newLock.projectId());
+                newLock.projectId(),
+                // A targeted git refresh does not re-resolve the metadata repository: whatever the
+                // previous lock pinned is still what this image should be built against.
+                oldLock != null && oldLock.nativeMetadata() != null
+                        ? oldLock.nativeMetadata()
+                        : newLock.nativeMetadata());
         pipeline.write(finalLock, manifestsSha);
         return refreshed;
     }

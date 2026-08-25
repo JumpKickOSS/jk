@@ -7,11 +7,20 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.With;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Request-scoped context for one jk invocation: merged config, paths, JVM/JDK tuning, variant
  * selection, and cooperative cancellation. Per-request so concurrent builds in one JVM do not
  * clobber each other; threaded through the engine rather than process-global state.
+ *
+ * <p>Single-field copies are {@link With}-generated. Four are hand-written and say why, because
+ * each one does something a generated wither cannot: {@link #withWorkingDir} absolutizes,
+ * {@link #withJvm} maps {@code null} to {@link PluginTuning#NONE} where the canonical constructor
+ * rejects it, and {@link #withVariant} / {@link #withToolchainSpecs} each set two components that
+ * are only meaningful together. Every other normalisation lives in the canonical constructor, which
+ * is what makes generating the rest safe — a generated wither runs it too.
  *
  * @param jdksDir JDK install root, or {@code null} for {@link JkDirs#jdks}
  * @param jdkSpec top-tier JDK selection ({@code --jdk}), or {@code null}
@@ -22,24 +31,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
-        JkConfig config,
+        @With JkConfig config,
         Path workingDir,
-        Path cacheDir,
-        Path jdksDir,
+        @With Path cacheDir,
+        @With @Nullable Path jdksDir,
         PluginTuning jvm,
-        String jdkSpec,
-        String graalSpec,
-        boolean parallelTests,
-        CancelToken cancel,
+        @Nullable String jdkSpec,
+        @Nullable String graalSpec,
+        @With boolean parallelTests,
+        @With CancelToken cancel,
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
         Map<String, String> clientEnv,
         /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble --minified}). */
-        String assemblyOverride,
+        @With String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
-        TestSelection testSelection,
+        @With TestSelection testSelection,
         /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
-        IoLedger io) {
+        @With IoLedger io) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -54,41 +63,9 @@ public record Session(
         io = (io == null) ? new IoLedger() : io;
     }
 
-    private Session copy(
-            JkConfig config,
-            Path workingDir,
-            Path cacheDir,
-            Path jdksDir,
-            PluginTuning jvm,
-            String jdkSpec,
-            String graalSpec,
-            boolean parallelTests,
-            CancelToken cancel,
-            String variant,
-            Map<String, String> clientEnv,
-            String assemblyOverride,
-            TestSelection testSelection,
-            IoLedger io) {
-        return new Session(
-                config,
-                workingDir,
-                cacheDir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                cancel,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                testSelection,
-                io);
-    }
-
-    /** A copy carrying the given variant selection + client-resolved env. */
+    /** A copy carrying the given variant selection + client-resolved env — two components, one fact. */
     public Session withVariant(String variant, Map<String, String> clientEnv) {
-        return copy(
+        return new Session(
                 config,
                 workingDir,
                 cacheDir,
@@ -172,26 +149,9 @@ public record Session(
                 IoLedger.currentOrNew());
     }
 
-    public Session withConfig(JkConfig newConfig) {
-        return copy(
-                newConfig,
-                workingDir,
-                cacheDir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                cancel,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                testSelection,
-                io);
-    }
-
+    /** A copy rooted at {@code dir}, absolutized — the working directory is never relative. */
     public Session withWorkingDir(Path dir) {
-        return copy(
+        return new Session(
                 config,
                 dir.toAbsolutePath().normalize(),
                 cacheDir,
@@ -208,44 +168,9 @@ public record Session(
                 io);
     }
 
-    public Session withCacheDir(Path dir) {
-        return copy(
-                config,
-                workingDir,
-                dir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                cancel,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                testSelection,
-                io);
-    }
-
-    public Session withJdksDir(Path dir) {
-        return copy(
-                config,
-                workingDir,
-                cacheDir,
-                dir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                cancel,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                testSelection,
-                io);
-    }
-
+    /** A copy with the given JVM tuning ({@code null} → {@link PluginTuning#NONE}). */
     public Session withJvm(PluginTuning tuning) {
-        return copy(
+        return new Session(
                 config,
                 workingDir,
                 cacheDir,
@@ -264,7 +189,7 @@ public record Session(
 
     /** The top-tier JDK / GraalVM selection ({@code --jdk} / {@code --graal}); blanks normalize to null. */
     public Session withToolchainSpecs(String jdk, String graal) {
-        return copy(
+        return new Session(
                 config,
                 workingDir,
                 cacheDir,
@@ -281,107 +206,7 @@ public record Session(
                 io);
     }
 
-    public Session withParallelTests(boolean enabled) {
-        return copy(
-                config,
-                workingDir,
-                cacheDir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                enabled,
-                cancel,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                testSelection,
-                io);
-    }
-
-    /**
-     * CLI packaging override for this invocation only ({@code fat} / {@code minified} / empty).
-     * Does not rewrite {@code jk.toml}.
-     */
-    public Session withAssemblyOverride(String mode) {
-        return copy(
-                config,
-                workingDir,
-                cacheDir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                cancel,
-                variant,
-                clientEnv,
-                mode,
-                testSelection,
-                io);
-    }
-
-    /** A copy carrying the given cancellation token ({@code null} → {@link CancelToken#NONE}). */
-    public Session withCancel(CancelToken token) {
-        return copy(
-                config,
-                workingDir,
-                cacheDir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                token,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                testSelection,
-                io);
-    }
-
-    /** Suite / tag selection for this invocation ({@code jk test}). */
-    public Session withTestSelection(TestSelection selection) {
-        return copy(
-                config,
-                workingDir,
-                cacheDir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                cancel,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                selection == null ? TestSelection.DEFAULT : selection,
-                io);
-    }
-
-    /**
-     * A copy metering into {@code ledger} ({@code null} → a fresh one). Rarely needed: a session
-     * built inside a request already adopts the run's ledger via {@link #defaults}.
-     */
-    public Session withIo(IoLedger ledger) {
-        return copy(
-                config,
-                workingDir,
-                cacheDir,
-                jdksDir,
-                jvm,
-                jdkSpec,
-                graalSpec,
-                parallelTests,
-                cancel,
-                variant,
-                clientEnv,
-                assemblyOverride,
-                testSelection,
-                ledger == null ? new IoLedger() : ledger);
-    }
-
-    private static String blankToNull(String s) {
+    private static @Nullable String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
     }
 

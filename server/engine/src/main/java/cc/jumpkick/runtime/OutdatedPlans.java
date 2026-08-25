@@ -8,6 +8,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -20,6 +21,7 @@ import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.VersionSelectors;
@@ -35,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -93,7 +96,64 @@ public final class OutdatedPlans {
                 }
             }
         }
+        nativeMetadataRow(dir, cache, repoUrl, scopes.values().iterator().next())
+                .ifPresent(rows::add);
         return OutdatedReport.of(workspace, rows);
+    }
+
+    /**
+     * The {@code [native] metadata-repository} pin, when the project declares one.
+     *
+     * <p>It is not a dependency, but it is a floating selector this lock pinned, and a pin nobody
+     * can see is a pin nobody bumps: for as long as the release was a constant in the engine there
+     * was no way to learn that a newer repository existed short of reading jk's source.
+     */
+    private static Optional<OutdatedReport.Row> nativeMetadataRow(Path dir, Path cache, URI repoUrl, JkBuild build) {
+        Optional<VersionSelector> declared;
+        try {
+            declared = LockNativePin.selector(dir);
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+        if (declared.isEmpty()) return Optional.empty();
+
+        Lockfile.NativeMetadata pin = null;
+        try {
+            Path lockFile = LockPaths.lockFile(dir);
+            if (Files.isRegularFile(lockFile))
+                pin = LockfileReader.read(lockFile).nativeMetadata();
+        } catch (IOException | RuntimeException ignored) {
+            // No lock, or unreadable: Current is simply empty, exactly as for an unlocked dep.
+        }
+        RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, JkStores.cas(cache));
+        List<String> available;
+        try {
+            available = repos.availableVersions(ReachabilityMetadata.coordinate("any"));
+        } catch (IOException e) {
+            available = List.of();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            available = List.of();
+        }
+        VersionSet set = VersionSelectors.toVersionSet(declared.get());
+        String compatible = available.stream()
+                .filter(set::contains)
+                .filter(Versions::isStable)
+                .max(Versions::compare)
+                .orElse("");
+        String latest = available.stream()
+                .filter(Versions::isStable)
+                .max(Versions::compare)
+                .orElse("");
+        return Optional.of(new OutdatedReport.Row(
+                "",
+                ReachabilityMetadata.coordinate("any").module(),
+                "reachability metadata",
+                "native",
+                pin == null ? "" : pin.version(),
+                compatible,
+                latest,
+                ""));
     }
 
     // ---- Maven --------------------------------------------------------------

@@ -12,6 +12,7 @@ import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileModules;
@@ -66,7 +67,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@link #manifestsSha()} — captured <em>before</em> resolving, so a manifest edited
  *       mid-resolution leaves a lock that reads as stale rather than stamping itself fresh.
  *   <li>{@link #resolve} — offline gate, git/path materialization, solve, git provenance stamp,
- *       Kotlin/Scala compiler pins.
+ *       Kotlin/Scala compiler pins, the {@code [native]} reachability-metadata pin.
  *   <li>{@link #pinPlugins} — {@code [[plugin]]} rows and the {@code jk-min} floor.
  *   <li>{@link #pinSdk} — {@code [[sdk]]} rows.
  *   <li>{@link #write} — {@code [[module]]} identity stamp, then the file.
@@ -261,6 +262,7 @@ public final class LockPipeline {
         long postT0 = profile ? System.nanoTime() : 0L;
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
         lock = withToolPins(lock, keepPins ? existing : null, pathPrep.repos(), progress);
+        lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);
             System.err.println("jk: " + ResolveProfile.report());
@@ -306,6 +308,60 @@ public final class LockPipeline {
             lock = lock.withScala(scala);
         }
         return lock;
+    }
+
+    /**
+     * The {@code [native] metadata-repository} pin: the GraalVM reachability-metadata repository
+     * release {@code jk native} will extract.
+     *
+     * <p>Locked for the same reason a dependency is. The repository decides which third-party
+     * reflection, resource and proxy config the image keeps, so a floating selector resolved at
+     * build time makes the binary depend on the day it was built. A freshen carries the pin the
+     * lock already holds; bumping it is {@code jk lock}'s job.
+     *
+     * <p>Nothing under the lock owner building a native image means no pin and no fetch — the
+     * repository zip is 3.3 MB on the wire and 27 MB unpacked, and a project that never runs
+     * {@code native-image} must not pay for either. {@link LockNativePin} owns that question.
+     */
+    private Lockfile withNativePin(Lockfile lock, @Nullable Lockfile pins, RepoGroup repos, Progress progress) {
+        if (pins != null && pins.nativeMetadata() != null) {
+            return lock.withNativeMetadata(pins.nativeMetadata());
+        }
+        Optional<VersionSelector> declared;
+        try {
+            declared = LockNativePin.selector(lockDir);
+        } catch (IOException e) {
+            return lock; // unreadable manifest: the solve above already reported it
+        }
+        if (declared.isEmpty()) return lock;
+        String version = highestMatch(declared.get(), repos, ReachabilityMetadata.coordinate("0"));
+        if (version == null) {
+            throw new IllegalStateException(
+                    "[native] metadata-repository `" + declared.get().raw()
+                            + "` matches no released version of org.graalvm.buildtools:graalvm-reachability-metadata");
+        }
+        progress.label("resolved reachability metadata " + version);
+        return lock.withNativeMetadata(new Lockfile.NativeMetadata(version, metadataChecksum(repos, version)));
+    }
+
+    /**
+     * SHA-256 of the repository zip, or null when it cannot be fetched. Null is not a failure: the
+     * version alone already decides what a build extracts, and refusing to record the pin because
+     * the bytes were momentarily out of reach would cost the next native build its metadata
+     * entirely — a worse answer than a pin that is verified on the next fetch instead of this one.
+     */
+    private static @Nullable String metadataChecksum(RepoGroup repos, String version) {
+        try {
+            Coordinate coord = ReachabilityMetadata.coordinate(version);
+            var found = repos.tryFetchArtifact(coord);
+            if (found.isEmpty()) return null;
+            return "sha256:" + Hashing.sha256Hex(found.get().fetched().cachePath());
+        } catch (IOException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     // ---- stage 3: [[plugin]] rows -------------------------------------------

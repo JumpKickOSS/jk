@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.util.List;
 import java.util.Optional;
@@ -23,17 +24,15 @@ class TestFailureRenderingTest {
 
     @Test
     void a_failure_renders_short_label_and_stack_when_no_snippet() {
-        var f = new TestSummary.Failure(
+        var f = new TestFailureInfo(
+                "",
+                "junit-jupiter",
+                "cc.jumpkick.FooTest",
                 "bar()",
                 "org.opentest4j.AssertionFailedError",
                 "expected: <1> but was: <2>",
                 "org.opentest4j.AssertionFailedError: expected: <1> but was: <2>\n"
-                        + "\tat cc.jumpkick.FooTest.bar(FooTest.java:42)",
-                "",
-                "cc.jumpkick.FooTest",
-                0,
-                "junit-jupiter",
-                "bar()");
+                        + "\tat cc.jumpkick.FooTest.bar(FooTest.java:42)");
         var result = new TestSummary(1, 0, 1, 0, List.of(f));
 
         List<String> lines = TestSupport.renderFailures(result);
@@ -51,8 +50,8 @@ class TestFailureRenderingTest {
 
     @Test
     void pluralises_and_falls_back_to_message_when_no_stack() {
-        var a = new TestSummary.Failure("x()", "", "boom", "boom\n\tat A.x(A.java:1)", "", "A", 0, "", "x()");
-        var b = new TestSummary.Failure("(test run)", "", "runner exited 1", ""); // no stack
+        var a = new TestFailureInfo("", "", "A", "x()", "", "boom", "boom\n\tat A.x(A.java:1)");
+        var b = new TestFailureInfo("", "", "", "(test run)", "", "runner exited 1", ""); // no stack
         var result = new TestSummary(2, 0, 2, 0, List.of(a, b));
 
         List<String> lines = TestSupport.renderFailures(result);
@@ -64,28 +63,60 @@ class TestFailureRenderingTest {
 
     @Test
     void short_label_uses_simple_class_and_keeps_params() {
-        var f = new TestSummary.Failure(
-                "freshen(Path)",
+        var f = new TestFailureInfo(
+                "cc.jumpkick:jk-core",
+                "junit-jupiter",
+                "cc.jumpkick.runtime.FooTest",
+                "freshen_preserves_pins(java.nio.file.Path)",
                 "java.lang.AssertionError",
                 "nope",
                 "java.lang.AssertionError: nope",
-                "cc.jumpkick:jk-core",
-                "cc.jumpkick.runtime.FooTest",
-                2,
-                "junit-jupiter",
-                "freshen_preserves_pins(java.nio.file.Path)");
+                2);
         assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)  [w2]");
-        var invoked = new TestSummary.Failure(
-                "bar(java.lang.String)[#2]", "", "", "", "", "demo.FooTest", 0, "", "bar(java.lang.String)[#2]");
+        var invoked = new TestFailureInfo("", "", "demo.FooTest", "bar(java.lang.String)[#2]", "", "", "");
         assertThat(TestSupport.shortTestLabel(invoked)).isEqualTo("FooTest.bar(String)[#2]");
         List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
         assertThat(lines).anyMatch(l -> l.equals("module: cc.jumpkick:jk-core"));
         assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)  [w2]"));
         assertThat(String.join("\n", lines)).doesNotContain("class: cc.jumpkick");
-        var info = f.toInfo();
-        var diag = new BuildPlanResult.Diagnostic("run-tests", "test-failure", f.message(), info);
+        var diag = new BuildPlanResult.Diagnostic("run-tests", "test-failure", f.message(), f);
         assertThat(diag.worker()).isEqualTo(2);
         assertThat(diag.testFailure().worker()).isEqualTo(2);
+    }
+
+    /**
+     * The point of collapsing {@code TestSummary.Failure} into {@link TestFailureInfo} (JK-2424): a
+     * summary failure now <em>is</em> the wire record, so source context reaches a plan diagnostic.
+     * The old summary-local record had no {@code file}/{@code line}/{@code snippet} components at
+     * all, and its {@code toInfo()} adapter minted them empty — a lossy hop no caller could route
+     * around.
+     */
+    @Test
+    void a_summary_failure_carries_source_context_into_a_diagnostic() {
+        var f = new TestFailureInfo(
+                "cc.jumpkick:jk-core",
+                "junit-jupiter",
+                "demo.ZTest",
+                "d()",
+                "java.lang.AssertionError",
+                "nope",
+                "java.lang.AssertionError: nope\n\tat demo.ZTest.d(ZTest.java:7)",
+                3,
+                "src/test/java/demo/ZTest.java",
+                7,
+                5,
+                List.of("void d() {", "    fail();", "}"));
+        var summary = new TestSummary(1, 0, 1, 0, List.of(f));
+
+        var diag = new BuildPlanResult.Diagnostic(
+                "run-tests", "test-failure", f.message(), summary.failures().getFirst());
+
+        assertThat(diag.file()).isEqualTo("src/test/java/demo/ZTest.java");
+        assertThat(diag.line()).isEqualTo(7);
+        assertThat(diag.snippetStart()).isEqualTo(5);
+        assertThat(diag.snippet()).containsExactly("void d() {", "    fail();", "}");
+        assertThat(diag.testFailure().worker()).isEqualTo(3);
+        assertThat(f.label()).isEqualTo("cc.jumpkick:jk-core :: d()  [w3]");
     }
 
     @Test
@@ -121,16 +152,8 @@ class TestFailureRenderingTest {
 
     @Test
     void short_label_decodes_array_params_to_simple_names() {
-        var f = new TestSummary.Failure(
-                "bar(java.lang.String[])",
-                "java.lang.AssertionError",
-                "nope",
-                "",
-                "",
-                "demo.FooTest",
-                0,
-                "junit-jupiter",
-                "bar(java.lang.String[])");
+        var f = new TestFailureInfo(
+                "", "junit-jupiter", "demo.FooTest", "bar(java.lang.String[])", "java.lang.AssertionError", "nope", "");
         assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.bar(String[])");
     }
 

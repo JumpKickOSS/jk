@@ -91,6 +91,11 @@ class QuarkusPluginTest {
         }
 
         @Override
+        public boolean offline() {
+            return false;
+        }
+
+        @Override
         public Path classesDir() {
             return artifact.getParent();
         }

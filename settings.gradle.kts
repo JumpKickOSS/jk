@@ -115,7 +115,6 @@ include(
     ":auditor",
     ":publisher",
     ":image-builder",
-    ":compat-bridge",
     ":formatter",
     ":spring-boot",
     ":grails",
@@ -155,7 +154,6 @@ project(":java-compiler").projectDir  = file("plugins/java-compiler")
 project(":auditor").projectDir        = file("plugins/auditor")
 project(":publisher").projectDir      = file("plugins/publisher")
 project(":image-builder").projectDir  = file("plugins/image-builder")
-project(":compat-bridge").projectDir  = file("plugins/compat-bridge")
 project(":formatter").projectDir      = file("plugins/formatter")
 project(":spring-boot").projectDir    = file("plugins/spring-boot")
 project(":grails").projectDir         = file("plugins/grails")

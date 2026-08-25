@@ -130,7 +130,7 @@ a protocol or API improvement — then change them, completely.
 
 ```
 CLI JSONL  ──decode──┐
-HTTP POST  ──decode──┼── VerbRequest ── JobEnvelope.submit ── HostedVerb.run
+HTTP POST  ──decode──┼── JobRequest ── JobEnvelope.submit ── HostedVerb.run
 MCP tools  ──decode──┘         │
                                ├── EventSink → Wire (CLI)
                                ├── EventSink → SSE (dashboard + MCP)
@@ -170,12 +170,21 @@ Not sealed. Not `ServiceLoader`. Not a marketplace.
 ```java
 interface HostedVerb {
     String wireType();
-    String kind();
+    JobKind jobKind();
     VerbShape shape();
-    VerbRequest decode(VerbInput in);
-    void run(VerbContext ctx);
+    String threadPrefix();
+    JobOutcome run(String requestLine, Session.CancelToken cancel, @Nullable BufferedWriter writer);
+    default List<String> jobKinds() { return List.of(); }   // HTTP/MCP submission
+    default JobRequest toJobRequest(String requestLine) { … }
 }
 ```
+
+`run` returns a **`JobOutcome`** — the sealed `Succeeded | Failed(exitCode)
+| Cancelled | Declined`. That signature is load-bearing: it used to be
+`void` plus a nullable outcome set on the side, and `null` meant both
+"declined to rule" and "aborted before producing any facts", which the
+accumulator read as success. Sixteen verbs journaled a green build that
+had thrown.
 
 `VerbRegistry.standard(...)` is an explicit list. Adding `jk quux` is
 one class + one registry line. It is automatically admitted, heartbeaten,
@@ -367,12 +376,28 @@ it disagrees with the guard, so the two cannot drift.
 | JavaScript | `.js` `.mjs` | 600 | 1,200 | 1,600 with the same comment |
 | CSS | `.css` | — | — | exempt |
 
-JS gets the wider band on purpose: `clients/web` has no module bundler, so
-a split costs a `<script>` tag and a load-order invariant no compiler
-checks, where a Java split costs an import. CSS is exempt outright —
-splitting a cascade on line count is a regression risk with no
-readability win, so `clients/web/.../style.css` is absent from the guard
-by design.
+JS gets the wider band, but **not for the reason this document used to
+give.** The old rationale said `clients/web` has no bundler, so a split
+costs a `<script>` tag and a load-order invariant no compiler checks.
+That was wrong: there is no bundler, but there has been an ES module
+graph all along — `index.html` loads exactly one local script,
+`<script src="/app.js" type="module">`, and every other file is reached
+by static `import`. The browser topologically orders the graph, and a bad
+specifier or a missing export is a link error before a line runs. A JS
+split there costs an `import`, exactly like Java. JK-2440 took `app.js`
+2,786 → 601, `code.js` 1,966 → 775 and `fold.js` 1,734 → 971 on that
+basis, and all three left this baseline.
+
+What the band actually buys is narrower: the module graph is checked at
+**load** time, not build time, so a broken split fails when the page
+opens rather than when the build runs — and there is no type system, so
+an extraction loses whatever inference the editor had. That is a real
+cost and a smaller one. Treat 1,200 as provisional; if the SPA stays this
+shape, JS should converge on the Java caps.
+
+CSS is exempt outright — splitting a cascade on line count is a
+regression risk with no readability win, so `clients/web/.../style.css`
+is absent from the guard by design.
 
 Soft caps are a review signal. The hard caps are the gate, enforced by
 `checkFileSizeCaps` against the checked-in `size-baseline.txt`, wired to
@@ -687,7 +712,7 @@ Letters are allocated when a guard lands and are never reused.
 | G1 | `checkNoHandBuiltJavaBinary` | a hand-built `<javaHome>/bin/java` (use `JdkFingerprint`) | ban |
 | G2 | `checkNoBareExitCode` | `System.exit` / `halt` with an integer literal (use `Exit`) | ban, no allowlist |
 | G3 | `checkSingleXmlParserOwner` | an XML parser outside `cc.jumpkick.host.DomXml`, plus the six flags required inside it by name | ban |
-| G4 | *(unallocated)* | the planned `org.tomlj` / `TomlValues` ban in `clients/cli/src/main/java` never landed — `BuildLogicTaskScan` still names both | — |
+| G4 | *(folded into `checkCliNoParseTypes`)* | the planned `org.tomlj` / `TomlValues` ban in `clients/cli/src/main/java` landed as two entries on the existing CLI guard rather than a new letter — one rule, one owner, no new task | ban |
 | G5 | `checkWireProtocolPrefixPairs` | a `##JK*:` protocol prefix not named exactly twice | ban |
 | G6 | `checkOneDigestSurface` | a `MessageDigest` lookup outside `cc.jumpkick.host.Hashing` | ban |
 | G7 | `checkSingleTruthSet` | a hand-rolled boolean truth set, true **or** false side (use `EnvValues.parseBool`) | ban |
@@ -702,12 +727,39 @@ Letters are allocated when a guard lands and are never reused.
 | G16 | `checkSingleCentralAddress` | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban |
 | G17 | `checkNoBareWireType` | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban |
 | G18 | `checkNoBareTargetDir` | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban |
-| G19 | `checkPublishedPomCoordinates` | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ratchet |
+| G19 | `checkPublishedPomCoordinates` | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist |
 | G20 | `checkSingleHostSurface` | an `os.name` read outside `cc.jumpkick.host.Os`, or a classpath separator outside `Classpaths` | ban + ratchet |
 | G21 | `checkOneJsonCodec` | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist |
+| G22 | `checkIdeClientWiring` | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist |
+| G23 | `checkNoOrphanTestTags` | a `@Tag` no test task runs, a tag no tier owns, or a `TestTiers` table that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions |
+| G24 | `checkSingleAotMarkerSpelling` | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist |
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters
 and keep their names; they are the shape every guard above copies.
+
+A guard does not have to live in `buildSrc`. G19, G22 and G24 sit in the
+`build.gradle.kts` of the module that owns the fact — which is the right
+home when the ban list comes from one module's source. Wire it to that
+module's `check` **and** `jar`, and remember `checkAll` now depends on
+every module's `check` (JK-2498), so it will run.
+
+**A guard that ships as a test is subject to Gradle's up-to-date
+check.** `ActionTreeTest` enforces an owner-sourced ban list from
+`:host:test`, and its first revert check *passed with the violation
+reintroduced* — because `:host:test` was `UP-TO-DATE`: nothing declared
+the other modules' sources as its inputs. A guard task declares
+`inputs.files(...)`; a test that does a guard's job has to declare the
+same tree-wide fileTree on the test task, or it silently stops looking.
+Verify it fires **without** `--rerun-tasks`, which is the only way to see
+this.
+
+**Give every guard a self-fail arm.** G22, G23 and G24 each fail when
+their own scan comes back empty or their owner-read returns nothing — so
+a renamed constant or a narrowed glob is a loud failure rather than a
+silent green. G24's message names the numbers: *"scanned 24 main and 14
+test files, measured against 1,236 and 922."* That is the cheapest
+possible defence against the blindness that made five of the first twenty
+guards useless.
 
 ### Verify the number before it lands in a Done criterion
 
@@ -757,6 +809,18 @@ plausible:
 
 All nine share one shape: the assertion is true, and it is true for a
 reason unrelated to the behaviour under test.
+
+**Fail-closed defaults are a trap for exactly this.** If absent means
+"refuse", then a test that only asserts refusal passes when the value
+never arrived at all — the safe default and the correct plumbing are
+indistinguishable. Make the receiver report *that it was told*, not just
+what it decided, and assert on both.
+
+So when you assert that a mechanism *fired*, ask what else produces the
+same observable — and if the answer is "the absence of the mechanism,"
+the assertion is worthless. A Ctrl-C test that checks for exit 130 passes
+against a process with **no handler at all**, because `SIG_DFL` yields
+130 too; assert on the cancel request the engine received instead.
 
 Number nine was caught **by the revert check**, not by review — the test
 looked right and the fix was right, and only reverting the production

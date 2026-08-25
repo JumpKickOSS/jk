@@ -744,20 +744,9 @@ public final class WorkspaceExecute {
         }
         if (target == WorkspaceTarget.INSTALL) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
-            BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
-                            dir,
-                            req.cache(),
-                            req.workers() > 0 ? req.workers() : 1,
-                            req.jdksDir(),
-                            req.profile(),
-                            req.skipTests(),
-                            req.verbose(),
-                            moduleDirs,
-                            false)
-                    .withVariant(req.variant(), req.clientEnv())
-                    .withEphemeralActions(req.ephemeralActions());
+            BuildPlanner.Inputs inputs = moduleInputs(dir, req, moduleDirs, false);
             BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
-            BuildPlanner.appendDeclaredTails(b, inputs, graal, true);
+            PlannerTails.appendDeclaredTails(b, inputs, graal, true);
             Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
             InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
             return b.build();
@@ -766,7 +755,20 @@ public final class WorkspaceExecute {
         // its sibling JAR, not its classes dir (JK-2177).
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
         boolean testOnly = (target.testOnly() || req.testOnly()) && !consumed;
-        BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
+        BuildPlanner.Inputs inputs = moduleInputs(dir, req, moduleDirs, testOnly);
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
+        if (!testOnly) PlannerTails.appendDeclaredTails(b, inputs);
+        return b.build();
+    }
+
+    /**
+     * One module's {@link BuildPlanner.Inputs} for the workspace walk. The variant, the client env
+     * and the ephemeral-actions flag ride every module plan, so an arm that builds Inputs without
+     * one of them silently plans against a different manifest than its siblings.
+     */
+    private static BuildPlanner.Inputs moduleInputs(
+            Path dir, WorkspaceRequest req, Set<Path> moduleDirs, boolean testOnly) {
+        return TaskForecaster.inputsFor(
                         dir,
                         req.cache(),
                         req.workers() > 0 ? req.workers() : 1,
@@ -778,9 +780,6 @@ public final class WorkspaceExecute {
                         testOnly)
                 .withVariant(req.variant(), req.clientEnv())
                 .withEphemeralActions(req.ephemeralActions());
-        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
-        if (!testOnly) BuildPlanner.appendDeclaredTails(b, inputs);
-        return b.build();
     }
 
     /**

@@ -38,6 +38,15 @@ public interface PluginCommandExec {
     /** Emit one user-facing output line (the client prints these in order). */
     void out(String line);
 
+    /**
+     * Whether this job forbids network access — the user's {@code --offline}, decided once by the
+     * engine and stamped onto the spec at the fork. A worker that is about to reach out asks this
+     * first and refuses, naming what it wanted; it must never consult {@code JK_OFFLINE} or a
+     * system property, which inside a forked JVM describe the engine daemon's startup environment
+     * rather than this job.
+     */
+    boolean offline();
+
     /** Progress label (spinner text), same channel as step/packager labels. */
     void label(String text);
 }

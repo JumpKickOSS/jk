@@ -41,10 +41,6 @@ public final class CliSessionTranscript {
      */
     public static final int SCHEMA = 1;
 
-    /** @deprecated details live under project runs; kept for tests that assert the constant. */
-    @Deprecated
-    public static final String REL_ROOT = "state/builds/projects";
-
     public static final String FILE_NAME = "details.jsonl";
 
     private static final String ENV = "JK_CLI_DETAILS";

@@ -32,6 +32,16 @@ public final class SpecWriter {
         return this;
     }
 
+    /**
+     * The job's network policy. Written once per fork by the engine's worker launcher, not by the
+     * code that assembled the rest of the spec — see {@link PluginProtocol#OFFLINE}. A spec that
+     * never gets this line reads back as offline.
+     */
+    public SpecWriter offline(boolean offline) {
+        lines.add("{\"t\":" + Jsonl.quote(PluginProtocol.OFFLINE) + ",\"value\":" + offline + "}");
+        return this;
+    }
+
     /** Serialize a whole validated config table (string/bool/int/list values). */
     public SpecWriter config(PluginConfig config) {
         return configValues(config.values());

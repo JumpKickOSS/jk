@@ -5,6 +5,7 @@ import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.task.CachePruneScheduler;
@@ -30,6 +31,15 @@ import java.util.function.Supplier;
  * <p>Byte sizes are <em>exclusive</em> across store sections (store CAS before {@code repos/}) so
  * leftover hard links are not counted twice — same accounting as the CLI.
  *
+ * <p>{@code totalBytes} is the <strong>cache root walked as one tree</strong> — the same number
+ * {@code jk status} prints as "Size on Disk" and the same one {@code jk cache nuke} frees. It used
+ * to be a five-term sum of section fields, three cache and two store, which is the hand list
+ * JK-2488 retired on the CLI side for two independent reasons: it counted store bytes a nuke
+ * leaves, and it missed every cache tier nobody had thought to add to it ({@code hash-memo},
+ * {@code kotlin-cp-snapshots}, {@code base-jre}, …). A directory is total by construction; a sum of
+ * named sections is total only until the next tier lands. The store keeps its own figure in
+ * {@link #artifactStorageBytes()}, which is what a "combined" reader actually wanted.
+ *
  * <p>Prefer {@link #memoizing(Path)} for live engine paths: a full exclusive walk of a multi‑GiB
  * cache allocates tens of MiB of path/inode bookkeeping. Without single-flight + TTL, a dashboard
  * reconnect storm (several SSE tabs + {@code GET /api/cache}) can run that walk concurrent times
@@ -54,7 +64,9 @@ public record CacheSnapshot(
         long mavenLocalCount,
         long mavenLocalBytes,
         long derivedCount,
-        long derivedBytes) {
+        long derivedBytes,
+        long totalCount,
+        long totalBytes) {
 
     /**
      * Default freshness for live {@code /api/cache} + SSE chrome. Deliberately half of
@@ -149,16 +161,6 @@ public record CacheSnapshot(
         }
     }
 
-    /** All section file counts (debug / legacy combined total). */
-    public long totalCount() {
-        return casCount + actionsCount + cacheCasCount + workerJarsCount + formatStampsCount;
-    }
-
-    /** All section bytes (debug / legacy combined total — prefer the two surfaces below). */
-    public long totalBytes() {
-        return casBytes + actionsBytes + cacheCasBytes + workerJarsBytes + formatStampsBytes;
-    }
-
     /**
      * Action-cache footprint matching {@code jk cache usage} and the budget {@link
      * cc.jumpkick.task.ActionCachePrune} enforces: action index + cache CAS. Format stamps sit
@@ -233,6 +235,14 @@ public record CacheSnapshot(
         long lastPruned = readLastPrunedMillis(cacheRoot);
         DiskUsage.Stats m2 = mavenLocalStats(); // walked once here, never on the render/connect path
         DiskUsage.Stats derived = derivedStats(cacheRoot);
+        // One walk of the whole root, deliberately not a sum of the sections above: see the class
+        // javadoc. Absent root reads as zero, exactly as `jk status` renders it.
+        DiskUsage.Stats wholeRoot;
+        try {
+            wholeRoot = DiskUsage.of(cacheRoot);
+        } catch (Exception e) {
+            wholeRoot = new DiskUsage.Stats(0, 0);
+        }
         return new CacheSnapshot(
                 parts[0].files(),
                 parts[0].bytes(),
@@ -252,7 +262,9 @@ public record CacheSnapshot(
                 m2.files(),
                 m2.bytes(),
                 derived.files(),
-                derived.bytes());
+                derived.bytes(),
+                wholeRoot.files(),
+                wholeRoot.bytes());
     }
 
     /**
@@ -284,9 +296,9 @@ public record CacheSnapshot(
     private static DiskUsage.Stats incrementalStats(Path actionsDir) {
         long files = 0;
         long bytes = 0;
-        for (String name : new String[] {"incremental-java", "incremental-kotlin"}) {
+        for (Path dir : ActionTree.incrementalUnder(actionsDir)) {
             try {
-                DiskUsage.Stats tree = DiskUsage.of(actionsDir.resolve(name));
+                DiskUsage.Stats tree = DiskUsage.of(dir);
                 files += tree.files();
                 bytes += tree.bytes();
             } catch (Exception unreadable) {
@@ -329,8 +341,10 @@ public record CacheSnapshot(
                 .put("incrementalMaxBytes", incrementalMaxBytes)
                 // Count-cap for the stamp tree — web shows % of the cap used, never GiB.
                 .put("formatStampsMax", FormatStamps.maxFiles())
-                .put("totalCount", totalCount())
-                .put("totalBytes", totalBytes())
+                // The cache root as one tree — `jk status`'s "Size on Disk", and what a nuke
+                // frees. Not the sum of the section fields above, and not the store.
+                .put("totalCount", totalCount)
+                .put("totalBytes", totalBytes)
                 .put("actionCacheCount", actionCacheCount())
                 .put("actionCacheBytes", actionCacheBytes())
                 .put("actionMaxBytes", actionMaxBytes)

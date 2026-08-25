@@ -18,7 +18,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +50,7 @@ class MavenRepoTest {
     }
 
     private static void goOffline() {
-        SessionContext.installConfig(JkConfig.empty().withOffline(Optional.of(true)));
+        SessionContext.installConfig(JkConfig.empty().withOffline(true));
     }
 
     @Test

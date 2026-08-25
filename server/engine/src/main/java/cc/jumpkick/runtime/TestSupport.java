@@ -5,9 +5,11 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
@@ -193,20 +195,20 @@ public final class TestSupport {
     /** Share {@code cache} with {@link #bridgeListener} so each failure is resolved once. */
     public static List<String> renderFailures(TestSummary result, Path moduleDir, TestFailureSource.Cache cache) {
         List<String> out = new ArrayList<>();
-        List<TestSummary.Failure> failures = result.failures();
+        List<TestFailureInfo> failures = result.failures();
         if (failures.isEmpty()) return out;
         TestFailureSource.Cache effectiveCache = cache != null ? cache : new TestFailureSource.Cache();
         // No leading blank — the CLI leaves a single blank under the prompt / live region.
         out.add("Test Failure");
         // First non-blank module wins for the header (multi-module reports still list each FAILED).
         String module = failures.stream()
-                .map(TestSummary.Failure::module)
+                .map(TestFailureInfo::module)
                 .filter(m -> m != null && !m.isBlank())
                 .findFirst()
                 .orElse("");
         if (!module.isBlank()) out.add("module: " + module);
         out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed");
-        for (TestSummary.Failure f : failures) {
+        for (TestFailureInfo f : failures) {
             out.add("");
             out.add("FAILED " + shortTestLabel(f));
             Optional<TestFailureSource.Snippet> snippet = Optional.empty();
@@ -251,11 +253,9 @@ public final class TestSupport {
      * parentheses, simple param type names, and a trailing invocation tag ({@code [#1]}). Falls
      * back to the failure's test name when class/method are unknown.
      */
-    static String shortTestLabel(TestSummary.Failure f) {
+    static String shortTestLabel(TestFailureInfo f) {
         String cls = simpleClassName(f.className());
-        String method = f.method();
-        if (method == null || method.isBlank()) method = f.testName();
-        method = method == null ? "" : method.strip();
+        String method = f.method() == null ? "" : f.method().strip();
         // "Foo > bar()" / "Foo.bar()" → method part only
         int gt = method.lastIndexOf(" > ");
         if (gt >= 0) method = method.substring(gt + 3).strip();
@@ -275,10 +275,9 @@ public final class TestSupport {
         if (!method.isEmpty() && method.indexOf('(') < 0 && !method.equals("(test run)")) {
             method = method + "()";
         }
-        if (cls.isEmpty() && method.isEmpty()) return f.testName() == null ? "?" : f.testName();
+        if (cls.isEmpty() && method.isEmpty()) return "?";
         String label = cls.isEmpty() ? method : (method.isEmpty() ? cls : cls + "." + method);
-        if (f.workerId() > 0) label = label + "  [w" + f.workerId() + "]";
-        return label;
+        return TestFailureInfo.label("", label, f.worker());
     }
 
     /**
@@ -313,7 +312,7 @@ public final class TestSupport {
     }
 
     /** Human-facing assertion / message lines (no stack frames, no exception FQCN prefix). */
-    static List<String> failureBodyLines(TestSummary.Failure f) {
+    static List<String> failureBodyLines(TestFailureInfo f) {
         String msg = f.message() == null ? "" : f.message().strip();
         if (!msg.isEmpty()) {
             List<String> lines = new ArrayList<>();
@@ -353,7 +352,7 @@ public final class TestSupport {
     }
 
     /** {@code at …} / {@code ... N more} lines from the stack, preserving original indent. */
-    static List<String> failureStackFrames(TestSummary.Failure f) {
+    static List<String> failureStackFrames(TestFailureInfo f) {
         String details = f.stack() == null ? "" : f.stack();
         if (details.isBlank()) return List.of();
         List<String> frames = new ArrayList<>();
@@ -521,18 +520,13 @@ public final class TestSupport {
         };
     }
 
-    /** Progress / failure label: optional module and worker id. */
+    /**
+     * Progress / failure label: optional module and worker id. Rendered by
+     * {@link TestFailureInfo#label} — the one owner of the {@code " :: "} separator — with the
+     * worker suffix suppressed for a serial run, where {@code [w1]} would say nothing.
+     */
     static String progressLabel(String module, String display, int workerId, int workerCount) {
-        String d = display == null ? "" : display;
-        StringBuilder sb = new StringBuilder();
-        if (module != null && !module.isBlank()) {
-            sb.append(module).append(" :: ");
-        }
-        sb.append(d);
-        if (workerCount > 1 && workerId > 0) {
-            sb.append("  [w").append(workerId).append(']');
-        }
-        return sb.toString();
+        return TestFailureInfo.label(module, display, workerCount > 1 ? workerId : 0);
     }
 
     /**
@@ -668,7 +662,7 @@ public final class TestSupport {
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot));
         boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
         Path actions = CacheTree.ACTIONS.under(cacheRoot);
-        Path stateDir = actions.resolve("incremental-java").resolve(cacheTaskId);
+        Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(cacheTaskId);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
         // restore (3), else a full compile. Same key JavaCompile uses.

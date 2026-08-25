@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The launcher -> home inverse. {@code jk native} hands {@code BuildPlanner.nativeStep} a GraalVM
+ * The launcher -> home inverse. {@code jk native} hands {@code NativePlans.nativeStep} a GraalVM
  * HOME, and the search that precedes it produces a LAUNCHER, so something has to invert the layout.
  * Doing it as a parent-of-parent at the call site was correct for {@code <home>/bin/native-image}
  * and silently wrong for the {@code lib/svm/bin} layout the same search can return.

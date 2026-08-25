@@ -39,7 +39,6 @@ public enum PluginJar {
     AUDITOR("jk-auditor", "jk.auditor.plugin.jar", ":auditor:installLocal"),
     PUBLISHER("jk-publisher", "jk.publisher.plugin.jar", ":publisher:installLocal"),
     IMAGE_BUILDER("jk-image-builder", "jk.image-builder.plugin.jar", ":image-builder:installLocal"),
-    COMPAT_BRIDGE("jk-compat-bridge", "jk.compat-bridge.plugin.jar", ":compat-bridge:installLocal"),
     FORMATTER("jk-formatter", "jk.formatter.plugin.jar", ":formatter:installLocal"),
     SPRING_BOOT("jk-spring-boot", "jk.spring-boot.plugin.jar", ":spring-boot:installLocal"),
     GRAILS("jk-grails", "jk.grails.plugin.jar", ":grails:installLocal"),

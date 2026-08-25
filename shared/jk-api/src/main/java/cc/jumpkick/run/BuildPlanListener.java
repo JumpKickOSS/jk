@@ -48,8 +48,12 @@ public interface BuildPlanListener {
             error(step, code, message);
             return;
         }
-        String label = failure.module().isEmpty() ? failure.method() : failure.module() + " :: " + failure.method();
-        error(step, code, message, label, failure.exceptionClass());
+        error(
+                step,
+                code,
+                message,
+                TestFailureInfo.label(failure.module(), failure.method(), 0),
+                failure.exceptionClass());
     }
 
     default void stepFinish(String step, String group, TaskStatus status, Duration duration) {}

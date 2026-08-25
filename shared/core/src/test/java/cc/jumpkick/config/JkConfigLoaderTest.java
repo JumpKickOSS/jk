@@ -14,72 +14,68 @@ import org.junit.jupiter.api.io.TempDir;
 class JkConfigLoaderTest {
 
     @Test
-    void empty_returns_all_optionals_empty() {
+    void empty_leaves_every_setting_unset() {
         JkConfig empty = JkConfig.empty();
-        assertThat(empty.color()).isEmpty();
-        assertThat(empty.offline()).isEmpty();
-        assertThat(empty.directory()).isEmpty();
+        assertThat(empty.color()).isNull();
+        assertThat(empty.offline()).isNull();
+        assertThat(empty.directory()).isNull();
     }
 
     @Test
     void mergedWith_overlays_set_values() {
-        JkConfig base = JkConfig.empty()
-                .withColor(Optional.of(JkConfig.ColorChoice.NEVER))
-                .withOffline(Optional.of(true)); // noAnsi
-        JkConfig over = JkConfig.empty()
-                .withColor(Optional.of(JkConfig.ColorChoice.ALWAYS))
-                .withNoProgress(Optional.of(true)); // noAnsi
+        JkConfig base = JkConfig.empty().withColor(JkConfig.ColorChoice.NEVER).withOffline(true);
+        JkConfig over = JkConfig.empty().withColor(JkConfig.ColorChoice.ALWAYS).withNoProgress(true);
         JkConfig merged = base.mergedWith(over);
-        assertThat(merged.color()).hasValue(JkConfig.ColorChoice.ALWAYS); // over wins
-        assertThat(merged.offline()).hasValue(true); // base passes through
-        assertThat(merged.noProgress()).hasValue(true); // over sets it
+        assertThat(merged.color()).isEqualTo(JkConfig.ColorChoice.ALWAYS); // over wins
+        assertThat(merged.offline()).isTrue(); // base passes through
+        assertThat(merged.noProgress()).isTrue(); // over sets it
     }
 
     @Test
     void parses_project_toml_config_section(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("jk.toml");
         Files.writeString(toml, """
-                [config]
-                color = "always"
-                offline = true
-                quiet = false
-                """);
+            [config]
+            color = "always"
+            offline = true
+            quiet = false
+            """);
         JkConfig loaded = JkConfigLoader.loadTomlOrEmpty(toml);
-        assertThat(loaded.color()).hasValue(JkConfig.ColorChoice.ALWAYS);
-        assertThat(loaded.offline()).hasValue(true);
-        assertThat(loaded.quiet()).hasValue(false);
+        assertThat(loaded.color()).isEqualTo(JkConfig.ColorChoice.ALWAYS);
+        assertThat(loaded.offline()).isTrue();
+        assertThat(loaded.quiet()).isFalse();
     }
 
     @Test
     void parses_notify_no_osc_no_ansi_from_toml(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
         Files.writeString(toml, """
-                [config]
-                notify = "always"
-                no-osc = true
-                no-ansi = false
-                no-progress = true
-                """);
+            [config]
+            notify = "always"
+            no-osc = true
+            no-ansi = false
+            no-progress = true
+            """);
         JkConfig loaded = JkConfigLoader.loadTomlOrEmpty(toml);
-        assertThat(loaded.notifyPolicy()).hasValue(JkConfig.NotifyChoice.ALWAYS);
-        assertThat(loaded.noOsc()).hasValue(true);
-        assertThat(loaded.noAnsi()).hasValue(false);
-        assertThat(loaded.noProgress()).hasValue(true);
+        assertThat(loaded.notifyPolicy()).isEqualTo(JkConfig.NotifyChoice.ALWAYS);
+        assertThat(loaded.noOsc()).isTrue();
+        assertThat(loaded.noAnsi()).isFalse();
+        assertThat(loaded.noProgress()).isTrue();
     }
 
     @Test
     void parses_notify_boolean_true_false_as_always_never(@TempDir Path tempDir) throws IOException {
         Path always = tempDir.resolve("always.toml");
         Files.writeString(always, "[config]\nnotify = true\n");
-        assertThat(JkConfigLoader.loadTomlOrEmpty(always).notifyPolicy()).hasValue(JkConfig.NotifyChoice.ALWAYS);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(always).notifyPolicy()).isEqualTo(JkConfig.NotifyChoice.ALWAYS);
 
         Path never = tempDir.resolve("never.toml");
         Files.writeString(never, "[config]\nnotify = false\n");
-        assertThat(JkConfigLoader.loadTomlOrEmpty(never).notifyPolicy()).hasValue(JkConfig.NotifyChoice.NEVER);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(never).notifyPolicy()).isEqualTo(JkConfig.NotifyChoice.NEVER);
 
         Path auto = tempDir.resolve("auto.toml");
         Files.writeString(auto, "[config]\nnotify = \"auto\"\n");
-        assertThat(JkConfigLoader.loadTomlOrEmpty(auto).notifyPolicy()).hasValue(JkConfig.NotifyChoice.AUTO);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(auto).notifyPolicy()).isEqualTo(JkConfig.NotifyChoice.AUTO);
     }
 
     @Test
@@ -88,9 +84,9 @@ class JkConfigLoaderTest {
                 "JK_NOTIFY", "never",
                 "JK_NO_OSC", "true",
                 "JK_NO_ANSI", "1")::get);
-        assertThat(env.notifyPolicy()).hasValue(JkConfig.NotifyChoice.NEVER);
-        assertThat(env.noOsc()).hasValue(true);
-        assertThat(env.noAnsi()).hasValue(true);
+        assertThat(env.notifyPolicy()).isEqualTo(JkConfig.NotifyChoice.NEVER);
+        assertThat(env.noOsc()).isTrue();
+        assertThat(env.noAnsi()).isTrue();
     }
 
     @Test
@@ -108,13 +104,13 @@ class JkConfigLoaderTest {
         JkConfig fromEnv = JkConfigLoader.loadFromEnv(Map.of(
                 "JK_COLOR", "auto",
                 "NO_COLOR", "1")::get);
-        assertThat(fromEnv.color()).hasValue(JkConfig.ColorChoice.AUTO);
+        assertThat(fromEnv.color()).isEqualTo(JkConfig.ColorChoice.AUTO);
     }
 
     @Test
     void env_var_no_color_alone_means_never() {
         JkConfig fromEnv = JkConfigLoader.loadFromEnv(Map.of("NO_COLOR", "1")::get);
-        assertThat(fromEnv.color()).hasValue(JkConfig.ColorChoice.NEVER);
+        assertThat(fromEnv.color()).isEqualTo(JkConfig.ColorChoice.NEVER);
     }
 
     @Test
@@ -124,32 +120,32 @@ class JkConfigLoaderTest {
                 "JK_NO_PROGRESS", "1",
                 "JK_QUIET", "yes",
                 "JK_VERBOSE", "off")::get);
-        assertThat(env.offline()).hasValue(true);
-        assertThat(env.noProgress()).hasValue(true);
-        assertThat(env.quiet()).hasValue(true);
-        assertThat(env.verbose()).hasValue(false);
+        assertThat(env.offline()).isTrue();
+        assertThat(env.noProgress()).isTrue();
+        assertThat(env.quiet()).isTrue();
+        assertThat(env.verbose()).isFalse();
     }
 
     @Test
     void parses_build_output_from_toml(@TempDir Path tempDir) throws IOException {
         Path on = tempDir.resolve("on.toml");
         Files.writeString(on, """
-                [config]
-                build-output = true
-                """);
-        assertThat(JkConfigLoader.loadTomlOrEmpty(on).buildOutput()).hasValue(true);
+            [config]
+            build-output = true
+            """);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(on).buildOutput()).isTrue();
         assertThat(JkConfigLoader.loadTomlOrEmpty(on).buildOutputOr(false)).isTrue();
 
         Path off = tempDir.resolve("off.toml");
         Files.writeString(off, "[config]\nbuild-output = false\n");
-        assertThat(JkConfigLoader.loadTomlOrEmpty(off).buildOutput()).hasValue(false);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(off).buildOutput()).isFalse();
         assertThat(JkConfig.empty().buildOutputOr(false)).isFalse();
     }
 
     @Test
     void env_var_build_output() {
         JkConfig env = JkConfigLoader.loadFromEnv(Map.of("JK_BUILD_OUTPUT", "true")::get);
-        assertThat(env.buildOutput()).hasValue(true);
+        assertThat(env.buildOutput()).isTrue();
         assertThat(env.buildOutputOr(false)).isTrue();
     }
 
@@ -172,29 +168,22 @@ class JkConfigLoaderTest {
 
         JkConfig loaded = JkConfigLoader.load(tempDir, /* noConfig= */ true, Optional.empty());
         // Project file was ignored: file-only offline must not appear.
-        assertThat(loaded.offline()).isEmpty();
+        assertThat(loaded.offline()).isNull();
         // File said ALWAYS; must not leak. Env may still set color (NO_COLOR → NEVER).
-        assertThat(loaded.color()).isNotEqualTo(Optional.of(JkConfig.ColorChoice.ALWAYS));
+        assertThat(loaded.color()).isNotEqualTo(JkConfig.ColorChoice.ALWAYS);
     }
     /**
-     * Optional.or short-circuits on PRESENCE: with force present-and-false (every wire decode),
-     * a naive force.or(() -> rebuild) never consults rebuild — this exact bug shipped briefly.
+     * "First of force, rebuild that is set" is the wrong rule: with force set-and-false (every wire
+     * decode), it never consults rebuild — this exact bug shipped briefly.
      */
     @Test
     void rebuildOr_sees_rebuild_even_when_force_is_present_and_false() {
-        JkConfig wireShaped = new JkConfig(
-                Optional.empty(),
-                Optional.of(false), // offline
-                Optional.of(true), // rebuild
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(false), // verbose
-                Optional.empty(),
-                Optional.of(false), // force: present-and-false, as every wire decode materializes it
-                Optional.empty(), // noAnsi
-                Optional.empty(), // noOsc
-                Optional.empty(), // notifyPolicy
-                Optional.empty()); // buildOutput
+        JkConfig wireShaped = JkConfig.empty()
+                .withOffline(false)
+                .withRebuild(true)
+                .withVerbose(false)
+                // force: set-and-false, as every wire decode materializes it
+                .withForce(false);
         assertThat(wireShaped.rebuildOr(false)).isTrue();
         assertThat(wireShaped.forceOr(false)).isFalse();
 

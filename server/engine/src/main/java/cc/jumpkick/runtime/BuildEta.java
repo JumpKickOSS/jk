@@ -218,7 +218,7 @@ public final class BuildEta {
                 BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
                         mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, true);
-                BuildPlanner.appendDeclaredTails(builder, inputs);
+                PlannerTails.appendDeclaredTails(builder, inputs);
                 for (cc.jumpkick.run.Task s : builder.build().steps()) running.add(s.name());
             }
             if (running.isEmpty()) {

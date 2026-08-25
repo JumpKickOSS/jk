@@ -64,8 +64,12 @@ final class AabPackager {
      * The base-module zip in bundletool's layout: {@code manifest/AndroidManifest.xml} (proto),
      * {@code resources.pb}, {@code res/**}, {@code dex/classes*.dex}, {@code assets/**},
      * {@code lib/<abi>/*.so}, everything else from the proto link under {@code root/}.
+     *
+     * <p>Package-private, like {@link #jarsignerArgs}, so a test can read the layout this produces
+     * without a bundletool fork: the whole contract is which entry lands under which prefix, and
+     * bundletool's only answer to a wrong one is a rejected bundle at upload time.
      */
-    private static void assembleBase(PackageIo io, Path protoPackage, Path dexDir, Path baseZip) throws Exception {
+    static void assembleBase(PackageIo io, Path protoPackage, Path dexDir, Path baseZip) throws Exception {
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(baseZip));
                 ZipFile in = new ZipFile(protoPackage.toFile())) {
             Enumeration<? extends ZipEntry> entries = in.entries();

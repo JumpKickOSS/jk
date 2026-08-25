@@ -31,7 +31,32 @@ public record Lockfile(
         /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
         String manifestsSha256,
         /** Durable auto project identity; null until minted. */
-        String projectId) {
+        String projectId,
+        /** Resolved {@code [native] metadata-repository} pin; null when no module declares one. */
+        NativeMetadata nativeMetadata) {
+
+    /**
+     * The GraalVM reachability-metadata repository release a native build reads, resolved from
+     * {@code [native] metadata-repository} at lock time.
+     *
+     * <p>Not an {@code [[artifact]]} row: it is on no classpath and in no scope, and the graph the
+     * artifact table describes is the one the solver produced. It is an input to {@code
+     * native-image} all the same — the repository decides which third-party reflection config the
+     * image keeps — so leaving it unpinned made two machines on the same lock produce different
+     * binaries. Version plus the zip's digest is everything {@code jk sync} needs to materialize it
+     * offline.
+     */
+    public record NativeMetadata(String version, String checksum) {
+        public NativeMetadata {
+            Objects.requireNonNull(version, "version");
+        }
+
+        /** Raw hex SHA-256 of the repository zip (strips a {@code "sha256:"} prefix), or null. */
+        public String checksumHex() {
+            if (checksum == null) return null;
+            return checksum.startsWith("sha256:") ? checksum.substring(7) : checksum;
+        }
+    }
 
     /**
      * Resolved first-party project identity for one workspace member (or the standalone root at
@@ -147,7 +172,8 @@ public record Lockfile(
                 modules,
                 jkMin,
                 manifestsSha256,
-                projectId);
+                projectId,
+                null);
     }
 
     /** Constructor without the jk floor. */
@@ -243,7 +269,8 @@ public record Lockfile(
                 modules,
                 floor,
                 manifestsSha256,
-                projectId);
+                projectId,
+                nativeMetadata);
     }
 
     /** This lock with a content digest of the manifests used to produce it. */
@@ -261,7 +288,8 @@ public record Lockfile(
                 modules,
                 jkMin,
                 digest,
-                projectId);
+                projectId,
+                nativeMetadata);
     }
 
     /** This lock with a durable project identity. */
@@ -279,7 +307,50 @@ public record Lockfile(
                 modules,
                 jkMin,
                 manifestsSha256,
-                id);
+                id,
+                nativeMetadata);
+    }
+
+    /**
+     * This lock with {@code newArtifacts} in place of its rows. Two callers rebuilt the record by
+     * hand to do it — a git-provenance stamp and a sources backfill — and every field added since
+     * has had to be threaded through both.
+     */
+    public Lockfile withArtifacts(List<Artifact> newArtifacts) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                scala,
+                newArtifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                nativeMetadata);
+    }
+
+    /** This lock with the resolved reachability-metadata repository pin. */
+    public Lockfile withNativeMetadata(NativeMetadata pin) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                pin);
     }
 
     /** Constructor without SDK entries. */
@@ -330,7 +401,8 @@ public record Lockfile(
                 modules,
                 jkMin,
                 manifestsSha256,
-                projectId);
+                projectId,
+                nativeMetadata);
     }
 
     /** Return a copy with the resolved Scala 3 compiler version stamped in. */
@@ -348,7 +420,8 @@ public record Lockfile(
                 modules,
                 jkMin,
                 manifestsSha256,
-                projectId);
+                projectId,
+                nativeMetadata);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */
@@ -366,7 +439,8 @@ public record Lockfile(
                 modules,
                 jkMin,
                 manifestsSha256,
-                projectId);
+                projectId,
+                nativeMetadata);
     }
 
     /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
@@ -384,7 +458,8 @@ public record Lockfile(
                 modules,
                 jkMin,
                 manifestsSha256,
-                projectId);
+                projectId,
+                nativeMetadata);
     }
 
     /** Return a copy with resolved first-party module identity pins (replaces any existing). */
@@ -402,7 +477,8 @@ public record Lockfile(
                 newModules,
                 jkMin,
                 manifestsSha256,
-                projectId);
+                projectId,
+                nativeMetadata);
     }
 
     public static Lockfile empty(String jkVersion) {

@@ -25,12 +25,12 @@ public final class ModuleScopeHint {
         if (names == null || names.isEmpty()) return "";
         String noun = names.size() == 1 ? " module " : " modules ";
         StringBuilder sb = new StringBuilder();
-        sb.append("[dark-gray]").append(JkManager.ELLIPSIS).append(verb).append(noun);
+        sb.append("[dark-gray]").append(Glyphs.ELLIPSIS).append(verb).append(noun);
         for (int i = 0; i < names.size(); i++) {
             if (i > 0) sb.append(", ");
             sb.append(RichText.escape(names.get(i)));
         }
-        sb.append(JkManager.ELLIPSIS).append("[/]");
+        sb.append(Glyphs.ELLIPSIS).append("[/]");
         return sb.toString();
     }
 

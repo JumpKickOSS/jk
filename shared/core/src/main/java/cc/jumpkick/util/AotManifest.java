@@ -152,25 +152,67 @@ public final class AotManifest {
     }
 
     /**
-     * Drop entries whose on-disk file (and optional {@code .noaot} marker) no longer exist. A
-     * {@code pending} row is the documented state of a train still running (its {@code .aot}
-     * intentionally doesn't exist yet) — those stay. Never throws.
+     * How long a {@code pending} row is believed. A pending row is a claim that a train is running
+     * right now, and both trainers bound themselves: the worker trainer kills its fork after two
+     * minutes, and the engine's {@code --aot-training} sidecar carries a two-minute hard limit and
+     * a watchdog. So a row that has outlived this window is not a train, it is a killed trainer's
+     * leftover — the process that would have replaced the row died before it could.
+     *
+     * <p>The window is a wide multiple of that limit, not a tight one, because the cost of the two
+     * errors is not symmetric: dropping a live train's row loses one line of documentation until
+     * the train writes its own, while keeping a dead one keeps it forever. Forever is what this
+     * file measured — a manifest reached 371 rows and 187 KB, 370 of them {@code engine-*} rows
+     * marked pending, because nothing here would drop one and the on-disk sweep only sees names
+     * that still have a file.
+     *
+     * <p>Not the window a refusal marker lives under ({@link AotCacheFiles#MARKER_TTL_MILLIS},
+     * seven days). That one asks how long a <em>finished failure</em> stays believed, and its
+     * answer is a policy about retry cost. This one asks how long a claim about the present stays
+     * credible, and its answer is read off the trainers' own timeout. Same directory, two
+     * questions; one constant would have to be wrong for one of them.
+     */
+    static final long PENDING_TTL_MILLIS = 60L * 60 * 1_000;
+
+    /**
+     * Drop entries that no longer describe anything on disk: no {@code .aot} file, no refusal
+     * marker, and — for a {@code pending} row — no train that could still be running.
+     *
+     * <p>A {@code pending} row is the documented state of a train in flight, so its {@code .aot}
+     * is intentionally absent and the file test alone can never retire it. Age is the test that
+     * can: past {@link #PENDING_TTL_MILLIS} from {@code created} the trainer is gone. A pending row
+     * with no readable {@code created} is undatable and therefore unbounded, which is the shape
+     * this rule exists to remove, so it goes too — the next train writes a fresh row with a
+     * timestamp. Never throws.
      */
     public static void reconcile(Path aotDir) {
         if (aotDir == null || !Files.isDirectory(aotDir)) return;
         withLock(aotDir, () -> {
             Map<String, Entry> map = loadMap(aotDir);
+            long now = System.currentTimeMillis();
             List<String> gone = new ArrayList<>();
             for (Map.Entry<String, Entry> me : map.entrySet()) {
-                if ("pending".equals(me.getValue().status())) continue;
+                Entry e = me.getValue();
                 String file = me.getKey();
                 Path p = aotDir.resolve(file);
-                if (!Files.exists(p) && !Files.exists(AotCacheFiles.marker(p))) gone.add(file);
+                if (Files.exists(p) || Files.exists(AotCacheFiles.marker(p))) continue;
+                if ("pending".equals(e.status()) && trainCouldBeRunning(e, now)) continue;
+                gone.add(file);
             }
             if (gone.isEmpty()) return;
             for (String g : gone) map.remove(g);
             writeMap(aotDir, map);
         });
+    }
+
+    /** Is {@code pending} still a claim about the present? See {@link #PENDING_TTL_MILLIS}. */
+    private static boolean trainCouldBeRunning(Entry e, long now) {
+        String created = e.created();
+        if (created == null || created.isBlank()) return false;
+        try {
+            return now - Instant.from(ISO.parse(created)).toEpochMilli() <= PENDING_TTL_MILLIS;
+        } catch (RuntimeException unparsable) {
+            return false;
+        }
     }
 
     /** Read all entries (empty if missing/corrupt). Never throws. */

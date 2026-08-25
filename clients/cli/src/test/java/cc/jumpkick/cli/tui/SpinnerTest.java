@@ -13,7 +13,6 @@ import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -284,7 +283,7 @@ class SpinnerTest {
     }
 
     private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
+        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
         Session original = SessionContext.current();
         try {
             return SessionContext.where(original.withConfig(noAnsi), body::get);

@@ -169,7 +169,10 @@ public final class MavenPublisher {
     private void put(String relPath, byte[] body, String contentType, Map<String, Integer> out, long[] bytes)
             throws IOException, InterruptedException {
         URI uri = repoBase.resolve(relPath);
-        // The transport carries the offline guard, auth header, and retry policy.
+        // The transport carries the offline guard, auth header, and retry policy. The guard is real
+        // inside this worker because Publisher.run installs the spec's offline decision onto the
+        // worker JVM's session before anything reaches here; Publisher.publish also refuses up
+        // front, so this is the backstop, not the only check.
         int status = transport.put(uri, body, contentType, credential);
         out.put(relPath, status);
         bytes[0] += body.length;

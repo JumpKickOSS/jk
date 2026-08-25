@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.resolver.Versions;
@@ -259,10 +260,11 @@ public final class EngineInstall {
                 if (primary) {
                     aotFiles++;
                     removedPrimaries.add(name);
-                } else if (name.endsWith(".aot.noaot") || name.endsWith(".aot.config")) {
-                    String primaryName = name.endsWith(".aot.noaot")
-                            ? name.substring(0, name.length() - ".noaot".length())
-                            : name.substring(0, name.length() - ".config".length());
+                } else if (AotCacheFiles.isMarker(name)) {
+                    String primaryName = AotCacheFiles.cacheOf(name);
+                    if (isPrimaryAotCacheName(primaryName)) removedPrimaries.add(primaryName);
+                } else if (name.endsWith(AotCacheFiles.CACHE + ".config")) {
+                    String primaryName = name.substring(0, name.length() - ".config".length());
                     if (isPrimaryAotCacheName(primaryName)) removedPrimaries.add(primaryName);
                 }
             }
@@ -301,13 +303,22 @@ public final class EngineInstall {
     }
 
     static boolean isPrimaryAotCacheName(String name) {
-        return name != null && name.endsWith(".aot") && name.length() > 4 && !name.contains(".aot.");
+        return name != null
+                && name.endsWith(AotCacheFiles.CACHE)
+                && name.length() > AotCacheFiles.CACHE.length()
+                && !name.contains(AotCacheFiles.CACHE + ".");
     }
 
+    /**
+     * Everything the AOT directory can hold for one key. The bare {@link AotCacheFiles#MARKER} test
+     * rather than {@link AotCacheFiles#isMarker} is deliberate: markers written under the retired
+     * {@code <stem>.noaot} spelling are orphans no reader recognises, and a wipe is the one sweep
+     * that should still reclaim them.
+     */
     static boolean isAotArtifactName(String name) {
         if (name == null || name.isBlank()) return false;
-        return name.endsWith(".aot")
-                || name.endsWith(".noaot")
+        return name.endsWith(AotCacheFiles.CACHE)
+                || name.endsWith(AotCacheFiles.MARKER)
                 || name.endsWith(".config")
                 || name.endsWith(".training")
                 || name.contains(".tmp-");

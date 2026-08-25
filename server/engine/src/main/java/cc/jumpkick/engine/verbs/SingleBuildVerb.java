@@ -20,6 +20,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TestSupport;
 import java.io.BufferedWriter;
@@ -101,7 +102,7 @@ public final class SingleBuildVerb implements HostedVerb {
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
             BuildPlan plan = SessionContext.where(session, () -> {
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, false);
-                BuildPlanner.appendDeclaredTails(builder, inputs);
+                PlannerTails.appendDeclaredTails(builder, inputs);
                 return builder.build();
             });
             long barWeight = plan.estimatedTotalWeight();

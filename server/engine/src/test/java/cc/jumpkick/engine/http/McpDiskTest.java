@@ -33,8 +33,10 @@ class McpDiskTest {
             /* lastPrunedMillis */ 0,
             /* mavenLocalCount */ 0,
             /* mavenLocalBytes */ 0,
-            0,
-            0);
+            /* derivedCount */ 0,
+            /* derivedBytes */ 0,
+            /* totalCount */ 22,
+            /* totalBytes */ 4_366);
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
