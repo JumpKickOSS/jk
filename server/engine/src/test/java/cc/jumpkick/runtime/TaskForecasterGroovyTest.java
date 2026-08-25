@@ -83,6 +83,20 @@ class TaskForecasterGroovyTest {
                         .findFirst()
                         .orElseThrow();
         assertThat(warmGv.cached()).isTrue();
+
+        // The boundary the pinning above keeps the test away from, asserted rather than assumed:
+        // a source at or past stampMillis reads as changed, which is what an unpinned source can
+        // land on when the forecast and the stamp share a filesystem tick.
+        Files.setLastModifiedTime(foo, FileTime.fromMillis(System.currentTimeMillis() + 3_600_000));
+        List<TaskForecast.Module> touched = TaskForecaster.of(graph, cas, actionCache, cache);
+        TaskForecast.Task touchedGv =
+                touched.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()
+                        .filter(s -> s.name().equals("compile-groovy"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(touchedGv.cached())
+                .as("a source newer than the stamp is not cached")
+                .isFalse();
     }
 
     /**
