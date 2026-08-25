@@ -13,6 +13,7 @@ description = "jk web dashboard: the resident engine's single-page dashboard (Vu
 dependencies {
     // WireTokenParityTest holds wire.js's hand-typed tokens to their EngineProtocol owners.
     // Test-only: the shipped SPA stays pure static assets with no Java.
+    testImplementation(testFixtures(project(":host")))
     testImplementation(project(":wire"))
 }
 

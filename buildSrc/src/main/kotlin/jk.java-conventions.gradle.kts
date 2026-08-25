@@ -2780,3 +2780,238 @@ val checkNoOrphanTestTags by tasks.registering {
 // production artifact's task graph depend on them. Since JK-2498 `checkAll` depends on every
 // module's `check`, so `check` alone reaches the gate.
 tasks.named("check") { dependsOn(checkNoOrphanTestTags) }
+
+// ---------------------------------------------------------------------------
+// Guard G35 (JK-2601): a test that reads a checkout file locates it from the checkout root.
+//
+// Defect it prevents: a test resolving a source-tree path against the process working directory.
+// Gradle runs a test with CWD at the owning module; a workspace `jk build` runs it with CWD at
+// ~/.local/state/jk/engine. `CommandDependencyLaneTest` spelled the shipped android manifest as
+// `Path.of(System.getProperty("user.dir"), "../../plugins/android/jk-plugin.toml")`, which under
+// jk resolved to ~/.local/state/plugins/android/jk-plugin.toml and went red — green under Gradle
+// for months.
+//
+// The fix was one fixture, cc.jumpkick.testing.RepoRoot, because the walk it replaced had been
+// copied into fourteen test classes with a per-module marker baked into each copy. Three of those
+// copies degraded to a skip when the search failed (`assumeTrue(mainOpt.isPresent())`), so a
+// broken search read as a pass. This guard is why copy fifteen cannot be written.
+//
+// Two arms, both narrow enough to be true:
+//   1. `getProtectionDomain` outside the fixture — that call IS the walk, and it has one home.
+//   2. a `user.dir` line that also escapes with `..` — the exact shape of the measured defect.
+// Comment-blind via guardText, so a javadoc that explains the rule is not itself a hit.
+val checkTestPathsFromCheckoutRoot by tasks.registering {
+    group = "verification"
+    description = "Fail the build when a test locates a checkout file from CWD instead of cc.jumpkick.testing.RepoRoot"
+    val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
+    val fixtureJava = fileTree(layout.projectDirectory.dir("src/testFixtures/java")) { include("**/*.java") }
+    inputs.files(testJava, fixtureJava).withPropertyName("testSources")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/testFixtures/java/cc/jumpkick/testing/RepoRoot.java")
+    inputs.file(owner).withPropertyName("repoRoot")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/test-paths-from-checkout-root.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // Self-fail arm: the guard names a replacement, so the replacement has to still be there
+        // and still be the thing that does the walk. A fixture that lost `getProtectionDomain`
+        // is no longer doing the job this guard redirects people to.
+        // Raw text, not guardText: guardText squashes whitespace between tokens, so a signature
+        // probe has to allow for it or be written unreadably as `staticPathfind(`.
+        val ownerText = ownerFile.readText()
+        val ownerApi = listOf("getProtectionDomain\\(", "static\\s+Path\\s+find\\s*\\(",
+                        "static\\s+Path\\s+file\\s*\\(", "static\\s+Path\\s+dir\\s*\\(")
+                .filterNot { Regex(it).containsMatchIn(ownerText) }
+        if (ownerApi.isNotEmpty()) {
+            throw GradleException("cc.jumpkick.testing.RepoRoot no longer has ${ownerApi.joinToString(", ")},"
+                    + " so this guard is redirecting tests to something that cannot serve them."
+                    + " Restore the fixture or retire the guard deliberately.")
+        }
+
+        val hits = mutableListOf<String>()
+        (testJava.files + fixtureJava.files).sorted().forEach { f ->
+            if (f == ownerFile) return@forEach
+            val code = guardText(f.readText())
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            val walks = countIn(code, Regex(Regex.escape("getProtectionDomain")))
+            if (walks > 0) {
+                hits.add("  $rel: $walks x getProtectionDomain  ->  RepoRoot.find/file/dir(<ThisTest>.class, \"<path-from-root>\")")
+            }
+            // blankNonCode, not guardText, for the per-line arm: guardText joins lines, so a line
+            // number taken from it is always 1. This blanks comments in place and keeps the shape.
+            blankNonCode(f.readText(), blankStrings = false).lines().forEachIndexed { i, line ->
+                if (line.contains("user.dir") && (line.contains("\"..") || line.contains("/..\""))) {
+                    hits.add("  $rel:${i + 1}: user.dir escaped with `..`  ->  RepoRoot.file(<ThisTest>.class, \"<path-from-root>\")")
+                }
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("A test that reads a file out of the source tree names it from the"
+                    + " checkout root, via cc.jumpkick.testing.RepoRoot (JK-2601). These resolve it"
+                    + " against the working directory instead, which differs between Gradle and a"
+                    + " workspace `jk build`:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Reach the fixture with `testImplementation(testFixtures(project(\":host\")))`"
+                    + " and `jk-host = { workspace = true, kind = \"tests\" }`. A path spelled from the"
+                    + " root is the same under both builds; a path spelled from CWD is not.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+// `check` only, not `jar`: this guard reads test sources (see checkNoOrphanTestTags above).
+tasks.named("check") { dependsOn(checkTestPathsFromCheckoutRoot) }
+
+// ---------------------------------------------------------------------------
+// Guard G36 (JK-2601): a module's two manifests declare the same dependencies.
+//
+// Defect it prevents: jk.toml and build.gradle.kts drifting. The repo builds itself both ways, so
+// a dependency declared only to Gradle compiles under `./gradlew check` and fails under `jk build`
+// — and vice versa. Measured: thirteen edges out of step at once. `clients/web` had
+// `testImplementation(project(":wire"))` and no manifest entry, so `jk test` could not compile
+// `WireTokenParityTest`; the four plugin modules and the five that consume `:host`'s test fixtures
+// each had a Gradle `testFixtures(...)` edge with no `kind = "tests"` twin; and
+// `plugins/image-builder` still declared `:core` and `:io` to Gradle after JK-2193 removed them
+// from jk.toml as unimported.
+//
+// Scope buckets are coarse on purpose — main-ish vs test-ish — because that is the distinction
+// that decides whether javac can see a type. Within a bucket the two builds are free to spell a
+// dependency differently (`api` vs `[dependencies]`, `runtimeOnly` vs the same table).
+//
+// Both directions, because both have been wrong in this repo. Plus a self-fail arm: a module that
+// declares a Gradle project dependency and yields no parsed edges means the scan broke.
+val checkManifestDepParity by tasks.registering {
+    group = "verification"
+    description = "Fail the build when build.gradle.kts and jk.toml disagree about this module's workspace dependencies"
+    val ownScript = layout.projectDirectory.file("build.gradle.kts")
+    val ownManifest = layout.projectDirectory.file("jk.toml")
+    val settings = rootProject.layout.projectDirectory.file("settings.gradle.kts")
+    inputs.file(settings).withPropertyName("settings")
+    // Every manifest, because the project-path -> artifact-name map is spread across all of them.
+    val allManifests = rootProject.layout.projectDirectory.asFileTree.matching {
+        include("*/*/jk.toml")
+    }
+    inputs.files(allManifests).withPropertyName("manifests")
+    inputs.file(ownScript).withPropertyName("buildScript").optional(true)
+    val projectPath = path
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/manifest-dep-parity.ok")
+    outputs.file(stamp)
+    doLast {
+        val scriptFile = ownScript.asFile
+        val manifestFile = ownManifest.asFile
+        if (!scriptFile.isFile || !manifestFile.isFile) {
+            // A module built by only one of the two builds has nothing to reconcile.
+            stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+            return@doLast
+        }
+
+        // ":wire" -> "shared/wire", straight out of settings.gradle.kts.
+        val dirOf = Regex("""project\("(:[\w-]+)"\)\.projectDir\s*=\s*file\("([^"]+)"\)""")
+                .findAll(settings.asFile.readText())
+                .associate { it.groupValues[1] to it.groupValues[2] }
+        // "shared/wire" -> "jk-engine-api", straight out of that module's own manifest. The two
+        // names differ often enough (:wire is jk-engine-api, :jk-api is jk-model) that guessing
+        // from the project path would make this guard lie.
+        val nameOf = dirOf.mapNotNull { (proj, dir) ->
+            val m = File(treeRoot, "$dir/jk.toml")
+            if (!m.isFile) return@mapNotNull null
+            val n = Regex("""^name\s*=\s*"([^"]+)"""", RegexOption.MULTILINE).find(m.readText())
+            if (n == null) null else proj to n.groupValues[1]
+        }.toMap()
+        if (nameOf.size < 20) {
+            throw GradleException("manifest-dep-parity mapped only ${nameOf.size} project paths to"
+                    + " artifact names, so it has lost settings.gradle.kts or the manifests."
+                    + " Restore the shape or retire this guard deliberately.")
+        }
+
+        val testConfs = setOf("testImplementation", "testApi", "testRuntimeOnly", "testCompileOnly",
+                "testFixturesApi", "testFixturesImplementation", "integrationTestImplementation")
+        val mainConfs = setOf("implementation", "api", "compileOnly", "runtimeOnly",
+                "annotationProcessor", "compileOnlyApi")
+
+        // Gradle side. `fixtures` records the edges that need `kind = "tests"` specifically.
+        val gradleMain = mutableSetOf<String>()
+        val gradleTest = mutableSetOf<String>()
+        val fixtures = mutableSetOf<String>()
+        var edges = 0
+        blankNonCode(scriptFile.readText(), blankStrings = false).lines().forEach { line ->
+            Regex("""(\w+)\(\s*(testFixtures\(\s*)?project\("(:[\w-]+)"\)""").findAll(line).forEach { m ->
+                val conf = m.groupValues[1]
+                val isFixture = m.groupValues[2].isNotEmpty()
+                val name = nameOf[m.groupValues[3]] ?: return@forEach
+                edges++
+                when (conf) {
+                    in testConfs -> { gradleTest.add(name); if (isFixture) fixtures.add(name) }
+                    in mainConfs -> gradleMain.add(name)
+                }
+            }
+        }
+        if (scriptFile.readText().contains("project(\":") && edges == 0) {
+            throw GradleException("manifest-dep-parity found no project dependency in"
+                    + " $projectPath/build.gradle.kts although the text contains one."
+                    + " The scan broke; fix it rather than letting it pass.")
+        }
+
+        // Manifest side. `[test-*]` tables are the test bucket; everything else is main.
+        val jkMain = mutableSetOf<String>()
+        val jkTest = mutableSetOf<String>()
+        val jkTestKind = mutableSetOf<String>()
+        var table = ""
+        manifestFile.readLines().forEach { raw ->
+            val line = raw.substringBefore('#').trim()
+            if (line.startsWith("[")) { table = line.trim('[', ']'); return@forEach }
+            if (!table.endsWith("dependencies")) return@forEach
+            val dotted = Regex("""^([\w-]+)\.workspace\s*=\s*true""").find(line)
+            val inline = Regex("""^([\w-]+)\s*=\s*\{(.*)}""").find(line)
+            val name = dotted?.groupValues?.get(1)
+                    ?: inline?.takeIf { it.groupValues[2].contains("workspace") && it.groupValues[2].contains("true") }
+                            ?.groupValues?.get(1)
+                    ?: return@forEach
+            val kindTests = inline != null && Regex("""kind\s*=\s*"tests"""").containsMatchIn(inline.groupValues[2])
+            if (table.startsWith("test-")) {
+                jkTest.add(name)
+                if (kindTests) jkTestKind.add(name)
+            } else {
+                jkMain.add(name)
+            }
+        }
+
+        val problems = mutableListOf<String>()
+        (gradleMain - jkMain).sorted().forEach {
+            problems.add("  Gradle declares $it for the main tier; jk.toml [dependencies] does not")
+        }
+        (jkMain - gradleMain).sorted().forEach {
+            problems.add("  jk.toml [dependencies] declares $it; build.gradle.kts does not")
+        }
+        // A test-tier need is satisfied by a main declaration in either build, so compare the union.
+        ((gradleTest - fixtures) - jkTest - jkMain).sorted().forEach {
+            problems.add("  Gradle declares $it for the test tier; jk.toml [test-dependencies] does not")
+        }
+        (jkTest - gradleTest - gradleMain).sorted().forEach {
+            problems.add("  jk.toml [test-dependencies] declares $it; build.gradle.kts does not")
+        }
+        (fixtures - jkTestKind).sorted().forEach {
+            problems.add("  Gradle takes $it's testFixtures; jk.toml needs"
+                    + " `$it = { workspace = true, kind = \"tests\" }` under a [test-*dependencies] table")
+        }
+        (jkTestKind - fixtures).sorted().forEach {
+            problems.add("  jk.toml takes $it with kind = \"tests\"; build.gradle.kts does not take"
+                    + " its testFixtures")
+        }
+        if (problems.isNotEmpty()) {
+            throw GradleException("$projectPath declares different dependencies to its two builds"
+                    + " (JK-2601). This repo builds itself with Gradle and with jk, so an edge in"
+                    + " only one of them is green in one build and broken in the other:\n"
+                    + problems.joinToString("\n")
+                    + "\n  jk's `kind = \"tests\"` is Gradle's `testFixtures(...)`; jk's"
+                    + " [test-dependencies] is Gradle's testImplementation. Fix whichever manifest"
+                    + " is wrong — do not silence this by deleting the other declaration.")
+        }
+        logger.info("manifest-dep-parity: {} main + {} test edges, {} via testFixtures",
+                gradleMain.size, gradleTest.size, fixtures.size)
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+// `check` only, not `jar`: parity is a repo-hygiene rule, not a property of the artifact.
+tasks.named("check") { dependsOn(checkManifestDepParity) }

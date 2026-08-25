@@ -312,6 +312,7 @@ public final class ManifestBuild {
                     List.of(),
                     List.of(),
                     List.of(),
+                    List.of(),
                     null,
                     List.of(),
                     platformPolicy,
@@ -324,6 +325,7 @@ public final class ManifestBuild {
         boolean lint = true;
         List<String> kspOptions = new ArrayList<>();
         List<String> extraSrc = new ArrayList<>();
+        List<String> testExtraSrc = new ArrayList<>();
         Integer testWorkers = null;
         List<String> testSerialTags = new ArrayList<>();
 
@@ -402,6 +404,21 @@ public final class ManifestBuild {
             if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
                 testWorkers = 1;
             }
+            // [test] extra-src — the test-scoped twin of [build] extra-src, and the same spelling on
+            // purpose: one vocabulary, two scopes. These roots compile with the test tier, so a
+            // sibling reaches them through an existing `kind = "tests"` edge and no main jar can.
+            // Gradle spells the same fact as a `testFixtures` source set; declaring shared test
+            // helpers under [build] extra-src instead would ship them, which is the mistake this
+            // key exists to make unnecessary.
+            TomlArray tes = test.getArray("extra-src");
+            if (tes != null) {
+                for (int i = 0; i < tes.size(); i++) {
+                    Object val = tes.get(i);
+                    if (!(val instanceof String str) || str.isBlank())
+                        throw new JkBuildParseException("[test].extra-src must be an array of directory strings");
+                    testExtraSrc.add(str);
+                }
+            }
             // [test] serial-tags — class-level tags that never share the sharded worker pool.
             TomlArray st = test.getArray("serial-tags");
             if (st != null) {
@@ -420,6 +437,7 @@ public final class ManifestBuild {
                 List.of(),
                 kspOptions,
                 extraSrc,
+                List.copyOf(testExtraSrc),
                 testWorkers,
                 testSerialTags,
                 platformPolicy,

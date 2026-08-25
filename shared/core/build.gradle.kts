@@ -15,6 +15,7 @@ dependencies {
     // use model.PluginConfig.
     api(project(":host"))
     api(libs.tomlj)
+    testImplementation(testFixtures(project(":host")))
 }
 
 // Built-in plugin manifests + scaffolds are engine-only (JK-2149). :core tests still

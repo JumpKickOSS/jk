@@ -9,3 +9,9 @@ jk-host.workspace = true
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[test]
+# Shared test primitives live here, not in src/test/java: they compile with the test tier
+# (so a sibling reaches them through `kind = "tests"`) and never enter a main jar.
+# Gradle spells the same fact as a `testFixtures` source set.
+extra-src = ["src/testFixtures/java"]

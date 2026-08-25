@@ -10,6 +10,7 @@ import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ImageContext;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.testing.RepoRoot;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -209,27 +210,8 @@ class RegistryAuthTest {
         }
     }
 
-    /**
-     * {@code plugins/image-builder/src/main/java}, found from this class's output directory —
-     * a workspace {@code jk build} runs tests with the CWD at the engine state dir.
-     */
     private static Path pluginSources() throws Exception {
-        Path rel = Path.of("src/main/java");
-        Path from = Path.of(RegistryAuthTest.class
-                        .getProtectionDomain()
-                        .getCodeSource()
-                        .getLocation()
-                        .toURI())
-                .toAbsolutePath()
-                .normalize();
-        for (Path start : new Path[] {from, Path.of("").toAbsolutePath().normalize()}) {
-            for (Path d = start; d != null; d = d.getParent()) {
-                if (Files.isDirectory(d.resolve(rel).resolve("cc/jumpkick/plugin/image"))) return d.resolve(rel);
-                Path module = d.resolve("plugins/image-builder").resolve(rel);
-                if (Files.isDirectory(module.resolve("cc/jumpkick/plugin/image"))) return module;
-            }
-        }
-        throw new AssertionError("cannot locate the plugin sources from " + from);
+        return RepoRoot.dir(RegistryAuthTest.class, "plugins/image-builder/src/main/java");
     }
 
     /** An {@link ImageContext} carrying only what a credential is read out of. */

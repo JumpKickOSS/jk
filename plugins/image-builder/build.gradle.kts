@@ -8,11 +8,13 @@ description = "jk-image-runner: child-JVM worker that builds and pushes OCI imag
         "Isolates Jib-core, Guava, and the Google HTTP stack from jk's own classpath."
 
 dependencies {
-    implementation(project(":core"))
-    implementation(project(":io"))
-    // image module deleted; ImageConfig moved to :core
+    // jk-model owns ImageConfig and RepoCredential — the only non-SPI first-party types this
+    // worker names. :core and :io were declared here and never imported; JK-2193 dropped them
+    // from jk.toml and this is the same edit on the Gradle side. See plugins/image-builder/jk.toml.
+    implementation(project(":jk-api"))
     implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)
     implementation(libs.jib.core)
     // Unpacking a base image's layers to reach its JRE (BaseJre); jib-core already brings it.
     implementation(libs.commons.compress)
+    testImplementation(testFixtures(project(":host")))
 }

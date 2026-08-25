@@ -3,11 +3,10 @@ package cc.jumpkick.engine.http.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -94,7 +93,8 @@ class McpDocParityTest {
 
     /** The lines of one {@code ## <name>} section of the doc, exclusive of the next heading. */
     private static List<String> section(String name) throws IOException {
-        List<String> lines = Files.readAllLines(repoRoot().resolve("docs/user/mcp.md"), StandardCharsets.UTF_8);
+        List<String> lines =
+                Files.readAllLines(RepoRoot.file(McpDocParityTest.class, "docs/user/mcp.md"), StandardCharsets.UTF_8);
         List<String> out = new ArrayList<>();
         boolean in = false;
         for (String line : lines) {
@@ -103,26 +103,5 @@ class McpDocParityTest {
         }
         assertThat(out).as("section `## %s` in docs/user/mcp.md", name).isNotEmpty();
         return out;
-    }
-
-    /** The checkout root, walking up from this class's own location — never {@code user.dir}. */
-    private static Path repoRoot() throws IOException {
-        Path here;
-        try {
-            here = Path.of(McpDocParityTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath();
-        } catch (URISyntaxException e) {
-            throw new IOException("cannot locate this test's own class output", e);
-        }
-        for (Path d = here; d != null; d = d.getParent()) {
-            boolean root = Files.isRegularFile(d.resolve("settings.gradle.kts"))
-                    && Files.isDirectory(d.resolve("server/engine"));
-            if (root) return d;
-        }
-        throw new IOException("no checkout root above " + here);
     }
 }

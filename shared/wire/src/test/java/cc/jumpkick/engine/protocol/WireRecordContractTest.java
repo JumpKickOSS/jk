@@ -3,6 +3,7 @@ package cc.jumpkick.engine.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -10,7 +11,6 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -135,7 +135,7 @@ class WireRecordContractTest {
      * corpus and report green — a discovery walk that finds nothing satisfies every for-loop below.
      */
     private static List<Class<?>> wireRecords() throws IOException, ClassNotFoundException {
-        Path dir = repoRoot().resolve(SRC);
+        Path dir = RepoRoot.dir(WireRecordContractTest.class, SRC);
         List<Class<?>> found = new ArrayList<>();
         try (Stream<Path> files = Files.list(dir)) {
             for (Path f : new TreeSet<>(files.toList())) {
@@ -205,26 +205,5 @@ class WireRecordContractTest {
         }
         if (type.isRecord()) return build(type, seq);
         throw new IllegalStateException("no synthetic value for wire component type " + type);
-    }
-
-    /** The checkout root, walking up from this class's own location — never {@code user.dir}. */
-    private static Path repoRoot() throws IOException {
-        Path here;
-        try {
-            here = Path.of(WireRecordContractTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath();
-        } catch (URISyntaxException e) {
-            throw new IOException("cannot locate this test's own class output", e);
-        }
-        for (Path d = here; d != null; d = d.getParent()) {
-            if (Files.isRegularFile(d.resolve("settings.gradle.kts")) && Files.isDirectory(d.resolve("shared/wire"))) {
-                return d;
-            }
-        }
-        throw new IOException("cannot locate the jk checkout root from " + here);
     }
 }

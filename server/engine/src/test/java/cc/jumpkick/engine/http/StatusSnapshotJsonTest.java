@@ -3,9 +3,9 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.lang.reflect.RecordComponent;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -132,7 +132,7 @@ class StatusSnapshotJsonTest {
      */
     @Test
     void only_mcp_still_renders_engine_vitals_without_the_owner() throws IOException {
-        Path main = repoRoot().resolve("server/engine/src/main/java");
+        Path main = RepoRoot.dir(StatusSnapshotJsonTest.class, "server/engine/src/main/java");
         Set<String> accessors = new LinkedHashSet<>();
         for (RecordComponent c : StatusSnapshot.class.getRecordComponents()) {
             accessors.add("." + c.getName() + "()");
@@ -159,26 +159,5 @@ class StatusSnapshotJsonTest {
         assertThat(renderers)
                 .as("files rendering StatusSnapshot as JSON without StatusSnapshot.toJson() (JK-2431)")
                 .containsExactly("cc/jumpkick/engine/http/mcp/McpVitals.java");
-    }
-
-    /** The checkout root, walking up from this class's own location — never {@code user.dir}. */
-    private static Path repoRoot() throws IOException {
-        Path here;
-        try {
-            here = Path.of(StatusSnapshotJsonTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath();
-        } catch (URISyntaxException e) {
-            throw new IOException("cannot locate this test's own class output", e);
-        }
-        for (Path d = here; d != null; d = d.getParent()) {
-            boolean root = Files.isRegularFile(d.resolve("settings.gradle.kts"))
-                    && Files.isDirectory(d.resolve("server/engine"));
-            if (root) return d;
-        }
-        throw new IOException("cannot locate the jk checkout root from " + here);
     }
 }

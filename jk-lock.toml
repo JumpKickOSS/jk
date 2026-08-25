@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "a89b9e9b8e15ea207f5bd9b0ace3170fe543abfef186c2a9ae8401e2e2316ecf"
+manifests-sha256 = "af1bfc6b2dcb4cf4b894da4e7abf7281348cf1faef47ed85c7e705cda2d843a6"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [native]
@@ -162,9 +162,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "com.google.api.grpc:proto-google-common-protos:jar:"
-version  = "2.74.0"
+version  = "2.75.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:cc899ad12f3f522bfedb3765015be10d961eff5cd1f7b48839c972522ba17d02"
+checksum = "sha256:fbec90d76980efcdcfd92b57d87999c448f21cb15f3546fc885fb5f88e1a25f2"
 scopes   = ["main"]
 deps = [
   "com.google.protobuf:protobuf-java:jar:@4.36.0",
@@ -172,9 +172,9 @@ deps = [
 
 [[artifact]]
 name     = "com.google.api:api-common:jar:"
-version  = "2.66.0"
+version  = "2.67.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:52acfb2ed3234c03a440ff2516a39f45cf993b7b37cc30a5e046e3ae1e227d82"
+checksum = "sha256:598cf969fb6d13109fcb92d4f39ee2dc0577c253911713e38acd5c4295c163c5"
 scopes   = ["main"]
 deps = [
   "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
@@ -186,9 +186,9 @@ deps = [
 
 [[artifact]]
 name     = "com.google.auth:google-auth-library-credentials:jar:"
-version  = "1.50.0"
+version  = "1.51.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:09f2ad0e730a1530082748cfb5637dbe843683a3fb57e253a6dbc2849fcb340f"
+checksum = "sha256:bce65ca6d689855a88ef2d45254f8f541d26d793472593e5f906dcaf05274db1"
 scopes   = ["main"]
 deps = [
   "org.jspecify:jspecify:jar:@1.0.1",
@@ -196,13 +196,13 @@ deps = [
 
 [[artifact]]
 name     = "com.google.auth:google-auth-library-oauth2-http:jar:"
-version  = "1.50.0"
+version  = "1.51.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:68fb75913f972707cc89da4a17809fed3269d25c198135838c49b7b62752eb10"
+checksum = "sha256:a370a8b6e0f74eff52d51902d61f940dbdd772b25513f5e73970ab71031624c6"
 scopes   = ["main"]
 deps = [
-  "com.google.api:api-common:jar:@2.66.0",
-  "com.google.auth:google-auth-library-credentials:jar:@1.50.0",
+  "com.google.api:api-common:jar:@2.67.0",
+  "com.google.auth:google-auth-library-credentials:jar:@1.51.0",
   "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
@@ -235,7 +235,7 @@ scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
   "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.2",
-  "com.google.auth:google-auth-library-oauth2-http:jar:@1.50.0",
+  "com.google.auth:google-auth-library-oauth2-http:jar:@1.51.0",
   "com.google.cloud.tools:jib-build-plan:jar:@0.4.0",
   "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.http-client:google-http-client-apache-v2:jar:@2.2.0",
@@ -534,9 +534,9 @@ deps = [
 
 [[artifact]]
 name     = "io.github.classgraph:classgraph:jar:"
-version  = "4.8.193"
+version  = "4.8.194"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:e95ab7083d025b7f6a4fb7c0e608a9ff1ddc0ea91b4cd757c9c3a0650e61b34b"
+checksum = "sha256:af30384fbdda09aaa05b25695820350b90b06bf69ddb1ad2d363cef6c8feaf1c"
 scopes   = ["main"]
 
 [[artifact]]
@@ -620,7 +620,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f58e9b04850e8d5a820081de1ba1d93fd641af3182e743f4066818645f1ee58f"
 scopes   = ["main"]
 deps = [
-  "com.google.api.grpc:proto-google-common-protos:jar:@2.74.0",
+  "com.google.api.grpc:proto-google-common-protos:jar:@2.75.0",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.protobuf:protobuf-java:jar:@4.36.0",
@@ -1935,9 +1935,9 @@ deps = [
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-core:jar:"
-version  = "8.90.3"
+version  = "8.90.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:47901fa9ef1fda03571d2db7edc880f160ec8a957dfb7bdf2e056a3da324a73f"
+checksum = "sha256:12168e8045fb62c1b3f3ad3f3ef8895db84e2791d8c811aefda410e262266503"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
@@ -1966,71 +1966,71 @@ deps = [
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java-21:jar:"
-version  = "8.90.3"
+version  = "8.90.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4d532ef3c20c334a6817b6811d778efafbf4b54d52761ed59f26cd00a24f3c46"
+checksum = "sha256:099c9ba2ce7248b34482e33885ce7cf7154c717748f1e909c26fa32a48feae9a"
 scopes   = ["main"]
 deps = [
-  "io.github.classgraph:classgraph:jar:@4.8.193",
+  "io.github.classgraph:classgraph:jar:@4.8.194",
   "io.micrometer:micrometer-core:jar:@1.17.1",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.90.3",
-  "org.openrewrite:rewrite-java-lombok:jar:@8.90.3",
-  "org.openrewrite:rewrite-java:jar:@8.90.3",
+  "org.openrewrite:rewrite-core:jar:@8.90.4",
+  "org.openrewrite:rewrite-java-lombok:jar:@8.90.4",
+  "org.openrewrite:rewrite-java:jar:@8.90.4",
   "org.ow2.asm:asm:jar:@9.10.1",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java-lombok:jar:"
-version  = "8.90.3"
+version  = "8.90.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:52c40668a5a50a826be7d2c6556971c94ce89dbe25fffc4a40351e3eb48099dd"
+checksum = "sha256:db47834696d127a836b4ac51225bbe1a5b2dbab155c9f44f1b0c5cd582a6f741"
 scopes   = ["main"]
 deps = [
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.90.3",
+  "org.openrewrite:rewrite-core:jar:@8.90.4",
   "org.projectlombok:lombok:jar:@1.18.46",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java:jar:"
-version  = "8.90.3"
+version  = "8.90.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:24701e0453fef239509a9f378bdd61bf954860788089278d43807b84ee48441d"
+checksum = "sha256:c18f5b86a2401f64d82d036460e15937dfd87d41e3b9772757cadee89b89c5bb"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "io.github.classgraph:classgraph:jar:@4.8.193",
+  "io.github.classgraph:classgraph:jar:@4.8.194",
   "io.micrometer:micrometer-core:jar:@1.17.1",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.90.3",
-  "org.openrewrite:rewrite-properties:jar:@8.90.3",
-  "org.openrewrite:rewrite-xml:jar:@8.90.3",
-  "org.openrewrite:rewrite-yaml:jar:@8.90.3",
+  "org.openrewrite:rewrite-core:jar:@8.90.4",
+  "org.openrewrite:rewrite-properties:jar:@8.90.4",
+  "org.openrewrite:rewrite-xml:jar:@8.90.4",
+  "org.openrewrite:rewrite-yaml:jar:@8.90.4",
   "org.ow2.asm:asm-util:jar:@9.10.1",
   "org.ow2.asm:asm:jar:@9.10.1",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-properties:jar:"
-version  = "8.90.3"
+version  = "8.90.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:90a3c4e2d0cc04479dda495636154c61281975d283f042a90626eb3ac14cf1df"
+checksum = "sha256:fd6d276c91cfd69fd34aa52dd67e5896cd86bbbd3c1a38d8206a36d1bdeb2b83"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "io.micrometer:micrometer-core:jar:@1.17.1",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.90.3",
+  "org.openrewrite:rewrite-core:jar:@8.90.4",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-xml:jar:"
-version  = "8.90.3"
+version  = "8.90.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:5641ca1e71e16725d656ed44deddd902ef114d4e633973a8691b62e81e39441d"
+checksum = "sha256:6652d97b0ecc8801bbd17158c83f445f60904d41466e3807363f2a87f77d2d2e"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
@@ -2039,21 +2039,21 @@ deps = [
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.90.3",
+  "org.openrewrite:rewrite-core:jar:@8.90.4",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-yaml:jar:"
-version  = "8.90.3"
+version  = "8.90.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:da60dd684f9f29574156915b3775b2c0e8e08da989e36ca78c5b24f9679ede60"
+checksum = "sha256:4a13a672601e40180c2ddc234edbfcf4dab139ffb0b8ce7ec25f4e7fccf9552d"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "io.micrometer:micrometer-core:jar:@1.17.1",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.90.3",
+  "org.openrewrite:rewrite-core:jar:@8.90.4",
   "org.yaml:snakeyaml:jar:@2.6",
 ]
 

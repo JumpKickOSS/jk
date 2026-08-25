@@ -19,6 +19,7 @@ dependencies {
     // InvocationPhase enum, and EngineProtocolTest closes that set against the enum itself rather
     // than restating it. The enum is the owner; production code here only ever sees the String, so
     // this edge stays out of `api`/`implementation` and never reaches a client classpath (JK-2444).
+    testImplementation(testFixtures(project(":host")))
     testImplementation(project(":plugin-sdk"))
 }
 

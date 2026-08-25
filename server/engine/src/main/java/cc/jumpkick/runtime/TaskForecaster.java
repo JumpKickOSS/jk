@@ -558,8 +558,10 @@ public final class TaskForecaster {
             List<Path> scTest = allTestSrc.stream()
                     .filter(p -> p.getFileName().toString().endsWith(".scala"))
                     .toList();
-            boolean haveTests = !allTestSrc.isEmpty();
-            sourceCount = mainSrc.size() + ktSrc.size() + gvSrc.size() + allTestSrc.size();
+            // No suite owns a `[test] extra-src` root, but compile-test hashes one (JK-2601).
+            List<Path> javaTestExtra = TestSupport.forecastTestExtraSources(project, dir);
+            boolean haveTests = !allTestSrc.isEmpty() || !javaTestExtra.isEmpty();
+            sourceCount = mainSrc.size() + ktSrc.size() + gvSrc.size() + allTestSrc.size() + javaTestExtra.size();
             boolean testDirty = false;
             // --skip-tests composes no compile-test/run-tests steps, so don't forecast
             // (or content-hash the inputs of) steps the build will not run.
@@ -568,7 +570,7 @@ public final class TaskForecaster {
                     steps.add(new TaskForecast.Task(
                             TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "recompile · main changed", null));
                     testDirty = true;
-                } else if (!javaTest.isEmpty() || !scTest.isEmpty()) {
+                } else if (!javaTest.isEmpty() || !scTest.isEmpty() || !javaTestExtra.isEmpty()) {
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(layout.classesDir());
                     baseCp.addAll(testCompileClasspath(dir, project, lock, resolver));
@@ -580,7 +582,7 @@ public final class TaskForecaster {
                         }
                     }
                     List<Path> testSrc = new ArrayList<>(javaTest);
-                    testSrc.addAll(scTest);
+                    testSrc.addAll(CompileSupport.concatDistinct(scTest, javaTestExtra));
                     // Mirror TestSupport.compileWithCache EXACTLY: the processor path (the build
                     // runs declared annotation processors over test sources, so the key hashes the
                     // same `pp:` lines), the project JDK, and the Scala toolchain. Any field

@@ -4,6 +4,7 @@ package cc.jumpkick.scaffold;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -56,24 +57,6 @@ class PluginSdkScaffoldVersionTest {
     }
 
     private static Path findRepoRoot() {
-        try {
-            Path candidate = Path.of(PluginSdkScaffoldVersionTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath()
-                    .normalize();
-            for (int i = 0; i < 12 && candidate != null; i++) {
-                if (Files.isRegularFile(candidate.resolve("jk.toml"))
-                        && Files.isDirectory(candidate.resolve("shared/plugin-sdk"))) {
-                    return candidate;
-                }
-                candidate = candidate.getParent();
-            }
-        } catch (Exception ignored) {
-            // fall through
-        }
-        return null;
+        return RepoRoot.find(PluginSdkScaffoldVersionTest.class);
     }
 }

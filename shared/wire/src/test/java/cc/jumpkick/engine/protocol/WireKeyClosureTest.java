@@ -3,8 +3,8 @@ package cc.jumpkick.engine.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -77,7 +77,7 @@ class WireKeyClosureTest {
 
     @Test
     void no_json_key_is_read_that_nothing_writes() throws IOException {
-        Path root = repoRoot();
+        Path root = RepoRoot.find(WireKeyClosureTest.class);
         List<Path> scanned = new ArrayList<>();
         Map<String, Set<String>> reads = new TreeMap<>();
         Set<String> writes = new LinkedHashSet<>();
@@ -253,26 +253,5 @@ class WireKeyClosureTest {
             return false;
         }
         return rel.contains("/src/main/java/") && rel.endsWith(".java");
-    }
-
-    /** The checkout root, walking up from this class's own location — never {@code user.dir}. */
-    private static Path repoRoot() throws IOException {
-        Path here;
-        try {
-            here = Path.of(WireKeyClosureTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath();
-        } catch (URISyntaxException e) {
-            throw new IOException("cannot locate this test's own class output", e);
-        }
-        for (Path d = here; d != null; d = d.getParent()) {
-            if (Files.isRegularFile(d.resolve("settings.gradle.kts")) && Files.isDirectory(d.resolve("shared/wire"))) {
-                return d;
-            }
-        }
-        throw new IOException("cannot locate the jk checkout root from " + here);
     }
 }

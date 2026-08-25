@@ -13,6 +13,7 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,9 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CommandDependencyLaneTest {
 
-    private static final Path ANDROID_MANIFEST = Path.of(
-                    System.getProperty("user.dir"), "../../plugins/android/jk-plugin.toml")
-            .normalize();
+    private static final Path ANDROID_MANIFEST =
+            RepoRoot.file(CommandDependencyLaneTest.class, "plugins/android/jk-plugin.toml");
 
     private static final String ANDROID_PROJECT = """
             name = "hello"
@@ -53,7 +53,6 @@ class CommandDependencyLaneTest {
 
     /** The android manifest, parsed from source and installed the way the engine installs it. */
     private static JkBuild androidBuild() throws IOException {
-        assertThat(ANDROID_MANIFEST).as("the shipped android manifest").exists();
         PluginDescriptor manifest =
                 PluginDescriptors.parse(Files.readString(ANDROID_MANIFEST), ANDROID_MANIFEST.toString());
         PluginTableRegistry.putBuiltIn(manifest, null);

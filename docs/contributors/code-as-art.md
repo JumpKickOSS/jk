@@ -42,6 +42,8 @@ that standard.
   - [The guard registry](#the-guard-registry)
   - [Verify the number before it lands in a Done criterion](#verify-the-number-before-it-lands-in-a-done-criterion)
   - [A test that passes without executing is worse than a missing test](#a-test-that-passes-without-executing-is-worse-than-a-missing-test)
+  - [The repo builds itself twice, so it has two manifests and one truth](#the-repo-builds-itself-twice-so-it-has-two-manifests-and-one-truth)
+  - [A test that reads the source tree names it from the checkout root](#a-test-that-reads-the-source-tree-names-it-from-the-checkout-root)
 - [Campaign](#campaign)
   - [Scoreboard](#scoreboard)
 - [After EngineServer](#after-engineserver)
@@ -799,6 +801,8 @@ Letters are allocated when a guard lands and are never reused.
 | G25 | `checkPluginFamily` | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist |
 | G26 | `checkPluginForkOwner` | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express until JK-2493) |
 | G27 | `checkOneTerminalHandoff` | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist |
+| G35 | `checkTestPathsFromCheckoutRoot` | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist |
+| G36 | `checkManifestDepParity` | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `kind = "tests"` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist |
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters
 and keep their names; they are the shape every guard above copies.
@@ -925,6 +929,66 @@ test passes, **revert the production change and confirm it goes red.** A
 test that has never been seen to fail has not been seen to work.
 
 ---
+
+### The repo builds itself twice, so it has two manifests and one truth
+
+jk builds jk. Every module carries a `build.gradle.kts` **and** a
+`jk.toml`, and the two say the same thing in different vocabularies:
+`implementation(project(":core"))` is `jk-core.workspace = true`,
+`testImplementation` is `[test-dependencies]`, and Gradle's
+`testFixtures(project(":host"))` is jk's
+`jk-host = { workspace = true, kind = "tests" }`.
+
+Nothing was checking that they agreed. Thirteen edges were out of step at
+once, all in the direction of "Gradle knows, jk does not", so
+`./gradlew checkAll` was green while `jk test` could not compile the tree.
+The maintainer found it the only way it could be found: by wiping
+`~/.jk` and running `jk test`.
+
+The drift is not symmetric and the asymmetry is the lesson. Gradle was
+right about nine edges that jk had never been told (`clients/web` taking
+`:wire` for `WireTokenParityTest`; the five modules that consume `:host`'s
+test fixtures; the four plugin modules that consume `:plugin-sdk`'s).
+**jk** was right about two that Gradle still declared after JK-2193
+deleted them as unimported — so a guard that only checked one direction
+would have "fixed" the tree by re-adding dead edges. G36 checks both.
+
+**A ratchet on one build is not a ratchet.** Every rule in this document
+about owners, guards and baselines assumed one build graph. Two build
+graphs means every structural claim needs asking twice, and the second
+build is the one nobody runs before pushing.
+
+### A test that reads the source tree names it from the checkout root
+
+The same round found the smaller sibling of that defect. Gradle runs a
+test with CWD at the owning module; a workspace `jk build` runs it with
+CWD at `~/.local/state/jk/engine`. A source tripwire that spells its
+target `Path.of(System.getProperty("user.dir"), "../../plugins/android/…")`
+therefore reads `~/.local/state/plugins/android/…` under jk — green under
+Gradle for months.
+
+Fourteen test classes had solved this, each with its own copy of the
+walk-up-from-my-own-class-file loop, and each copy with a different
+per-module marker baked in (`settings.gradle.kts` + `server/engine`,
+`jk.toml` + `shared/plugin-sdk`, `jk.toml` + `install.sh`…). That is why
+they were not literally identical, and it is why nobody noticed the
+fifteenth site had been written without one.
+
+Three of the fourteen degraded to a **skip** when the search failed —
+`assumeTrue(mainOpt.isPresent(), "… skip scan")`, and in one case a
+`@BeforeAll` whose own comment said "fail hard if it disappears" above an
+`Assumptions.assumeTrue`. A broken search read as a pass. Mechanism 1 of
+the nine above, three more times.
+
+One fixture replaced all fourteen: `cc.jumpkick.testing.RepoRoot`, in
+`shared/host`'s test fixtures, reachable from anywhere in the tree. It
+walks to the **checkout** root — the one anchor both builds share, since
+neither the module directory nor the CWD is reliably an ancestor of the
+loaded classes — and every path is then spelled from there, where the two
+layouts agree. It throws rather than returning null, which is what turned
+the three skips back into tests. `WebClientJsTest` alone lost sixty-eight
+lines of layout guessing for nine.
+
 
 ## Campaign
 

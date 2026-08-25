@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,29 +99,9 @@ class WorkspaceRunViewOwnerTest {
         return n;
     }
 
-    /**
-     * Workspace {@code jk build} runs tests with CWD at {@code ~/.local/state/jk/engine}, so
-     * {@code src/...} relatives miss. Walk from this class's output location (and CWD) instead.
-     */
     private static List<Path> commandSources() throws Exception {
-        Path rel = Path.of("src/main/java/cc/jumpkick/command");
-        Path classLoc = Path.of(WorkspaceRunViewOwnerTest.class
-                        .getProtectionDomain()
-                        .getCodeSource()
-                        .getLocation()
-                        .toURI())
-                .toAbsolutePath()
-                .normalize();
-        Path cwd = Path.of("").toAbsolutePath().normalize();
-        for (Path start : new Path[] {classLoc, cwd}) {
-            for (Path d = start; d != null; d = d.getParent()) {
-                for (Path candidate :
-                        new Path[] {d.resolve(rel), d.resolve("clients/cli").resolve(rel)}) {
-                    if (Files.isDirectory(candidate)) return javaFiles(candidate);
-                }
-            }
-        }
-        throw new AssertionError("cannot locate cc.jumpkick.command sources from class=" + classLoc + " cwd=" + cwd);
+        return javaFiles(
+                RepoRoot.dir(WorkspaceRunViewOwnerTest.class, "clients/cli/src/main/java/cc/jumpkick/command"));
     }
 
     private static List<Path> javaFiles(Path dir) throws IOException {

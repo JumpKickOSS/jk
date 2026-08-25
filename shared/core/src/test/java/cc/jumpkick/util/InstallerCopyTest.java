@@ -2,8 +2,8 @@
 package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,7 +20,6 @@ class InstallerCopyTest {
     @Test
     void cdn_copies_are_byte_identical_to_the_repo_root_installers() throws IOException {
         Path repo = findRepoRoot();
-        assumeTrue(repo != null, "not running inside the jk repo");
 
         for (String name : new String[] {"install.sh", "install.ps1"}) {
             Path root = repo.resolve(name);
@@ -38,7 +37,6 @@ class InstallerCopyTest {
     @Test
     void the_scripts_shim_forwards_instead_of_duplicating() throws IOException {
         Path repo = findRepoRoot();
-        assumeTrue(repo != null, "not running inside the jk repo");
 
         String shim = Files.readString(repo.resolve("scripts/install.ps1"));
         assertThat(shim).contains("install.ps1").doesNotContain("Invoke-WebRequest");
@@ -46,24 +44,6 @@ class InstallerCopyTest {
     }
 
     private static Path findRepoRoot() {
-        try {
-            Path candidate = Path.of(InstallerCopyTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath()
-                    .normalize();
-            for (int i = 0; i < 12 && candidate != null; i++) {
-                if (Files.isRegularFile(candidate.resolve("jk.toml"))
-                        && Files.isRegularFile(candidate.resolve("install.sh"))) {
-                    return candidate;
-                }
-                candidate = candidate.getParent();
-            }
-        } catch (Exception ignored) {
-            // fall through
-        }
-        return null;
+        return RepoRoot.find(InstallerCopyTest.class);
     }
 }

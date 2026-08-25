@@ -265,7 +265,12 @@ public final class TestSuites {
         return false;
     }
 
-    private static List<Path> collectExt(Path root, String ext) throws IOException {
+    /**
+     * Every file under {@code root} with the given extension, sorted. Public because a test source
+     * root need not belong to a suite — {@code [test] extra-src} names roots that compile with the
+     * test tier and are never selected to run — and that collection rule has one owner, here.
+     */
+    public static List<Path> collectExt(Path root, String ext) throws IOException {
         if (!Files.isDirectory(root)) return List.of();
         List<Path> result = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(root)) {

@@ -99,7 +99,16 @@ public final class PlannerTest {
                     }
                     List<String> suiteNames = resolved.suites();
                     Path javaTestSrc = TestSuites.primaryJavaRoot(in.dir(), compact, suiteNames);
-                    List<Path> javaTest = TestSuites.collectJavaSources(in.dir(), compact, suiteNames);
+                    List<Path> javaTest = new ArrayList<>(TestSuites.collectJavaSources(in.dir(), compact, suiteNames));
+                    // [test] extra-src: roots in the test tier that belong to no suite — shared
+                    // helpers a sibling reaches through a `kind = "tests"` edge. They compile with
+                    // whichever suites were selected rather than being selectable themselves,
+                    // because there is nothing in them to run. Held separately from `javaTest`
+                    // because javac is driven from the primary root plus an explicit extra list, and
+                    // that list is what `CompileRequest.sources` hashes — so these roots land in the
+                    // compile-test action key without a second key to keep in step.
+                    List<Path> javaTestExtra = TestSupport.testExtraSources(ctx.require(PROJECT), in.dir(), ".java");
+                    javaTest.addAll(javaTestExtra);
                     List<Path> ktTest = TestSuites.collectKotlinSources(in.dir(), compact, suiteNames);
                     List<Path> gvTest = TestSuites.collectGroovySources(in.dir(), compact, suiteNames);
                     List<Path> scTest = TestSuites.collectScalaSources(in.dir(), compact, suiteNames);
@@ -245,7 +254,7 @@ public final class PlannerTest {
                                 genDir,
                                 cas,
                                 in.cache(),
-                                scTest,
+                                CompileSupport.concatDistinct(scTest, javaTestExtra),
                                 scalaSetup);
                         if (!ok) throw new RuntimeException("test compile failed");
                     }

@@ -589,6 +589,17 @@ public record JkBuild(
             List<KotlinPluginDecl> kotlinPlugins,
             List<String> kspOptions,
             List<String> extraSrc,
+            /**
+             * {@code [test] extra-src}: module-relative source roots compiled with the test tier and
+             * placed on every suite's compile classpath. The test-scoped twin of {@code extraSrc},
+             * and the same spelling on purpose — one vocabulary, two scopes.
+             *
+             * <p>This is how a module publishes shared test helpers without shipping them: they
+             * compile into the test classes output, so a sibling reaches them through an existing
+             * {@code kind = "tests"} edge and nothing reaches a main jar. Gradle spells the same
+             * fact as a {@code testFixtures} source set.
+             */
+            List<String> testExtraSrc,
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
             Integer testWorkers,
             /**
@@ -619,6 +630,7 @@ public record JkBuild(
                 List.of(),
                 List.of(),
                 true,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
@@ -653,6 +665,7 @@ public record JkBuild(
                     kotlinPlugins,
                     kspOptions,
                     all,
+                    testExtraSrc,
                     testWorkers,
                     testSerialTags,
                     platformPolicy,
@@ -668,6 +681,7 @@ public record JkBuild(
                     kotlinPlugins,
                     kspOptions,
                     extraSrc,
+                    testExtraSrc,
                     testWorkers,
                     testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,

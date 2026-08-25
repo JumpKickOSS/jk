@@ -11,6 +11,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -29,57 +30,18 @@ import org.junit.jupiter.api.Test;
  */
 class SelfHostingTomlTest {
 
-    /**
-     * Walk up from the test class's own location until we find a {@code jk.toml} whose {@code
-     * [workspace]} table claims this directory as a module. That root is the repo. This is more
-     * robust than relying on the JVM's cwd, which differs between the Gradle test launcher
-     * (per-module cwd) and a forked test JVM under {@code jk test} (typically inherits the parent
-     * process's cwd).
-     */
-    private static final Path REPO = findRepoRoot();
+    /** The checkout root. See {@link RepoRoot} for why this cannot come from the JVM's CWD. */
+    private static final Path REPO = RepoRoot.find(SelfHostingTomlTest.class);
 
     @BeforeAll
-    static void requireSelfHostingWorkspace() {
-        // restored the workspace root; fail hard if it disappears.
-        Assumptions.assumeTrue(
-                REPO != null && Files.isRegularFile(REPO.resolve("jk.toml")),
-                "workspace root jk.toml missing — self-hosting manifests are required");
-        try {
-            Assumptions.assumeTrue(
-                    JkBuildParser.parse(REPO.resolve("jk.toml")).isWorkspaceRoot(),
-                    "root jk.toml is not a workspace root");
-        } catch (Exception e) {
-            Assumptions.assumeTrue(false, "root jk.toml unparseable: " + e.getMessage());
-        }
-    }
-
-    private static Path findRepoRoot() {
-        // The.class file path tells us where we are on disk regardless of
-        // cwd. From there, walk up looking for jk.toml with [workspace].
-        try {
-            Path classPath = Path.of(SelfHostingTomlTest.class
-                    .getProtectionDomain()
-                    .getCodeSource()
-                    .getLocation()
-                    .toURI());
-            Path candidate = classPath.toAbsolutePath().normalize();
-            for (int i = 0; i < 12 && candidate != null; i++) {
-                Path manifest = candidate.resolve("jk.toml");
-                if (Files.isRegularFile(manifest)) {
-                    try {
-                        JkBuild parsed = JkBuildParser.parse(manifest);
-                        if (parsed.isWorkspaceRoot()) return candidate;
-                    } catch (RuntimeException ignored) {
-                        // unparseable jk.toml — keep walking
-                    }
-                }
-                candidate = candidate.getParent();
-            }
-        } catch (Exception ignored) {
-            // fall through
-        }
-        // No workspace root found — tests will skip via @BeforeAll.
-        return null;
+    static void requireSelfHostingWorkspace() throws Exception {
+        // A root jk.toml that is missing or is not a workspace root is a failure, not a reason to
+        // skip: every test below reads the manifests underneath it, so an assumption here would
+        // report eleven passes for a suite that checked nothing. The comment on the old
+        // `assumeTrue` already said "fail hard if it disappears"; now the code does.
+        assertThat(JkBuildParser.parse(REPO.resolve("jk.toml")).isWorkspaceRoot())
+                .as("root jk.toml at %s declares [workspace]", REPO)
+                .isTrue();
     }
 
     @Test

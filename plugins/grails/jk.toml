@@ -6,5 +6,8 @@ jk-plugin-sdk.workspace = true
 jk-spring-boot.workspace = true
 
 [test-dependencies]
+# `kind = "tests"` reaches jk-plugin-sdk's test classes — where its `[test] extra-src`
+# fixtures compile. Direct edge only, and never in a main jar.
+jk-plugin-sdk = { workspace = true, kind = "tests" }
 assertj-core = "latest"
 junit-jupiter = "latest"

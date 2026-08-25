@@ -244,7 +244,15 @@
 # behind the new number — a forecast key derived here rather than shared with the build is the defect
 # class this file kept reintroducing (JK-2460/2479/2480/2491), so the ratchet is now also a rule about
 # what may live here.
-1137  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
+#
+# 1137 -> 1139 (JK-2601): the fifth instance of that same defect class, and the rule above is what
+# decided the shape of the fix. `[test] extra-src` roots are part of compile-test's hashed request,
+# and this file could not see them — so every `jk explain` on a module with test fixtures would have
+# forecast a rebuild that the build then skipped. The collector went to `TestSupport`, next to the
+# one the build calls, rather than being re-derived here; what landed here is the two lines that
+# call it. Three lines of key derivation would have been cheaper to write and would have re-opened
+# JK-2460.
+1139  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
 
 # T58: workspace step execution and the target/ write-drain that `jk build` must not return ahead
 # of (JK-2451). Ratchet only — JK-2438 took one line, which is not the point of the change it made:

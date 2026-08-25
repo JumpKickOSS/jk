@@ -3,8 +3,8 @@ package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -212,23 +212,7 @@ class ActionTreeTest {
         return out.toString();
     }
 
-    private static Path repoRoot() throws IOException {
-        Path here;
-        try {
-            here = Path.of(ActionTreeTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath();
-        } catch (URISyntaxException e) {
-            throw new IOException("cannot locate this test's own class output", e);
-        }
-        for (Path d = here; d != null; d = d.getParent()) {
-            if (Files.isRegularFile(d.resolve("settings.gradle.kts")) && Files.isDirectory(d.resolve("shared/host"))) {
-                return d;
-            }
-        }
-        throw new IOException("cannot locate the jk checkout root from " + here);
+    private static Path repoRoot() {
+        return RepoRoot.find(ActionTreeTest.class);
     }
 }

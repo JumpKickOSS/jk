@@ -8,6 +8,7 @@ import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -149,27 +150,9 @@ class ImageCredentialsTest {
                 .doesNotContain("createTempFile(\"jk-image-");
     }
 
-    /**
-     * {@code ImagePlans.java} on disk, found from this class's output location — a workspace
-     * {@code jk build} runs tests with the CWD at the engine state dir, so relatives miss.
-     */
     private static Path imagePlansSource() throws Exception {
-        Path rel = Path.of("src/main/java/cc/jumpkick/runtime/ImagePlans.java");
-        Path from = Path.of(ImageCredentialsTest.class
-                        .getProtectionDomain()
-                        .getCodeSource()
-                        .getLocation()
-                        .toURI())
-                .toAbsolutePath()
-                .normalize();
-        for (Path start : new Path[] {from, Path.of("").toAbsolutePath().normalize()}) {
-            for (Path d = start; d != null; d = d.getParent()) {
-                if (Files.isRegularFile(d.resolve(rel))) return d.resolve(rel);
-                Path module = d.resolve("server/engine").resolve(rel);
-                if (Files.isRegularFile(module)) return module;
-            }
-        }
-        throw new AssertionError("cannot locate ImagePlans.java from " + from);
+        return RepoRoot.file(
+                ImageCredentialsTest.class, "server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java");
     }
 
     private static ImageConfig imageConfig(String registry) {

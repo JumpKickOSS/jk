@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
@@ -17,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -113,9 +111,7 @@ class CommandWedgeTest {
         // The interactivity gate callers rely on asks whether stdout is a *terminal*, which a
         // pty-allocating IDE or CI runner answers yes to while still parsing every byte. Only
         // analyzingStdout consults scriptMode, so routing around it reopens JK-2330.
-        Optional<Path> mainOpt = MainSources.locate();
-        assumeTrue(mainOpt.isPresent(), "cli main sources not adjacent to test classpath — skip scan");
-        Path main = mainOpt.get();
+        Path main = MainSources.locate();
         Pattern anti = Pattern.compile("analyzing\\(\\s*CliOutput\\.stdout\\(\\)");
         Path wedge = main.resolve("cc/jumpkick/cli/tui/CommandWedge.java");
         List<String> offenders = new ArrayList<>();

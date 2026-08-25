@@ -24,6 +24,20 @@ import java.util.stream.Stream;
  */
 public final class CompileSupport {
 
+    /**
+     * {@code a} then {@code b}, dropping repeats. The dedup is what matters: a path listed
+     * twice appends its {@code source:} token twice and moves the action key, while
+     * {@code ActionKey.appendSources} sorts, so the order this returns them in does not.
+     */
+    static List<Path> concatDistinct(List<Path> a, List<Path> b) {
+        if (b == null || b.isEmpty()) return a == null ? List.of() : a;
+        List<Path> out = new ArrayList<>(a == null ? List.of() : a);
+        for (Path p : b) {
+            if (!out.contains(p)) out.add(p);
+        }
+        return out;
+    }
+
     private CompileSupport() {}
 
     /** One shared language answer for engine lanes and the resolver inject. */
