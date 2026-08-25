@@ -75,8 +75,7 @@ import cc.jumpkick.command.WatchCommand;
 import cc.jumpkick.command.WebCommand;
 import cc.jumpkick.command.WhyCommand;
 import cc.jumpkick.command.WrapperCommand;
-import cc.jumpkick.config.JkConfig;
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.plugin.PluginJarNotFoundException;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
@@ -606,15 +605,8 @@ public final class CommandDispatch {
         return false;
     }
 
+    /** Colored help/error chrome follows the one color gate ({@link GlobalConfig#colorEnabled}). */
     static boolean ansiEnabled() {
-        JkConfig.ColorChoice choice = SessionContext.current().config().colorOr(JkConfig.ColorChoice.AUTO);
-        return switch (choice) {
-            case ALWAYS -> true;
-            case NEVER -> false;
-            case AUTO -> {
-                String nc = System.getenv("NO_COLOR");
-                yield nc == null || nc.isEmpty();
-            }
-        };
+        return GlobalConfig.colorEnabled();
     }
 }

@@ -107,8 +107,12 @@ final class AabPackager {
         }
     }
 
-    /** jarsigner over the bundle: the release identity when configured, else the debug keystore. */
-    private static void signBundle(PackageIo io, Path unsigned, Path out) throws Exception {
+    /**
+     * jarsigner over the bundle: the release identity when configured, else the debug keystore.
+     * Package-private, like {@link #assembleBase}, so the debug arm can run end to end in a test
+     * without a bundletool fork.
+     */
+    static void signBundle(PackageIo io, Path unsigned, Path out) throws Exception {
         Path keystore;
         String storePass;
         String keyPass;

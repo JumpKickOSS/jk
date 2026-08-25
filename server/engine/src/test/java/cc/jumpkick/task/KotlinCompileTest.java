@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The action-cache fast path of {@link KotlinCompile}: an exact-input hit restores the output dir
+ * The action-cache fast path of {@link LangCompile} (Kotlin arm): an exact-input hit restores the output dir
  * from the CAS and never forks the worker (so this runs with no Kotlin toolchain present). The
  * miss/worker path is covered end-to-end by the CLI's KotlinCompilationTest.
  */
@@ -40,7 +40,7 @@ class KotlinCompileTest {
         String sha = cas.hashFromPath(blob).orElseThrow();
         cache.storeWithOutputs("compile-kotlin", key, Map.of(), Map.of("x/A.class", sha));
 
-        KotlinCompile.Result r = KotlinCompile.run("compile-kotlin", req, "jk-test", /* useCache= */ true, cas, cache);
+        LangCompile.Result r = LangCompile.run("compile-kotlin", req, "jk-test", /* useCache= */ true, cas, cache);
 
         assertThat(r.success()).isTrue();
         assertThat(r.cacheHit()).isTrue();

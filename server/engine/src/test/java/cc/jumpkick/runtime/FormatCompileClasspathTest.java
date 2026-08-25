@@ -47,7 +47,7 @@ class FormatCompileClasspathTest {
         // Only the root's main classes exist; the other three directories have never been built.
         Files.createDirectories(project.resolve("target/classes/main"));
 
-        List<Path> classpath = FormatPlans.compileClasspath(project);
+        List<Path> classpath = FormatSources.compileClasspath(project);
 
         assertThat(classpath)
                 .as("javac ignores a missing entry; dropping it would re-key the tree on first test compile")
@@ -63,7 +63,7 @@ class FormatCompileClasspathTest {
     void a_project_with_no_lockfile_gets_no_classpath(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), "[project]\nname = \"root\"\n");
 
-        assertThat(FormatPlans.compileClasspath(tmp)).isEmpty();
+        assertThat(FormatSources.compileClasspath(tmp)).isEmpty();
     }
 
     /**

@@ -6,7 +6,9 @@ import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
@@ -111,7 +113,7 @@ public final class ExplainCommand implements CliCommand {
         boolean hasGraph = graphFmt != null;
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSinceEarly = in.value("affected-since").orElse(null);
-        var peek = BuildCommand.projectInfoOrNull(startDir);
+        var peek = ProjectInfos.orNull(startDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
         Path graphDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : startDir;
@@ -152,7 +154,7 @@ public final class ExplainCommand implements CliCommand {
         // Client-side module filter listing (before engine forecast) when selectors are set.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             try {
-                var selected = BuildCommand.projectInfoOrError(graphDir, modulesSpec, affectedSince);
+                var selected = ProjectInfos.orError(graphDir, modulesSpec, affectedSince);
                 if (selected.error() != null && !selected.error().isBlank()) {
                     CommandWedge.printFail("Explain", selected.error());
                     return Exit.CONFIG;
@@ -333,15 +335,7 @@ public final class ExplainCommand implements CliCommand {
     static String buildTimeEstimateValue(long etaMillis, boolean fullyCached) {
         if (etaMillis <= 0) return fullyCached ? "<1s" : "not yet measured";
         if (etaMillis < 1000) return "<1s";
-        return "~" + fmtDuration(etaMillis);
-    }
-
-    /** "1m 20s" / "8s" / "<1s" — coarse predicted-duration formatting for the plan summary. */
-    private static String fmtDuration(long millis) {
-        if (millis <= 0) return "<1s";
-        long s = millis / 1000; // floor: don't over-state
-        if (s == 0) return "<1s"; // a sub-second cache-verify pass
-        return s >= 60 ? (s / 60) + "m " + (s % 60) + "s" : s + "s";
+        return "~" + DurationText.coarseFloor(etaMillis);
     }
 
     /**

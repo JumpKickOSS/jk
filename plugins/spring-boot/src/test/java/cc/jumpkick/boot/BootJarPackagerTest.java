@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -280,6 +281,38 @@ class BootJarPackagerTest {
     }
 
     /** A minimal jar carrying one entry and nothing else. */
+    @Test
+    void build_info_entries_with_separators_and_spaces_survive_properties_load(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes,
+                        List.of(),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.0.0",
+                        Map.of(),
+                        Map.of(
+                                "built by", "dev=ops:team \\ crew",
+                                "notes", " leading space and #hash",
+                                "revision", "line1\nline2"),
+                        null,
+                        List.of(),
+                        0L));
+
+        Properties loaded = new Properties();
+        try (JarFile jar = new JarFile(out.toFile())) {
+            loaded.load(jar.getInputStream(jar.getEntry("BOOT-INF/classes/META-INF/build-info.properties")));
+        }
+        assertThat(loaded.getProperty("build.built by")).isEqualTo("dev=ops:team \\ crew");
+        assertThat(loaded.getProperty("build.notes")).isEqualTo(" leading space and #hash");
+        assertThat(loaded.getProperty("build.revision")).isEqualTo("line1\nline2");
+    }
+
     private static Path writeJar(Path path, String entryName) throws IOException {
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(path))) {
             jos.putNextEntry(new JarEntry(entryName));

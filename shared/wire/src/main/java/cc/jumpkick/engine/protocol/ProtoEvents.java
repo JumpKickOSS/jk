@@ -402,8 +402,10 @@ public final class ProtoEvents {
         if (module != null && !module.isEmpty()) b.append(",\"module\":").append(Jsonl.quote(module));
         if (engine != null && !engine.isEmpty()) b.append(",\"engine\":").append(Jsonl.quote(engine));
         if (className != null && !className.isEmpty()) {
-            b.append(",\"testClass\":").append(Jsonl.quote(className));
-            b.append(",\"class\":").append(Jsonl.quote(className));
+            b.append(",\"")
+                    .append(EngineProtocol.TEST_CLASS_FIELD)
+                    .append("\":")
+                    .append(Jsonl.quote(className));
         }
         if (method != null && !method.isEmpty()) b.append(",\"method\":").append(Jsonl.quote(method));
         if (exceptionClass != null && !exceptionClass.isEmpty())
@@ -805,24 +807,21 @@ public final class ProtoEvents {
 
     /**
      * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk format} run's
-     * counts and the formatter worker's exit code ({@code jk format --check} exits non-zero when
-     * files need formatting — a legitimate outcome, not a plan failure, so it rides here rather
-     * than failing the plan). {@code total} of 0 means no sources were found.
+     * source total and the formatter worker's exit code ({@code jk format --check} exits non-zero
+     * when files need formatting — a legitimate outcome, not a plan failure, so it rides here
+     * rather than failing the plan). {@code total} of 0 means no sources were found. The
+     * changed/clean/errors tallies deliberately do not ride this event: the CLI tallies all five
+     * summary categories (including plan-local {@code unparseable}) from the per-file
+     * {@code format-file} stream, and a second wire tally that cannot express the fifth category
+     * only invites a reader to trust the number that disagrees with what the CLI prints.
      */
-    public static String planFinishFormat(
-            String dir, boolean success, int changed, int clean, int errors, int total, int workerExit) {
+    public static String planFinishFormat(String dir, boolean success, int total, int workerExit) {
         return "{\"type\":\""
                 + EngineProtocol.BUILDPLAN_FINISH
                 + "\",\"kind\":\"format\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
                 + success
-                + ",\"formatChanged\":"
-                + changed
-                + ",\"formatClean\":"
-                + clean
-                + ",\"formatErrors\":"
-                + errors
                 + ",\"formatTotal\":"
                 + total
                 + ",\"formatWorkerExit\":"

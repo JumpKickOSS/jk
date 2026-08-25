@@ -8,6 +8,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.engine.EnginePaths;
@@ -232,26 +233,26 @@ public final class TasksCommand implements CliCommand {
         Path root = startDir.toAbsolutePath().normalize();
         String modulesSpec = in.value("modules").orElse(null);
         String affected = in.value("affected-since").orElse(null);
-        var peek = BuildCommand.projectInfoOrNull(root);
+        var peek = ProjectInfos.orNull(root);
         if (peek != null
                 && !peek.workspaceRoot()
                 && !peek.workspaceRootDir().isBlank()
                 && ((modulesSpec != null && !modulesSpec.isBlank()) || (affected != null && !affected.isBlank()))) {
             root = Path.of(peek.workspaceRootDir()).toAbsolutePath().normalize();
         }
-        var info = BuildCommand.projectInfoOrError(root, modulesSpec, affected);
+        var info = ProjectInfos.orError(root, modulesSpec, affected);
         if (info.error() != null && !info.error().isBlank()) {
             throw new IllegalStateException(info.error());
         }
         Map<Path, ProjectInfo> out = new LinkedHashMap<>();
         if (info.moduleDirs().isEmpty()) {
-            var self = BuildCommand.projectInfoOrNull(startDir);
+            var self = ProjectInfos.orNull(startDir);
             if (self != null) out.put(startDir.toAbsolutePath().normalize(), self);
             return out;
         }
         for (String d : info.moduleDirs()) {
             Path abs = Path.of(d).toAbsolutePath().normalize();
-            var mod = BuildCommand.projectInfoOrNull(abs);
+            var mod = ProjectInfos.orNull(abs);
             if (mod != null) out.put(abs, mod);
         }
         return out;

@@ -233,7 +233,8 @@ public final class JkBuildParser {
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
         // minified = true enables the minified packager without requiring an empty [minified] table.
-        pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
+        pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(
+                application.orElse(null), pluginConfigs, installedManifests);
         ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests, builtInFetchFailures);
         boolean nativeDeclared = nativeConfig.isPresent()
                 || application.map(JkBuild.Application::nativeImage).orElse(false);

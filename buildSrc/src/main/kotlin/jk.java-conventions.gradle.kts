@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import java.io.File
 import java.time.Duration
 
 plugins {
@@ -84,6 +85,19 @@ val externalTestRuntimes: Map<String, List<Pair<String, String?>>> = mapOf(
         ":engine:test" to listOf("git" to "JK_GIT"),
         ":engine:integrationTest" to listOf("git" to "JK_GIT"))
 
+/** True when the files under [root] total more than [capBytes]; stops counting at the cap. */
+fun treeExceeds(root: File, capBytes: Long): Boolean {
+    if (!root.isDirectory) return false
+    var total = 0L
+    root.walkTopDown().forEach { f ->
+        if (f.isFile) {
+            total += f.length()
+            if (total > capBytes) return true
+        }
+    }
+    return false
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // Isolate tests from the developer's real product layout. JK_HOME is a single-tree
@@ -100,7 +114,30 @@ tasks.withType<Test>().configureEach {
     // overwriting genuine jars when a fixture reuses real coordinates (e.g. the
     // injected junit-jupiter test deps) and corrupting every later build on the
     // machine. The env var also reaches any jk subprocess a test forks.
-    environment("JK_M2_LOCAL", layout.buildDirectory.dir("test-m2").get().asFile.absolutePath)
+    val testM2 = layout.buildDirectory.dir("test-m2").get().asFile.absolutePath
+    environment("JK_M2_LOCAL", testM2)
+    // The warm home is the feature — two suites deliberately prime the store for the rest — but
+    // nothing but `clean` ever removed it, and the CAS plus data/store accumulate every fixture
+    // blob ever fetched: measured at 744 MB under clients/cli and 1,013 MB under server/engine
+    // before this bound existed. So the home is wiped when it turns a week old or outgrows 1 GiB,
+    // and every suite already tolerates the resulting cold start (a fresh checkout is one). This
+    // runs in the task action, before any test JVM forks; test-m2 is undeclared residue of the
+    // same kind and goes in the same sweep.
+    doFirst {
+        val home = File(testJkHome)
+        val stamp = File(home, ".wiped-at")
+        val weekMs = 7L * 24 * 60 * 60 * 1000
+        val capBytes = 1L shl 30
+        val stale = stamp.isFile && System.currentTimeMillis() - stamp.lastModified() > weekMs
+        if (stale || treeExceeds(home, capBytes)) {
+            home.deleteRecursively()
+            File(testM2).deleteRecursively()
+        }
+        if (!stamp.isFile) {
+            home.mkdirs()
+            stamp.writeText("Sweep stamp for the warm test home; see jk.java-conventions.\n")
+        }
+    }
     // The resident engine queues a cache GC on its 12h feed tick — immediately on startup when
     // idle. In-process engines under test share the module's JK_HOME store, so that startup GC
     // races any test fixture staging prune-eligible files (.put-* temps) for its own explicit
@@ -1769,13 +1806,15 @@ tasks.named("jar") { dependsOn(checkNoBareTierName) }
 //      `Os.java`. A second property this class starts owning is banned tree-wide the same minute,
 //      which a copy in this script would not be. Same habit as G8/G12/G13.
 //
-//   2. The classpath separator — a RATCHET outside `cc.jumpkick.host.Classpaths`, because the
-//      vocabulary genuinely overlaps. `File.pathSeparator` is also `PATH`'s separator, and `PATH`
-//      is an executable search path, not a class search path: it is joined by prepending a bin dir
-//      and split against the filesystem, never handed to `-cp`. The six sites below are all `PATH`
-//      and all correct; they are on the list, not exempted silently, so a seventh has to argue for
-//      itself. Giving `PATH` its own owner would retire this arm — filed separately rather than
-//      smuggled in here.
+//   2. The classpath separator — banned outside its OWNERS, plural, because the vocabulary
+//      genuinely overlaps. `File.pathSeparator` is also `PATH`'s separator, and `PATH` is an
+//      executable search path, not a class search path: it is joined by prepending a bin dir and
+//      split against the filesystem, never handed to `-cp`. Classpaths owns the `-cp` vocabulary
+//      and SearchPath owns `PATH`'s (blank entries kept — an empty entry is the current directory
+//      on POSIX — nothing absolutised, order is precedence); both are exempt as declared input
+//      files, so moving either fails loudly. This arm shipped as a six-entry ratchet while `PATH`
+//      had no owner; SearchPath is that owner, and the ratchet below holds the sites still to be
+//      swept onto it — when it empties, delete the map and the arm is a pure ban.
 //
 //      The banned spelling is READ FROM THE OWNER: `Classpaths.SEPARATOR`'s initialiser, plus the
 //      `…Char` variant of it. `System.getProperty("path.separator")` is re-typed, and safely so —
@@ -1792,16 +1831,13 @@ tasks.named("jar") { dependsOn(checkNoBareTierName) }
 // ---------------------------------------------------------------------------
 
 /**
- * `PATH` is the same character and a different vocabulary; see G20 arm 2. Two joins (prepend a bin
- * dir) and four splits (walk the search path) — none of them builds a `-cp`.
+ * `PATH` sites not yet calling `cc.jumpkick.host.SearchPath`; see G20 arm 2. One join (prepend a
+ * bin dir) and one split (walk the search path) — a one-line swap each. Delete the map when it
+ * empties and the arm is a pure ban.
  */
 val pathSeparatorRatchet = mapOf(
         "clients/cli/src/main/java/cc/jumpkick/command/JkEnv.java" to 1,
-        "plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/AotCacheTrainer.java" to 1,
-        "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java" to 1,
-        "shared/toolchain-jdk/src/main/java/cc/jumpkick/compat/PassthroughEnv.java" to 1,
-        "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/ActiveJavac.java" to 1,
-        "shared/toolchain-jdk/src/main/java/cc/jumpkick/tool/NativeImageDriver.java" to 1)
+        "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java" to 1)
 
 val checkSingleHostSurface by tasks.registering {
     group = "verification"
@@ -1812,8 +1848,11 @@ val checkSingleHostSurface by tasks.registering {
             "shared/host/src/main/java/cc/jumpkick/host/Os.java")
     val cpOwner = rootProject.layout.projectDirectory.file(
             "shared/host/src/main/java/cc/jumpkick/host/Classpaths.java")
+    val spOwner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/SearchPath.java")
     inputs.file(osOwner).withPropertyName("osOwner")
     inputs.file(cpOwner).withPropertyName("classpathsOwner")
+    inputs.file(spOwner).withPropertyName("searchPathOwner")
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
     val allowed = pathSeparatorRatchet
@@ -1821,7 +1860,7 @@ val checkSingleHostSurface by tasks.registering {
     outputs.file(stamp)
     doLast {
         val osOwnerFile = osOwner.asFile
-        val cpOwnerFile = cpOwner.asFile
+        val separatorOwners = setOf(cpOwner.asFile, spOwner.asFile)
 
         // Arm 1's ban list, straight out of Os (see G20 above).
         val properties = Regex("""public static final String \w*_?PROPERTY = "([^"]+)";""")
@@ -1836,7 +1875,7 @@ val checkSingleHostSurface by tasks.registering {
 
         // Arm 2's banned spelling, straight out of Classpaths.
         val sepConstant = Regex("""public static final String SEPARATOR = ([\w.]+);""")
-                .find(cpOwnerFile.readText())
+                .find(cpOwner.asFile.readText())
                 ?.groupValues
                 ?.get(1)
                 ?: throw GradleException("cc.jumpkick.host.Classpaths no longer initialises SEPARATOR"
@@ -1861,7 +1900,7 @@ val checkSingleHostSurface by tasks.registering {
                     if (n > 0) unownedOsReads.add("  $rel: $n x System.getProperty(\"$prop\")")
                 }
             }
-            if (f != cpOwnerFile) {
+            if (f !in separatorOwners) {
                 val n = separators.sumOf { countIn(code, it) }
                 if (n > 0) sepHits[rel] = n
             }
@@ -1880,12 +1919,13 @@ val checkSingleHostSurface by tasks.registering {
                     + " guard exists to keep out.")
         }
         if (unlisted.isNotEmpty()) {
-            problems.add("A classpath is joined and split in one place, cc.jumpkick.host.Classpaths"
-                    + " (JK-2420). These name the separator themselves and are not on the ratchet:\n"
+            problems.add("The separator has two owners, one per vocabulary: cc.jumpkick.host.Classpaths"
+                    + " for -cp, cc.jumpkick.host.SearchPath for PATH (JK-2420). These name it"
+                    + " themselves and are not on the ratchet:\n"
                     + unlisted.joinToString("\n")
-                    + "\n  Call Classpaths.join(entries) / Classpaths.split(cp). If this is PATH —"
-                    + " an executable search path, not a class search path — it is an exemption, and"
-                    + " it says so in pathSeparatorRatchet above.")
+                    + "\n  Call Classpaths.join(entries) / Classpaths.split(cp) for a classpath, or"
+                    + " SearchPath.prepend(binDir, existing) / SearchPath.entries(path) for an"
+                    + " executable search path — the two disagree about blank entries on purpose.")
         }
         if (grew.isNotEmpty()) {
             problems.add("A file on the path-separator ratchet may only shrink (JK-2420). These grew:\n"
@@ -1921,18 +1961,25 @@ tasks.named("jar") { dependsOn(checkSingleHostSurface) }
 //
 // The ban list is READ FROM THE OWNER, not re-typed here: every `public static final String` in
 // `RepositorySpec.java`, plus the URL inside `MAVEN_CENTRAL`'s initializer. Add a constant there
-// and it is banned as a literal the same minute. The alias is the one string that is NOT in the
-// owner and is banned anyway — it has to be, because the whole point is that it must never appear.
+// and it is banned as a literal the same minute — `GOOGLE` and `JUMPKICK_NAME` entered the list
+// exactly that way when their names stopped being literals inside their own initializers. The
+// alias is the one string that is NOT in the owner and is banned anyway — it has to be, because
+// the whole point is that it must never appear.
 //
-// `"jumpkick"` and `"google"` are deliberately absent: they are still literals inside their own
-// `RepositorySpec` initializers rather than named constants, and `google` collides with a
-// formatter style (`FormatStyles.JAVA_STYLES`). Giving those two names owners is a separate change.
+// Two exemptions are shapes, not line lists. A reader of someone else's build file:
+// `GradleImporter`, `PomImporter` and `GradleExporter` recognise the repository a Maven or Gradle
+// user declared, and that user may well have typed the alias — so those three must keep matching
+// every spelling, including the one jk itself must never emit. That is a different vocabulary and
+// it is free to diverge, exactly like GraalVM's `native-image` launcher under G12. And a package
+// path segment: `Path.of("cc", "jumpkick", ...)` spells the group's directory, not the repo name,
+// so a value sitting immediately after `"cc",` is skipped by lookbehind rather than by filename —
+// two sites today (`PlannerResources`, `TaskForecaster`), and a third appears pre-exempted.
 //
-// One exemption, and it is a whole shape rather than a list of lines: a reader of someone else's
-// build file. `GradleImporter`, `PomImporter` and `GradleExporter` recognise the repository a
-// Maven or Gradle user declared, and that user may well have typed the alias — so those three must
-// keep matching every spelling, including the one jk itself must never emit. That is a different
-// vocabulary and it is free to diverge, exactly like GraalVM's `native-image` launcher under G12.
+// The formatter style named `google` (`FormatStyles.JAVA_STYLES`, `CodeFormatter`'s ktfmt switch)
+// is the same spelling in a different spec — judged per G21's rule, so those two files are exempt
+// BY FILE with the reason held here. Measured when the names entered the ban list: five bare
+// repo-name literals in `src/main/java` (one `"google"`, four `"jumpkick"`), three format-style
+// hits that must stay, two package segments.
 //
 // Scope is `src/main/java`. Test sources keep their literals on purpose: a fixture that stands up a
 // fake Central and asserts on the URL is pinning the OUTBOUND value, and borrowing the constant
@@ -1944,6 +1991,23 @@ val foreignRepoReaders = setOf(
         "server/toolchain/src/main/java/cc/jumpkick/gradle/GradleImporter.java",
         "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java",
         "shared/toolchain-jdk/src/main/java/cc/jumpkick/gradle/GradleExporter.java")
+
+/**
+ * Files whose `"google"` is a formatter style name (ktfmt / google-java-format), not a repository —
+ * same spelling, different spec, so they are exempt by file. See G16 above.
+ */
+val formatStyleVocabulary = setOf(
+        "shared/core/src/main/java/cc/jumpkick/config/FormatStyles.java",
+        "plugins/formatter/src/main/java/cc/jumpkick/format/CodeFormatter.java")
+
+/**
+ * Repo-name literals not yet calling `RepositorySpec` — `PluginJar.OFFICIAL_REPO` is a second
+ * owner of `"jumpkick"` to be deleted, `RepoGroupBuilder` matches `"google"` inline. Both are a
+ * one-line swap in `:engine`. Delete the map when it empties and the names are a pure ban.
+ */
+val repoNameRatchet = mapOf(
+        "server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginJar.java" to 1,
+        "server/engine/src/main/java/cc/jumpkick/runtime/RepoGroupBuilder.java" to 1)
 
 /** The host that resolves to Central but matches neither the mirror nor the cooldown. */
 val centralAliasHost = "repo1.maven.org"
@@ -1957,7 +2021,9 @@ val checkSingleCentralAddress by tasks.registering {
             "shared/jk-api/src/main/java/cc/jumpkick/model/RepositorySpec.java")
     inputs.file(owner).withPropertyName("repositorySpec")
     val treeRoot = rootProject.layout.projectDirectory.asFile
-    val exempt = foreignRepoReaders
+    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
+    val exempt = foreignRepoReaders + formatStyleVocabulary
+    val allowed = repoNameRatchet
     val alias = centralAliasHost
     val stamp = layout.buildDirectory.file("guards/single-central-address.ok")
     outputs.file(stamp)
@@ -1977,31 +2043,57 @@ val checkSingleCentralAddress by tasks.registering {
                         + " the owner it reads. Restore it or retire this guard deliberately.")
         named[centralUrl] = "MAVEN_CENTRAL.url()"
 
-        val hits = mutableListOf<String>()
+        val aliasHits = mutableListOf<String>()
+        val nameCounts = LinkedHashMap<String, Int>()
+        val nameDetails = LinkedHashMap<String, MutableList<String>>()
         mainJava.files.sorted().forEach { f ->
             val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
             if (f == owner.asFile || rel in exempt) return@forEach
             val code = guardText(f.readText())
             val aliased = countIn(code, Regex(Regex.escape(alias)))
             if (aliased > 0) {
-                hits.add("  $rel: $aliased x $alias  ->  RepositorySpec.MAVEN_CENTRAL.url()")
+                aliasHits.add("  $rel: $aliased x $alias  ->  RepositorySpec.MAVEN_CENTRAL.url()")
             }
             named.forEach { (value, constant) ->
-                val n = countIn(code, Regex(Regex.escape("\"$value\"")))
-                if (n > 0) hits.add("  $rel: $n x \"$value\"  ->  RepositorySpec.$constant")
+                // A value sitting immediately after `"cc",` is a package path segment
+                // (Path.of("cc", "jumpkick", ...)), not a repository name — see G16 above.
+                val n = countIn(code, Regex("""(?<!"cc",)""" + Regex.escape("\"$value\"")))
+                if (n > 0) {
+                    nameCounts.merge(rel, n, Int::plus)
+                    nameDetails
+                            .getOrPut(rel) { mutableListOf() }
+                            .add("  $rel: $n x \"$value\"  ->  RepositorySpec.$constant")
+                }
             }
         }
-        if (hits.isNotEmpty()) {
-            throw GradleException("Maven Central is addressed once, through"
-                    + " cc.jumpkick.model.RepositorySpec.MAVEN_CENTRAL (JK-2419). These spell it"
-                    + " themselves:\n"
-                    + hits.sorted().joinToString("\n")
+        val (grew, unlisted, loose) = ratchetVerdict(nameCounts, allowed, here)
+
+        val problems = mutableListOf<String>()
+        if (aliasHits.isNotEmpty() || unlisted.isNotEmpty()) {
+            val offending = unlisted.map { it.trim().substringAfter("  ") }
+            val details = nameDetails.filterKeys { it in offending }.values.flatten()
+            problems.add("Maven Central is addressed once, through"
+                    + " cc.jumpkick.model.RepositorySpec.MAVEN_CENTRAL, and a repository name is"
+                    + " spelled once, in RepositorySpec (JK-2419). These spell it themselves:\n"
+                    + (aliasHits + details).sorted().joinToString("\n")
                     + "\n  " + alias + " is a CNAME for the canonical host, so CentralMirror and"
                     + " HostCooldown match neither it nor the traffic sent to it — and reaching"
                     + " Central at all outside cc.jumpkick.http.Http misses both regardless of the"
                     + " hostname. Use the constant AND the shared transport. A reader of someone"
                     + " else's build file, which must recognise every spelling a user might have"
-                    + " typed, is the one exemption; add it to foreignRepoReaders with a reason.")
+                    + " typed, is one exemption (foreignRepoReaders); a formatter style that shares"
+                    + " a repo's spelling is the other (formatStyleVocabulary). Add to either only"
+                    + " with a reason.")
+        }
+        if (grew.isNotEmpty()) {
+            problems.add("A file on the repo-name ratchet may only shrink (JK-2419). These grew:\n"
+                    + grew.joinToString("\n"))
+        }
+        if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
+
+        if (loose.isNotEmpty()) {
+            logger.lifecycle("repoNameRatchet is loose (these shrank — tighten it in this commit):")
+            loose.forEach { logger.lifecycle(it) }
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }

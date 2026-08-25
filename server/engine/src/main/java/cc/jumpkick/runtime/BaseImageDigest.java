@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.repo.AuthHeaders;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -29,11 +31,14 @@ import java.util.regex.Pattern;
  * the same retry, offline refusal and per-host cooldown as every other fetch jk makes. A reference
  * that is already digest-pinned needs no network at all, which is the reason to write one.
  *
- * <p><strong>Anonymous only.</strong> The bearer dance below asks for a pull token with no
- * credentials, which is what public registries hand out and what Jib itself does on the build leg.
- * A private base image answers 401 to both legs; resolution then fails, the caller declines to use
- * the packaging cache rather than key on a tag, and the build proceeds (and fails at the pull, for
- * the same missing-credentials reason). Credentials are a separate gap.
+ * <p>A 401 is answered with the same credential the Jib worker gets for its pull leg
+ * ({@link ImageCredentials#resolve}): a Basic credential authenticates the bearer-realm token
+ * request (the Docker Hub / GHCR / registry:2 shape) or, when the challenge is {@code Basic} or
+ * absent, the manifest request itself (the Artifactory / Nexus shape); a Bearer credential goes
+ * straight onto the manifest retry. The credential is sent only to the challenge's realm or to the
+ * registry host — never anywhere else. Anonymous keeps the plain bearer dance a public registry
+ * hands out. A credential the registry rejects leaves the reference unpinned, the caller declines
+ * to use the packaging cache rather than key on a tag, and the build proceeds to Jib's own error.
  */
 final class BaseImageDigest {
 
@@ -53,21 +58,25 @@ final class BaseImageDigest {
     /** {@code key="value"} pairs of an HTTP challenge, quoted values only (all a registry sends). */
     private static final Pattern CHALLENGE_PARAM = Pattern.compile("([a-zA-Z_]+)=\"([^\"]*)\"");
 
+    /** True when {@code reference} already names its digest, so {@link #pin} needs no registry. */
+    static boolean pinned(String reference) {
+        return reference != null && reference.contains("@sha256:");
+    }
+
+    /** As {@link #pin(String, Http, RepoCredential)} for a registry needing no credential. */
+    static Optional<String> pin(String reference, Http http) {
+        return pin(reference, http, RepoCredential.ANONYMOUS);
+    }
+
     /**
      * {@code reference} with its tag replaced by the digest the registry serves for it, or empty
      * when the registry cannot be asked. An already-pinned reference is returned unchanged.
      */
-    static Optional<String> pin(String reference) {
-        return pin(reference, new Http());
-    }
-
-    /** As {@link #pin(String)} with the transport supplied. */
-    static Optional<String> pin(String reference, Http http) {
+    static Optional<String> pin(String reference, Http http, RepoCredential cred) {
         if (reference == null || reference.isBlank()) return Optional.empty();
-        int at = reference.indexOf("@sha256:");
-        if (at >= 0) return Optional.of(reference);
+        if (pinned(reference)) return Optional.of(reference);
         Ref ref = parse(reference);
-        return resolve(http, ref).map(digest -> untagged(reference) + "@" + digest);
+        return resolve(http, ref, cred).map(digest -> untagged(reference) + "@" + digest);
     }
 
     /** The reference with its tag removed — everything the digest replaces. */
@@ -106,15 +115,17 @@ final class BaseImageDigest {
         return new Ref(registry, rest, tag);
     }
 
-    private static Optional<String> resolve(Http http, Ref ref) {
+    private static Optional<String> resolve(Http http, Ref ref, RepoCredential cred) {
         URI manifest = URI.create(base(ref.registry()) + "/v2/" + ref.repository() + "/manifests/" + ref.tag());
         try {
             HttpResponse<byte[]> response = http.get(manifest, Map.of("Accept", ACCEPT));
             if (response.statusCode() == 401) {
-                String token = bearerToken(
-                        http, response.headers().firstValue("www-authenticate").orElse(""), ref);
-                if (token == null) return Optional.empty();
-                response = http.get(manifest, Map.of("Accept", ACCEPT, "Authorization", "Bearer " + token));
+                Map<String, String> auth = retryAuth(
+                        http, response.headers().firstValue("www-authenticate").orElse(""), ref, cred);
+                if (auth.isEmpty()) return Optional.empty();
+                Map<String, String> headers = new HashMap<>(auth);
+                headers.put("Accept", ACCEPT);
+                response = http.get(manifest, headers);
             }
             if (response.statusCode() != 200) return Optional.empty();
             // Docker-Content-Digest is the manifest digest the registry itself computed; hashing the
@@ -131,11 +142,30 @@ final class BaseImageDigest {
     }
 
     /**
-     * A pull token for the {@code Bearer} challenge the registry answered with. Docker Hub issues
-     * one to anyone who asks, which is how an anonymous pull of a public image works at all.
+     * The {@code Authorization} header for the manifest retry after a 401, or empty when the
+     * challenge cannot be answered with {@code cred}. The credential reaches exactly two places:
+     * the challenge's own realm (Basic on the token request) and the registry host (the returned
+     * header) — a challenge cannot redirect it anywhere else.
      */
-    private static String bearerToken(Http http, String challenge, Ref ref) throws InterruptedException {
-        if (!challenge.regionMatches(true, 0, "Bearer ", 0, 7)) return null;
+    private static Map<String, String> retryAuth(Http http, String challenge, Ref ref, RepoCredential cred)
+            throws InterruptedException {
+        // A bearer credential is already the pull token — the realm has nothing to add.
+        if (cred instanceof RepoCredential.Bearer) return AuthHeaders.of(cred);
+        if (challenge.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            String token = bearerToken(http, challenge, ref, AuthHeaders.of(cred));
+            return token == null ? Map.of() : Map.of("Authorization", "Bearer " + token);
+        }
+        // Basic challenge, or none: the manifest endpoint itself takes Basic (Artifactory/Nexus).
+        return cred instanceof RepoCredential.Basic ? AuthHeaders.of(cred) : Map.of();
+    }
+
+    /**
+     * A pull token for the {@code Bearer} challenge the registry answered with. Docker Hub issues
+     * one to anyone who asks, which is how an anonymous pull of a public image works at all; a
+     * private repository issues one only to a realm request carrying {@code realmAuth}.
+     */
+    private static String bearerToken(Http http, String challenge, Ref ref, Map<String, String> realmAuth)
+            throws InterruptedException {
         Map<String, String> params = new HashMap<>();
         Matcher m = CHALLENGE_PARAM.matcher(challenge);
         while (m.find()) params.put(m.group(1).toLowerCase(Locale.ROOT), m.group(2));
@@ -147,7 +177,7 @@ final class BaseImageDigest {
             url.append("&service=").append(encode(params.get("service")));
         }
         try {
-            HttpResponse<byte[]> response = http.get(URI.create(url.toString()));
+            HttpResponse<byte[]> response = http.get(URI.create(url.toString()), realmAuth);
             if (response.statusCode() != 200) return null;
             Object body = MiniJson.parse(new String(response.body(), StandardCharsets.UTF_8));
             if (!(body instanceof Map<?, ?> fields)) return null;

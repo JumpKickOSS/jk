@@ -158,6 +158,26 @@ class ManifestContractTest {
                 .isEqualTo("aar");
     }
 
+    /**
+     * The tool lanes are the same kind of contract: {@link DeployCommand}, {@link InstrumentCommand},
+     * {@link AvdCommand} and {@link AndroidCommand} ask for extras by name, and the engine hands a
+     * command both lanes but a step or packager only {@code [[contribute.step-dependency]]}. So
+     * {@code adb} and {@code sdk-root} — read by commands alone — must sit in the command lane
+     * (upgrading platform-tools then invalidates no compile), while {@code bundletool} and
+     * {@code aapt2} stay step tools the deploy command borrows.
+     */
+    @Test
+    void command_only_tools_sit_in_the_command_lane_and_borrowed_step_tools_stay_put() {
+        assertThat(artifacts("contribute.command-dependency")).containsExactlyInAnyOrder("adb", "sdk-root");
+        assertThat(artifacts("contribute.step-dependency"))
+                .contains("bundletool", "aapt2")
+                .doesNotContain("adb", "sdk-root");
+    }
+
+    private static List<String> artifacts(String lane) {
+        return DESCRIPTOR.array(lane).stream().map(t -> t.string("artifact")).toList();
+    }
+
     // ---- driving the plugin -------------------------------------------------------------
 
     /**

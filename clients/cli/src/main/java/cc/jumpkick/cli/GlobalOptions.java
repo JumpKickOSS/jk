@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
-import cc.jumpkick.cli.run.TimelineOpts;
+import cc.jumpkick.cli.engine.TimelineOpts;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;

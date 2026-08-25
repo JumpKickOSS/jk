@@ -17,9 +17,26 @@ public final class TaskNames {
     public static final String COMPARE_HASHES = "compare-hashes";
     public static final String COMPILE_GROOVY = "compile-groovy";
     public static final String COMPILE_JAVA = "compile-java";
+
+    /**
+     * The Mill-friendly alias of {@link #COMPILE_JAVA} that {@code jk explain}, the action cache
+     * and the freshness stamps use. The live plan and the metrics store use {@code compile-java};
+     * {@code EffortWeights.metricsStepName} is the single translation between the two.
+     */
+    public static final String COMPILE_MAIN = "compile-main";
+
     public static final String COMPILE_KOTLIN = "compile-kotlin";
     public static final String COMPILE_TEST = "compile-test";
     public static final String COPY_RESOURCES = "copy-resources";
+
+    /** Forecast-only: test-resource drift. Never discounts {@link #RUN_TESTS}. */
+    public static final String COPY_TEST_RESOURCES = "copy-test-resources";
+
+    /** Forecast-only: a sibling ordered-after this module is rebuilding. */
+    public static final String ORDER_CHECK = "order-check";
+
+    /** Forecast-only: outputs restored from the action cache instead of rebuilt. */
+    public static final String RESTORE_OUTPUTS = "restore-outputs";
     /** Project build-logic, as the action-cache input label for one logic task. */
     public static final String BUILD_LOGIC = "build-logic";
     /** SPI BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
@@ -77,6 +94,14 @@ public final class TaskNames {
     public static final String WRITE_SYNC_MANIFEST = "write-sync-manifest";
     public static final String DELETE = "delete";
     public static final String INSTALL = "install";
+
+    /**
+     * KSP codegen — the producer ({@code PlannerKsp}) / consumer ({@code compile-*.requires})
+     * dependency edge. Single word, so {@code checkNoBareTaskName}'s hyphen filter cannot enforce
+     * it; the constant is the contract, not the guard.
+     */
+    public static final String KSP = "ksp";
+
     public static final String PREWARM = "prewarm";
     public static final String SELECT = "select";
     public static final String WIZARD = "wizard";

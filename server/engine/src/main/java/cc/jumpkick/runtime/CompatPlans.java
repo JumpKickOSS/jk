@@ -48,14 +48,7 @@ public final class CompatPlans {
      * {@code [[import.gradle-plugin]]} rules come from the engine registry, not a worker catalog.
      */
     public static BuildPlan importBuildPlan(
-            Path source,
-            Path out,
-            Path baseDir,
-            Path tmpDir,
-            boolean force,
-            Path report,
-            Path cache,
-            NoteObserver observer) {
+            Path source, Path out, Path baseDir, Path tmpDir, boolean force, Path report, NoteObserver observer) {
         Task convert = Task.builder("import")
                 .kind(TaskKind.IO)
                 .ticks(1)

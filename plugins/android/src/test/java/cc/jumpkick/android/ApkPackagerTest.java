@@ -29,10 +29,11 @@ import org.junit.jupiter.api.io.TempDir;
  * aapt2 and no device — only {@code keytool} (to mint the fixture keystore) and apksig, which the
  * plugin bundles anyway.
  *
- * <p>The cases sign with a <em>release</em> identity on purpose. {@code Signing.debugKeystore}
- * resolves {@code DebugKeystore.stableDir()} with no seam, so exercising the debug arm from a test
- * would write into the developer's real {@code ~/.android} — see {@link DebugKeystoreTest}, which
- * covers that generation against an explicit directory instead.
+ * <p>Both signing arms run end to end: release from a fixture keystore, and the default debug arm
+ * — the one every plain {@code jk build} takes — with {@code [android] debug-store-dir} pointing
+ * the stable keystore location into the test's temp dir, so the generated identity never touches
+ * the developer's real {@code ~/.android}. {@link DebugKeystoreTest} covers the generation
+ * primitive itself.
  */
 class ApkPackagerTest {
 
@@ -158,6 +159,40 @@ class ApkPackagerTest {
                 .allSatisfy((name, time) -> assertThat(time).as("%s", name).isEqualTo(PINNED));
     }
 
+    /**
+     * The debug arm: no {@code [android.signing.*]} config, so the stable debug identity signs —
+     * v1+v2 applied, v3 not (rotation is a release concern and the debug identity is not
+     * v3-capable). {@code debug-store-dir} redirects the stable location into the temp dir, and the
+     * keystore must materialize there.
+     *
+     * <p>Revert caveat: with the {@code debug-store-dir} read dropped, this run resolves the real
+     * stable dir — read-only when {@code ~/.android/debug.keystore} exists, generating one there
+     * when absent — which is exactly the defect the seam removes. The temp-dir assertion is what
+     * goes red.
+     */
+    @Test
+    void a_build_with_no_signing_config_signs_with_the_debug_identity(@TempDir Path tmp) throws Exception {
+        Path storeDir = tmp.resolve("android-home");
+        FakePackageIo io = builtApp(tmp).config("debug-store-dir", storeDir.toString());
+
+        ApkPackager.produce(io);
+
+        assertThat(DebugKeystore.path(storeDir))
+                .as("the debug identity generates under the redirected store dir")
+                .isRegularFile();
+        ApkVerifier.Result result = new ApkVerifier.Builder(io.artifactPath().toFile())
+                .setMinCheckedPlatformVersion(1)
+                .build()
+                .verify();
+        assertThat(result.getErrors()).isEmpty();
+        assertThat(result.isVerified()).isTrue();
+        assertThat(result.isVerifiedUsingV1Scheme()).isTrue();
+        assertThat(result.isVerifiedUsingV2Scheme()).isTrue();
+        assertThat(result.isVerifiedUsingV3Scheme())
+                .as("a debug identity never carries the rotation scheme")
+                .isFalse();
+    }
+
     /** R8's mapping/seeds/usage land at the stable {@code target/r8/} the retrace tooling reads. */
     @Test
     void the_r8_retrace_artifacts_are_copied_beside_the_target_tree(@TempDir Path tmp) throws Exception {
@@ -229,6 +264,18 @@ class ApkPackagerTest {
     }
 
     private static FakePackageIo app(Path root, Path keysDir) throws Exception {
+        FakePackageIo io = builtApp(root);
+        Path keystore =
+                DebugKeystore.ensure(Files.createDirectories(keysDir), Path.of(System.getProperty("java.home")));
+        io.config("signing.store-file", keystore.toAbsolutePath().toString())
+                .config("signing.key-alias", DebugKeystore.ALIAS)
+                .secret("signing.store-password", KEY_PASSWORD)
+                .secret("signing.key-password", KEY_PASSWORD);
+        return io;
+    }
+
+    /** The app after the resource and dex steps, with no signing config yet — the debug-arm shape. */
+    private static FakePackageIo builtApp(Path root) throws Exception {
         FakePackageIo io = new FakePackageIo(Files.createDirectories(root), "app-1.0.0.apk");
         resourcePackage(io.step("android-res").resolve("packaged/resources.ap_"));
         FakePackageIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex-one");
@@ -239,13 +286,6 @@ class ApkPackagerTest {
         FakePackageIo.write(aar.resolve("assets/config.json"), "from-the-dependency");
         FakePackageIo.write(aar.resolve("assets/aar-only.txt"), "only here");
         FakePackageIo.write(aar.resolve("jni/arm64-v8a/libnative.so"), "ELF");
-
-        Path keystore =
-                DebugKeystore.ensure(Files.createDirectories(keysDir), Path.of(System.getProperty("java.home")));
-        io.config("signing.store-file", keystore.toAbsolutePath().toString())
-                .config("signing.key-alias", DebugKeystore.ALIAS)
-                .secret("signing.store-password", KEY_PASSWORD)
-                .secret("signing.key-password", KEY_PASSWORD);
         return io;
     }
 

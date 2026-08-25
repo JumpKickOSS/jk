@@ -10,6 +10,7 @@ import cc.jumpkick.plugin.build.PackagerSpec;
 import cc.jumpkick.plugin.build.PluginCommandSpec;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.TaskSpec;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -65,6 +66,26 @@ class SigningInputTest {
 
         assertThat(keystore.kind()).isEqualTo(In.Kind.PROJECT_FILES);
         assertThat(keystore.wireName()).isEqualTo("project:/keys/release.jks");
+    }
+
+    /** {@code debug-store-dir} moves the debug identity, so it must move the declared input too. */
+    @Test
+    void a_configured_debug_store_dir_redirects_the_debug_keystore_input() {
+        List<In> inputs = inputsOf(packagerOf(config(Map.of("debug-store-dir", "/ci/android-home"))));
+
+        assertThat(inputs)
+                .contains(In.projectFiles(
+                        DebugKeystore.path(Path.of("/ci/android-home")).toString()));
+        assertThat(inputs).doesNotContain(debugKeystoreInput());
+    }
+
+    /**
+     * Unset, the fallback is the ecosystem's stable dir — asserted on the path chosen, never by
+     * generating anything there.
+     */
+    @Test
+    void an_unset_debug_store_dir_falls_back_to_the_stable_dir() {
+        assertThat(Signing.debugStoreDir(config(Map.of()))).isEqualTo(DebugKeystore.stableDir());
     }
 
     private static In debugKeystoreInput() {

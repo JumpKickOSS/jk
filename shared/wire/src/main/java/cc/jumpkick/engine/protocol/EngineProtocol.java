@@ -16,6 +16,14 @@ public final class EngineProtocol {
     public static final String TYPE_FIELD = "type";
 
     /**
+     * The failing test's class name on diagnostic/error lines, the SSE {@code error} event and the
+     * journal's persisted diagnostics. One spelling everywhere; the retired {@code class} alias is
+     * gone. (The test-worker protocol's {@code class} on {@code --list-only} discovery is a
+     * separate, single-spelled contract.)
+     */
+    public static final String TEST_CLASS_FIELD = "testClass";
+
+    /**
      * Client → server first line on loopback TCP only: shared secret from {@code paths.token}.
      * Never used on the Unix-domain socket (filesystem perms gate access).
      */

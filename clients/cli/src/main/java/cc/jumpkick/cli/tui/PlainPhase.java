@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.TestFailureInfo;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -63,12 +64,9 @@ public final class PlainPhase {
         };
     }
 
-    /** {@code "g:a :: running 80 tests"} → {@code running 80 tests}. */
+    /** {@code "g:a :: running 80 tests"} → {@code running 80 tests} (blind: any leading segment goes). */
     public static String stripModulePrefix(String message) {
-        if (message == null || message.isBlank()) return "";
-        String s = message.trim();
-        int sep = s.indexOf(" :: ");
-        return sep > 0 ? s.substring(sep + 4).trim() : s;
+        return TestFailureInfo.stripLabel(null, message);
     }
 
     /** {@code running 80 tests} when the label carries a remaining-test count. */

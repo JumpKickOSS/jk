@@ -7,6 +7,7 @@ import cc.jumpkick.model.command.Exit;
 import io.quarkus.bootstrap.app.AugmentResult;
 import io.quarkus.bootstrap.app.CuratedApplication;
 import io.quarkus.bootstrap.app.QuarkusBootstrap;
+import io.quarkus.bootstrap.model.ApplicationModel;
 import io.quarkus.bootstrap.model.PlatformImportsImpl;
 import io.quarkus.bootstrap.resolver.BootstrapAppModelResolver;
 import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
@@ -14,7 +15,6 @@ import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.maven.dependency.ArtifactCoords;
 import io.quarkus.maven.dependency.ArtifactDependency;
 import io.quarkus.maven.dependency.Dependency;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -32,7 +32,7 @@ import java.util.Set;
  * Forked entry point for Quarkus production packaging.
  *
  * <p>Args: {@code projectRoot classesDir targetDir baseName group artifact version runtimeListFile
- * quarkusVersion offline}
+ * quarkusVersion platformPropsFile offline}
  *
  * <p>Pure bootstrap — no {@code mvn} CLI. Builds an {@code ApplicationModel} via Quarkus's
  * embedded Maven resolver (BootstrapAppModelResolver), injects platform properties/descriptor,
@@ -46,10 +46,10 @@ import java.util.Set;
 public final class QuarkusAugmentMain {
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 10) {
+        if (args.length != 11) {
             System.err.println(
                     "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version"
-                            + " runtimeListFile quarkusVersion offline");
+                            + " runtimeListFile quarkusVersion platformPropsFile offline");
             System.exit(Exit.USAGE);
         }
         Path appProjectRoot = Path.of(args[0]).toAbsolutePath().normalize();
@@ -61,11 +61,14 @@ public final class QuarkusAugmentMain {
         String version = args[6];
         Path runtimeList = Path.of(args[7]).toAbsolutePath().normalize();
         String quarkusVersion = args[8];
+        // A step-dependency the engine fetched through jk's repo stack — the augment never
+        // resolves the platform-properties coordinate itself.
+        Path platformProps = Path.of(args[9]).toAbsolutePath().normalize();
         // Offline is a per-invocation decision the engine owns. It arrives as an argument, from
         // TaskExec.offline() -> the plugin spec -> the engine's session. Reading JK_OFFLINE or a
         // system property here would read the *engine daemon's* startup environment instead, so
         // one `JK_OFFLINE=1 jk build` would silently pin every later build in that session.
-        boolean offline = EnvValues.parseBool(args[9]).orElse(false);
+        boolean offline = EnvValues.parseBool(args[10]).orElse(false);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
         System.err.println("jk-quarkus-augment: locked runtime closure="
@@ -135,7 +138,7 @@ public final class QuarkusAugmentMain {
                 + model.getDependencies().size());
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
-        injectPlatform(model, quarkusVersion, tails, maven, offline);
+        injectPlatform(model, quarkusVersion, platformProps, offline);
 
         String packageType = normalizePackageType(System.getProperty("jk.quarkus.package.type", "fast-jar"));
         Properties bsp = new Properties();
@@ -243,12 +246,7 @@ public final class QuarkusAugmentMain {
     }
 
     private static void injectPlatform(
-            io.quarkus.bootstrap.model.ApplicationModel model,
-            String quarkusVersion,
-            List<String> tails,
-            MavenArtifactResolver maven,
-            boolean offline)
-            throws Exception {
+            ApplicationModel model, String quarkusVersion, Path platformProps, boolean offline) throws Exception {
         if (!(model.getPlatforms() instanceof PlatformImportsImpl platforms)) {
             System.err.println("jk-quarkus-augment: warning: cannot inject platform props (platforms type "
                     + (model.getPlatforms() == null
@@ -256,31 +254,28 @@ public final class QuarkusAugmentMain {
                             : model.getPlatforms().getClass().getName()) + ")");
             return;
         }
-        Path propsPath = null;
-        for (String tail : tails) {
-            Path candidate = Path.of(
-                    tail,
-                    "io/quarkus/platform/quarkus-bom-quarkus-platform-properties",
-                    quarkusVersion,
-                    "quarkus-bom-quarkus-platform-properties-" + quarkusVersion + ".properties");
-            if (Files.isRegularFile(candidate)) {
-                propsPath = candidate;
-                break;
-            }
-        }
-        if (propsPath == null) {
+        injectPlatformProperties(platforms, quarkusVersion, platformProps, offline);
+        System.err.println("jk-quarkus-augment: platform props="
+                + model.getPlatformProperties().size() + " boms=" + platforms.getImportedPlatformBoms());
+    }
+
+    /**
+     * Register the engine-supplied platform properties file and the descriptor marker on the
+     * model's platform imports. The file is a step-dependency the engine fetched through jk's own
+     * repo stack; a miss here is a store defect, never a reason to resolve — this JVM must not
+     * reach the network through the user's Maven environment.
+     */
+    static void injectPlatformProperties(
+            PlatformImportsImpl platforms, String quarkusVersion, Path platformProps, boolean offline)
+            throws Exception {
+        if (!Files.isRegularFile(platformProps)) {
             String coordinate =
                     "io.quarkus.platform:quarkus-bom-quarkus-platform-properties:" + quarkusVersion + "!properties";
             if (offline) {
-                // The tails are jk's store mirrors plus ~/.m2, and jk has never fetched a
-                // `properties`-typed platform descriptor into either — so on this path the scan
-                // always misses and the Aether fallback is the only branch. Under --offline that
-                // fallback would go to Central behind the flag's back; name the coordinate instead.
                 throw new IOException(Errors.offlineRefusal(coordinate));
             }
-            var art = new org.eclipse.aether.artifact.DefaultArtifact(
-                    "io.quarkus.platform", "quarkus-bom-quarkus-platform-properties", "", "properties", quarkusVersion);
-            propsPath = resolvedArtifactPath(maven.resolve(art).getArtifact());
+            throw new IOException(coordinate + " is not at the engine-supplied path " + platformProps
+                    + " — run `jk lock` to refresh the store, then rebuild");
         }
         platforms.addPlatformProperties(
                 "io.quarkus.platform",
@@ -288,35 +283,10 @@ public final class QuarkusAugmentMain {
                 "",
                 "properties",
                 quarkusVersion,
-                propsPath);
+                platformProps);
         // Marks the BOM import as having a platform descriptor (alignment check).
         platforms.addPlatformDescriptor(
                 "io.quarkus.platform", "quarkus-bom-quarkus-platform-descriptor", "", "json", quarkusVersion);
-        System.err.println("jk-quarkus-augment: platform props="
-                + model.getPlatformProperties().size() + " boms=" + platforms.getImportedPlatformBoms());
-    }
-
-    /**
-     * Path of a resolved Aether artifact. Prefer {@code getPath} (maven-resolver 1.9.20+ / 2.x);
-     * fall back to {@code getFile} for the older resolver pinned by quarkus-bootstrap. Looked up
-     * reflectively so compile against either surface stays free of deprecation noise and missing
-     * symbols.
-     */
-    static Path resolvedArtifactPath(org.eclipse.aether.artifact.Artifact art) {
-        if (art == null) throw new IllegalStateException("resolved artifact is null");
-        try {
-            Object path = art.getClass().getMethod("getPath").invoke(art);
-            if (path instanceof Path p) return p;
-        } catch (ReflectiveOperationException ignored) {
-            // Older Artifact interface — only getFile.
-        }
-        try {
-            Object file = art.getClass().getMethod("getFile").invoke(art);
-            if (file instanceof File f) return f.toPath();
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("cannot resolve path for " + art, e);
-        }
-        throw new IllegalStateException("resolved artifact has no path: " + art);
     }
 
     /**

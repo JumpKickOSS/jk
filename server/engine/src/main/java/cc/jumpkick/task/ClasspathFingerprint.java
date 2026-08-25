@@ -23,10 +23,7 @@ import java.util.TreeMap;
  * Missing entries become a distinct {@code missing:} token.
  *
  * <p>Every walk here drops {@link BuildStamps#isStampFile stamp files}: build-host metadata that
- * lives inside the classes tree, is not code, and whose content changes every build. {@code
- * [build.embed-sha]} outputs ({@code META-INF/jk-<worker>-sha256.txt}) are deliberately <em>not</em>
- * dropped — byte-reproducible jars keep those embedded SHAs stable across no-op rebuilds, and a
- * genuine change to a worker jar <em>should</em> ripple into every module that pins it.
+ * lives inside the classes tree, is not code, and whose content changes every build.
  */
 public final class ClasspathFingerprint {
 

@@ -4,6 +4,7 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.engine.EnginePaths;
@@ -152,7 +153,7 @@ public final class EnsureFreshLock {
             }
             // The lock just changed on disk — memoized summaries (hasLock/lockJdk/lockStale)
             // are stale for the rest of this invocation (JK-2162).
-            cc.jumpkick.command.BuildCommand.forgetProjectInfo();
+            ProjectInfos.forget();
             return Exit.SUCCESS;
         } catch (Exception e) {
             return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);
@@ -166,7 +167,7 @@ public final class EnsureFreshLock {
     public static boolean needsRefresh(Path projectDir) {
         Path owner = lockOwnerOrSelf(projectDir);
         if (!Files.isRegularFile(LockPaths.lockFile(owner))) return true;
-        var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
+        var info = ProjectInfos.orNull(owner);
         return info == null || info.lockStale();
     }
 
@@ -215,7 +216,7 @@ public final class EnsureFreshLock {
             Path owner = LockPaths.lockOwnerDir(projectDir);
             Path toml = owner.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return owner.getFileName().toString();
-            var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
+            var info = ProjectInfos.orNull(owner);
             if (info != null && info.error() == null) {
                 String g = info.group();
                 String n = info.name();

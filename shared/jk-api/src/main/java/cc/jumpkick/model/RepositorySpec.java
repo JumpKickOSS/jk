@@ -70,15 +70,29 @@ public record RepositorySpec(
             "com.google.testing.platform.*");
 
     /**
+     * The one name Google's Android Maven answers to inside jk — store directory, lockfile
+     * {@code source} prefix, repo-group entry. The formatter style of the same spelling
+     * ({@code FormatStyles}) is a different vocabulary and does not borrow this constant.
+     */
+    public static final String GOOGLE = "google";
+
+    /**
      * Google's Android / Play services Maven repository (after Central in the built-in list).
      * Exclusive for {@link #GOOGLE_ANDROID_EXCLUSIVE_GROUPS} by default.
      */
     public static final RepositorySpec GOOGLE_MAVEN = new RepositorySpec(
-            "google",
+            GOOGLE,
             URI.create("https://dl.google.com/dl/android/maven2/"),
             Optional.empty(),
             Optional.empty(),
             GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
+
+    /**
+     * The one name the official first-party repository answers to inside jk — store directory,
+     * lockfile {@code source} prefix, repo-group entry, and the plugin registry's notion of the
+     * official repo. Named {@code JUMPKICK_NAME} because {@link #JUMPKICK} is the spec itself.
+     */
+    public static final String JUMPKICK_NAME = "jumpkick";
 
     /**
      * JumpKick's first-party Maven repository. Exclusive for {@code cc.jumpkick.*} and
@@ -86,7 +100,7 @@ public record RepositorySpec(
      * Hosting redirects that prefix to whatever object store is current (GCS today).
      */
     public static final RepositorySpec JUMPKICK = new RepositorySpec(
-            "jumpkick",
+            JUMPKICK_NAME,
             URI.create("https://jumpkick.build/repo/"),
             Optional.empty(),
             Optional.empty(),

@@ -26,6 +26,38 @@ class BuildStageTest {
         assertThat(BuildStage.ofTaskName("write-stamp-scala")).isEqualTo(BuildStage.COMPILE);
     }
 
+    /** The single-word arms are owned constants ({@code TaskNames.KSP} etc.), typed once each. */
+    @Test
+    void of_task_name_classifies_the_owned_single_word_steps() {
+        assertThat(BuildStage.ofTaskName("ksp")).isEqualTo(BuildStage.COMPILE);
+        assertThat(BuildStage.ofTaskName("prewarm")).isEqualTo(BuildStage.RESOLVE);
+        assertThat(BuildStage.ofTaskName("train")).isEqualTo(BuildStage.TRAIN);
+        assertThat(BuildStage.ofTaskName("install")).isEqualTo(BuildStage.PUBLISH);
+    }
+
+    /** The forecast-only vocabulary classifies through the prefix/contains fallbacks. */
+    @Test
+    void of_task_name_classifies_the_forecast_only_steps() {
+        assertThat(BuildStage.ofTaskName("compile-main")).isEqualTo(BuildStage.COMPILE);
+        assertThat(BuildStage.ofTaskName("copy-test-resources")).isEqualTo(BuildStage.TEST);
+        assertThat(BuildStage.ofTaskName("restore-outputs")).isEqualTo(BuildStage.OTHER);
+        assertThat(BuildStage.ofTaskName("order-check")).isEqualTo(BuildStage.OTHER);
+    }
+
+    /**
+     * The dead arms are deleted, not owned: nothing in the tree produces these names, and the
+     * prefix fallbacks keep the two that had a real family classified while the rest fold to
+     * OTHER instead of borrowing a stage from a feature that does not exist.
+     */
+    @Test
+    void of_task_name_folds_the_unproduced_names_through_the_fallbacks() {
+        assertThat(BuildStage.ofTaskName("train-reachability")).isEqualTo(BuildStage.TRAIN);
+        assertThat(BuildStage.ofTaskName("native-shared")).isEqualTo(BuildStage.NATIVE);
+        assertThat(BuildStage.ofTaskName("sync-deps")).isEqualTo(BuildStage.OTHER);
+        assertThat(BuildStage.ofTaskName("embed-sha")).isEqualTo(BuildStage.OTHER);
+        assertThat(BuildStage.ofTaskName("protoc")).isEqualTo(BuildStage.OTHER);
+    }
+
     @Test
     void task_builder_stage_sets_group_wire() {
         Task t = Task.builder("compile-java").stage(BuildStage.COMPILE).build();

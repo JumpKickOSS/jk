@@ -11,14 +11,12 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -29,8 +27,6 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +35,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * {@code jk image} plan: full build plus OCI tail (Jib plugin or docker/podman Dockerfile
@@ -224,89 +219,34 @@ public final class ImagePlans {
 
                     String chosen = resolveMainClass(mainClass, config, project, projectDir);
 
-                    // Packaging cache — tarball only. A registry push is a network
-                    // side-effect (the remote's state is unknown), so it's never skipped.
-                    // The tarball is a pure function of the main jar, the dependency jars,
-                    // the main class, the image config, and the image-builder plugin version.
-                    // The base image is an input, not a name. `eclipse-temurin:25-jre` moves, and a
-                    // key carrying the tag string is byte-identical across a republish — it would
-                    // serve a tarball built on layers the registry no longer has. Resolve once,
-                    // key on the digest, and hand the worker the pinned reference so the image
-                    // that ships is the image the key describes.
-                    Optional<String> pinnedBase = BaseImageDigest.pin(config.base());
-                    String base = pinnedBase.orElse(config.base());
-
-                    ActionCache ac = new ActionCache(
-                            JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-                    // A base that cannot be resolved (offline, or a registry that wants
-                    // credentials) leaves nothing in the key that identifies the layers underneath
-                    // the tarball, so it is not cached at all rather than cached wrongly. Writing
-                    // `base = "…@sha256:…"` needs no registry round trip and always caches.
-                    boolean useCache = tarballPath != null
-                            && pinnedBase.isPresent()
-                            && !SessionContext.current().config().rebuildOr(false);
                     // Which worker built it, by content: the artifact id is a compile-time constant
                     // and the release version does not move between local builds, so neither can
                     // tell a rebuilt worker from the one whose output is already in the cache.
                     Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.cas(cache));
-                    String imgTask = null, imgKey = null;
-                    if (useCache) {
-                        List<String> tokens = imageTokens(
-                                layout.mainJar(),
-                                depJars,
-                                snapshotJars,
-                                classesDir,
-                                chosen,
-                                base,
-                                config,
-                                appTreeToken(project, layout),
-                                workerJar);
-                        imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
-                        imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens);
-                        var hit = ac.lookup(imgKey);
-                        if (hit.isPresent() && ac.restoreArtifacts(hit.get(), tarballPath.getParent())) {
-                            ctx.put(IMAGE_REF, "");
-                            ctx.label(tarballPath.getFileName() + " up-to-date");
-                            ctx.progress(1);
-                            return;
-                        }
-                    }
-                    boolean daemonMode = tarballPath == null
-                            && (config.registry() == null || config.registry().isBlank());
-                    if (tarballPath != null) {
-                        ctx.label("write OCI tarball " + tarballPath.getFileName());
-                    } else if (daemonMode) {
-                        ctx.label("load into local daemon ("
-                                + (config.dockerExecutable() != null ? config.dockerExecutable() : "docker/podman")
-                                + ")");
-                    } else {
-                        ctx.label("push to "
-                                + config.targetReference(
-                                        project.project().name(),
-                                        project.project().version()));
-                    }
-                    try {
-                        String ref = runImageWorker(
-                                cache,
-                                workerJar,
-                                project,
-                                layout,
-                                config,
-                                base,
-                                chosen,
-                                depJars,
-                                snapshotJars,
-                                classesDir,
-                                tarballPath);
-                        ctx.put(IMAGE_REF, ref);
-                    } catch (RuntimeException e) {
-                        ctx.error("image", e.getMessage());
-                        throw e;
-                    }
-                    if (useCache) {
-                        ac.storeArtifacts(imgTask, imgKey, Map.of(), tarballPath.getParent(), List.of(tarballPath));
-                    }
-                    ctx.progress(1);
+                    ImageWrite.restoreOrBuild(
+                            ctx,
+                            project,
+                            layout,
+                            config,
+                            cache,
+                            tarballPath,
+                            depJars,
+                            snapshotJars,
+                            classesDir,
+                            chosen,
+                            workerJar,
+                            base -> runImageWorker(
+                                    cache,
+                                    workerJar,
+                                    project,
+                                    layout,
+                                    config,
+                                    base,
+                                    chosen,
+                                    depJars,
+                                    snapshotJars,
+                                    classesDir,
+                                    tarballPath));
                 })
                 .build();
 
@@ -637,23 +577,6 @@ public final class ImagePlans {
         sb.append("aot=").append(c.aotCache()).append(';');
         sb.append("dockerfile=").append(c.dockerFile()).append(';');
         return sb.toString();
-    }
-
-    /**
-     * Fingerprint of the packager app tree an app-tree image ships (empty when none is
-     * declared). The tree's content is not derivable from the main jar + dep jars tokens — a
-     * packager config flip (e.g. Quarkus fast-jar vs uber-jar) rewrites the tree without
-     * touching either, and a stale cache hit would restore an image missing what the config now
-     * demands.
-     */
-    private static String appTreeToken(JkBuild project, BuildLayout layout) throws IOException {
-        var shape = PluginBuild.shape(project, layout.moduleRoot());
-        String appDir = shape.map(sh -> sh.appDir()).orElse("");
-        String appJar = shape.map(sh -> sh.appJar()).orElse("");
-        if (appDir.isBlank() || appJar.isBlank()) return "";
-        Path appRoot = layout.moduleTargetDir().resolve(appDir);
-        return appDir + "|" + appJar + "|"
-                + (Files.isDirectory(appRoot) ? ClasspathFingerprint.entry(appRoot) : "absent");
     }
 
     /**

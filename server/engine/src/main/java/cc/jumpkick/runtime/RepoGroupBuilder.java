@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
@@ -56,30 +57,21 @@ public final class RepoGroupBuilder {
     private RepoGroupBuilder() {}
 
     /**
-     * Expand {@code ${VAR}} in object-store credentials, strictly: an unset variable is an error
-     * rather than a silent null that would fall through to the ambient AWS chain and fail far away
-     * from the cause.
+     * Expand {@code ${VAR}} in object-store credentials under {@link RepositoryToml.VarPolicy#STRICT}:
+     * an unset variable is a {@link JkBuildParseException} naming the
+     * {@code repositories.<name>} position, rather than a silent null that would fall through to
+     * the ambient AWS chain and fail far away from the cause.
      */
-    private static ObjectStoreConfig expandObjectStore(
-            String repoName, ObjectStoreConfig cfg, UnaryOperator<String> env) {
+    static ObjectStoreConfig expandObjectStore(String repoName, ObjectStoreConfig cfg, UnaryOperator<String> env) {
         if (cfg == null || cfg.isEmpty()) return ObjectStoreConfig.EMPTY;
+        String where = "repositories." + repoName;
+        RepositoryToml.VarPolicy strict = RepositoryToml.VarPolicy.STRICT;
         return new ObjectStoreConfig(
-                interp(repoName, cfg.region(), env),
-                interp(repoName, cfg.endpoint(), env),
-                interp(repoName, cfg.accessKey(), env),
-                interp(repoName, cfg.secretKey(), env),
-                interp(repoName, cfg.sessionToken(), env));
-    }
-
-    private static String interp(String repoName, String raw, UnaryOperator<String> env) {
-        return RepositoryToml.interpolate(raw, var -> {
-            String value = env.apply(var);
-            if (value == null) {
-                throw new IllegalStateException(
-                        "repositories." + repoName + " references unset environment variable ${" + var + "}");
-            }
-            return value;
-        });
+                RepositoryToml.interpolate(cfg.region(), strict, where, env),
+                RepositoryToml.interpolate(cfg.endpoint(), strict, where, env),
+                RepositoryToml.interpolate(cfg.accessKey(), strict, where, env),
+                RepositoryToml.interpolate(cfg.secretKey(), strict, where, env),
+                RepositoryToml.interpolate(cfg.sessionToken(), strict, where, env));
     }
 
     public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas) {

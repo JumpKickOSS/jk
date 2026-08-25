@@ -528,53 +528,15 @@ public final class AotManifest {
         }
     }
 
-    private static boolean isHex(String s) {
-        for (int i = 0; i < s.length(); i++) {
-            if (Character.digit(s.charAt(i), 16) < 0) return false;
-        }
-        return true;
-    }
-
     private static String stripComma(String s) {
         String t = s.strip();
         if (t.endsWith(",")) t = t.substring(0, t.length() - 1).strip();
         return t;
     }
 
+    /** {@link MinimalToml#unquote}, after the {@code strip} the pre-tokenized call sites rely on. */
     private static String unquote(String s) {
-        String t = s.strip();
-        if (t.length() >= 2 && t.startsWith("\"") && t.endsWith("\"")) {
-            StringBuilder sb = new StringBuilder(t.length());
-            for (int i = 1; i < t.length() - 1; i++) {
-                char c = t.charAt(i);
-                if (c == '\\' && i + 1 < t.length() - 1) {
-                    char n = t.charAt(++i);
-                    switch (n) {
-                        case 'n' -> sb.append('\n');
-                        case 'r' -> sb.append('\r');
-                        case 't' -> sb.append('\t');
-                        case '"' -> sb.append('"');
-                        case '\\' -> sb.append('\\');
-                        case 'u' -> {
-                            // A hand-edited Windows path like "C:{backslash}upgrade" puts non-hex
-                            // after the unicode escape; treat it as literal text, don't throw.
-                            String hex = i + 4 < t.length() - 1 ? t.substring(i + 1, i + 5) : null;
-                            if (hex != null && isHex(hex)) {
-                                sb.append((char) Integer.parseInt(hex, 16));
-                                i += 4;
-                            } else {
-                                sb.append('u');
-                            }
-                        }
-                        default -> sb.append(n);
-                    }
-                } else {
-                    sb.append(c);
-                }
-            }
-            return sb.toString();
-        }
-        return t;
+        return MinimalToml.unquote(s.strip());
     }
 
     private static void writeMap(Path aotDir, Map<String, Entry> map) throws IOException {

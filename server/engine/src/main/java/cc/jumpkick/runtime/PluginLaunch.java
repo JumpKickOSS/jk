@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
@@ -9,10 +8,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
@@ -25,11 +21,13 @@ import java.util.jar.JarFile;
  *
  * <p>Classpath resolution: sibling POM + {@code repos/jk-local} (and the other store repos).
  *
- * <p>This is also where the job's <strong>network policy</strong> joins the spec ({@link
- * #sealNetworkPolicy}). Stamping it at the fork rather than at each of the ten {@link SpecWriter}
- * construction sites is what makes it impossible to omit: a new plan can forget to say whether the
- * run is offline, but it cannot fork a worker without going through here, and the worker reads the
- * answer off the spec instead of off its own environment.
+ * <p>This is also where the job's <strong>network policy</strong> joins the spec
+ * ({@link PluginLoader#sealNetworkPolicy}). The invariant is the seal, not this launcher: every
+ * spec a worker decodes states its policy, and the worker reads the answer off the spec instead
+ * of off its own environment. Stamping at the fork rather than at each of the ten {@link
+ * SpecWriter} plan-builder sites is what makes it impossible to omit here; the compiler and
+ * formatter fork paths, which build their command lines with {@code PluginLoader.command}
+ * directly, seal at their spec producers instead.
  */
 final class PluginLaunch {
 
@@ -37,7 +35,7 @@ final class PluginLaunch {
 
     /** {@code java [extraJvmArgs] -cp … PluginMain spec}, heap-sized for one requested JVM. */
     static List<String> javaCommand(Path workerJar, List<String> extraJvmArgs, Path spec) throws IOException {
-        sealNetworkPolicy(spec);
+        PluginLoader.sealNetworkPolicy(spec);
         Path javaExe = JdkFingerprint.java(JavaHomes.runningJavaHome());
         String cp = WorkerLaunchClasspath.resolve(workerJar);
         List<String> jvmFlags = new ArrayList<>(extraJvmArgs);
@@ -72,21 +70,6 @@ final class PluginLaunch {
             // unreadable jar — the launch itself will surface the real error
         }
         return PluginLoader.WORKER_MAIN;
-    }
-
-    /**
-     * Append the session's {@code --offline} decision to the spec the worker is about to read.
-     *
-     * <p>The value comes from the ambient {@link SessionContext}, which is the same source the
-     * engine's own {@code Http} and {@code MavenRepo} honour — so a worker and its host cannot
-     * disagree about one job. It is appended rather than set by the spec's author because the
-     * authors are ten unrelated plan builders and a forgotten call there is a silent egress; here
-     * there is exactly one call and every fork passes through it.
-     */
-    private static void sealNetworkPolicy(Path spec) throws IOException {
-        List<String> line =
-                new SpecWriter().offline(SessionContext.current().offline()).lines();
-        Files.write(spec, line, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
     }
 
     /** {@code java -cp … PluginMain spec} with no extra JVM args. */

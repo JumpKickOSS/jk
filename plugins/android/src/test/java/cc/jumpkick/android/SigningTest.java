@@ -8,6 +8,7 @@ import com.android.apksig.ApkVerifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.Security;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.CRC32;
@@ -97,16 +98,13 @@ class SigningTest {
      * A keystore in the older JKS format opens and yields its alias — the case a team migrating an
      * existing Gradle release key hits first.
      *
-     * <p>Deliberately <em>not</em> a test of the {@code .jks ? "JKS" : "PKCS12"} choice in
-     * {@code Signing.release}: measured against this JDK, that ternary is inert. The JDK's keystore
-     * compatibility mode (the {@code keystore.type.compat} security property, on by default) makes
-     * both types read either format, so the branch survives being pinned to {@code "PKCS12"} with
-     * this file unchanged. What is asserted here is the outcome a user depends on, which the
-     * ternary is one — currently redundant — way of reaching.
+     * <p>{@code Signing.release} loads through the probing {@code KeyStore.getInstance(File,
+     * char[])}, which detects the format from the store's content — so JKS support needs no type
+     * string, no extension check, and no help from the JDK's keystore compatibility mode.
      */
     @Test
     void a_jks_format_store_loads_and_yields_its_alias(@TempDir Path tmp) throws Exception {
-        Path jks = jksKeystore(tmp);
+        Path jks = keystore(tmp.resolve("jks"), "JKS", "release.jks");
         FakePackageIo io = new FakePackageIo(tmp, "app.apk")
                 .config("signing.store-file", jks.toString())
                 .config("signing.key-alias", "upload")
@@ -114,6 +112,37 @@ class SigningTest {
                 .secret("signing.key-password", PASSWORD);
 
         assertThat(Signing.release(io).name()).isEqualTo("upload");
+    }
+
+    /**
+     * The format is probed from the store's content, never guessed from its file name: keytool has
+     * defaulted to PKCS12 since JDK 9, so a PKCS12 store named {@code .jks} is what most teams
+     * actually hold, and the inverse (a JKS store under AGP's customary {@code .keystore} or any
+     * other name) falls the other way. The JDK's keystore compatibility mode would mask an
+     * extension-based guess — while it is on, either type string reads either format — so it is
+     * off for the assertion. The property is read per load, which keeps the toggle test-local.
+     */
+    @Test
+    void the_store_format_is_probed_from_content_not_from_the_extension(@TempDir Path tmp) throws Exception {
+        Path jksNamedAsP12 = keystore(tmp.resolve("a"), "JKS", "store.p12");
+        Path pkcs12NamedAsJks = keystore(tmp.resolve("b"), "PKCS12", "store.jks");
+        String compat = Security.getProperty("keystore.type.compat");
+        Security.setProperty("keystore.type.compat", "false");
+        try {
+            for (Path store : List.of(jksNamedAsP12, pkcs12NamedAsJks)) {
+                FakePackageIo io = new FakePackageIo(tmp, "app.apk")
+                        .config("signing.store-file", store.toString())
+                        .config("signing.key-alias", "upload")
+                        .secret("signing.store-password", PASSWORD)
+                        .secret("signing.key-password", PASSWORD);
+
+                assertThat(Signing.release(io).name())
+                        .as("%s loads by content", store.getFileName())
+                        .isEqualTo("upload");
+            }
+        } finally {
+            Security.setProperty("keystore.type.compat", compat == null ? "true" : compat);
+        }
     }
 
     /**
@@ -168,16 +197,16 @@ class SigningTest {
                 .secret("signing.key-password", PASSWORD);
     }
 
-    /** A genuine JKS store — the other arm of the store-type choice. */
-    private static Path jksKeystore(Path tmp) throws Exception {
-        Path dir = Files.createDirectories(tmp.resolve("jks"));
-        Path store = dir.resolve("release.jks");
+    /** A genuine keystore of the named format ({@code JKS} or {@code PKCS12}), under any file name. */
+    private static Path keystore(Path dir, String storeType, String fileName) throws Exception {
+        Files.createDirectories(dir);
+        Path store = dir.resolve(fileName);
         Path pass = Files.writeString(dir.resolve("pass"), PASSWORD);
         List<String> command = new ArrayList<>(List.of(
                 Path.of(System.getProperty("java.home"), "bin", "keytool").toString(),
                 "-genkeypair",
                 "-storetype",
-                "JKS",
+                storeType,
                 "-keystore",
                 store.toString(),
                 "-storepass:file",

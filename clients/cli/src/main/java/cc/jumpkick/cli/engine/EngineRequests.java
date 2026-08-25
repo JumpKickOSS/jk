@@ -289,8 +289,7 @@ public final class EngineRequests {
             boolean verbose) {}
 
     /** A hosted {@code jk format} run's summary, decoded from the terminal plan-finish. */
-    public record FormatOutcome(
-            BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
+    public record FormatOutcome(BuildPlanResult result, int total, int workerExit) {}
 
     /**
      * Everything an engine-hosted {@code jk publish} needs. The credential and GPG passphrase were

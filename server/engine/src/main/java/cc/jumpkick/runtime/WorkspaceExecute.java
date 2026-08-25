@@ -216,8 +216,7 @@ public final class WorkspaceExecute {
         // memory plan and the ETA below, so serial builds size heaps and estimate time as serial.
         if (req.maxModuleConcurrency() > 0) width = Math.min(width, req.maxModuleConcurrency());
         if (req.applyMemoryPlan()) {
-            JvmOptions.planAndApply(
-                    HeapPlan.requestedJvms(width, req.workers() > 0 ? req.workers() : 1, parallelTests, cap));
+            JvmOptions.planAndApply(HeapPlan.requestedJvms(width, effectiveWorkers(req), parallelTests, cap));
         }
 
         Set<Path> moduleDirs = new LinkedHashSet<>();
@@ -701,13 +700,7 @@ public final class WorkspaceExecute {
         boolean selected = !spec.hasSelection()
                 || spec.selectedModules().stream()
                         .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
-        // One request-knob decoration for every terminal branch — the PACKAGE branch applies the
-        // same set via inputsFor below. Native/image must honor --variant/profile/workers too.
-        UnaryOperator<BuildPlanner.Inputs> decorate = in -> in.withWorkerCount(req.workers() > 0 ? req.workers() : 1)
-                .withProfileName(req.profile())
-                .withProjectModules(moduleDirs)
-                .withVariant(req.variant(), req.clientEnv())
-                .withEphemeralActions(req.ephemeralActions());
+        UnaryOperator<BuildPlanner.Inputs> decorate = requestKnobs(req, moduleDirs);
         if (target == WorkspaceTarget.NATIVE) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
             boolean allowNative = selected && graal != null;
@@ -763,24 +756,42 @@ public final class WorkspaceExecute {
     }
 
     /**
-     * One module's {@link BuildPlanner.Inputs} for the workspace walk. The variant, the client env
-     * and the ephemeral-actions flag ride every module plan, so an arm that builds Inputs without
-     * one of them silently plans against a different manifest than its siblings.
+     * The one spelling of the request knobs every module plan must carry — workers (clamped),
+     * profile, project modules, variant + client env, ephemeral actions. Every terminal branch of
+     * {@link #assemblePlan} applies this operator (the PACKAGE/INSTALL path via
+     * {@link #moduleInputs}), so a branch cannot silently plan against a different manifest than
+     * its siblings. The single-plan verbs build the same set from the request line
+     * ({@code WorkspaceBuildVerb} and friends) — a different layer, not folded here.
      */
-    private static BuildPlanner.Inputs moduleInputs(
-            Path dir, WorkspaceRequest req, Set<Path> moduleDirs, boolean testOnly) {
-        return TaskForecaster.inputsFor(
+    static UnaryOperator<BuildPlanner.Inputs> requestKnobs(WorkspaceRequest req, Set<Path> moduleDirs) {
+        return in -> in.withWorkerCount(effectiveWorkers(req))
+                .withProfileName(req.profile())
+                .withProjectModules(moduleDirs)
+                .withVariant(req.variant(), req.clientEnv())
+                .withEphemeralActions(req.ephemeralActions());
+    }
+
+    /** Request workers with the {@code 0 = auto} spelling clamped to one planned worker. */
+    private static int effectiveWorkers(WorkspaceRequest req) {
+        return req.workers() > 0 ? req.workers() : 1;
+    }
+
+    /**
+     * One module's {@link BuildPlanner.Inputs} for the workspace walk — {@code inputsFor} plus
+     * {@link #requestKnobs}, so the knob set is applied by the type rather than restated here.
+     */
+    static BuildPlanner.Inputs moduleInputs(Path dir, WorkspaceRequest req, Set<Path> moduleDirs, boolean testOnly) {
+        return requestKnobs(req, moduleDirs)
+                .apply(TaskForecaster.inputsFor(
                         dir,
                         req.cache(),
-                        req.workers() > 0 ? req.workers() : 1,
+                        effectiveWorkers(req),
                         req.jdksDir(),
                         req.profile(),
                         req.skipTests(),
                         req.verbose(),
                         moduleDirs,
-                        testOnly)
-                .withVariant(req.variant(), req.clientEnv())
-                .withEphemeralActions(req.ephemeralActions());
+                        testOnly));
     }
 
     /**

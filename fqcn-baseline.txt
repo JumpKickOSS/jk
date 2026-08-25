@@ -5,7 +5,7 @@
 # parser with no classpath, so it resolved nothing and shortened nothing, and twelve module audits
 # each filed the same finding independently. JK-2408 threaded the classpath in; JK-2412 swept the
 # tree. 4,306 package-qualified references across 622 files became 878 across 253, and the
-# round-3 owner sweeps took it to 810 across 220 — the count below, which the guard prints
+# round-3 owner sweeps took it to 650 across 144 — the count below, which the guard prints
 # whenever a listed file shrinks. Retighten from that printout; never retype it.
 #
 # What a package-qualified reference is, for counting: two or more all-lowercase dot-separated
@@ -86,7 +86,7 @@
 # has no reference left and simply drops out — which is how this section shrinks by itself as
 # OpenRewrite's printer improves, instead of ossifying into an exemption nobody revisits.
 
-   10  clients/cli/src/main/java/cc/jumpkick/cli/EnsureFreshLock.java
+   7  clients/cli/src/main/java/cc/jumpkick/cli/EnsureFreshLock.java
     2  clients/cli/src/main/java/cc/jumpkick/cli/PathDisplay.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/args/ArgParser.java
     5  clients/cli/src/main/java/cc/jumpkick/cli/run/TestFailureHighlight.java
@@ -116,7 +116,7 @@
     1  server/engine/src/main/java/cc/jumpkick/runtime/BuildService.java
    25  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
     3  server/engine/src/main/java/cc/jumpkick/runtime/NativeEffort.java
-   34  server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java
+   33  server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java
    37  server/engine/src/main/java/cc/jumpkick/runtime/TestSupport.java
    10  server/engine/src/main/java/cc/jumpkick/runtime/TrainRunner.java
     1  server/engine/src/main/java/cc/jumpkick/task/CacheRetention.java
@@ -142,7 +142,6 @@
 
 
 ## outside-the-recipe
-    2  server/engine/src/test/java/cc/jumpkick/runtime/TaskForecasterPackageKeyTest.java
 # Three kinds of reference `ShortenFullyQualifiedTypeReferences` does not rewrite, in files it
 # otherwise swept clean:
 #
@@ -167,14 +166,9 @@
     1  clients/cli-terminal/src/test/java/cc/jumpkick/terminal/KeysTest.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/engine/package-info.java
-    2  clients/cli/src/main/java/cc/jumpkick/command/CleanCommand.java
-    1  clients/cli/src/main/java/cc/jumpkick/command/ScriptRunner.java
-    1  clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineTestSupport.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TerminalSizeTest.java
-    3  clients/cli/src/test/java/cc/jumpkick/command/AotCacheStalenessTest.java
-    2  clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java
-    1  clients/cli/src/test/java/cc/jumpkick/command/LibrarySearchCommandTest.java
+    1  clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java
     3  clients/cli/src/test/java/cc/jumpkick/command/SelfNukeCommandTest.java
     1  plugins/formatter/src/main/java/cc/jumpkick/format/CodeFormatter.java
     2  plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java
@@ -183,70 +177,19 @@
     3  plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java
     2  server/engine/src/main/java/cc/jumpkick/engine/EngineVitals.java
     1  server/engine/src/main/java/cc/jumpkick/engine/TerminalSignals.java
-   16  server/engine/src/main/java/cc/jumpkick/engine/http/HttpProjectApi.java
-    7  server/engine/src/main/java/cc/jumpkick/engine/http/HttpReadApi.java
-    9  server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpMachine.java
-    3  server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpManifest.java
-    4  server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpReads.java
     1  server/engine/src/main/java/cc/jumpkick/engine/http/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/engine/jobs/JobBody.java
     1  server/engine/src/main/java/cc/jumpkick/engine/jobs/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/engine/journal/package-info.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/listen/WireEventSink.java
     1  server/engine/src/main/java/cc/jumpkick/engine/listen/package-info.java
-   10  server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/runtime/CacheInventoryOps.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/runtime/ModuleGraphOps.java
-    2  server/engine/src/main/java/cc/jumpkick/engine/runtime/NewProjectOps.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/CacheInventoryVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/CatalogReadVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/DenyCheckVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/EditVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/ExecPlanVerb.java
-    2  server/engine/src/main/java/cc/jumpkick/engine/verbs/ForecastVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/FreshenCatalogVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/GenerateVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/IdeModelVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/LockCascade.java
+   9  server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/LockVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/ModuleGraphVerb.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/NativeVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/NewProjectVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/OutdatedVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/PluginCommandVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/ProjectInfoVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/TreeVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/UpdateVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/WhyVerb.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/WorkspaceBuildVerb.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/package-info.java
-    1  server/engine/src/main/java/cc/jumpkick/git/JGitExtension.java
     1  server/engine/src/main/java/cc/jumpkick/giter8/Giter8Render.java
     1  server/engine/src/main/java/cc/jumpkick/giter8/package-info.java
     8  server/engine/src/main/java/cc/jumpkick/runtime/BuildMetrics.java
-    8  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
-    2  server/engine/src/main/java/cc/jumpkick/runtime/EditOps.java
-    2  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/GenerateOps.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/GraphOps.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/IdeOps.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/JkPluginSync.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/OutdatedPlans.java
-    2  server/engine/src/main/java/cc/jumpkick/runtime/PlannerCompile.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/PlannerKsp.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/PlannerLang.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/PlannerPackage.java
-    3  server/engine/src/main/java/cc/jumpkick/runtime/PlannerPlugin.java
-    4  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
-    2  server/engine/src/main/java/cc/jumpkick/runtime/PlannerTest.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/PluginCommands.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/PolicyOps.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
-    3  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
-    1  server/engine/src/main/java/cc/jumpkick/task/ActionCache.java
-    2  server/engine/src/main/java/cc/jumpkick/task/GroovyCompile.java
-    1  server/engine/src/main/java/cc/jumpkick/task/KotlinCompile.java
-    1  server/engine/src/test/java/cc/jumpkick/engine/http/HttpEngineServerTest.java
+    1  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
     5  server/engine/src/test/java/cc/jumpkick/engine/http/McpHandlerTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/jobs/JobEnvelopeTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/plugin/JvmOptionsTest.java
@@ -255,24 +198,17 @@
     2  server/engine/src/test/java/cc/jumpkick/engine/runtime/CacheInventoryOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/runtime/NewProjectOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/giter8/Giter8TemplateIndexTest.java
-    2  server/engine/src/test/java/cc/jumpkick/runtime/BuildPlannerStagedClassesTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java
     2  server/engine/src/test/java/cc/jumpkick/runtime/ExplainBuildEtaParityTest.java
     3  server/engine/src/test/java/cc/jumpkick/runtime/HiltTransformTest.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/KotlinPluginSetupTest.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/LockFreshenConservativeTest.java
     3  server/engine/src/test/java/cc/jumpkick/runtime/NativePlansTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/PinnedWorkerJarTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
     2  server/engine/src/test/java/cc/jumpkick/runtime/ScheduleBiasTest.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/TaskForecasterPresentTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
-    2  server/engine/src/test/java/cc/jumpkick/runtime/ThirdPartyPluginTest.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/VariantSwitchTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java
-    2  server/engine/src/test/java/cc/jumpkick/task/ClasspathFingerprintTest.java
     5  server/io/src/test/java/cc/jumpkick/repo/MavenRepoM2LookupTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/MavenPackageSourceExclusionTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/NiaWarmLockTimingTest.java
@@ -309,5 +245,4 @@
     2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkCatalogClientTest.java
     2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkRegistryTest.java
     1  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkResolverTest.java
-    2  shared/wire/src/main/java/cc/jumpkick/engine/protocol/EngineWireException.java
     2  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java

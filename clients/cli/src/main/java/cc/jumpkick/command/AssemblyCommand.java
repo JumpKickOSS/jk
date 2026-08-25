@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
@@ -96,7 +97,7 @@ public final class AssemblyCommand implements CliCommand {
         }
 
         if (!oneOff) {
-            var info = BuildCommand.projectInfoOrNull(dir);
+            var info = ProjectInfos.orNull(dir);
             if (info == null || !info.assembly()) {
                 CliOutput.err("""
                         jk assemble: no bundled artifact is configured — pick one:

@@ -242,6 +242,41 @@ public final class JkWedge implements Widget {
     /** Prefix on every plain ({@code --no-ansi}) chrome line so users can tell jk from tool output. */
     public static final String PLAIN_LINE_PREFIX = "jk: ";
 
+    /**
+     * Tail of a plain ({@code --no-ansi}) one-line status — the deliberate variants, named, so the
+     * spinner and the plan view share one line writer instead of diverging copies.
+     */
+    public enum PlainTail {
+        /** {@code message - working...} (spinner start / heartbeat). */
+        WORKING,
+        /** {@code message - done.} (settled spinner). */
+        DONE,
+        /** The bare message (live plan line before progress is known). */
+        BARE,
+        /** {@code 100% - done} (settled plan line; the message is dropped). */
+        PERCENT_DONE
+    }
+
+    /**
+     * The plain one-line status: {@code "jk: * message - tail"} without a command, {@code "jk: *
+     * Command > message - tail"} with one. A blank message falls back to {@code "working"}
+     * ({@link PlainTail#PERCENT_DONE} drops the message entirely).
+     */
+    public static String plainStatusLine(String command, String message, PlainTail tail) {
+        String msg = message == null || message.isBlank() ? "working" : message;
+        String body =
+                switch (tail) {
+                    case WORKING -> msg + " - working...";
+                    case DONE -> msg + " - done.";
+                    case BARE -> msg;
+                    case PERCENT_DONE -> "100% - done";
+                };
+        if (command == null || command.isEmpty()) {
+            return PLAIN_LINE_PREFIX + Glyphs.PULSE_PLAIN + " " + body;
+        }
+        return plainWedge(Glyphs.PULSE_PLAIN, command, body);
+    }
+
     /** {@code "jk: {ascii-icon} {command} >"} optionally followed by {@code " " + message}. */
     public static String plainWedge(String asciiIcon, String command, String message) {
         String cmd = PlainAscii.transform(command == null ? "" : command);

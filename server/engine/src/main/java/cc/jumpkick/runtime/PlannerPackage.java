@@ -245,7 +245,7 @@ public final class PlannerPackage {
                     FreshnessStamp.write(
                             javaOut,
                             BuildStamps.JAVA,
-                            "compile-main",
+                            TaskNames.COMPILE_MAIN,
                             actionKey,
                             sources,
                             stampInputs,

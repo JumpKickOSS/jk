@@ -333,7 +333,8 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if (TaskNames.COPY_RESOURCES.equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
+            if (TaskNames.COPY_RESOURCES.equals(s.name()) || TaskNames.COPY_TEST_RESOURCES.equals(s.name()))
+                return true;
             String t = s.text() == null ? "" : s.text();
             if (TaskNames.PACKAGE_JAR.equals(s.name()) && t.contains("resources changed")) return true;
         }
@@ -348,7 +349,7 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if ("copy-test-resources".equals(s.name())) return true;
+            if (TaskNames.COPY_TEST_RESOURCES.equals(s.name())) return true;
         }
         return false;
     }
@@ -375,7 +376,7 @@ public final class BuildEta {
 
     static boolean isCompileStepName(String name) {
         if (name == null) return false;
-        return name.startsWith("compile-main")
+        return name.startsWith(TaskNames.COMPILE_MAIN)
                 || name.startsWith(TaskNames.COMPILE_JAVA)
                 || name.startsWith(TaskNames.COMPILE_KOTLIN)
                 || name.startsWith(TaskNames.COMPILE_GROOVY)

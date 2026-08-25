@@ -9,7 +9,11 @@ import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -111,6 +115,51 @@ class GlobalConfigTest {
 
     private static NerdFontMode mode(Path configFile) {
         return GlobalConfig.nerdFontMode(configFile, null, null);
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // The no-ANSI gate: one owner, two predicates
+
+    private static Function<String, String> env(String... pairs) {
+        Map<String, String> m = new HashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) m.put(pairs[i], pairs[i + 1]);
+        return m::get;
+    }
+
+    @Test
+    void ansi_suppressed_is_the_bare_trigger_triple() {
+        JkConfig plain = JkConfig.empty();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env())).isFalse();
+        assertThat(GlobalConfig.ansiSuppressed(plain.withNoAnsi(true), env())).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("TERM", "dumb"))).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("TERM", "xterm-256color")))
+                .isFalse();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("CI", "true"))).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("CI", "1"))).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("CI", "false"))).isFalse();
+        // NO_COLOR and --color never do NOT suppress ANSI — they only disable color.
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("NO_COLOR", "1"))).isFalse();
+        assertThat(GlobalConfig.ansiSuppressed(plain.withColor(JkConfig.ColorChoice.NEVER), env()))
+                .isFalse();
+    }
+
+    @Test
+    void color_enabled_is_the_triple_plus_the_color_choice() {
+        JkConfig plain = JkConfig.empty();
+        // The triple wins outright, even over --color always.
+        assertThat(GlobalConfig.colorEnabled(plain.withNoAnsi(true), env())).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env("TERM", "dumb"))).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env("CI", "true"))).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain.withColor(JkConfig.ColorChoice.ALWAYS), env("CI", "1")))
+                .isFalse();
+        // Then the choice: ALWAYS ignores NO_COLOR, NEVER ignores its absence, AUTO honors it.
+        assertThat(GlobalConfig.colorEnabled(plain.withColor(JkConfig.ColorChoice.ALWAYS), env("NO_COLOR", "1")))
+                .isTrue();
+        assertThat(GlobalConfig.colorEnabled(plain.withColor(JkConfig.ColorChoice.NEVER), env()))
+                .isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env())).isTrue();
+        assertThat(GlobalConfig.colorEnabled(plain, env("NO_COLOR", "1"))).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env("NO_COLOR", ""))).isTrue();
     }
 
     @Test
@@ -240,5 +289,25 @@ class GlobalConfigTest {
                 .get()
                 .extracting(c -> ((RepoCredential) c).secret())
                 .isEqualTo("${JK_TEST_DEFINITELY_UNSET_TOKEN}");
+    }
+
+    /**
+     * The owner's policies against an injected environment — the build path resolves the layered
+     * request env ({@code .env} under shell), so neither STRICT nor LENIENT may be welded to
+     * {@code System.getenv}.
+     */
+    @Test
+    void interpolate_resolves_against_an_injected_environment() {
+        UnaryOperator<String> env = var -> "TOKEN".equals(var) ? "s3cr3t" : null;
+        assertThat(RepositoryToml.interpolate(
+                        "x-${TOKEN}-y", RepositoryToml.VarPolicy.STRICT, "repositories.corp", env))
+                .isEqualTo("x-s3cr3t-y");
+        assertThat(RepositoryToml.interpolate("${UNSET}", RepositoryToml.VarPolicy.LENIENT, "repositories.corp", env))
+                .isEqualTo("${UNSET}");
+        assertThatThrownBy(() -> RepositoryToml.interpolate(
+                        "${UNSET}", RepositoryToml.VarPolicy.STRICT, "repositories.corp", env))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.corp")
+                .hasMessageContaining("${UNSET}");
     }
 }

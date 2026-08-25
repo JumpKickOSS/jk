@@ -96,7 +96,7 @@ public final class LocalProjectBuilder {
         //     from source; the Kotlin compiler never emits Java bytecode.
         List<Path> javacCp = new ArrayList<>(classpath);
         if (langs.kotlin()) {
-            List<Path> ktSources = CompileSupport.collectKotlinSources(projectDir, simple);
+            List<Path> ktSources = PlannerCompile.mainKotlinSources(project, projectDir, simple);
             if (!ktSources.isEmpty()) {
                 Path ktOut = layout.kotlinClassesDir();
                 Files.createDirectories(ktOut);

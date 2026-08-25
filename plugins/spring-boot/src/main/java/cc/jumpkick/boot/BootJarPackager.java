@@ -2,6 +2,7 @@
 package cc.jumpkick.boot;
 
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.DeterministicZip;
 import java.io.File;
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -104,17 +106,14 @@ public final class BootJarPackager {
 
     /**
      * {@code build-info.properties} the way Boot's {@code BuildProperties} reads it: {@code build.}
-     * prefixed keys, sorted for reproducibility. {@code build.time} is deliberately absent unless
-     * the caller supplies one — a wall-clock stamp would churn an otherwise-identical jar.
+     * prefixed keys, rendered by {@link DeterministicProperties} so separators and controls survive
+     * {@code Properties.load}. {@code build.time} is deliberately absent unless the caller supplies
+     * one — a wall-clock stamp would churn an otherwise-identical jar.
      */
     private static byte[] buildInfoProperties(Map<String, String> info) {
-        StringBuilder sb = new StringBuilder();
-        info.keySet().stream().sorted().forEach(k -> sb.append("build.")
-                .append(k)
-                .append('=')
-                .append(info.get(k))
-                .append('\n'));
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Map<String, String> prefixed = new LinkedHashMap<>();
+        info.forEach((k, v) -> prefixed.put("build." + k, v));
+        return DeterministicProperties.render(prefixed).getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     /** {@code classpath.idx}: one {@code - "BOOT-INF/lib/…jar"} line per nested jar, in order. */

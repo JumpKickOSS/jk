@@ -201,11 +201,63 @@ fun installPom(storeRoot: File, group: String, artifact: String, version: String
     writeJkMemo(dest, group, artifact, version, sha256Hex(bytes))
 }
 
+/**
+ * The POM a first-party dependency jar carries in the staged repo. Minimal on purpose: the
+ * worker's flattened POM is the closure of record and already names every coordinate, so this one
+ * only has to make `cc.jumpkick:<artifact>` resolvable to a Maven/Gradle consumer — and to
+ * scripts/publish-maven-repo.sh, which refuses to upload a first-party jar without a sibling POM.
+ */
+fun minimalPomXml(group: String, artifact: String, version: String): String = buildString {
+    appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
+    appendLine("""<project xmlns="http://maven.apache.org/POM/4.0.0">""")
+    appendLine("  <modelVersion>4.0.0</modelVersion>")
+    appendLine("  <groupId>${xmlEsc(group)}</groupId>")
+    appendLine("  <artifactId>${xmlEsc(artifact)}</artifactId>")
+    appendLine("  <version>${xmlEsc(version)}</version>")
+    appendLine("  <packaging>jar</packaging>")
+    appendLine("</project>")
+}
+
 fun stageWorkerMavenRepo(storeRoot: File, jar: File, pomXml: String) {
     val ver = project.version.toString()
     installJar(storeRoot, "cc.jumpkick", workerArtifact, ver, jar)
     installPom(storeRoot, "cc.jumpkick", workerArtifact, ver, pomXml)
-    runtimeGavs().forEach { g -> installJar(storeRoot, g.group, g.artifact, g.version, g.file, g.classifier) }
+    runtimeGavs().forEach { g ->
+        installJar(storeRoot, g.group, g.artifact, g.version, g.file, g.classifier)
+        // First-party dependency jars need a POM too — the published repo serves them to real
+        // Maven resolvers, and the publish script hard-refuses a first-party jar without one.
+        // Never overwrite: `jk install` writes a richer POM for the same GAV, and clobbering it
+        // with this stub would degrade transitive resolution for consumers of that module.
+        val pomDest = mavenLocalDir(storeRoot, g.group, g.artifact, g.version)
+                .resolve("${g.artifact}-${g.version}.pom")
+        if (g.group == "cc.jumpkick" && !pomDest.isFile) {
+            installPom(storeRoot, g.group, g.artifact, g.version, minimalPomXml(g.group, g.artifact, g.version))
+        }
+    }
+}
+
+/**
+ * Every first-party jar in [repoRoot] must have a sibling POM — the contract `jk install` keeps
+ * and scripts/publish-maven-repo.sh enforces with a hard exit. Self-failing: a staging that
+ * produced no first-party jar at all verified nothing and fails too.
+ */
+fun assertFirstPartyJarsHavePoms(repoRoot: File) {
+    val firstParty = repoRoot.resolve("repos/jk-local/cc/jumpkick")
+    val jars = firstParty.walkTopDown().filter { it.isFile && it.extension == "jar" }.toList()
+    if (jars.isEmpty()) {
+        throw GradleException("stageWorkerRepo staged no jar under $firstParty, so the jar+POM"
+                + " check verified nothing. The worker jar itself belongs there — fix the staging.")
+    }
+    val pomless = jars.filter { jar ->
+        val ver = jar.parentFile.name
+        val art = jar.parentFile.parentFile.name
+        !jar.resolveSibling("$art-$ver.pom").isFile
+    }
+    if (pomless.isNotEmpty()) {
+        throw GradleException("A first-party jar without a sibling POM cannot be published or"
+                + " resolved — scripts/publish-maven-repo.sh exits 2 on the first one it sees:\n"
+                + pomless.joinToString("\n") { "  ${it.relativeTo(repoRoot)}" })
+    }
 }
 
 fun deleteStaleSidecars(vararg files: File) {
@@ -247,6 +299,7 @@ tasks.register("stageWorkerRepo") {
         val dest = workerRepoDir.get().asFile
         dest.deleteRecursively()
         stageWorkerMavenRepo(dest, jarProvider.get().asFile, workerPomXml())
+        assertFirstPartyJarsHavePoms(dest)
     }
 }
 

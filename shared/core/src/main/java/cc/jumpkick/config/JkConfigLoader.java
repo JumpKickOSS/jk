@@ -37,8 +37,8 @@ public final class JkConfigLoader {
     public static JkConfig load(Path startDir, boolean noConfig, Optional<Path> explicitConfigFile) throws IOException {
         // File layers, lowest precedence first, then the env layer on top.
         JkConfig out = JkConfig.empty();
-        for (Path layer :
-                ConfigSources.discover(startDir, noConfig, explicitConfigFile).layers()) {
+        for (Path layer : ConfigSources.discover(startDir, noConfig, explicitConfigFile.orElse(null))
+                .layers()) {
             out = out.mergedWith(loadTomlOrEmpty(layer));
         }
         // Env vars override files but are overridden by CLI flags (caller's job).

@@ -18,8 +18,9 @@ import java.util.zip.ZipFile;
 /**
  * The Android view of the module's runtime entries: every dependency whose artifact is an AAR
  * container (a remote androidx library or a workspace {@code [android] library} sibling), in
- * classpath order — the deterministic merge order for resources and manifests (app last, so the
- * app wins; matching AGP's precedence).
+ * classpath order — the deterministic merge order for resources, assets and native libs. One
+ * precedence rule everywhere, matching AGP's: among AARs the earlier classpath entry wins, and the
+ * module's own files beat every AAR.
  */
 final class AndroidDeps {
 
@@ -66,16 +67,17 @@ final class AndroidDeps {
     }
 
     /**
-     * The merged {@code assets/} view: AAR dependencies in classpath order, the module's own
-     * {@code assets/} written last so the app wins a path conflict (AGP's precedence). Keys are
-     * asset-relative paths ({@code /}-separated).
+     * The merged {@code assets/} view: the module's own {@code assets/} collected first, then AAR
+     * dependencies in classpath order — the first writer wins, so the app beats every AAR and an
+     * earlier AAR beats a later one (AGP's precedence). Keys are asset-relative paths
+     * ({@code /}-separated).
      */
     static Map<String, Path> mergedAssets(PackageIo io) throws IOException {
         Map<String, Path> out = new LinkedHashMap<>();
+        collectTree(androidFile(io.moduleDir(), "assets"), out);
         for (Aar aar : aars(io.runtimeEntries())) {
             collectTree(aar.container().resolve("assets"), out);
         }
-        collectTree(androidFile(io.moduleDir(), "assets"), out);
         return out;
     }
 
@@ -100,11 +102,12 @@ final class AndroidDeps {
         return out;
     }
 
+    /** Collect {@code root}'s files under relative keys — the first writer of a key wins. */
     private static void collectTree(Path root, Map<String, Path> out) throws IOException {
         if (!Files.isDirectory(root)) return;
         try (var walk = Files.walk(root)) {
             walk.filter(Files::isRegularFile).sorted().forEach(f -> {
-                out.put(root.relativize(f).toString().replace('\\', '/'), f);
+                out.putIfAbsent(root.relativize(f).toString().replace('\\', '/'), f);
             });
         }
     }

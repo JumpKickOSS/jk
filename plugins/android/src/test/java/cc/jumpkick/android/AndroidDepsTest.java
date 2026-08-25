@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
@@ -111,6 +112,44 @@ class AndroidDepsTest {
         assertThat(new AndroidDeps.Aar("empty.aar", empty).hasRes()).isFalse();
         assertThat(new AndroidDeps.Aar("none.aar", none).hasRes()).isFalse();
         assertThat(new AndroidDeps.Aar("some.aar", some).hasRes()).isTrue();
+    }
+
+    /**
+     * One AAR-vs-AAR rule for the whole module, and it is {@code ResourceMerger}'s: the earlier
+     * classpath entry wins. The module's own {@code assets/} still beats every AAR — the collection
+     * order carries that, not a last-writer map.
+     */
+    @Test
+    void the_earlier_aars_asset_wins_and_the_modules_own_beats_both(@TempDir Path tmp) throws Exception {
+        FakePackageIo io = new FakePackageIo(tmp, "app.apk");
+        FakePackageIo.write(io.moduleDir().resolve("assets/dup.txt"), "from-the-module");
+        Path first = io.aar("first.aar");
+        FakePackageIo.write(first.resolve("assets/dup.txt"), "from-first");
+        FakePackageIo.write(first.resolve("assets/aar-dup.txt"), "from-first");
+        Path second = io.aar("second.aar");
+        FakePackageIo.write(second.resolve("assets/dup.txt"), "from-second");
+        FakePackageIo.write(second.resolve("assets/aar-dup.txt"), "from-second");
+
+        Map<String, Path> merged = AndroidDeps.mergedAssets(io);
+
+        assertThat(Files.readString(merged.get("dup.txt")))
+                .as("the app beats every AAR")
+                .isEqualTo("from-the-module");
+        assertThat(Files.readString(merged.get("aar-dup.txt")))
+                .as("between AARs, the earlier classpath entry wins")
+                .isEqualTo("from-first");
+    }
+
+    /** The same rule for {@code jni/<abi>/*.so}: two AARs shipping the same library, earlier wins. */
+    @Test
+    void the_earlier_aars_native_lib_wins_a_path_conflict(@TempDir Path tmp) throws Exception {
+        FakePackageIo io = new FakePackageIo(tmp, "app.apk");
+        FakePackageIo.write(io.aar("first.aar").resolve("jni/arm64-v8a/dup.so"), "ELF-first");
+        FakePackageIo.write(io.aar("second.aar").resolve("jni/arm64-v8a/dup.so"), "ELF-second");
+
+        Map<String, Path> libs = AndroidDeps.nativeLibs(io);
+
+        assertThat(Files.readString(libs.get("arm64-v8a/dup.so"))).isEqualTo("ELF-first");
     }
 
     /**

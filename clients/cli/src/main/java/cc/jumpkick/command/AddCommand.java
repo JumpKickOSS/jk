@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -241,7 +242,7 @@ public final class AddCommand implements CliCommand {
             CommandWedge.printFail("Add", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(target));
             return Exit.CONFIG;
         }
-        var module = BuildCommand.projectInfoOrNull(target);
+        var module = ProjectInfos.orNull(target);
         if (module == null) {
             CommandWedge.printFail("Add", "could not read " + cc.jumpkick.cli.PathDisplay.styledRaw(targetToml));
             return 1;
@@ -282,11 +283,11 @@ public final class AddCommand implements CliCommand {
                                 + " is outside the workspace root "
                                 + root
                                 + "; added the dependency but not registering it as a module.");
-            } else if (Files.exists(rootToml) && BuildCommand.projectInfoOrNull(root) != null) {
+            } else if (Files.exists(rootToml) && ProjectInfos.orNull(root) != null) {
                 // Adding the first local module promotes a plain project into a workspace root
                 // (Cargo/uv semantics) — without the registration the dependency names a
                 // coordinate that was never published and `jk lock` cannot resolve it.
-                boolean alreadyWorkspace = BuildCommand.projectInfoOrNull(root).workspaceRoot();
+                boolean alreadyWorkspace = ProjectInfos.orNull(root).workspaceRoot();
                 String rel = root.relativize(target).toString().replace('\\', '/');
                 String op = alreadyWorkspace ? "add-workspace-module" : "register-workspace-module";
                 if (EngineEdits.apply(rootToml, op, List.of(rel))) {

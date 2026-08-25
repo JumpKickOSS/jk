@@ -4,6 +4,7 @@ package cc.jumpkick.tool;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.SearchPath;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -328,15 +329,11 @@ public final class NativeImageDriver {
             if (fromEnv.isPresent()) return fromEnv;
         }
 
-        // 3. $PATH — splitting it is this class's job; where the launcher sits under an entry is not.
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv != null) {
-            String sep = System.getProperty("path.separator", ":");
-            for (String dir : pathEnv.split(sep, -1)) {
-                if (dir.isBlank()) continue;
-                Optional<Path> onPath = GraalLauncher.onPathEntry(Path.of(dir));
-                if (onPath.isPresent()) return onPath;
-            }
+        // 3. $PATH — where the launcher sits under an entry is GraalLauncher's business, not ours.
+        for (String dir : SearchPath.entries(System.getenv("PATH"))) {
+            if (dir.isBlank()) continue;
+            Optional<Path> onPath = GraalLauncher.onPathEntry(Path.of(dir));
+            if (onPath.isPresent()) return onPath;
         }
 
         return Optional.empty();

@@ -7,7 +7,9 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -209,8 +211,8 @@ public final class StatusCommand implements CliCommand {
             }
         }
 
-        kv("Full Build Time", dashDuration(fullMs));
-        kv("Last Build Time", dashDuration(lastMs));
+        kv("Full Build Time", formatDuration(fullMs));
+        kv("Last Build Time", formatDuration(lastMs));
         kv("Next Build Time", nextMs >= 0 ? "~" + formatDuration(nextMs) : "—");
         kv("Modules Cached", modulesCached);
         kv("Artifacts Cached", artifactsCached);
@@ -227,9 +229,9 @@ public final class StatusCommand implements CliCommand {
             kv("Total Build Time", "—");
             return;
         }
-        kv("Avg Build Time", dashDuration(g.okCount > 0 ? g.okAvgMillis : -1));
-        kv("Min Build Time", dashDuration(g.okCount > 0 ? g.okMinMillis : -1));
-        kv("Max Build Time", dashDuration(g.okCount > 0 ? g.okMaxMillis : -1));
+        kv("Avg Build Time", formatDuration(g.okCount > 0 ? g.okAvgMillis : -1));
+        kv("Min Build Time", formatDuration(g.okCount > 0 ? g.okMinMillis : -1));
+        kv("Max Build Time", formatDuration(g.okCount > 0 ? g.okMaxMillis : -1));
         long total = g.okCount + g.failCount + g.cancelCount;
         StringBuilder outcomes = new StringBuilder(formatCount(total));
         outcomes.append(" (");
@@ -435,7 +437,7 @@ public final class StatusCommand implements CliCommand {
         Path buildFile = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(buildFile)) return null;
         try {
-            var info = BuildCommand.projectInfoOrNull(cwd, true);
+            var info = ProjectInfos.orNull(cwd, true);
             if (info == null) {
                 return new ProjectSnapshot(cwd.getFileName().toString(), "—", "—", 0, 0, 0);
             }
@@ -515,27 +517,9 @@ public final class StatusCommand implements CliCommand {
 
     // ── formatting ───────────────────────────────────────────────────────────
 
+    /** Status-table duration, zero components omitted; {@code —} when negative. */
     static String formatDuration(long millis) {
-        if (millis < 0) return "—";
-        if (millis < 1000) return millis + "ms";
-        long totalSec = millis / 1000;
-        long days = totalSec / 86_400;
-        totalSec %= 86_400;
-        long hours = totalSec / 3_600;
-        totalSec %= 3_600;
-        long mins = totalSec / 60;
-        long secs = totalSec % 60;
-        // Omit zero components: "1d 4h 12s", "3m 12s", "22s".
-        ArrayList<String> parts = new ArrayList<>(4);
-        if (days > 0) parts.add(days + "d");
-        if (hours > 0) parts.add(hours + "h");
-        if (mins > 0) parts.add(mins + "m");
-        if (secs > 0 || parts.isEmpty()) parts.add(secs + "s");
-        return String.join(" ", parts);
-    }
-
-    private static String dashDuration(long millis) {
-        return millis < 0 ? "—" : formatDuration(millis);
+        return DurationText.omitZero(millis);
     }
 
     private static String formatCount(long n) {

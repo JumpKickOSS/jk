@@ -8,6 +8,7 @@ import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -103,12 +104,12 @@ public final class ImageCommand implements CliCommand {
         // -m/--modules: an image is built for exactly one module — redirect to it.
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
-        var peekEarly = BuildCommand.projectInfoOrNull(projectDir);
+        var peekEarly = ProjectInfos.orNull(projectDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, modulesSpec, peekEarly);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
             Path selectRoot = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : projectDir;
-            var selected = BuildCommand.projectInfoOrError(selectRoot, modulesSpec, affectedSince);
+            var selected = ProjectInfos.orError(selectRoot, modulesSpec, affectedSince);
             if (selected.error() != null && !selected.error().isBlank()) {
                 CommandWedge.printFail("Image", selected.error());
                 return Exit.CONFIG;
@@ -124,7 +125,7 @@ public final class ImageCommand implements CliCommand {
             jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
-        var peek = BuildCommand.projectInfoOrNull(projectDir);
+        var peek = ProjectInfos.orNull(projectDir);
         if (peek != null
                 && !peek.workspaceRootDir().isBlank()
                 && !Path.of(peek.workspaceRootDir())
@@ -241,7 +242,7 @@ public final class ImageCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Image", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(moduleDir));
-        var moduleInfo = BuildCommand.projectInfoOrNull(moduleDir);
+        var moduleInfo = ProjectInfos.orNull(moduleDir);
         ModuleScopeHint.show(
                 "building", ModuleScopeHint.namesFrom(moduleInfo), global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);

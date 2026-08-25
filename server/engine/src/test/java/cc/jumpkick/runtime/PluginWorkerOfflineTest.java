@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -28,9 +29,11 @@ import org.junit.jupiter.api.io.TempDir;
  * back out of the spec it was launched with — see {@link OfflineEchoWorker} — rather than on what
  * the engine wrote. Only the second of those two claims was ever true.
  *
- * <p>{@code PluginLaunch.javaCommand} is the single fork choke point for every plugin worker
- * (build steps, packagers, plugin commands, format, audit, publish, image), which is why the stamp
- * lives there and not at the ten places a spec is assembled: a plan cannot fork without it.
+ * <p>The invariant is the <em>seal</em> ({@code PluginLoader.sealNetworkPolicy}), not one
+ * launcher: {@code PluginLaunch.javaCommand} stamps every generic plugin fork (build steps,
+ * packagers, plugin commands, format, audit, publish, image), and the compiler/formatter paths
+ * that fork through {@code PluginLoader.command} directly — {@code ForkedJavac},
+ * {@code KotlincSpec}, {@code GroovycSpec}, the AOT trainers — stamp at their spec producers.
  *
  * <p>Each case asserts the decoded value <em>and</em> whether the spec stated a policy at all. Only
  * the second distinguishes the stamp from the fail-closed default: with the stamp removed an
@@ -50,8 +53,35 @@ class PluginWorkerOfflineTest {
     }
 
     /**
-     * The complement of the two above, and the reason the stamp is safe to centralise: a spec that
-     * never passed through the launcher carries no policy, and a worker that is told nothing
+     * The compiler fork family bypasses {@code PluginLaunch} entirely, so its seal lives in the
+     * spec producer. The {@code stated} half is the load-bearing assertion: with the producer's
+     * seal removed an online session's spec decodes {@code offline=true stated=false} — the
+     * fail-closed default — so a value-only assertion on an offline run would stay green.
+     */
+    @Test
+    void a_compiler_spec_is_sealed_by_its_producer(@TempDir Path dir) throws Exception {
+        ForkedJavac.Request request = new ForkedJavac.Request(
+                dir.resolve("jdk"),
+                fakeJar(dir),
+                List.of(dir.resolve("Main.java")),
+                List.of(),
+                List.of(),
+                dir.resolve("classes"),
+                null,
+                25,
+                List.of(),
+                null);
+        Path spec = SessionContext.where(session(false), () -> ForkedJavac.writeSpec(request));
+        try {
+            assertThat(runEchoWorker(spec)).isEqualTo("offline=false stated=true");
+        } finally {
+            Files.deleteIfExists(spec);
+        }
+    }
+
+    /**
+     * The complement of the stamped cases, and the reason the stamp is safe to centralise: a spec
+     * that never passed through a seal site carries no policy, and a worker that is told nothing
      * refuses to reach out rather than assuming it may.
      */
     @Test

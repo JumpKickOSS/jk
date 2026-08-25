@@ -53,7 +53,7 @@ class GroovyCompileWipeTest {
         Files.writeString(out.resolve("B.class"), "STALE");
         Files.writeString(stubs.resolve("B.java"), "stub class B {}");
 
-        GroovyCompile.Result result = GroovyCompile.run("compile-groovy@x", req, "test-jk", true, cas, cache);
+        LangCompile.Result result = LangCompile.run("compile-groovy@x", req, "test-jk", true, cas, cache);
 
         assertThat(result.cacheHit()).isTrue();
         assertThat(out.resolve("A.class")).exists();

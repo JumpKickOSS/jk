@@ -36,9 +36,8 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
-import cc.jumpkick.task.GroovyCompile;
 import cc.jumpkick.task.JavaCompile;
-import cc.jumpkick.task.KotlinCompile;
+import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -118,6 +117,33 @@ public final class PlannerCompile {
         all.addAll(kspGenerated);
         all.addAll(logicGenerated);
         return all;
+    }
+
+    /**
+     * What {@code BuildPlanner.KOTLIN_SOURCES} holds: the module's {@code .kt} walk plus the
+     * {@code [build] extra-src} overlay and plugin-contributed source roots. One derivation for
+     * the build, the forecast and the pricing walks — a bare {@code src/main} walk sees no
+     * sources at all for a module whose Kotlin lives only under contributed roots.
+     */
+    public static List<Path> mainKotlinSources(JkBuild project, Path moduleDir, boolean compact) throws IOException {
+        return mainKotlinSources(project, moduleDir, CompileSupport.collectKotlinSources(moduleDir, compact));
+    }
+
+    /** As above with the module walk already done ({@code kotlinSeed}), so the common path does not walk twice. */
+    public static List<Path> mainKotlinSources(JkBuild project, Path moduleDir, List<Path> kotlinSeed)
+            throws IOException {
+        return CompileSupport.withExtraSources(kotlinSeed, extraSourceDirs(project, moduleDir), ".kt");
+    }
+
+    /** {@link #mainKotlinSources(JkBuild, Path, boolean)}, for {@code GROOVY_SOURCES}. */
+    public static List<Path> mainGroovySources(JkBuild project, Path moduleDir, boolean compact) throws IOException {
+        return mainGroovySources(project, moduleDir, CompileSupport.collectGroovySources(moduleDir, compact));
+    }
+
+    /** As above with the module walk already done ({@code groovySeed}), so the common path does not walk twice. */
+    public static List<Path> mainGroovySources(JkBuild project, Path moduleDir, List<Path> groovySeed)
+            throws IOException {
+        return CompileSupport.withExtraSources(groovySeed, extraSourceDirs(project, moduleDir), ".groovy");
     }
 
     /**
@@ -318,7 +344,7 @@ public final class PlannerCompile {
                             cx.mixedGroovy(),
                             groovyJar,
                             scalaSetup));
-                    String taskId = ActionKey.qualifiedTaskId("compile-main", javaOut);
+                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, javaOut);
                     Path javaStateDir = ActionTree.INCREMENTAL_JAVA
                             .under(CacheTree.ACTIONS.under(in.cache()))
                             .resolve(taskId);
@@ -393,7 +419,7 @@ public final class PlannerCompile {
                 TaskNames.RESOLVE_DEPS,
                 TaskNames.ENSURE_JDK,
                 TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
-        if (ksp) requires.add("ksp");
+        if (ksp) requires.add(TaskNames.KSP);
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
     }
@@ -407,7 +433,7 @@ public final class PlannerCompile {
                 TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
         if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
-        if (ksp) requires.add("ksp");
+        if (ksp) requires.add(TaskNames.KSP);
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
     }
@@ -457,6 +483,8 @@ public final class PlannerCompile {
                     List<Path> srcs = kotlinMainSrcRef.get();
                     if (srcs == null) {
                         try {
+                            // Tick-count pre-walk only; parse-build re-derives the real
+                            // list via mainKotlinSources and overwrites the ref.
                             srcs = CompileSupport.collectKotlinSources(in.dir(), compact);
                         } catch (Exception ignored) {
                             srcs = List.of();
@@ -534,7 +562,7 @@ public final class PlannerCompile {
                             .resolve(taskId);
                     // Mixed module: Kotlin reads the Java declarations from source
                     // (analysis only — it emits no Java bytecode; javac does next).
-                    KotlinCompile.Result kr = compileKotlinSources(
+                    LangCompile.Result kr = compileKotlinSources(
                             ctx,
                             in,
                             cas,
@@ -585,6 +613,8 @@ public final class PlannerCompile {
                     List<Path> srcs = groovyMainSrcRef.get();
                     if (srcs == null) {
                         try {
+                            // Tick-count pre-walk only; parse-build re-derives the real
+                            // list via mainGroovySources and overwrites the ref.
                             srcs = CompileSupport.collectGroovySources(in.dir(), compact);
                         } catch (Exception ignored) {
                             srcs = List.of();
@@ -649,7 +679,7 @@ public final class PlannerCompile {
                     // Mixed module: joint mode sweeps the Java roots for resolution only
                     // stubs are retained for javac's sourcepath; jk's javac worker stays
                     // authoritative for the real Java outputs.
-                    GroovyCompile.Result gr = compileGroovySources(
+                    LangCompile.Result gr = compileGroovySources(
                             ctx,
                             in,
                             cas,

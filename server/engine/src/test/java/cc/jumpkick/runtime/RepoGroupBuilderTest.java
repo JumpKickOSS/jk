@@ -2,13 +2,16 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.SafeUri;
+import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.task.RunNotices;
@@ -294,5 +297,26 @@ class RepoGroupBuilderTest {
                 .filteredOn(repo -> "nexus".equals(repo.name()))
                 .singleElement()
                 .satisfies(repo -> assertThat(repo.baseUrl().toString()).isEqualTo("https://nexus.example.com/repo/"));
+    }
+
+    /**
+     * Object-store {@code ${VAR}} expansion is the owner's STRICT policy against the request env:
+     * an unset variable is a {@link JkBuildParseException} naming the {@code repositories.<name>}
+     * position, and a set one resolves from the injected lookup, never the real environ.
+     */
+    @Test
+    void object_store_vars_expand_strictly_against_the_request_env() {
+        ObjectStoreConfig cfg = new ObjectStoreConfig("${JK_TEST_S3_REGION}", null, "${JK_TEST_S3_ACCESS}", null, null);
+
+        assertThatThrownBy(() -> RepoGroupBuilder.expandObjectStore("corp", cfg, var -> null))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.corp")
+                .hasMessageContaining("${JK_TEST_S3_REGION}");
+
+        Map<String, String> env = Map.of("JK_TEST_S3_REGION", "us-east-1", "JK_TEST_S3_ACCESS", "AKIAEXAMPLE");
+        ObjectStoreConfig expanded = RepoGroupBuilder.expandObjectStore("corp", cfg, env::get);
+        assertThat(expanded.region()).isEqualTo("us-east-1");
+        assertThat(expanded.accessKey()).isEqualTo("AKIAEXAMPLE");
+        assertThat(expanded.endpoint()).isNull();
     }
 }

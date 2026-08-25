@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.TestFailureInfo;
 import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
@@ -136,7 +137,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void ready_and_plan_events_are_ignored_for_counts() {
         var agg = new JUnitLauncher.ResultAggregator();
-        agg.accept("{\"event\":\"ready\",\"w\":1}");
+        agg.accept("{\"event\":\"ready\",\"worker\":1}");
         agg.accept("{\"event\":\"plan_started\"}");
         agg.accept("{\"event\":\"plan_finished\",\"duration_ms\":100}");
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
@@ -146,9 +147,9 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void unique_id_percent_decode_and_class_extract() {
-        assertThat(JUnitLauncher.percentDecode("bar(int%5B%5D)")).isEqualTo("bar(int[])");
-        assertThat(JUnitLauncher.percentDecode("foo%2Fbar%251")).isEqualTo("foo/bar%1");
-        assertThat(JUnitLauncher.percentDecode("plain")).isEqualTo("plain");
+        assertThat(JUnitUniqueIds.percentDecode("bar(int%5B%5D)")).isEqualTo("bar(int[])");
+        assertThat(JUnitUniqueIds.percentDecode("foo%2Fbar%251")).isEqualTo("foo/bar%1");
+        assertThat(JUnitUniqueIds.percentDecode("plain")).isEqualTo("plain");
         assertThat(JUnitLauncher.classFromUniqueId(
                         "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
                 .isEqualTo("demo.FooTest");

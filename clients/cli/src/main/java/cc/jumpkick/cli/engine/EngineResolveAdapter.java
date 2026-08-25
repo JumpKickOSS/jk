@@ -11,9 +11,7 @@ import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.run.TaskStatus;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -152,7 +150,7 @@ final class EngineResolveAdapter {
                         case EngineProtocol.PLAN_TASK ->
                             steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(wireGroup(Jsonl.str(line, "stage")))
+                                    .phase(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                         case EngineProtocol.BUILDPLAN_FINISH -> {
@@ -172,7 +170,7 @@ final class EngineResolveAdapter {
                         }
                         case EngineProtocol.ERROR ->
                             throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
+                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
                     }
                     return null;
                 }
@@ -215,7 +213,7 @@ final class EngineResolveAdapter {
                         case EngineProtocol.PLAN_TASK ->
                             steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(wireGroup(Jsonl.str(line, "stage")))
+                                    .phase(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         case EngineProtocol.PLAN_DONE ->
                             listener = handler.onModuleStart(currentDir, currentCoord, steps);
@@ -254,7 +252,7 @@ final class EngineResolveAdapter {
                         }
                         case EngineProtocol.ERROR ->
                             throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
+                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
                     }
                     return null;
                 }
@@ -286,75 +284,6 @@ final class EngineResolveAdapter {
         }
     }
 
-    /**
-     * Replay one standard single-plan wire event into {@code listener} (accumulating {@code
-     * plan-diagnostic}s aside, like {@link EngineEventDecoder} does) — the shared tail of
-     * both stream loops. Unknown types are forward-compatible no-ops.
-     */
-    private static void dispatchBuildPlanEvent(
-            String type,
-            String line,
-            @Nullable BuildPlanListener listener,
-            List<BuildPlanResult.Diagnostic> diagnostics) {
-        if (listener == null) {
-            // plan-diagnostics can still matter pre-listener; everything else needs one.
-            if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
-                diagnostics.add(readDiagnostic(line));
-            }
-            return;
-        }
-        switch (type) {
-            case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
-            case EngineProtocol.TASK_START ->
-                listener.stepStart(
-                        Jsonl.str(line, "task"), wireGroup(Jsonl.str(line, "stage")), Jsonl.intValue(line, "ticks", 0));
-            case EngineProtocol.PROGRESS ->
-                listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
-            case EngineProtocol.TICK_UPDATE ->
-                listener.tickUpdate(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
-            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "task"), Jsonl.str(line, "label"));
-            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
-            case EngineProtocol.WARN ->
-                listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
-            case EngineProtocol.ERROR_LINE ->
-                listener.error(
-                        Jsonl.str(line, "task"),
-                        Jsonl.str(line, "code"),
-                        Jsonl.str(line, "message"),
-                        Jsonl.str(line, "test"),
-                        Jsonl.str(line, "exceptionClass"));
-            case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
-            case EngineProtocol.TASK_FINISH ->
-                listener.stepFinish(
-                        Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "stage")),
-                        TaskStatus.valueOf(Jsonl.str(line, "status")),
-                        Duration.ZERO);
-            default -> {
-                /* forward-compatible no-op */
-            }
-        }
-    }
-
-    private static BuildPlanResult.Diagnostic readDiagnostic(String line) {
-        return new BuildPlanResult.Diagnostic(
-                Jsonl.str(line, "task"),
-                Jsonl.str(line, "code"),
-                Jsonl.str(line, "message"),
-                Jsonl.str(line, "test"),
-                Jsonl.str(line, "exceptionClass"));
-    }
-
-    private static BuildPlanView readBuildPlanView(String line) {
-        return new BuildPlanView(
-                Jsonl.str(line, "planName"),
-                Jsonl.longValue(line, "numerator", 0),
-                Jsonl.longValue(line, "denominator", 0),
-                Jsonl.intValue(line, "tasksTotal", 0),
-                Jsonl.intValue(line, "tasksComplete", 0),
-                Jsonl.bool(line, "cancelled", false));
-    }
-
     private static void send(BufferedWriter writer, String line) throws IOException {
         writer.write(line);
         writer.write('\n');
@@ -362,8 +291,4 @@ final class EngineResolveAdapter {
     }
 
     private static final EngineRequests.LockHandler NOOP_HANDLER = (dir, coord, steps) -> new BuildPlanListener() {};
-
-    private static @Nullable String wireGroup(@Nullable String raw) {
-        return raw == null || raw.isBlank() ? null : raw;
-    }
 }

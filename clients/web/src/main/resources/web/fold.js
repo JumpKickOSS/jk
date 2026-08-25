@@ -5,6 +5,7 @@
 import { isTestFailureDiag } from './failure.js';
 import { fmtDuration } from './format.js';
 import { stepState } from './outcome.js';
+import { EVENT, SSE } from './wire.js';
 
 /** Cards kept in the activity feed — a long-lived tab must not grow the page without limit. */
 export const MAX_CARDS = 50;
@@ -60,7 +61,7 @@ export function startAnchor(card) {
 export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
-    case 'request-start': {
+    case SSE.requestStart: {
       if (!isBuildLikeKind(d.kind || 'build')) break;
       // Engine startedAt (admission) beats client receipt time — late join / rehydrate must match TUI.
       const engineStart =
@@ -148,7 +149,7 @@ export function foldEvent(cards, event) {
       if (cards.length > MAX_CARDS) cards.length = MAX_CARDS;
       break;
     }
-    case 'module-start': {
+    case EVENT.moduleStart: {
       const card = resolveCard(cards, d);
       if (card) {
         const row = moduleRow(card, d.dir, event.at);
@@ -157,7 +158,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'task-start': {
+    case EVENT.taskStart: {
       const card = resolveCard(cards, d);
       if (card) {
         const row = stepRow(card, d.dir, d.task, d.stage, event.at);
@@ -167,7 +168,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'task-finish': {
+    case EVENT.taskFinish: {
       const card = resolveCard(cards, d);
       if (card) {
         const row = stepRow(card, d.dir, d.task, d.stage, event.at);
@@ -179,18 +180,18 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'label': {
+    case EVENT.label: {
       // Live step detail (test class.method, "shrinking jar", …) — CLI tree-row parity.
       const card = resolveCard(cards, d);
       if (card) stepRow(card, d.dir, d.task, d.stage, event.at).message = d.label || '';
       break;
     }
-    case 'plan': {
+    case SSE.plan: {
       const card = resolveCard(cards, d);
       if (card) card.planWeight = d.weight || 0;
       break;
     }
-    case 'progress': {
+    case EVENT.progress: {
       const card = resolveCard(cards, d);
       // Fine-grained only — do not drive the request bar from module-local fractions.
       if (card) {
@@ -199,7 +200,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'workspace-progress': {
+    case EVENT.workspaceProgress: {
       const card = resolveCard(cards, d);
       if (card) {
         card.progressNum = d.numerator || 0;
@@ -238,7 +239,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'eta': {
+    case EVENT.eta: {
       const card = resolveCard(cards, d);
       if (card && typeof d.millis === 'number') {
         // Always record remaining@emission for etaTotalMillis re-projections.
@@ -261,7 +262,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'output': {
+    case EVENT.output: {
       const card = resolveCard(cards, d);
       if (card && typeof d.line === 'string') {
         card.output.push({ dir: d.dir || '', line: d.line });
@@ -270,7 +271,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'error': {
+    case EVENT.error: {
       const card = resolveCard(cards, d);
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
@@ -284,7 +285,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'buildplan-finish': {
+    case EVENT.buildplanFinish: {
       const card = resolveCard(cards, d);
       if (card) {
         const row = moduleRow(card, d.dir, event.at);
@@ -292,7 +293,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'module-finish': {
+    case EVENT.moduleFinish: {
       const card = resolveCard(cards, d);
       if (card) {
         const row = moduleRow(card, d.dir, event.at);
@@ -312,7 +313,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'request-finish': {
+    case SSE.requestFinish: {
       const card = resolveCard(cards, d);
       if (card) {
         if (d.projectId && !card.projectId) card.projectId = d.projectId;
@@ -327,7 +328,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'run-snapshot': {
+    case SSE.runSnapshot: {
       // One compact mid-flight catch-up frame (SSE connect). Prefer this over N task events so
       // live workspace-progress/eta are never stuck behind a phase-replay backlog.
       applyRunSnapshot(cards, d, event.at);
@@ -351,7 +352,7 @@ function applyRunSnapshot(cards, d, at) {
   if (pre && pre.state !== 'running') return;
   // Ensure a running card exists (same paths as request-start rehydrate).
   foldEvent(cards, {
-    type: 'request-start',
+    type: SSE.requestStart,
     data: {
       jid: d.jid,
       kind: d.kind,
@@ -703,7 +704,7 @@ export function normalizeDiagnostic(d) {
     exceptionClass: d.exceptionClass || '',
     module: d.module || '',
     engine: d.engine || '',
-    className: d.testClass || d.class || '',
+    className: d.testClass || '',
     method: d.method || '',
     stack: d.stack || '',
     file: d.file || '',

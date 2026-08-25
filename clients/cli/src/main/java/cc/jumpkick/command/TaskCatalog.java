@@ -64,7 +64,7 @@ final class TaskCatalog {
                     TaskNames.COMPILE_JAVA,
                     "Compile main Java sources",
                     BuildLayout::classesDir,
-                    "compile-main",
+                    TaskNames.COMPILE_MAIN,
                     "compile"),
             def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
             def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),

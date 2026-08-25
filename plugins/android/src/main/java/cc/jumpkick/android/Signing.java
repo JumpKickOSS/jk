@@ -91,10 +91,10 @@ final class Signing {
         char[] storePass = io.secret("signing.store-password").orElse("").toCharArray();
         char[] keyPass =
                 io.secret("signing.key-password").map(String::toCharArray).orElse(storePass);
-        KeyStore ks = KeyStore.getInstance(storeFile.toString().endsWith(".jks") ? "JKS" : "PKCS12");
-        try (InputStream in = Files.newInputStream(storeFile)) {
-            ks.load(in, storePass);
-        }
+        // The probing constructor detects the store's format from its content — a PKCS12 store
+        // named .jks (keytool's default since JDK 9), a JKS store named .keystore, and a JDK with
+        // keystore compatibility mode off all load the same way. An extension never decides.
+        KeyStore ks = KeyStore.getInstance(storeFile.toFile(), storePass);
         PrivateKey key = (PrivateKey) ks.getKey(alias, keyPass);
         if (key == null) {
             throw new IllegalStateException("no key `" + alias + "` in " + storeFile.getFileName());
@@ -123,7 +123,17 @@ final class Signing {
 
     /** The debug keystore file itself (jarsigner and bundletool's build-apks want the file). */
     static Path debugKeystore(PackageIo io) throws Exception {
-        return DebugKeystore.ensure(DebugKeystore.stableDir(), io.javaHome());
+        return DebugKeystore.ensure(debugStoreDir(io.config()), io.javaHome());
+    }
+
+    /**
+     * Where the debug identity lives: the optional {@code [android] debug-store-dir} (hermetic CI
+     * with a read-only HOME, and every debug-arm test), else the ecosystem's stable
+     * {@link DebugKeystore#stableDir()}. The one resolution of that fact — signing, the keystore
+     * cache input and the deploy command all ask here.
+     */
+    static Path debugStoreDir(PluginConfig config) {
+        return config.stringOpt("debug-store-dir").map(Path::of).orElseGet(DebugKeystore::stableDir);
     }
 
     /**
@@ -138,7 +148,7 @@ final class Signing {
      */
     static In keystoreInput(PluginConfig config) {
         return In.projectFiles(config.stringOpt("signing.store-file")
-                .orElseGet(() -> DebugKeystore.path(DebugKeystore.stableDir()).toString()));
+                .orElseGet(() -> DebugKeystore.path(debugStoreDir(config)).toString()));
     }
 
     /** apksig over {@code unsigned} → {@code out}: v1+v2 always, v3 for release identities. */

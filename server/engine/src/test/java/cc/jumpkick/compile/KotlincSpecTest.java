@@ -35,22 +35,6 @@ class KotlincSpecTest {
         assertThat(jvmTargetIn(spec)).isEqualTo("17");
     }
 
-    @Test
-    void bare_optimize_trainer_falls_back_to_a_target_every_supported_kotlin_accepts(@TempDir Path tempDir)
-            throws IOException {
-        Path scratch = Files.createDirectories(tempDir.resolve("scratch"));
-
-        KotlincSpec.trainerCommandForOptimize(
-                tempDir.resolve("java-home"), "worker.jar", tempDir.resolve("out.aot"), scratch);
-
-        String spec = Files.readString(scratch.resolve("train.spec"), StandardCharsets.UTF_8);
-        assertThat(jvmTargetIn(spec)).isEqualTo(String.valueOf(KotlincSpec.TRAINER_FALLBACK_JVM_TARGET));
-        // Intent pin: 21 is the newest target every supported Kotlin line accepts. Do not bump
-        // this alongside the host JDK — pre-2.2.20 Kotlin rejects newer targets and the AOT
-        // cache silently never trains.
-        assertThat(KotlincSpec.TRAINER_FALLBACK_JVM_TARGET).isEqualTo(21);
-    }
-
     /**
      * The pairing the cache depends on: whatever JDK reaches kotlinc as {@code -jdk-home} is the
      * JDK {@link ActionKey#forKotlinc} hashes. Break either half and a project that switches

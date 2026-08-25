@@ -16,28 +16,28 @@ class FormatPlansNotExcludedTest {
 
     @Test
     void a_dot_g8_template_root_is_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("templates/quarkus.g8/src/main/Foo.java")))
+        assertThat(FormatSources.notExcluded(Path.of("templates/quarkus.g8/src/main/Foo.java")))
                 .isFalse();
     }
 
     @Test
     void a_bare_g8_dir_is_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("proj/src/main/g8/Foo.java")))
+        assertThat(FormatSources.notExcluded(Path.of("proj/src/main/g8/Foo.java")))
                 .isFalse();
     }
 
     @Test
     void a_placeholder_segment_is_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("templates/quarkus.g8/src/main/$package$/App.java")))
+        assertThat(FormatSources.notExcluded(Path.of("templates/quarkus.g8/src/main/$package$/App.java")))
                 .isFalse();
     }
 
     @Test
     void build_and_vcs_dirs_are_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("proj/target/Gen.java"))).isFalse();
-        assertThat(FormatPlans.notExcluded(Path.of("proj/build/Gen.java"))).isFalse();
-        assertThat(FormatPlans.notExcluded(Path.of("proj/.git/Gen.java"))).isFalse();
-        assertThat(FormatPlans.notExcluded(Path.of("proj/node_modules/Gen.java")))
+        assertThat(FormatSources.notExcluded(Path.of("proj/target/Gen.java"))).isFalse();
+        assertThat(FormatSources.notExcluded(Path.of("proj/build/Gen.java"))).isFalse();
+        assertThat(FormatSources.notExcluded(Path.of("proj/.git/Gen.java"))).isFalse();
+        assertThat(FormatSources.notExcluded(Path.of("proj/node_modules/Gen.java")))
                 .isFalse();
     }
 
@@ -45,20 +45,20 @@ class FormatPlansNotExcludedTest {
     void a_bare_templates_package_is_not_excluded() {
         // The bug: cc.jumpkick.templates (OfficialTemplatesFreshen.java, no .g8 in sight) was
         // silently skipped by jk format because "templates" alone used to be an exclusion segment.
-        assertThat(FormatPlans.notExcluded(
+        assertThat(FormatSources.notExcluded(
                         Path.of("shared/core/src/main/java/cc/jumpkick/templates/OfficialTemplatesFreshen.java")))
                 .isTrue();
     }
 
     @Test
     void a_bare_giter8_package_is_not_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("clients/cli/src/main/java/cc/jumpkick/command/giter8/Foo.java")))
+        assertThat(FormatSources.notExcluded(Path.of("clients/cli/src/main/java/cc/jumpkick/command/giter8/Foo.java")))
                 .isTrue();
     }
 
     @Test
     void a_dollar_sign_that_is_not_a_placeholder_is_not_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("proj/src/main/java/demo/a$b/Foo.java")))
+        assertThat(FormatSources.notExcluded(Path.of("proj/src/main/java/demo/a$b/Foo.java")))
                 .isTrue();
     }
 }

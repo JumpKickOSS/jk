@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.lock.ManifestPaths;
@@ -187,7 +188,7 @@ public final class RemoveCommand implements CliCommand {
                 throw new IllegalArgumentException("empty module path");
             }
             Path target = cwd.resolve(raw).normalize();
-            var info = BuildCommand.projectInfoOrNull(target);
+            var info = ProjectInfos.orNull(target);
             if (info != null && info.name() != null && !info.name().isBlank()) {
                 return info.name();
             }

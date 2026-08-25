@@ -7,6 +7,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
@@ -191,7 +192,7 @@ public final class TreeCommand implements CliCommand {
         }
         Path root = workspaceOrProject(project);
         String want = spec.substring(1).trim();
-        var info = BuildCommand.projectInfoOrNull(root);
+        var info = ProjectInfos.orNull(root);
         if (info != null && !info.moduleNames().isEmpty()) {
             return matchColonName(spec, want, root, info.moduleDirs(), info.moduleNames());
         }

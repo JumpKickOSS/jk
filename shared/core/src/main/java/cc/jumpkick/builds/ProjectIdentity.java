@@ -9,6 +9,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.MinimalToml;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -391,7 +392,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
                     int eq = line.indexOf('=');
                     if (eq < 0) continue;
                     String k = line.substring(0, eq).trim();
-                    String v = unquote(line.substring(eq + 1).trim());
+                    String v = MinimalToml.unquote(line.substring(eq + 1).trim());
                     switch (k) {
                         case "id" -> id = v;
                         case "coord" -> coord = v;
@@ -414,30 +415,25 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         public static void write(Path projectHome, ProjectIdentity identity) throws IOException {
             Files.createDirectories(projectHome);
             StringBuilder b = new StringBuilder();
-            b.append("id = ").append(q(identity.id())).append('\n');
-            b.append("coord = ").append(q(identity.coord())).append('\n');
-            b.append("path = ").append(q(identity.path().toString())).append('\n');
+            b.append("id = ").append(MinimalToml.quote(identity.id())).append('\n');
+            b.append("coord = ").append(MinimalToml.quote(identity.coord())).append('\n');
+            b.append("path = ")
+                    .append(MinimalToml.quote(identity.path().toString()))
+                    .append('\n');
             b.append("source = ")
-                    .append(q(identity.source().name().toLowerCase(Locale.ROOT)))
+                    .append(MinimalToml.quote(identity.source().name().toLowerCase(Locale.ROOT)))
                     .append('\n');
             if (identity.gitRemote() != null) {
-                b.append("git-remote = ").append(q(identity.gitRemote())).append('\n');
+                b.append("git-remote = ")
+                        .append(MinimalToml.quote(identity.gitRemote()))
+                        .append('\n');
             }
             if (identity.gitRelPath() != null) {
-                b.append("git-rel-path = ").append(q(identity.gitRelPath())).append('\n');
+                b.append("git-rel-path = ")
+                        .append(MinimalToml.quote(identity.gitRelPath()))
+                        .append('\n');
             }
             AtomicWrites.replace(projectHome.resolve(ProjectBuilds.IDENTITY), b.toString());
-        }
-
-        private static String q(String s) {
-            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-        }
-
-        private static String unquote(String v) {
-            if (v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
-                return v.substring(1, v.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
-            }
-            return v;
         }
     }
 }

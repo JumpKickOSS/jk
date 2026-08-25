@@ -18,15 +18,18 @@ public interface PluginCommandExec {
     Path moduleDir();
 
     /**
-     * A declared {@code [[contribute.step-dependency]]} artifact, resolved engine-side — commands
-     * get the same tool artifacts steps do (adb from an SDK component, a bundled tool jar).
+     * A declared tool artifact, resolved engine-side. Commands read both lanes: every
+     * {@code [[contribute.step-dependency]]} (the same tools steps get — a bundletool a packager
+     * also runs) and every {@code [[contribute.command-dependency]]} (command-only tools — an adb,
+     * an SDK root — provisioned only when the command runs and in no build action key).
      */
     java.util.Optional<Path> extra(String name);
 
     /** As {@link #extra} but required. */
     default Path requireExtra(String name) {
         return extra(name).orElseThrow(() -> new IllegalStateException("tool artifact not provided: " + name
-                + " — declare it as a [[contribute.step-dependency]]"));
+                + " — declare it as a [[contribute.command-dependency]] (command-only) or"
+                + " [[contribute.step-dependency]] (a step tool the command borrows)"));
     }
 
     /**

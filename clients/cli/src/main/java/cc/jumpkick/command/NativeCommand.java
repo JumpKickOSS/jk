@@ -9,6 +9,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -128,7 +129,7 @@ public final class NativeCommand implements CliCommand {
         }
         this.graalHome = ((NativePreflight.Graal.Ok) graal).home();
 
-        ProjectInfo peek = BuildCommand.projectInfoOrNull(startDir);
+        ProjectInfo peek = ProjectInfos.orNull(startDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
@@ -144,7 +145,7 @@ public final class NativeCommand implements CliCommand {
 
         // Single project: -m/--affected-since still validate.
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            var sel = BuildCommand.projectInfoOrError(startDir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(startDir, modulesSpec, affectedSince);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Native", sel.error());
                 return Exit.CONFIG;
@@ -189,7 +190,7 @@ public final class NativeCommand implements CliCommand {
         // Thin client: per-module native-mode + graal spec ride ProjectInfo summaries; the
         // engine owns ordering/scheduling. The GraalVM pre-resolve stays HERE — a prompt or
         // install owns this terminal and must never run inside the engine.
-        var rootInfo = BuildCommand.projectInfoOrNull(wsRoot);
+        var rootInfo = ProjectInfos.orNull(wsRoot);
         if (rootInfo == null) {
             CommandWedge.printFail("Native", "could not read the workspace summary at " + wsRoot);
             return Exit.CONFIG;
@@ -202,7 +203,7 @@ public final class NativeCommand implements CliCommand {
         // -m / --affected-since: engine ModuleSelection via projectInfo.
         List<Path> selectedDirs = null;
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            var sel = BuildCommand.projectInfoOrError(wsRoot, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(wsRoot, modulesSpec, affectedSince);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Native", sel.error());
                 return Exit.CONFIG;
@@ -241,7 +242,7 @@ public final class NativeCommand implements CliCommand {
         // Never cascade the whole workspace (sibling modules outside the native dependency cone).
         List<Path> cascadeRoots = List.copyOf(graalHomes.keySet());
         if (selectedDirs != null) {
-            var sel = BuildCommand.projectInfoOrError(wsRoot, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(wsRoot, modulesSpec, affectedSince);
             this.scopeHintNames = ModuleScopeHint.namesFrom(sel);
             ModuleScopeHint.print("building", scopeHintNames, mode == BuildPlanConsole.Mode.JSON);
         }
@@ -261,7 +262,7 @@ public final class NativeCommand implements CliCommand {
         for (Path moduleDir : moduleDirs) {
             boolean hasNativeTable = false;
             boolean explicitlyDisabled = false;
-            var info = BuildCommand.projectInfoOrNull(moduleDir);
+            var info = ProjectInfos.orNull(moduleDir);
             if (info != null) {
                 explicitlyDisabled = info.nativeExplicitlyDisabled();
                 hasNativeTable = !"DISABLED".equals(info.nativeMode());
@@ -435,7 +436,7 @@ public final class NativeCommand implements CliCommand {
         if (!(main instanceof NativePreflight.Main.Unique)) {
             return failPreflight(NativePreflight.failMessage(main));
         }
-        ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
+        ProjectInfo build = ProjectInfos.orNull(projectDir);
         if (build == null) {
             CommandWedge.printFail("Native", "could not read the project.");
             return Exit.CONFIG;

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
@@ -226,6 +227,57 @@ class EngineEventDecoderStreamTest {
         assertThat(result.success()).isFalse();
         assertThat(rec.diagnosticsByModule.get("a")).containsExactly("a blew up");
         assertThat(rec.diagnosticsByModule.get("b")).containsExactly("b blew up");
+    }
+
+    /**
+     * The hosted adapters ({@link EnginePluginAdapter}, {@link EngineResolveAdapter}) route their
+     * {@code default ->} arm through this same table — each carried a private drifted copy that
+     * reported {@code Duration.ZERO} on {@code task-finish} and flattened an enriched test failure
+     * to five flat fields. This pins the shared arms those adapters now depend on, invoked exactly
+     * as their pump loops invoke them.
+     */
+    @Test
+    void the_shared_table_keeps_millis_and_test_failure_enrichment_for_the_hosted_adapters() {
+        List<Duration> durations = new ArrayList<>();
+        List<TestFailureInfo> failures = new ArrayList<>();
+        List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+        BuildPlanListener listener = new BuildPlanListener() {
+            @Override
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+                durations.add(duration);
+            }
+
+            @Override
+            public void error(String step, String code, String message, TestFailureInfo failure) {
+                failures.add(failure);
+            }
+        };
+        var info = new TestFailureInfo(
+                "g:a",
+                "junit-jupiter",
+                "pkg.FooTest",
+                "bar()",
+                "java.lang.AssertionError",
+                "boom",
+                "java.lang.AssertionError: boom\n\tat pkg.FooTest.bar(FooTest.java:4)",
+                1,
+                "src/test/java/pkg/FooTest.java",
+                4,
+                2,
+                List.of("void bar() {", "  fail();"));
+
+        String finish = ProtoEvents.stepFinish("/p", "audit", "verify", TaskStatus.SUCCESS.name(), 2_500);
+        String error = ProtoEvents.errorLine("/p", "run-tests", "test-failure", "boom", info);
+        EngineEventDecoder.dispatch(Jsonl.str(finish, "type"), finish, listener, diagnostics::add);
+        EngineEventDecoder.dispatch(Jsonl.str(error, "type"), error, listener, diagnostics::add);
+
+        assertThat(durations).containsExactly(Duration.ofMillis(2_500));
+        assertThat(failures).singleElement().satisfies(f -> {
+            assertThat(f.className()).isEqualTo("pkg.FooTest");
+            assertThat(f.file()).isEqualTo("src/test/java/pkg/FooTest.java");
+            assertThat(f.line()).isEqualTo(4);
+            assertThat(f.snippet()).hasSize(2);
+        });
     }
 
     /** Records what a workspace build actually told its front-end, per module. */

@@ -3,13 +3,17 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,6 +103,128 @@ class BaseImageDigestTest {
         assertThat(BaseImageDigest.parse("localhost:5000/app"))
                 .as("a port in the first segment is a host, and an unqualified reference means :latest")
                 .isEqualTo(new BaseImageDigest.Ref("localhost:5000", "app", "latest"));
+    }
+
+    /**
+     * The Docker Hub / GHCR / registry:2 private shape: the realm mints a token only for a Basic
+     * caller, and the credential itself goes to the realm and nowhere else — the manifest leg
+     * carries the minted token, never the password.
+     */
+    @Test
+    void a_private_registry_requiring_basic_at_the_token_endpoint_is_pinned() {
+        String expectedBasic = basic("user", "secret");
+        List<String> requests = new CopyOnWriteArrayList<>();
+        server.createContext("/token", ex -> {
+            String auth = ex.getRequestHeaders().getFirst("Authorization");
+            requests.add("/token " + auth);
+            if (!expectedBasic.equals(auth)) {
+                ex.sendResponseHeaders(401, -1);
+                ex.close();
+                return;
+            }
+            byte[] body = "{\"token\":\"minted-token\"}".getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(200, body.length);
+            ex.getResponseBody().write(body);
+            ex.close();
+        });
+        server.createContext("/v2/acme/app/manifests/1.2", ex -> {
+            String auth = ex.getRequestHeaders().getFirst("Authorization");
+            requests.add("/manifest " + auth);
+            if (!"Bearer minted-token".equals(auth)) {
+                ex.getResponseHeaders()
+                        .add("WWW-Authenticate", "Bearer realm=\"http://" + host + "/token\",service=\"reg\"");
+                ex.sendResponseHeaders(401, -1);
+                ex.close();
+                return;
+            }
+            ex.getResponseHeaders().add("Docker-Content-Digest", DIGEST);
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+        });
+
+        Optional<String> pinned =
+                BaseImageDigest.pin(host + "/acme/app:1.2", new Http(), new RepoCredential.Basic("user", "secret"));
+
+        assertThat(pinned).contains(host + "/acme/app@" + DIGEST);
+        assertThat(requests.stream().filter(r -> r.contains(expectedBasic)))
+                .as("the password authenticates the challenge's realm and reaches nothing else")
+                .containsExactly("/token " + expectedBasic);
+    }
+
+    /** The Artifactory / Nexus shape: no bearer realm, the manifest endpoint itself takes Basic. */
+    @Test
+    void a_basic_challenge_registry_is_pinned_with_basic_on_the_manifest() {
+        String expectedBasic = basic("user", "secret");
+        server.createContext("/v2/acme/app/manifests/1.2", ex -> {
+            if (!expectedBasic.equals(ex.getRequestHeaders().getFirst("Authorization"))) {
+                ex.getResponseHeaders().add("WWW-Authenticate", "Basic realm=\"registry\"");
+                ex.sendResponseHeaders(401, -1);
+                ex.close();
+                return;
+            }
+            ex.getResponseHeaders().add("Docker-Content-Digest", DIGEST);
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+        });
+
+        Optional<String> pinned =
+                BaseImageDigest.pin(host + "/acme/app:1.2", new Http(), new RepoCredential.Basic("user", "secret"));
+
+        assertThat(pinned).contains(host + "/acme/app@" + DIGEST);
+    }
+
+    /** A bearer credential is already the pull token: no realm round trip, straight manifest retry. */
+    @Test
+    void a_bearer_credential_goes_straight_onto_the_manifest_retry() {
+        List<String> tokenHits = new CopyOnWriteArrayList<>();
+        server.createContext("/token", ex -> {
+            tokenHits.add(ex.getRequestURI().toString());
+            ex.sendResponseHeaders(500, -1);
+            ex.close();
+        });
+        server.createContext("/v2/acme/app/manifests/1.2", ex -> {
+            if (!"Bearer stored-token".equals(ex.getRequestHeaders().getFirst("Authorization"))) {
+                ex.getResponseHeaders()
+                        .add("WWW-Authenticate", "Bearer realm=\"http://" + host + "/token\",service=\"reg\"");
+                ex.sendResponseHeaders(401, -1);
+                ex.close();
+                return;
+            }
+            ex.getResponseHeaders().add("Docker-Content-Digest", DIGEST);
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+        });
+
+        Optional<String> pinned =
+                BaseImageDigest.pin(host + "/acme/app:1.2", new Http(), new RepoCredential.Bearer("stored-token"));
+
+        assertThat(pinned).contains(host + "/acme/app@" + DIGEST);
+        assertThat(tokenHits)
+                .as("the realm has nothing to add to a credential that is a token")
+                .isEmpty();
+    }
+
+    /** A rejected credential resolves to nothing, exactly like the anonymous 401 before it. */
+    @Test
+    void a_wrong_credential_yields_no_digest() {
+        server.createContext("/token", ex -> {
+            ex.sendResponseHeaders(403, -1);
+            ex.close();
+        });
+        server.createContext("/v2/acme/app/manifests/1.2", ex -> {
+            ex.getResponseHeaders()
+                    .add("WWW-Authenticate", "Bearer realm=\"http://" + host + "/token\",service=\"reg\"");
+            ex.sendResponseHeaders(401, -1);
+            ex.close();
+        });
+
+        assertThat(BaseImageDigest.pin(
+                        host + "/acme/app:1.2", Http.failFast(), new RepoCredential.Basic("user", "wrong")))
+                .isEmpty();
+    }
+
+    private static String basic(String user, String pass) {
+        return "Basic " + Base64.getEncoder().encodeToString((user + ":" + pass).getBytes(StandardCharsets.UTF_8));
     }
 
     /**

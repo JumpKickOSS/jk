@@ -7,6 +7,7 @@ import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -86,7 +87,7 @@ public final class SyncCommand implements CliCommand {
         // the already-installed JDK (JdkEnsure with allowInstall=false). Thin client: the three
         // values JdkEnsure needs (project jdk spec, java floor, lock pin) ride the ProjectInfo
         // summary rather than a client-side parse.
-        var info = BuildCommand.projectInfoOrNull(dir);
+        var info = ProjectInfos.orNull(dir);
         try {
             JdkEnsure.ensure(
                     dir,

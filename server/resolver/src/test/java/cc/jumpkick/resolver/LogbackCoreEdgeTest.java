@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-@Tag("integration")
+@Tag("network")
 class LogbackCoreEdgeTest {
     @Test
     void lock_records_logback_core_as_dep_of_classic(@TempDir Path tmp) throws Exception {

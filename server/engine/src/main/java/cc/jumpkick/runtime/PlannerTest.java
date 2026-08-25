@@ -31,8 +31,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
-import cc.jumpkick.task.GroovyCompile;
-import cc.jumpkick.task.KotlinCompile;
+import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
@@ -169,7 +168,7 @@ public final class PlannerTest {
                                 }
                             }
                         }
-                        GroovyCompile.Result gr = compileGroovySources(
+                        LangCompile.Result gr = compileGroovySources(
                                 ctx, in, cas, actionCache, gvTest, baseCp, gvTestOut, gvTaskId, gvJavaRoots, null);
                         if (!gr.success()) {
                             PlannerSupport.forwardWorkerDiagnostics(
@@ -188,7 +187,7 @@ public final class PlannerTest {
                         Path ktWorkingDir = ActionTree.INCREMENTAL_KOTLIN
                                 .under(CacheTree.ACTIONS.under(in.cache()))
                                 .resolve(ktTaskId);
-                        KotlinCompile.Result kr = compileKotlinSources(
+                        LangCompile.Result kr = compileKotlinSources(
                                 ctx,
                                 in,
                                 cas,

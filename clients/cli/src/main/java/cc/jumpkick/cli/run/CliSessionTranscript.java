@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -47,6 +48,16 @@ public final class CliSessionTranscript {
 
     /** Active session for dual-write; cleared on finish. */
     private static volatile CliSessionTranscript active;
+
+    static {
+        // The wire pump announces every engine job-start; whichever transcript is active at that
+        // moment binds to the journal run. Registered here (loaded on first open) so the engine
+        // package never names this one.
+        WireStream.onJobStart((jid, buildNumber, detailsPath, etaMs) -> {
+            CliSessionTranscript session = active;
+            if (session != null) session.bindJob(jid, buildNumber, detailsPath, etaMs);
+        });
+    }
 
     private final Path projectDir;
     private final Instant started;

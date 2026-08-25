@@ -225,7 +225,8 @@ public final class ForkedJavac {
         }
     }
 
-    static Path writeSpec(Request req) throws IOException {
+    /** Renders {@code req} and seals the network policy — its forks bypass {@code PluginLaunch}. */
+    public static Path writeSpec(Request req) throws IOException {
         Map<String, Path> layout = new LinkedHashMap<>();
         layout.put("classesDir", req.classOutput());
         if (req.sourceOutput() != null) layout.put("sourceOutput", req.sourceOutput());
@@ -249,6 +250,7 @@ public final class ForkedJavac {
         for (String a : req.extraArgs()) sw.arg(a);
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(spec);
         return spec;
     }
 
@@ -294,6 +296,7 @@ public final class ForkedJavac {
                 .source(src);
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(trainSpec);
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(JvmOptions.batchFlags(1));

@@ -17,8 +17,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
-import cc.jumpkick.task.GroovyCompile;
-import cc.jumpkick.task.KotlinCompile;
+import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,7 +34,7 @@ public final class PlannerLang {
 
     private PlannerLang() {}
 
-    static KotlinCompile.Result compileKotlinSources(
+    static LangCompile.Result compileKotlinSources(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
@@ -143,7 +142,7 @@ public final class PlannerLang {
                 .build();
         boolean rerun = in.session().config().rebuildOr(false);
         // Reweight from the real request: a CAS hit is a cheap restore (3), else a
-        // full kotlinc. Same forKotlinc key KotlinCompile.run looks up.
+        // full kotlinc. Same forKotlinc key LangCompile.run looks up.
         if (!rerun) {
             try {
                 boolean restores = actionCache
@@ -154,7 +153,7 @@ public final class PlannerLang {
                 /* keep the up-front estimate */
             }
         }
-        return KotlinCompile.run(
+        return LangCompile.run(
                 taskId,
                 req,
                 BuildIdentity.cacheKeyVersion(),
@@ -174,7 +173,7 @@ public final class PlannerLang {
      * for resolution only (jk's javac worker owns the real Java outputs)
      * @param stubsOut when non-null, Java-visible stubs are retained there for javac's sourcepath
      */
-    static GroovyCompile.Result compileGroovySources(
+    static LangCompile.Result compileGroovySources(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
@@ -227,7 +226,7 @@ public final class PlannerLang {
                 .build();
         boolean rerun = in.session().config().rebuildOr(false);
         // Reweight from the real request: a CAS hit is a cheap restore (3), else a
-        // full groovyc. Same forGroovyc key GroovyCompile.run looks up.
+        // full groovyc. Same forGroovyc key LangCompile.run looks up.
         if (!rerun) {
             try {
                 boolean restores = actionCache
@@ -238,7 +237,7 @@ public final class PlannerLang {
                 /* keep the up-front estimate */
             }
         }
-        return GroovyCompile.run(
+        return LangCompile.run(
                 taskId,
                 req,
                 BuildIdentity.cacheKeyVersion(),

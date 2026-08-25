@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
-import java.io.File;
+import cc.jumpkick.host.SearchPath;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -53,7 +53,7 @@ public final class PassthroughEnv {
         String binDir = javaHome.resolve("bin").toAbsolutePath().toString();
         String pathKey = keyFor(env, "PATH");
         String existing = env.getOrDefault(pathKey, "");
-        env.put(pathKey, existing.isEmpty() ? binDir : binDir + File.pathSeparator + existing);
+        env.put(pathKey, SearchPath.prepend(binDir, existing));
     }
 
     /**

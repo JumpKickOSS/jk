@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 /** Local-only NIA lock phase timing (developer store). Not for CI by default. */
-@Tag("integration")
+@Tag("network")
 class NiaWarmLockTimingTest {
 
     @Test

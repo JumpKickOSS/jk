@@ -148,15 +148,25 @@ public interface TaskExec {
             return this;
         }
 
-        /** Fork and drain: exit code + combined stdout/stderr. */
-        public Result run() throws IOException, InterruptedException {
+        /**
+         * The command line {@link #run()} forks, resolved head first: the absolute executable, or
+         * the {@code javaHome} tool via {@link JdkFingerprint#tool} (which owns the Windows
+         * {@code .exe} shape), then the args in call order. The one assembly — {@code run()}
+         * builds its {@code ProcessBuilder} from this list.
+         */
+        public List<String> command() {
             List<String> command = new ArrayList<>();
             command.add(
                     executable != null
                             ? executable.toAbsolutePath().toString()
                             : JdkFingerprint.tool(javaHome, bin).toString());
             command.addAll(args);
-            ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+            return command;
+        }
+
+        /** Fork and drain: exit code + combined stdout/stderr. */
+        public Result run() throws IOException, InterruptedException {
+            ProcessBuilder pb = new ProcessBuilder(command()).redirectErrorStream(true);
             if (cwd != null) pb.directory(cwd.toFile());
             Process process = pb.start();
             StringBuilder output = new StringBuilder();

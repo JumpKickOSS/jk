@@ -17,6 +17,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.FormatPlans;
+import cc.jumpkick.runtime.FormatWorker;
 import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -110,9 +111,9 @@ public final class FormatVerb implements HostedVerb {
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
                 // `result.success()` is the run's verdict on every surface — this event, the journal
                 // row PlanBurst stamps from it, and the CLI's wedge. It is false when the worker
-                // died mid-run (FormatPlans.reconcile), so a partial format is never reported as a
-                // complete one. Note the counts below are three of five tallies: `unparseable` is
-                // plan-local by design, so changed+clean+errors need not sum to total.
+                // died mid-run (FormatWorker.reconcile), so a partial format is never reported as a
+                // complete one. The changed/clean/errors tallies stay off the wire: the CLI tallies
+                // all five summary categories from the per-file format-file stream.
                 return host.streamSinglePlan(
                         plan,
                         session,
@@ -120,11 +121,8 @@ public final class FormatVerb implements HostedVerb {
                         result -> ProtoEvents.planFinishFormat(
                                 dir,
                                 result.success(),
-                                plan.get(FormatPlans.CHANGED).orElse(-1),
-                                plan.get(FormatPlans.CLEAN).orElse(-1),
-                                plan.get(FormatPlans.ERRORS).orElse(-1),
-                                plan.get(FormatPlans.TOTAL).orElse(-1),
-                                plan.get(FormatPlans.WORKER_EXIT).orElse(-1)));
+                                plan.get(FormatWorker.TOTAL).orElse(-1),
+                                plan.get(FormatWorker.WORKER_EXIT).orElse(-1)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 return JobOutcome.failed(Exit.FAILURE);

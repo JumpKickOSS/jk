@@ -176,4 +176,25 @@ class ProjectIdentityTest {
         assertThat(ProjectIdentity.coordOf(api)).isEqualTo("com.example:api");
         assertThat(ProjectIdentity.coordOf(dir)).isEqualTo("com.example:root");
     }
+
+    @Test
+    void identity_file_round_trips_quotes_backslashes_controls_and_non_ascii(@TempDir Path home) throws Exception {
+        String coord = "com.exàmple:we\"ird\\na\nme";
+        String remote = "https://example.com/ré\"po\\x.git";
+        String rel = "mod\tules\\app \"x\"";
+        ProjectIdentity identity = new ProjectIdentity(
+                "aabbccddeeff00112233445566778899",
+                coord,
+                Path.of("checkout"),
+                ProjectIdentity.Source.PATH,
+                remote,
+                rel);
+        ProjectIdentity.IdentityFile.write(home, identity);
+
+        ProjectIdentity.IdentityFile read =
+                ProjectIdentity.IdentityFile.read(home).orElseThrow();
+        assertThat(read.coord()).isEqualTo(coord);
+        assertThat(read.gitRemote()).isEqualTo(remote);
+        assertThat(read.gitRelPath()).isEqualTo(rel);
+    }
 }

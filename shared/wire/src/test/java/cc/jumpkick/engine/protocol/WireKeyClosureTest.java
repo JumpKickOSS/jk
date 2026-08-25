@@ -6,8 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,7 +19,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -47,8 +49,8 @@ import org.junit.jupiter.api.Test;
  *       through the second form, so dropping it would manufacture 34 false orphans.
  * </ul>
  *
- * <p>Measured when written: 1,338 production sources, 1,017 literal-key reads, 443 distinct read
- * keys, 824 distinct written keys, <strong>6</strong> read with no writer — all six listed below.
+ * <p>Measured when written: 1,244 production sources, 1,017 literal-key reads, 443 distinct read
+ * keys, 824 distinct written keys, <strong>5</strong> read with no writer — all five listed below.
  */
 class WireKeyClosureTest {
 
@@ -64,15 +66,14 @@ class WireKeyClosureTest {
             "java-options", "foreign format: jbang-catalog.json",
             "script-ref", "foreign format: jbang-catalog.json",
             // The dashboard SPA writes this one, in JavaScript, as a query param and a POST body field.
-            "project", "written by clients/web, not by Java: HttpProjectApi request field",
-            // NOT a legitimate exemption — a dual read left behind, kept here only because both of
-            // its sites are outside this ticket's scope. `worker` is the live spelling; nothing in
-            // the tree writes `w`, and only JUnitLauncherAggregatorTest fabricates one. Delete the
-            // two reads (EngineEventDecoder, JUnitLauncher) and then delete this line.
-            "w", "PENDING: dead legacy dual-read of `worker`; no production writer exists");
+            "project", "written by clients/web, not by Java: HttpProjectApi request field");
 
-    /** Production sources on the day this landed. A much smaller number means the walk broke. */
-    private static final int SOURCES_WHEN_WRITTEN = 1_300;
+    /**
+     * Production sources on the day this landed (re-measured at 1,244 once the walk stopped
+     * counting generated sample projects under module build output). A much smaller number means
+     * the walk broke.
+     */
+    private static final int SOURCES_WHEN_WRITTEN = 1_150;
 
     @Test
     void no_json_key_is_read_that_nothing_writes() throws IOException {
@@ -81,18 +82,44 @@ class WireKeyClosureTest {
         Map<String, Set<String>> reads = new TreeMap<>();
         Set<String> writes = new LinkedHashSet<>();
 
-        try (Stream<Path> walk = Files.walk(root)) {
-            for (Path f : walk.filter(Files::isRegularFile).toList()) {
+        // walkFileTree with SKIP_SUBTREE, like TestCountWireSpellingTest's scan: a module's build
+        // output holds generated sample projects with their own src/main/java (test-jk-home git
+        // checkouts), which are not production source — counting them inflates the corpus floor
+        // and lets a fixture's keys leak into the closure. Pruning is by module-output shape, not
+        // bare name: src/main/java/cc/jumpkick/plugin/build/ is a source package named `build`.
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                if (name.equals(".git")) return FileVisitResult.SKIP_SUBTREE;
+                boolean moduleOutput = (name.equals("build") || name.equals("target"))
+                        && (Files.exists(dir.resolveSibling("build.gradle.kts"))
+                                || Files.exists(dir.resolveSibling("jk.toml"))
+                                || dir.getParent() != null && dir.getParent().equals(root));
+                return moduleOutput ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) throws IOException {
+                if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
                 String rel = root.relativize(f).toString().replace('\\', '/');
-                if (!isProductionJava(rel)) continue;
+                if (!isProductionJava(rel)) return FileVisitResult.CONTINUE;
                 scanned.add(f);
                 String body = Files.readString(f, StandardCharsets.UTF_8);
                 for (String key : readKeys(body)) {
                     reads.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(rel);
                 }
                 writes.addAll(writtenKeys(body));
+                return FileVisitResult.CONTINUE;
             }
-        }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path f, IOException exc) {
+                // A file that vanished mid-walk (a parallel task cleaning its build dir) was not
+                // a production source.
+                return FileVisitResult.CONTINUE;
+            }
+        });
 
         assertThat(scanned)
                 .as("production Java scanned under %s — a small corpus means the walk missed the tree", root)

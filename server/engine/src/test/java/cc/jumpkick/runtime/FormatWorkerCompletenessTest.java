@@ -35,7 +35,7 @@ class FormatWorkerCompletenessTest {
     private record Run(BuildPlan plan, BuildPlanResult result, List<String> observed) {}
 
     /**
-     * Drive {@code FormatPlans.runWorker} inside a real one-step {@link BuildPlan}, forking {@link
+     * Drive {@code FormatWorker.runWorker} inside a real one-step {@link BuildPlan}, forking {@link
      * FormatWorkerStub} to play the worker. {@code total} is what the run set out to visit; the
      * status/path pairs are what the worker actually reports before exiting with {@code exit}.
      */
@@ -60,7 +60,7 @@ class FormatWorkerCompletenessTest {
         }
         Task format = Task.builder("format")
                 .ticks(total)
-                .execute(ctx -> FormatPlans.runWorker(
+                .execute(ctx -> FormatWorker.runWorker(
                         ctx,
                         command,
                         preClean,
@@ -112,10 +112,10 @@ class FormatWorkerCompletenessTest {
                 .contains("5 were never visited")
                 .contains("139");
         // The partial counts are still published — honest partial numbers, on a failed run.
-        assertThat(r.plan().get(FormatPlans.CHANGED)).contains(0);
-        assertThat(r.plan().get(FormatPlans.CLEAN)).contains(3);
-        assertThat(r.plan().get(FormatPlans.ERRORS)).contains(0);
-        assertThat(r.plan().get(FormatPlans.WORKER_EXIT)).contains(139);
+        assertThat(r.plan().get(FormatWorker.CHANGED)).contains(0);
+        assertThat(r.plan().get(FormatWorker.CLEAN)).contains(3);
+        assertThat(r.plan().get(FormatWorker.ERRORS)).contains(0);
+        assertThat(r.plan().get(FormatWorker.WORKER_EXIT)).contains(139);
         assertThat(r.observed()).hasSize(3);
     }
 
@@ -132,11 +132,8 @@ class FormatWorkerCompletenessTest {
         String line = ProtoEvents.planFinishFormat(
                 EngineProtocol.SINGLE_PLAN_DIR,
                 r.result().success(),
-                r.plan().get(FormatPlans.CHANGED).orElse(-1),
-                r.plan().get(FormatPlans.CLEAN).orElse(-1),
-                r.plan().get(FormatPlans.ERRORS).orElse(-1),
-                r.plan().get(FormatPlans.TOTAL).orElse(8),
-                r.plan().get(FormatPlans.WORKER_EXIT).orElse(-1));
+                r.plan().get(FormatWorker.TOTAL).orElse(8),
+                r.plan().get(FormatWorker.WORKER_EXIT).orElse(-1));
 
         assertThat(line).contains("\"success\":false").contains("\"formatWorkerExit\":139");
     }
@@ -180,8 +177,8 @@ class FormatWorkerCompletenessTest {
 
         assertThat(r.result().success()).isTrue();
         assertThat(r.result().errors()).isEmpty();
-        assertThat(r.plan().get(FormatPlans.CLEAN)).contains(8);
-        assertThat(r.plan().get(FormatPlans.WORKER_EXIT)).contains(0);
+        assertThat(r.plan().get(FormatWorker.CLEAN)).contains(8);
+        assertThat(r.plan().get(FormatWorker.WORKER_EXIT)).contains(0);
     }
 
     /**
@@ -200,9 +197,9 @@ class FormatWorkerCompletenessTest {
         assertThat(r.result().success())
                 .as("drift is what --check is for; the plan ran to completion")
                 .isTrue();
-        assertThat(r.plan().get(FormatPlans.CHANGED)).contains(2);
-        assertThat(r.plan().get(FormatPlans.CLEAN)).contains(6);
-        assertThat(r.plan().get(FormatPlans.WORKER_EXIT)).contains(1);
+        assertThat(r.plan().get(FormatWorker.CHANGED)).contains(2);
+        assertThat(r.plan().get(FormatWorker.CLEAN)).contains(6);
+        assertThat(r.plan().get(FormatWorker.WORKER_EXIT)).contains(1);
     }
 
     /**
@@ -221,11 +218,11 @@ class FormatWorkerCompletenessTest {
 
         assertThat(r.result().success()).isTrue();
         assertThat(r.result().errors()).isEmpty();
-        assertThat(r.plan().get(FormatPlans.CHANGED)).contains(0);
-        assertThat(r.plan().get(FormatPlans.CLEAN))
+        assertThat(r.plan().get(FormatWorker.CHANGED)).contains(0);
+        assertThat(r.plan().get(FormatWorker.CLEAN))
                 .as("unparseable is no longer folded into clean (JK-2477)")
                 .contains(5);
-        assertThat(r.plan().get(FormatPlans.ERRORS)).contains(0);
+        assertThat(r.plan().get(FormatWorker.ERRORS)).contains(0);
     }
 
     /**
@@ -251,6 +248,6 @@ class FormatWorkerCompletenessTest {
         Run r = run(5, 8, false, null, 0, repeat("clean", 3), files);
 
         assertThat(r.result().success()).isTrue();
-        assertThat(r.plan().get(FormatPlans.CLEAN)).contains(8);
+        assertThat(r.plan().get(FormatWorker.CLEAN)).contains(8);
     }
 }

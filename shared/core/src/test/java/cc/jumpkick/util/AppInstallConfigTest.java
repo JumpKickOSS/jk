@@ -77,4 +77,12 @@ class AppInstallConfigTest {
         String body = AppInstallConfig.render(keys);
         assertThat(AppInstallConfig.parse(body)).containsEntry("a", "say \"hi\" \\ ok");
     }
+
+    @Test
+    void render_round_trips_controls_and_non_ascii() {
+        Map<String, String> keys = new LinkedHashMap<>();
+        keys.put("a", "tab\tnew\nline é");
+        String body = AppInstallConfig.render(keys);
+        assertThat(AppInstallConfig.parse(body)).containsEntry("a", "tab\tnew\nline é");
+    }
 }

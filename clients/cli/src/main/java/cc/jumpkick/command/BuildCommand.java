@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
@@ -46,7 +47,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** {@code jk build} — orchestrates lock, sync, compile, test, and package. */
 public final class BuildCommand implements CliCommand {
@@ -148,7 +148,7 @@ public final class BuildCommand implements CliCommand {
         if (session != null) session.announceIf(global != null && global.verbose);
 
         // Workspace root: whole graph. Workspace member: same as `-m <this-module>`.
-        ProjectInfo peek = projectInfoOrNull(startDir);
+        ProjectInfo peek = ProjectInfos.orNull(startDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
@@ -308,7 +308,7 @@ public final class BuildCommand implements CliCommand {
     private Selection resolveSelection(Path entryDir) {
         List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
         if (tokens.isEmpty()) return new Selection(null, false, List.of());
-        ProjectInfo info = projectInfoOrError(entryDir, modulesSpec, affectedSince);
+        ProjectInfo info = ProjectInfos.orError(entryDir, modulesSpec, affectedSince);
         if (info == null) {
             return new Selection("cannot load project summary for module selection", false, List.of());
         }
@@ -530,7 +530,7 @@ public final class BuildCommand implements CliCommand {
         // work).
         TestSummary[] testResultHolder = new TestSummary[1];
         String[] buildOutcomeHolder = new String[1];
-        ProjectInfo tailInfo = projectInfoOrNull(dir);
+        ProjectInfo tailInfo = ProjectInfos.orNull(dir);
         final Path tailDir = dir;
         final String timelineModule = target;
         ConsoleSpec spec = new ConsoleSpec(
@@ -594,55 +594,21 @@ public final class BuildCommand implements CliCommand {
 
     /** Header module label for the plan view: the project's {@code group:artifact}. */
     public static String buildTarget(Path buildFile, Path dir) {
-        var info = projectInfoOrNull(dir);
+        var info = ProjectInfos.orNull(dir);
         if (info != null) return info.coord();
         return dir.getFileName() == null ? "" : dir.getFileName().toString();
     }
 
-    /** Engine project summary, or null when unavailable / errored. */
-    public static ProjectInfo projectInfoOrNull(Path dir) {
-        return projectInfoOrNull(dir, false);
-    }
-
-    /** As {@link #projectInfoOrNull(Path)}; {@code counts=true} adds source/test tree counts. */
-    public static ProjectInfo projectInfoOrNull(Path dir, boolean counts) {
-        String key = projectInfoKey(dir, null, null, counts);
-        ProjectInfo cached = PROJECT_INFO_MEMO.get(key);
-        if (cached != null) return cached;
-        try {
-            ProjectInfo info = EngineClient.projectInfo(EnginePaths.current(), dir, null, null, counts);
-            if (info.error() != null) return null;
-            PROJECT_INFO_MEMO.put(key, info);
-            return info;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    static ProjectInfo projectInfoOrError(Path dir, String modules, String affectedSince) {
-        String key = projectInfoKey(dir, modules, affectedSince, false);
-        ProjectInfo cached = PROJECT_INFO_MEMO.get(key);
-        if (cached != null) return cached;
-        ProjectInfo info;
-        try {
-            info = EngineClient.projectInfo(EnginePaths.current(), dir, modules, affectedSince);
-        } catch (Exception e) {
-            return ProjectInfo.error(String.valueOf(e.getMessage()));
-        }
-        if (info.error() == null || info.error().isBlank()) PROJECT_INFO_MEMO.put(key, info);
-        return info;
-    }
-
     /** {@code group:name:version} for the OSC window title, from {@code projectInfo}. */
     static String projectGavLabel(Path entryDir) {
-        ProjectInfo info = projectInfoOrNull(entryDir);
+        ProjectInfo info = ProjectInfos.orNull(entryDir);
         if (info == null) return "project";
         return label(info.group()) + ":" + label(info.name()) + ":" + label(info.version());
     }
 
     /** {@code group:name} for desktop notifications (no version). */
     static String projectGaLabel(Path entryDir) {
-        ProjectInfo info = projectInfoOrNull(entryDir);
+        ProjectInfo info = ProjectInfos.orNull(entryDir);
         if (info == null) return "project";
         return label(info.group()) + ":" + label(info.name());
     }
@@ -654,23 +620,5 @@ public final class BuildCommand implements CliCommand {
     /** OSC desktop notify when estimate/elapsed ≥ 1m, or {@code --notify} forces it. */
     private void notifyBuild(BuildNotify.Outcome outcome, Path entryDir, long estimateMs, long elapsedMs) {
         BuildNotify.maybeNotify(CliOutput.stdout(), global, outcome, projectGaLabel(entryDir), estimateMs, elapsedMs);
-    }
-
-    /**
-     * Per-invocation memo: one CLI run issues the same projectInfo up to N times (peek, selection,
-     * labels, per-module release probes) and each engine call re-parses the workspace (JK-2162).
-     * The CLI process is one-shot, so only in-run staleness matters — {@link #forgetProjectInfo}
-     * is called after anything that mutates lock/manifest state mid-run.
-     */
-    private static final ConcurrentHashMap<String, ProjectInfo> PROJECT_INFO_MEMO = new ConcurrentHashMap<>();
-
-    private static String projectInfoKey(Path dir, String modules, String affectedSince, boolean counts) {
-        return dir.toAbsolutePath().normalize() + "\0" + (modules == null ? "" : modules) + "\0"
-                + (affectedSince == null ? "" : affectedSince) + "\0" + counts;
-    }
-
-    /** Drop memoized summaries — call after a lock refresh or any manifest edit mid-run. */
-    public static void forgetProjectInfo() {
-        PROJECT_INFO_MEMO.clear();
     }
 }

@@ -462,16 +462,21 @@ public final class LockPipeline {
     // ---- stage 4: [[sdk]] rows ----------------------------------------------
 
     /**
-     * Pin every sdk-component a plugin contributes: the installed on-disk revision, else the feed's
-     * stable revision when it is reachable. Unreachable components are left unpinned rather than
-     * guessed.
+     * Pin every sdk-component a plugin contributes — the step lane and the command lane alike, an
+     * offline command needs its pin exactly like a step does: the installed on-disk revision, else
+     * the feed's stable revision when it is reachable. Unreachable components are left unpinned
+     * rather than guessed.
      */
     public Lockfile pinSdk(Lockfile lock, Progress progress) {
         LinkedHashSet<String> components = new LinkedHashSet<>();
         try {
-            for (var sd : PluginContributions.stepDependencies(effective, lockDir)) {
-                if (sd.sdkComponent() != null && !"root".equals(sd.sdkComponent())) {
-                    components.add(sd.sdkComponent());
+            for (var lane : List.of(
+                    PluginContributions.stepDependencies(effective, lockDir),
+                    PluginContributions.commandDependencies(effective, lockDir))) {
+                for (var sd : lane) {
+                    if (sd.sdkComponent() != null && !"root".equals(sd.sdkComponent())) {
+                        components.add(sd.sdkComponent());
+                    }
                 }
             }
         } catch (RuntimeException ignored) {

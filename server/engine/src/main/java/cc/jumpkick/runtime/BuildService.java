@@ -517,7 +517,7 @@ public final class BuildService {
                 || name.startsWith("native")
                 || name.startsWith(TaskNames.WRITE_IMAGE)
                 || name.startsWith("image-")
-                || name.contains("ksp")
+                || name.contains(TaskNames.KSP)
                 || name.startsWith("transform");
     }
 

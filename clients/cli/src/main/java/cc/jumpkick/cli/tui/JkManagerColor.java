@@ -6,6 +6,7 @@ import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.jdk.JdkProgressLabel;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.terminal.Style;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -27,14 +28,9 @@ public final class JkManagerColor {
 
     private JkManagerColor() {}
 
+    /** Module-aware strip of the {@code "module :: "} label prefix on this row's own module. */
     static String detailForDisplay(String module, String message) {
-        if (message == null || message.isBlank()) return "";
-        String msg = message.trim();
-        String mod = module == null ? "" : module.trim();
-        if (!mod.isEmpty() && msg.startsWith(mod + " :: ")) {
-            msg = msg.substring(mod.length() + 4).trim();
-        }
-        return msg;
+        return TestFailureInfo.stripLabel(module == null ? "" : module, message);
     }
 
     /**
@@ -493,22 +489,6 @@ public final class JkManagerColor {
     static boolean looksLikeJavaMember(String s) {
         if (s == null || s.isEmpty()) return false;
         return JAVA_MEMBER.matcher(s).matches();
-    }
-
-    static String fmtClock(long millis) {
-        return fmtClockSeconds(Math.max(0L, millis) / 1000L);
-    }
-
-    /**
-     * Same as {@link #fmtClock} but from a whole-second counter — used so dual-clock faces share
-     * one tick boundary.
-     */
-    static String fmtClockSeconds(long totalSec) {
-        long s = Math.max(0L, totalSec);
-        long h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
-        if (h > 0) return h + "h " + String.format("%02d", m) + "m " + String.format("%02d", sec) + "s";
-        if (m > 0) return m + "m " + String.format("%02d", sec) + "s";
-        return sec + "s";
     }
 
     static String phaseLabel(String wire) {

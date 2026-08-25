@@ -540,7 +540,7 @@ public final class BuildPlanner {
 
         Task parseBuild = PlannerSetup.parseBuildStep(cx);
 
-        // ---- sync-deps --------------------------------------------------
+        // ---- resolve-deps -----------------------------------------------
         Task syncDeps = PlannerSetup.syncDepsStep(cx);
 
         // ---- ensure-jdk -------------------------------------------------

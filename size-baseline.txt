@@ -176,7 +176,12 @@
 # generation, listener, pid file, endpoint; settled before the accept loop starts) and
 # DrainReporter (the drain-status channel, which reports the decision and makes none). Neither
 # touches the lock. 1,231 -> 881.
-881  server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java
+#
+# Back to 921: `handleShutdown` and `enterDrain` are package-private so a test can drive the drain
+# path without a socket. That seam exists because the two `drain.start()` call sites — the SHUTDOWN
+# arm and the watchdog's `yieldListeners` — are redundant backstops: disabling either alone keeps
+# EngineTakeoverTest green, so one could be deleted silently. The +40 buys the test that notices.
+921  server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java
 
 # The Host-header check, the admission semaphore and the bearer-token gate are one admission
 # decision made in one order. Splitting them splits a security control, and a request that passes
@@ -186,18 +191,12 @@
 # T58: the probe bootstrap, the continuous learned-rate fold and the cold-ETA model are one model.
 # Micro-probes must never become absolute method costs (empty @Tests run in ~5 ms and would
 # under-shoot real suites by 10x), and that rule is only enforceable where both halves are visible.
-# JK-2438 took 1,389 -> 1,184 without touching that pairing: the 23-argument private constructor is
-# now `@Builder(toBuilder = true, access = PRIVATE)`, so the seven copy-withs that each re-spelled all
-# 23 fields positionally — `copy`, a 46-line pass-through to the constructor and nothing else, plus
-# withEngineColdStartMs / withLearned / touch / foldRefine — name only the fields they change, and the
-# four factories that spelled mostly zeros (minimalWithLearned / recordEngineColdStart / absent /
-# testInstance) name only the fields that are not. A positional
-# 23-argument call is how `loadAtCalibration` and `engineColdStartMs` — adjacent, both numeric —
-# would swap silently; the builder is what makes that unrepresentable, and it is why the remaining
-# length is model and not plumbing. The persistence half (readFrom / writeTo /
-# renderCalibrationSection and the TOML scalar readers, ~280 lines) is a file format rather than the
-# model and is the next peel, tracked but not taken here.
-1184  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
+# The 23-argument constructor is `@Builder(toBuilder = true, access = PACKAGE)`, so every copy-with
+# and factory names only the fields it changes — a positional 23-argument call is how
+# `loadAtCalibration` and `engineColdStartMs` — adjacent, both numeric — would swap silently, and
+# the builder makes that unrepresentable. The host-metrics.toml persistence half lives in
+# HostMetricsFile; what remains here is the model.
+925  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
 
 # T58: the per-phase weight table is data that belongs in a resource, not code. No invariant holds
 # it here — this entry is a ratchet, not a justification. JK-2438 took 1,203 -> 1,175 by deleting two
@@ -230,7 +229,11 @@
 # the defect class this campaign exists for — named-locks floating to a major line the api jar cannot
 # call — but the owner is `private` in another module, so closing it means widening a type this
 # ticket does not own. Worth about 15 lines and much more than 15 lines of correctness.
-826  server/engine/src/main/java/cc/jumpkick/runtime/PluginBuild.java
+#
+# 826 -> 839: `fetchCommandDependencies` and `bomConstraintsOf` split out of one method, so a
+# command-only tool is provisioned without joining the step-key vocabulary. The BOM-constraint read
+# is now nameable from a test, which is what the extra lines buy.
+842  server/engine/src/main/java/cc/jumpkick/runtime/PluginBuild.java
 
 # T58: what is left here is the WALK — dirty-marking a module and its consumers in one traversal, so
 # misses stay pessimistic and never become false cache hits, and the per-step decisions that ordering
@@ -252,7 +255,11 @@
 # UnaryOperator above applies the same knob set in a third place (a different shape — it decorates an
 # Inputs rather than building one), and nothing in the fast tier goes red when `withVariant` is
 # dropped from `moduleInputs`, so that thread is compiler-checked and not test-checked.
-909  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
+#
+# 909 -> 921: `requestKnobs` is now a named `UnaryOperator` beside `moduleInputs`, which is the third
+# spelling the note above predicted; `effectiveWorkers` is its own function. The knob set is applied
+# in two places instead of three, and both are readable — the growth is the name, not the logic.
+921  server/engine/src/main/java/cc/jumpkick/runtime/WorkspaceExecute.java
 
 # T58. The invariant this replaces said "the `##JKT:` fork protocol has exactly one writer and one
 # reader, and they are the two ends of the same wire format". Half of that is false: the writer is
@@ -279,7 +286,7 @@
 # pair it with plugins/test-runner's JUnitUniqueId, which parses the same [engine:…][class:…] segments
 # with the same percent-decode — the copy is cross-module, so a shared owner has to land in a module
 # both can reach, and that is a bigger change than a nested-class lift.
-1202  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
+1151  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
 
 # T59 + JK-2419: the three scope solves (main / test / processor) must stay independent of each
 # other and produce one lockfile — a shared mutable universe between them is how a test-only
@@ -316,7 +323,7 @@
 # JK-2431 took three more: `withCancelled` was one of six hand-rolled brace chops, each with its
 # own idea of what a malformed object means, and is now one call to `Jsonl.append`. The pairing
 # invariant is unchanged; the splicing is not part of it.
-1022  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
+1021  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
 
 # T51 / T59: same pairing as ProtoEvents, for the job verbs — and, since JK-2420, the place the
 # job verbs' shared field names are declared. `jdksDir` was typed by hand in sixteen places (seven

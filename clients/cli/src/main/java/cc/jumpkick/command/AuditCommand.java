@@ -11,6 +11,7 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -77,7 +78,7 @@ public final class AuditCommand implements CliCommand {
             return Exit.CONFIG;
         }
         if (global.offline) {
-            CommandWedge.printFail("Audit", "--offline is set; OSV queries require network access.");
+            CommandWedge.printFail("Audit", offlineRefusal(osvBatchUrl));
             return 1;
         }
         Path cache = JkDirs.cache();
@@ -120,5 +121,16 @@ public final class AuditCommand implements CliCommand {
             return 1;
         }
         return 0;
+    }
+
+    /**
+     * The refusal {@code jk audit --offline} prints before the engine round trip — the same
+     * decision the auditor worker makes for web/MCP triggers, worded by the same owner
+     * ({@link Errors#offlineRefusal}). The explicit {@code --osv-batch-url} is named when given;
+     * the default endpoint's owner is the auditor worker, off this classpath, so the fallback is
+     * a stable phrase rather than a second copy of the URL.
+     */
+    static String offlineRefusal(URI osvBatchUrl) {
+        return Errors.offlineRefusal(osvBatchUrl != null ? osvBatchUrl.toString() : "the OSV API");
     }
 }

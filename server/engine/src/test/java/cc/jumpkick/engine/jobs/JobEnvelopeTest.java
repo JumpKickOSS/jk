@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -13,12 +14,17 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.task.RunNotices;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -263,8 +269,8 @@ class JobEnvelopeTest {
      * success — the journal records a failure the user can act on rather than a green run.
      *
      * <p>Detached on purpose: a socket job's dead runner is caught by the cancel stamps, because
-     * the connection thread reads EOF. A dashboard/MCP job has no reader and no cancel, so the
-     * only thing standing between a dead runner and a green history row is the derivation itself.
+     * the connection thread reads EOF. A dashboard/MCP job has no reader and no cancel, so only
+     * the envelope's catch (and, beneath it, the no-verdict derivation) holds this row red.
      */
     @Test
     void a_detached_runner_that_dies_without_ruling_journals_a_failure() throws Exception {
@@ -290,6 +296,116 @@ class JobEnvelopeTest {
         BuildRecord record = host.journalRecord();
         assertThat(record.success()).isFalse();
         assertThat(record.exitCode()).isNotZero();
+    }
+
+    /**
+     * The run-notice sink joins the request before the body runs and leaves in the finally — a
+     * leaked sink would attribute a later run's notices to this request's stream.
+     */
+    @Test
+    void run_notices_ride_the_wire_during_the_run_and_stderr_after_it() {
+        RunNotices.clear();
+        FakeHost host = new FakeHost();
+        JobEnvelope env = new JobEnvelope(host);
+        StringWriter out = new StringWriter();
+        var errDuring = new ByteArrayOutputStream();
+        var originalErr = System.err;
+        System.setErr(new PrintStream(errDuring, true, StandardCharsets.UTF_8));
+        try {
+            env.submit(
+                    "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                    JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                        // The way a real caller stands: a Session derived inside the request
+                        // adopts the run's open ledger, and RunNotices claims against it.
+                        SessionContext.runWhere(
+                                Session.defaults(),
+                                () -> RunNotices.warnOnce("test-notice", () -> "a run-scoped notice"));
+                        return JobOutcome.declined();
+                    }),
+                    new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+        } finally {
+            System.setErr(originalErr);
+        }
+        assertThat(out.toString()).contains("\"code\":\"notice\"").contains("a run-scoped notice");
+        assertThat(errDuring.toString(StandardCharsets.UTF_8)).doesNotContain("a run-scoped notice");
+
+        // After the finally the sink is gone: the same ledger's next note is stderr-only.
+        var errAfter = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(errAfter, true, StandardCharsets.UTF_8));
+        try {
+            SessionContext.runWhere(
+                    Session.defaults().withIo(host.io),
+                    () -> RunNotices.warnOnce("late-notice", () -> "a note after the run"));
+        } finally {
+            System.setErr(originalErr);
+        }
+        assertThat(errAfter.toString(StandardCharsets.UTF_8)).contains("a note after the run");
+        assertThat(out.toString()).doesNotContain("a note after the run");
+        RunNotices.clear();
+    }
+
+    /**
+     * The sharper failure: a body that throws <em>after</em> recording clean rows. Without the
+     * envelope's catch the no-verdict derivation never fires — one success row and no failure row
+     * derives green — so the escaped throw must be stamped as a failure, with the exception named
+     * on the record.
+     */
+    @Test
+    void a_runner_that_throws_after_clean_rows_journals_a_failure_not_green() throws Exception {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host);
+
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    host.accumulator.addModule(new ModuleOutcome("g:a", Path.of("/w/a"), true, 0, 10, true));
+                    throw new IllegalStateException("threw past its own handler");
+                }),
+                new JobTransport.FireAndForget());
+
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(host.journalWritten).isTrue();
+        BuildRecord record = host.journalRecord();
+        assertThat(record.success()).isFalse();
+        assertThat(record.exitCode()).isNotZero();
+        assertThat(record.diagnostics())
+                .as("the record names the escape, not just a bare failure bit")
+                .anyMatch(d -> "escaped-throw".equals(d.code())
+                        && "java.lang.IllegalStateException".equals(d.exceptionClass()));
+        assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish") && e.contains("\"success\":false")))
+                .isTrue();
+    }
+
+    /**
+     * The contract the catch must not break: {@link JobOutcome.Declined} with clean rows is the
+     * documented derive-from-facts path and still reads green.
+     */
+    @Test
+    void a_runner_that_declines_with_clean_rows_still_derives_green() throws Exception {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host);
+
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    host.accumulator.addModule(new ModuleOutcome("g:a", Path.of("/w/a"), true, 0, 10, true));
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.FireAndForget());
+
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(host.journalWritten).isTrue();
+        BuildRecord record = host.journalRecord();
+        assertThat(record.success()).isTrue();
+        assertThat(record.exitCode()).isZero();
     }
 
     private static final class FakeHost implements JobEnvelope.Host {
@@ -366,9 +482,11 @@ class JobEnvelopeTest {
         @Override
         public void unbindEventRequestId() {}
 
+        final IoLedger io = new IoLedger();
+
         @Override
         public IoLedger runIo(long id) {
-            return new IoLedger();
+            return io;
         }
 
         @Override

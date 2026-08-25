@@ -7,11 +7,11 @@ import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.JUnitLauncher;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -73,23 +73,16 @@ public final class EventRedaction {
 
     /**
      * Redaction never breaks a build — but a silently-disabled security control must still be
-     * discoverable. One warning per engine run, on stderr (merged into the engine log
-     * by the spawn line).
+     * discoverable. Once per run via {@link RunNotices}: the resident engine says it again for
+     * the next build, not only for the first one after a restart.
      */
-    private static final AtomicBoolean WARNED_FAIL_OPEN = new AtomicBoolean();
-
     static void warnFailOpen(RuntimeException e) {
-        if (WARNED_FAIL_OPEN.compareAndSet(false, true)) {
-            System.err.println("jk engine: secret redaction failed open ("
-                    + e.getClass().getSimpleName()
-                    + (e.getMessage() == null ? "" : ": " + e.getMessage())
-                    + ") — output may contain unmasked secrets for this run");
-        }
-    }
-
-    /** Test seam: re-arm the once-per-run fail-open warning. */
-    static void resetFailOpenWarning() {
-        WARNED_FAIL_OPEN.set(false);
+        RunNotices.warnOnce(
+                "secret-redaction-fail-open",
+                () -> "jk engine: secret redaction failed open ("
+                        + e.getClass().getSimpleName()
+                        + (e.getMessage() == null ? "" : ": " + e.getMessage())
+                        + ") — output may contain unmasked secrets for this run");
     }
 
     /**

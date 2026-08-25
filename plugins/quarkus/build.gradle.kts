@@ -16,4 +16,7 @@ dependencies {
     compileOnly("io.quarkus:quarkus-bootstrap-core:$quarkusBootstrap")
     compileOnly("io.quarkus:quarkus-bootstrap-maven-resolver:$quarkusBootstrap")
     compileOnly("io.quarkus:quarkus-bootstrap-app-model:$quarkusBootstrap")
+    // Real PlatformImportsImpl for the platform-properties injection tests — the injection is
+    // pure model + file I/O, so the tests exercise the production types, not stand-ins.
+    testImplementation("io.quarkus:quarkus-bootstrap-app-model:$quarkusBootstrap")
 }

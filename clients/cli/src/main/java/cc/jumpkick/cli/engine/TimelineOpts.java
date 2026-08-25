@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.run;
+package cc.jumpkick.cli.engine;
 
 /**
  * CLI-only request flag for {@code --no-timeline} (global). The engine writes the chrome profile

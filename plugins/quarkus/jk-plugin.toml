@@ -47,6 +47,13 @@ with       = ["io.quarkus:quarkus-bootstrap-maven-resolver:^${config.version}"]
 transitive = true
 managed-by = "io.quarkus:quarkus-bootstrap-bom:^${config.version}"
 
+# Platform properties for the augment's config expansion + alignment checks. `!properties` is a
+# packaging type: the engine fetches the artifact through jk's own repo stack into the CAS —
+# never through the user's ~/.m2/settings.xml — and hands the augment its path.
+[[contribute.step-dependency]]
+artifact   = "quarkus-platform-properties"
+coordinate = "io.quarkus.platform:quarkus-bom-quarkus-platform-properties:^${config.version}!properties"
+
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
 javac  = ["-parameters"]

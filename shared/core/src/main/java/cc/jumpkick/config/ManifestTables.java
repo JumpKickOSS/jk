@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
@@ -436,10 +437,10 @@ public final class ManifestTables {
      * not ask for one. Saying so is better than building the table's rules into nothing.
      */
     static Map<String, PluginConfig> ensureMinifiedPluginConfigured(
-            Optional<JkBuild.Application> application,
+            JkBuild.@Nullable Application application,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installed) {
-        boolean minified = application.isPresent() && application.get().minified();
+        boolean minified = application != null && application.minified();
         if (!minified) {
             if (pluginConfigs.containsKey("minified")) {
                 throw new JkBuildParseException("[minified] configures the minified jar, but no minified jar is"

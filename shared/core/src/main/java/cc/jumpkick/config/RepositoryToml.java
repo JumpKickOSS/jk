@@ -122,18 +122,27 @@ public final class RepositoryToml {
         }
     }
 
-    /** Expand {@code raw} under {@code policy}; {@code where} names the position for STRICT. */
+    /** Expand {@code raw} under {@code policy} against the process environment; {@code where} names the position. */
     public static String interpolate(String raw, VarPolicy policy, String where) {
+        return interpolate(raw, policy, where, System::getenv);
+    }
+
+    /**
+     * As {@link #interpolate(String, VarPolicy, String)} but resolving against {@code env} — the
+     * build path expands object-store credentials against the layered request environment
+     * ({@code .env} under the caller's shell), not the engine process's environ.
+     */
+    public static String interpolate(String raw, VarPolicy policy, String where, UnaryOperator<String> env) {
         return switch (policy) {
             case DEFER -> raw;
             case LENIENT ->
                 interpolate(raw, var -> {
-                    String v = System.getenv(var);
+                    String v = env.apply(var);
                     return v != null ? v : "${" + var + "}";
                 });
             case STRICT ->
                 interpolate(raw, var -> {
-                    String v = System.getenv(var);
+                    String v = env.apply(var);
                     if (v == null) {
                         throw new JkBuildParseException(
                                 where + " references unset environment variable ${" + var + "}");

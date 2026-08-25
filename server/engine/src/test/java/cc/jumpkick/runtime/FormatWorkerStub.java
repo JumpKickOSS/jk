@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
  * A stand-in for the forked {@code jk-formatter} worker, used by {@link
  * FormatWorkerCompletenessTest}. It speaks the real {@code ##JKFMT:} protocol through the real
  * {@link ProtocolWriter}/{@link PluginReply} pair, so the host side under test — {@code
- * FormatPlans.runWorker} — is driven exactly as production drives it.
+ * FormatWorker.runWorker} — is driven exactly as production drives it.
  *
  * <p>What the real worker cannot be made to do on demand is <em>die</em>: the crash this exists to
  * reproduce is a HotSpot SIGSEGV under a full GC. So the stub takes the death as an argument.

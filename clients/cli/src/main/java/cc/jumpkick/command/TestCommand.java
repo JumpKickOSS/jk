@@ -11,6 +11,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
@@ -134,7 +135,7 @@ public final class TestCommand implements CliCommand {
         // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
-        var info = BuildCommand.projectInfoOrNull(dir);
+        var info = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
@@ -149,7 +150,7 @@ public final class TestCommand implements CliCommand {
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            var sel = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -259,7 +260,7 @@ public final class TestCommand implements CliCommand {
             throws IOException, InterruptedException {
         List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
         if (!tokens.isEmpty()) {
-            var sel = BuildCommand.projectInfoOrError(entryDir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -289,8 +290,7 @@ public final class TestCommand implements CliCommand {
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
         List<String> scopeNames = List.of();
         if (modules != null && !modules.isEmpty()) {
-            scopeNames =
-                    ModuleScopeHint.namesFrom(BuildCommand.projectInfoOrError(entryDir, modulesSpec, affectedSince));
+            scopeNames = ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince));
             if (!live) {
                 ModuleScopeHint.print("testing", scopeNames, global != null && global.outputIsJson());
             }

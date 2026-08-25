@@ -100,7 +100,6 @@ public final class ImportVerb implements HostedVerb {
                         Path.of(Jsonl.str(requestLine, "tmpDir")),
                         Jsonl.bool(requestLine, "force", false),
                         report != null ? Path.of(report) : null,
-                        cache,
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
                 return host.streamSinglePlan(
                         plan,

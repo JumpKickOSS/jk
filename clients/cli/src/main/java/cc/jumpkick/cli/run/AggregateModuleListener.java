@@ -155,7 +155,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
                 cm.writeAbove(report);
             }
         }
-        if (JkManager.forceShowOnStepFailure(step, null)) {
+        if (JkManager.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }
@@ -191,7 +191,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // succeeded.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
-        if (!ok && JkManager.forceShowOnStepFailure(step, group)) {
+        if (!ok && JkManager.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }

@@ -229,6 +229,33 @@ public final class BuildAccumulator {
         return cancelReason;
     }
 
+    /**
+     * The row for a throw that escaped the job body. The envelope's catch stamps a failed verdict
+     * alongside it, so the record names the exception instead of deriving green from whatever
+     * clean rows the body recorded before it died.
+     */
+    public void addEscapedThrow(Throwable t) {
+        addDiag(new BuildRecord.Diag(
+                "error",
+                "",
+                null,
+                "escaped-throw",
+                t.getMessage() == null ? t.getClass().getName() : t.getMessage(),
+                null,
+                t.getClass().getName(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                0,
+                List.of(),
+                0));
+    }
+
     public void addModule(ModuleOutcome o) {
         synchronized (modules) {
             modules.add(o);

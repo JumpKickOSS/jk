@@ -7,6 +7,7 @@ import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
@@ -133,7 +134,7 @@ public final class CleanCommand implements CliCommand {
         dirs.add(workspaceRoot);
         Path rootToml = workspaceRoot.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(rootToml)) return dirs;
-        var info = BuildCommand.projectInfoOrNull(workspaceRoot);
+        var info = ProjectInfos.orNull(workspaceRoot);
         if (info != null && info.workspaceRoot()) {
             for (Path moduleDir : resolveModuleDirs(workspaceRoot, info.moduleDirs(), warnings)) {
                 if (Files.isDirectory(moduleDir)) dirs.add(moduleDir);

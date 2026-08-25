@@ -59,7 +59,7 @@ public final class ModuleOutputRestore {
                 new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot), JkStores.storeCas());
 
         // Compile outputs → classes (and language-private dirs when present).
-        restoreCompile(ac, "compile-main", layout.classesDir());
+        restoreCompile(ac, TaskNames.COMPILE_MAIN, layout.classesDir());
         restoreCompile(ac, TaskNames.COMPILE_KOTLIN, layout.kotlinClassesDir());
         // Groovy shares the merged classes dir as its task tag (see PlannerCompile).
         restoreCompile(ac, TaskNames.COMPILE_GROOVY, layout.classesDir());
@@ -154,8 +154,10 @@ public final class ModuleOutputRestore {
             boolean compact = CompileSupport.isSimpleLayout(build.project(), moduleDir);
             Path javaRoot = compact ? moduleDir.resolve("src") : moduleDir.resolve("src/main/java");
             return !CompileSupport.collectJavaSources(javaRoot).isEmpty()
-                    || !CompileSupport.collectKotlinSources(moduleDir, compact).isEmpty()
-                    || !CompileSupport.collectGroovySources(moduleDir, compact).isEmpty()
+                    || !PlannerCompile.mainKotlinSources(build, moduleDir, compact)
+                            .isEmpty()
+                    || !PlannerCompile.mainGroovySources(build, moduleDir, compact)
+                            .isEmpty()
                     || !CompileSupport.collectScalaSources(moduleDir, compact).isEmpty();
         } catch (Exception e) {
             return true; // fail safe: treat as sourced so missing classes counts

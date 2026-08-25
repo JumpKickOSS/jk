@@ -10,6 +10,12 @@ description = "jk web dashboard: the resident engine's single-page dashboard (Vu
         "bundles it; the native CLI never links it (the dashboard is a server concern). Its tests are " +
         "the headless `node --test` suites under src/test/js, driven by WebClientJsTest."
 
+dependencies {
+    // WireTokenParityTest holds wire.js's hand-typed tokens to their EngineProtocol owners.
+    // Test-only: the shipped SPA stays pure static assets with no Java.
+    testImplementation(project(":wire"))
+}
+
 tasks.named<Test>("test") {
     // WebClientJsTest shells out to `node --test`, reading the SPA modules and the .mjs suites from
     // the SOURCE tree at runtime — Gradle can't see that, so editing fold.js would otherwise leave
@@ -20,6 +26,15 @@ tasks.named<Test>("test") {
             .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir("src/test/js")
             .withPropertyName("jsTestSuites")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    // WireTokenParityTest reads the engine sources that write the dashboard's SSE-layer names
+    // (request-start / request-finish / run-snapshot / plan / cache). Named files, not a glob, so
+    // moving one fails the build loudly instead of silently blinding the SSE arm.
+    inputs.files(
+            rootProject.file("server/engine/src/main/java/cc/jumpkick/engine/SsePublisher.java"),
+            rootProject.file("server/engine/src/main/java/cc/jumpkick/engine/LiveRuns.java"),
+            rootProject.file("server/engine/src/main/java/cc/jumpkick/engine/http/LiveVitals.java"))
+            .withPropertyName("sseVocabularySources")
             .withPathSensitivity(PathSensitivity.RELATIVE)
     // Node is a hard requirement — WebClientJsTest fails the build when it is missing, rather than
     // skipping into a green (JK-2441). Opting out has to be deliberate:

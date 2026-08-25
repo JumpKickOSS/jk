@@ -8,6 +8,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -75,12 +76,12 @@ public final class CompileCommand implements CliCommand {
 
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
-        var peek = BuildCommand.projectInfoOrNull(dir);
+        var peek = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
         List<String> selectors = ModuleSelectors.tokens(modulesSpec, affectedSince);
         Path infoDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : dir;
-        var info = BuildCommand.projectInfoOrError(infoDir, modulesSpec, affectedSince);
+        var info = ProjectInfos.orError(infoDir, modulesSpec, affectedSince);
         if (info.error() != null) {
             CommandWedge.printFail("Compile", info.error());
             return Exit.CONFIG;

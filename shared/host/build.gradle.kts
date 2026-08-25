@@ -207,3 +207,126 @@ tasks.named<Test>("test") {
             .withPropertyName("treeWideProductionSources")
             .withPathSensitivity(PathSensitivity.RELATIVE)
 }
+
+// ---------------------------------------------------------------------------
+// Guard (letter assigned at landing): deterministic .properties rendering has one owner.
+//
+// Defect it prevents: the writer Properties.store() invites. store() prepends a #-dated comment
+// line and emits keys in unspecified Hashtable order, so a caller that reaches for it ships a
+// non-reproducible artifact — and the historical alternative was a hand-rolled renderer per
+// plugin, one spec-correct, one not escaping at all. cc.jumpkick.host.DeterministicProperties
+// .render is the one writer. This bans `.store(` on any line of a main-source file that imports
+// java.util.Properties. A same-file JkStores.store() call beside that import would false-positive;
+// no such file exists today, and the fix is to call the owner, not to widen this scan.
+//
+// Self-fail arms: the owner must still declare render(Map), and the scan must keep seeing files
+// that import java.util.Properties — measured 2026-08-25: 14 importing main-source files,
+// 0 `.store(` lines among them.
+
+/**
+ * [src] with comments and string-literal bodies blanked to spaces (newlines kept), so a scan
+ * matches only code — a javadoc that merely *mentions* Properties.store() stays invisible.
+ */
+fun javaCodeOnly(src: String): String {
+    val out = StringBuilder(src.length)
+    var i = 0
+    while (i < src.length) {
+        when {
+            src.startsWith("//", i) -> {
+                while (i < src.length && src[i] != '\n') {
+                    out.append(' ')
+                    i++
+                }
+            }
+            src.startsWith("/*", i) -> {
+                val end = src.indexOf("*/", i + 2)
+                val stop = if (end < 0) src.length else end + 2
+                while (i < stop) {
+                    out.append(if (src[i] == '\n') '\n' else ' ')
+                    i++
+                }
+            }
+            src.startsWith("\"\"\"", i) -> {
+                val end = src.indexOf("\"\"\"", i + 3)
+                val stop = if (end < 0) src.length else end + 3
+                while (i < stop) {
+                    out.append(if (src[i] == '\n') '\n' else ' ')
+                    i++
+                }
+            }
+            src[i] == '"' || src[i] == '\'' -> {
+                val quote = src[i]
+                out.append(quote)
+                i++
+                while (i < src.length && src[i] != quote) {
+                    if (src[i] == '\\' && i + 1 < src.length) {
+                        out.append("  ")
+                        i += 2
+                    } else {
+                        out.append(if (src[i] == '\n') '\n' else ' ')
+                        i++
+                    }
+                }
+                if (i < src.length) {
+                    out.append(quote)
+                    i++
+                }
+            }
+            else -> {
+                out.append(src[i])
+                i++
+            }
+        }
+    }
+    return out.toString()
+}
+
+val checkPropertiesStoreOwner by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a Properties.store() call in main sources (use DeterministicProperties.render)"
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/DeterministicProperties.java")
+    val mainSources = fileTree(rootProject.layout.projectDirectory) {
+        include("*/*/src/main/java/**/*.java")
+        exclude("**/build/**")
+    }
+    inputs.file(owner).withPropertyName("deterministicProperties")
+    inputs.files(mainSources).withPropertyName("mainSources")
+    val stamp = layout.buildDirectory.file("guards/properties-store-owner.ok")
+    outputs.file(stamp)
+    doLast {
+        if (!Regex("""String\s+render\s*\(""").containsMatchIn(owner.asFile.readText())) {
+            throw GradleException("cc.jumpkick.host.DeterministicProperties no longer declares"
+                    + " render(...), so this guard has lost the owner it points callers at. Restore"
+                    + " the method or retire the guard deliberately.")
+        }
+        val importing = mutableListOf<File>()
+        val hits = mutableListOf<String>()
+        mainSources.files.sorted().forEach { f ->
+            val code = javaCodeOnly(f.readText())
+            if (!code.contains("import java.util.Properties;")) return@forEach
+            importing.add(f)
+            code.lines().forEachIndexed { idx, line ->
+                if (line.contains(".store(")) {
+                    hits.add("  ${f.relativeTo(treeRoot).invariantSeparatorsPath}:${idx + 1}:"
+                            + " ${line.trim()}")
+                }
+            }
+        }
+        if (importing.isEmpty()) {
+            throw GradleException("The Properties-store guard found no main-source file importing"
+                    + " java.util.Properties; it was measured against 14. The include pattern has"
+                    + " stopped seeing the tree — fix it before trusting a green run.")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("Properties.store() writes a #-dated comment line in Hashtable"
+                    + " order — a non-reproducible artifact. Render through"
+                    + " cc.jumpkick.host.DeterministicProperties.render instead:\n"
+                    + hits.joinToString("\n"))
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkPropertiesStoreOwner) }
+tasks.named("jar") { dependsOn(checkPropertiesStoreOwner) }

@@ -2,6 +2,8 @@
 // The only file that talks HTTP: token bootstrap, fetch wrappers, and the SSE client.
 // See docs/webclient.md and docs/http.md (auth tiers, #t= fragment bootstrap).
 
+import { EVENT, SSE } from './wire.js';
+
 const TOKEN_KEY = 'jk-http-token';
 const EPOCH_KEY = 'jk-engine-epoch';
 const EPOCH_HEADER = 'X-Jk-Engine-Epoch';
@@ -289,25 +291,7 @@ export async function del(path) {
  * Engine event types the dashboard listens for (EventSource needs a listener per named event).
  * Build activity is folded by fold.js; `status` / `cache` update chrome vitals.
  */
-const EVENT_TYPES = [
-  'request-start',
-  'run-snapshot', // mid-flight catch-up on SSE connect (one frame per running job)
-  'plan',
-  'module-start',
-  'task-start',
-  'task-finish',
-  'label',
-  'progress',
-  'workspace-progress',
-  'eta',
-  'output',
-  'error',
-  'buildplan-finish',
-  'module-finish',
-  'request-finish',
-  'status',
-  'cache',
-];
+const EVENT_TYPES = [...Object.values(SSE), ...Object.values(EVENT)];
 
 /**
  * Event types that are safe to coalesce to the latest pending frame per request (or globally for
@@ -315,12 +299,12 @@ const EVENT_TYPES = [
  * keep painting while a storm of structural/output frames is still being parsed.
  */
 const COALESCE_TYPES = new Set([
-  'workspace-progress',
-  'progress',
-  'eta',
-  'label',
-  'status',
-  'cache',
+  EVENT.workspaceProgress,
+  EVENT.progress,
+  EVENT.eta,
+  EVENT.label,
+  EVENT.status,
+  SSE.cache,
 ]);
 
 /**
@@ -351,15 +335,15 @@ export function events(onEvent, onState) {
 
   function coalesceKey(type, data) {
     if (!COALESCE_TYPES.has(type)) return null;
-    if (type === 'status' || type === 'cache') return type;
+    if (type === EVENT.status || type === SSE.cache) return type;
     const rid = data && data.jid != null ? data.jid : '';
     // progress is per-module; label targets a specific STEP row — with parallel workers in
     // one plan, a (type, rid, dir) key let step B's pending label overwrite step A's before the
     // drain, leaving A's detail stale until its next tick.
-    if (type === 'label') {
+    if (type === EVENT.label) {
       return type + ':' + rid + ':' + ((data && data.dir) || '') + ':' + ((data && (data.task || data.step)) || '');
     }
-    if (type === 'progress') {
+    if (type === EVENT.progress) {
       return type + ':' + rid + ':' + ((data && data.dir) || '');
     }
     return type + ':' + rid;

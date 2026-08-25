@@ -60,7 +60,8 @@ public final class CacheMaintenanceVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         // The maintenance body runs under two locks and cannot hand its verdict back through a
         // void Runnable; this is where it lands.
-        AtomicReference<JobOutcome> verdict = new AtomicReference<>(JobOutcome.declined());
+        AtomicReference<PlanBurst.Outcome> finished = new AtomicReference<>();
+        AtomicReference<BuildPlan> ranPlan = new AtomicReference<>();
         try {
             String op = String.valueOf(Jsonl.str(requestLine, "op"));
             Path cache = Path.of(Jsonl.str(requestLine, "cache"));
@@ -84,29 +85,37 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                                 cache, dryRun, Jsonl.bool(requestLine, "includeJkTmp", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
-                        String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                        verdict.set(host.streamSinglePlan(plan, session, writer, result -> {
-                            // An explicit clean IS a prune — stamp it, or `usage` keeps warning
-                            // "Last cleaned: never" right after a successful clean and the idle
-                            // scheduler re-runs work the user just did. Same file for
-                            // the store tier: its usage footer reads from its own root.
-                            if (result.success() && !dryRun && ("prune".equals(op) || "sweep".equals(op))) {
-                                CacheMaintenanceLocks.stampLastPruned(
-                                        cache,
-                                        host.nowMillis(),
-                                        plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
-                            }
-                            return ProtoSession.planFinishCache(
-                                    dir,
-                                    result.success(),
-                                    plan.get(CachePlans.FILES).orElse(-1L),
-                                    plan.get(CachePlans.BYTES).orElse(-1L));
-                        }));
+                        ranPlan.set(plan);
+                        PlanBurst.Outcome out = PlanBurst.streamWithoutFinish(host, plan, session, writer);
+                        // An explicit clean IS a prune — stamp it, or `usage` keeps warning
+                        // "Last cleaned: never" right after a successful clean and the idle
+                        // scheduler re-runs work the user just did. Same file for
+                        // the store tier: its usage footer reads from its own root. The stamp is
+                        // a write under the cache root, so it belongs under the lock.
+                        if (out.result().success() && !dryRun && ("prune".equals(op) || "sweep".equals(op))) {
+                            CacheMaintenanceLocks.stampLastPruned(
+                                    cache,
+                                    host.nowMillis(),
+                                    plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
+                        }
+                        finished.set(out);
                     });
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }
-        return verdict.get();
+        // The terminal is sent only after both locks are released: the nuke client deletes the
+        // cache root — the .prune.lock in it included — the moment it reads this line, and on
+        // Windows the engine's still-open lock handle would make that delete fail.
+        PlanBurst.Outcome out = finished.get();
+        BuildPlan plan = ranPlan.get();
+        host.sendQuiet(
+                writer,
+                ProtoSession.planFinishCache(
+                        EngineProtocol.SINGLE_PLAN_DIR,
+                        out.result().success(),
+                        plan.get(CachePlans.FILES).orElse(-1L),
+                        plan.get(CachePlans.BYTES).orElse(-1L)));
+        return out.outcome();
     }
 }

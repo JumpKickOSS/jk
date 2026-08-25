@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.TestFailureInfo;
 import org.jspecify.annotations.NullMarked;
 
 /**
@@ -304,9 +306,6 @@ final class JkManagerPlainView {
     private static String formatTail(String subject, int percent, String eta, String status, String detail) {
         String st = status == null || status.isBlank() ? PlainPhase.PREPARE : status;
         StringBuilder tail = new StringBuilder();
-        if (subject != null && !subject.isBlank()) {
-            tail.append(subject).append(" :: ");
-        }
         tail.append(percent).append('%');
         boolean showEta =
                 eta != null && !eta.isBlank() && !PlainPhase.PREPARE.equals(st) && !PlainPhase.DONE.equals(st);
@@ -317,7 +316,8 @@ final class JkManagerPlainView {
         if (detail != null && !detail.isBlank()) {
             tail.append(" = ").append(detail);
         }
-        return tail.toString();
+        // The subject joins through the label owner so the separator cannot drift (blank drops it).
+        return TestFailureInfo.label(subject, tail.toString(), 0);
     }
 
     private String planCoordOrEmpty() {
@@ -327,15 +327,13 @@ final class JkManagerPlainView {
     /** {@code "jk: * Format > Examining source files - working..."} / {@code … - done.}. */
     static String indeterminateLine(String command, String message, boolean done) {
         if (command == null || command.isEmpty()) {
-            String msg = (message == null || message.isBlank()) ? "working" : message;
-            String tail = msg + " - " + (done ? "done." : "working...");
-            return JkWedge.PLAIN_LINE_PREFIX + Glyphs.PULSE_PLAIN + " " + tail;
+            return JkWedge.plainStatusLine(null, message, done ? JkWedge.PlainTail.DONE : JkWedge.PlainTail.WORKING);
         }
         if (done) {
-            return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, "100% - done");
+            return JkWedge.plainStatusLine(command, null, JkWedge.PlainTail.PERCENT_DONE);
         }
         String msg = (message == null || message.isBlank()) ? PlainPhase.INITIALIZING : message;
-        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, msg);
+        return JkWedge.plainStatusLine(command, msg, JkWedge.PlainTail.BARE);
     }
 
     private String indeterminateLine(boolean doneLine) {
@@ -391,6 +389,6 @@ final class JkManagerPlainView {
     private String etaClock() {
         long remMs = m.countdown.remainingMs(m.elapsedMillis());
         if (remMs < 0) return null;
-        return JkManagerColor.fmtClock(remMs);
+        return DurationText.clockMillis(remMs);
     }
 }

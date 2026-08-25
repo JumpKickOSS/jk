@@ -17,19 +17,19 @@ class FormatReconcileTest {
 
     @Test
     void a_run_that_visited_every_file_reconciles() {
-        assertThat(FormatPlans.reconcile(2088, 2088, 0)).isNull();
-        assertThat(FormatPlans.reconcile(0, 0, 0)).isNull();
+        assertThat(FormatWorker.reconcile(2088, 2088, 0)).isNull();
+        assertThat(FormatWorker.reconcile(0, 0, 0)).isNull();
     }
 
     /** The worker's own exit law: {@code 1} is {@code --check} drift (or per-file errors), not death. */
     @Test
     void the_workers_own_drift_code_is_not_a_crash() {
-        assertThat(FormatPlans.reconcile(2088, 2088, 1)).isNull();
+        assertThat(FormatWorker.reconcile(2088, 2088, 1)).isNull();
     }
 
     @Test
     void a_shortfall_names_the_unvisited_files_and_the_exit() {
-        String d = FormatPlans.reconcile(500, 2063, 139);
+        String d = FormatWorker.reconcile(500, 2063, 139);
 
         assertThat(d).isNotNull();
         assertThat(d)
@@ -46,7 +46,7 @@ class FormatReconcileTest {
      */
     @Test
     void more_results_than_files_is_also_a_failure() {
-        String d = FormatPlans.reconcile(12, 8, 0);
+        String d = FormatWorker.reconcile(12, 8, 0);
 
         assertThat(d).isNotNull();
         assertThat(d).contains("12 files but only 8 were planned").contains("4 more results than files");
@@ -58,12 +58,12 @@ class FormatReconcileTest {
      */
     @Test
     void an_exit_outside_the_workers_vocabulary_fails_even_when_the_count_balances() {
-        assertThat(FormatPlans.reconcile(8, 8, 139))
+        assertThat(FormatWorker.reconcile(8, 8, 139))
                 .isNotNull()
                 .contains("exited 139")
                 .contains("exit law is 0 or 1");
-        assertThat(FormatPlans.reconcile(8, 8, 137)).isNotNull().contains("exited 137");
-        assertThat(FormatPlans.reconcile(8, 8, 70))
+        assertThat(FormatWorker.reconcile(8, 8, 137)).isNotNull().contains("exited 137");
+        assertThat(FormatWorker.reconcile(8, 8, 70))
                 .as("Exit.SOFTWARE out of PluginMain means the worker jar is built wrong — still a death")
                 .isNotNull();
     }

@@ -145,7 +145,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
         if (report != null && !report.isEmpty()) cm.writeAbove(report);
         // Non-test diagnostic: treat as tool/worker failure — force-open the process-output pane.
-        if (JkManager.forceShowOnStepFailure(step, null)) {
+        if (JkManager.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }
@@ -172,7 +172,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.stepDone(module, step, ok, group == null ? "" : group);
         // Failed tool/worker (e.g. native-image): force-open the process-output peek. Test-runner
         // failures keep curated chrome and do not force-open.
-        if (!ok && JkManager.forceShowOnStepFailure(step, group)) {
+        if (!ok && JkManager.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }

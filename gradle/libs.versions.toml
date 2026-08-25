@@ -3,6 +3,9 @@
 # All picks justified in docs/jk-impl.md §4.
 
 [versions]
+# apksig follows jk-lock.toml's pin — the self-host manifest floats on "latest" and the lock is
+# the pin, so bump this alongside a re-lock (checkCatalogLockParity in plugins/android gates it).
+apksig = "9.3.2"
 assertj = "3.27.7"
 asm = "9.10.1"
 bouncycastle = "1.84"
@@ -45,6 +48,7 @@ maven-artifact         = { module = "org.apache.maven:maven-artifact",          
 jgit                   = { module = "org.eclipse.jgit:org.eclipse.jgit",            version.ref = "jgit" }
 
 # build pipeline / bytecode
+apksig                 = { module = "com.android.tools.build:apksig",               version.ref = "apksig" }
 asm                    = { module = "org.ow2.asm:asm",                              version.ref = "asm" }
 asm-tree               = { module = "org.ow2.asm:asm-tree",                         version.ref = "asm" }
 asm-commons            = { module = "org.ow2.asm:asm-commons",                      version.ref = "asm" }

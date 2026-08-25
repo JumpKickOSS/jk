@@ -35,12 +35,13 @@ import org.jspecify.annotations.Nullable;
  * {@link WorkspaceBuildListener} calls — the client half of the wire contract, and the only place
  * that knows what a {@code task-finish} line means.
  *
- * <p>Two shapes, one table. {@link #streamSingleBuildPlanEvents} replays one plan ({@code jk
+ * <p>Many pump loops, one table. {@link #streamSingleBuildPlanEvents} replays one plan ({@code jk
  * test}, {@code jk build} on a leaf project, {@code jk install}); {@link #streamWorkspaceEvents}
- * replays a workspace's many plans, keyed by module dir. The ten events that are the same in both
- * — everything from {@code plan-start} to {@code task-finish} — are decoded by {@link #dispatch},
- * once. They were two hand-kept copies before JK-2436, which is how a third copy in {@link
- * EnginePluginAdapter} came to report {@code Duration.ZERO} for every step it finished.
+ * replays a workspace's many plans, keyed by module dir; {@link EnginePluginAdapter} and {@link
+ * EngineResolveAdapter} pump the hosted plugin/resolver plans. The ten events that are the same in
+ * all of them — everything from {@code plan-start} to {@code task-finish} — are decoded by {@link
+ * #dispatch}, once. Private copies of this table are how a finished step came to render {@code
+ * Duration.ZERO} and a test failure lost its file/line/snippet enrichment.
  *
  * <p>Decode order IS the contract: a {@code job-start} decoded after its first {@code task-start}
  * renders a module that never started, so the arms below stay in the order the engine writes them.
@@ -246,7 +247,7 @@ final class EngineEventDecoder {
      * diagnostic still matters (it is carried on the terminal result), everything else needs a
      * listener that does not exist.
      */
-    private static void dispatch(
+    static void dispatch(
             String type,
             String line,
             @Nullable BuildPlanListener listener,
@@ -316,8 +317,7 @@ final class EngineEventDecoder {
     private static @Nullable TestFailureInfo testFailureFromWire(String line) {
         String module = nz(Jsonl.topStr(line, "module"));
         String engine = nz(Jsonl.topStr(line, "engine"));
-        String className = nz(Jsonl.topStr(line, "testClass"));
-        if (className.isEmpty()) className = nz(Jsonl.topStr(line, "class"));
+        String className = nz(Jsonl.topStr(line, EngineProtocol.TEST_CLASS_FIELD));
         String method = nz(Jsonl.topStr(line, "method"));
         if (method.isEmpty()) method = nz(Jsonl.topStr(line, "test"));
         String exceptionClass = nz(Jsonl.str(line, "exceptionClass"));
@@ -338,7 +338,6 @@ final class EngineEventDecoder {
         if (!anyIdentity && !"test-failure".equals(Jsonl.str(line, "code"))) return null;
         if (!anyIdentity && exceptionClass.isEmpty()) return null;
         int worker = Jsonl.intValue(line, "worker", 0);
-        if (worker <= 0) worker = Jsonl.intValue(line, "w", 0);
         return new TestFailureInfo(
                 module,
                 engine,
@@ -447,7 +446,7 @@ final class EngineEventDecoder {
                 Jsonl.bool(line, "cancelled", false));
     }
 
-    private static @Nullable String wireGroup(@Nullable String raw) {
+    static @Nullable String wireGroup(@Nullable String raw) {
         return raw == null || raw.isBlank() ? null : raw;
     }
 }

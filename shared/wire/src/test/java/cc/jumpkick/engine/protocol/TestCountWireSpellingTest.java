@@ -4,18 +4,6 @@ package cc.jumpkick.engine.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.TestSummary;
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -29,21 +17,12 @@ import org.junit.jupiter.api.Test;
  * and changing it would need a journal migration.
  *
  * <p>These assertions read the <em>wire text</em>, not a round trip through {@link TestSummary}'s own
- * encoder/decoder pair — a round trip is green for a consistently wrong name. Each retired spelling
- * is named as a literal so the encoder cannot quietly grow a second one back.
+ * encoder/decoder pair — a round trip is green for a consistently wrong name. The tree-wide ban on
+ * the retired spellings is the {@code checkNoRetiredWireSpelling} guard task in this module's
+ * {@code build.gradle.kts}: a JUnit scan over other modules' sources goes UP-TO-DATE with them
+ * unchanged, a guard task declares them as inputs.
  */
 class TestCountWireSpellingTest {
-
-    /** Every spelling this ticket retired. None may appear in anything the engine emits. */
-    private static final List<String> RETIRED = List.of(
-            "testTotal",
-            "testSucceeded",
-            "testFailed",
-            "testSkipped",
-            "testsTotal",
-            "testsSucceeded",
-            "testsFailed",
-            "testsSkipped");
 
     /**
      * The exact bytes of the counts object, taken from a real record on disk:
@@ -57,13 +36,10 @@ class TestCountWireSpellingTest {
     }
 
     @Test
-    void plan_finish_carries_the_counts_object_and_no_retired_spelling() {
+    void plan_finish_carries_the_counts_object() {
         String line = ProtoEvents.planFinish("/w", true, 12, 10, 1, 1);
 
         assertThat(line).contains("\"tests\":{\"total\":12,\"succeeded\":10,\"failed\":1,\"skipped\":1}");
-        for (String retired : RETIRED) {
-            assertThat(line).as("plan-finish must not re-grow %s", retired).doesNotContain(retired);
-        }
     }
 
     @Test
@@ -71,11 +47,6 @@ class TestCountWireSpellingTest {
         String line = ProtoEvents.planFinishImage("/w", true, 12, 12, 0, 0, "reg.io/app:1.0", null, "app", "1.0", null);
 
         assertThat(line).contains("\"tests\":{\"total\":12,\"succeeded\":12,\"failed\":0,\"skipped\":0}");
-        for (String retired : RETIRED) {
-            assertThat(line)
-                    .as("plan-finish kind=image must not re-grow %s", retired)
-                    .doesNotContain(retired);
-        }
     }
 
     /** No test phase omits the field outright: the client tells "no tests ran" from "no test step". */
@@ -126,121 +97,5 @@ class TestCountWireSpellingTest {
         assertThat(TestSummary.readCounts("{\"id\":\"j-1\",\"tests\":null}")).isNull();
         assertThat(TestSummary.readCounts("{\"id\":\"j-1\"}")).isNull();
         assertThat(TestSummary.readCounts(null)).isNull();
-    }
-
-    /**
-     * The closure arm: no production source anywhere may type a retired spelling again. Asserting on
-     * one encoder's output only proves that encoder; the defect this ticket closes was three
-     * <em>different</em> owners each spelling the same fact their own way, and only a tree scan can
-     * see that. Java production sources plus the SPA, which cannot import Java and so hand-types
-     * every field name it reads.
-     *
-     * <p>The scan fails when it finds too few files, because "no violations" and "scanned nothing"
-     * are the same green otherwise.
-     */
-    @Test
-    void no_production_source_types_a_retired_spelling() throws IOException {
-        Path root = repoRoot();
-        List<Path> scanned = new ArrayList<>();
-        Map<String, List<String>> hits = new LinkedHashMap<>();
-
-        // walkFileTree with SKIP_SUBTREE, not Files.walk + a relative-path filter: the filter kept
-        // build output out of the corpus but the walk still descended into it, and a parallel test
-        // task deleting its own build/tmp mid-walk turned this scan into a NoSuchFileException.
-        // Pruned directories cannot race, because they are never entered. Pruning is by *module
-        // output* shape, not by bare name — `src/main/java/cc/jumpkick/plugin/build/` is a source
-        // package named `build`, and a name-only prune silently blinds the scan to it (that exact
-        // mistake is corrections item 54).
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-                if (name.equals(".git")) return FileVisitResult.SKIP_SUBTREE;
-                boolean moduleOutput = (name.equals("build") || name.equals("target"))
-                        && (Files.exists(dir.resolveSibling("build.gradle.kts"))
-                                || Files.exists(dir.resolveSibling("jk.toml"))
-                                || dir.getParent() != null && dir.getParent().equals(root));
-                return moduleOutput ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) throws IOException {
-                if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
-                String rel = root.relativize(f).toString().replace('\\', '/');
-                if (!isProductionSource(rel)) return FileVisitResult.CONTINUE;
-                scanned.add(f);
-                String body = Files.readString(f, StandardCharsets.UTF_8);
-                for (String retired : RETIRED) {
-                    if (readsTheKey(body, retired)) {
-                        hits.computeIfAbsent(retired, k -> new ArrayList<>()).add(rel);
-                    }
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path f, IOException exc) {
-                // A file that vanished mid-walk was not a production source.
-                return FileVisitResult.CONTINUE;
-            }
-        });
-
-        assertThat(scanned)
-                .as("production sources scanned under %s — a tiny corpus means the walk missed the tree", root)
-                .hasSizeGreaterThan(1_000);
-        assertThat(hits)
-                .as("retired test-count spellings are back in production source (JK-2424); "
-                        + "the one owner is TestSummary.WIRE_KEY + countsJson/readCounts")
-                .isEmpty();
-    }
-
-    /**
-     * True when the source references the name <em>as a field key</em>: quoted (a JSON key in Java or
-     * JS) or dotted (a JS property read). A bare identifier is not a key — this file's own prose has
-     * to be able to name the spellings it retired, and {@code long failed} is a parameter, not a
-     * wire field.
-     */
-    private static boolean readsTheKey(String body, String name) {
-        for (int i = body.indexOf(name); i >= 0; i = body.indexOf(name, i + 1)) {
-            if (i == 0) continue;
-            char before = body.charAt(i - 1);
-            if (before == '"' || before == '\'' || before == '.') return true;
-        }
-        return false;
-    }
-
-    /** Java under {@code src/main/java}, or a dashboard asset — never build output, never tests. */
-    private static boolean isProductionSource(String rel) {
-        if (rel.contains("/build/classes/")
-                || rel.contains("/build/generated")
-                || rel.contains("/build/tmp")
-                || rel.contains("/build/resources")
-                || rel.startsWith("build/")
-                || rel.contains("/target/")) {
-            return false;
-        }
-        if (rel.contains("/src/main/java/") && rel.endsWith(".java")) return true;
-        return rel.startsWith("clients/web/src/main/resources/web/") && (rel.endsWith(".js") || rel.endsWith(".html"));
-    }
-
-    /** The checkout root, walking up from this class's own location — never {@code user.dir}. */
-    private static Path repoRoot() throws IOException {
-        Path here;
-        try {
-            here = Path.of(TestCountWireSpellingTest.class
-                            .getProtectionDomain()
-                            .getCodeSource()
-                            .getLocation()
-                            .toURI())
-                    .toAbsolutePath();
-        } catch (URISyntaxException e) {
-            throw new IOException("cannot locate this test's own class output", e);
-        }
-        for (Path d = here; d != null; d = d.getParent()) {
-            if (Files.isRegularFile(d.resolve("settings.gradle.kts")) && Files.isDirectory(d.resolve("shared/wire"))) {
-                return d;
-            }
-        }
-        throw new IOException("cannot locate the jk checkout root from " + here);
     }
 }

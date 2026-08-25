@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
@@ -28,6 +30,10 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
  * carries a {@code jk.toml} and prints a pass/fail inventory — exploration harness, not CI.
  *
  * <p>Set {@code JK_NIA_ROOT} to the clone path and {@code JK_NIA_SCRATCH=1} to enable.
+ *
+ * <p>The assertions here can only be exercised on a machine with the NiA clone: no gate sets the
+ * enabling variables, so proving the sweep goes red on a broken module means running it there with
+ * a module forced to fail. In-gate, this class is compile-checked only.
  */
 @EnabledIfEnvironmentVariable(
         named = "JK_NIA_SCRATCH",
@@ -54,10 +60,12 @@ class NiaScratchTest {
             if (Files.isRegularFile(dir.resolve("jk.toml"))) modules.add(dir);
         }
         System.out.println("NIA-SWEEP: " + modules.size() + " module(s)");
+        List<String> failures = new ArrayList<>();
         for (Path module : modules) {
             String name = NIA.relativize(module).toString();
             try {
                 String failure = buildOne(module);
+                if (failure != null) failures.add(name + " — " + failure);
                 System.out.println(failure == null ? "NIA-PASS: " + name : "NIA-FAIL: " + name + " — " + failure);
                 if (failure != null && Files.isDirectory(module.resolve("target"))) {
                     try (var walk = Files.walk(module.resolve("target"), 4)) {
@@ -66,9 +74,16 @@ class NiaScratchTest {
                     }
                 }
             } catch (Throwable t) {
+                failures.add(name + " — threw " + t);
                 System.out.println("NIA-FAIL: " + name + " — threw " + t);
             }
         }
+        assertThat(modules)
+                .as("no jk modules under %s — check JK_NIA_ROOT points at a locked NiA clone", NIA)
+                .isNotEmpty();
+        assertThat(failures)
+                .as("%d of %d NiA module(s) failed:%n%s", failures.size(), modules.size(), String.join("\n", failures))
+                .isEmpty();
     }
 
     /** The release finish: jk build --release of :app → R8 full mode + a signed AAB. */
@@ -115,6 +130,7 @@ class NiaScratchTest {
                 LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         System.out.println("NIA-RELEASE lock: " + lockResult.errors());
+        assertThat(lockResult.errors()).as("app lock").isEmpty();
 
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                         module,
@@ -143,10 +159,19 @@ class NiaScratchTest {
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         System.out.println("NIA-RELEASE diags: " + result.errors());
         System.out.println("NIA-RELEASE success: " + result.success());
+        List<Path> artifacts;
         try (var walk = Files.walk(module.resolve("target"))) {
-            walk.filter(p -> p.toString().endsWith(".aab") || p.toString().endsWith(".apk"))
-                    .forEach(p -> System.out.println("NIA-RELEASE artifact: " + module.relativize(p)));
+            artifacts = walk.filter(
+                            p -> p.toString().endsWith(".aab") || p.toString().endsWith(".apk"))
+                    .toList();
         }
+        artifacts.forEach(p -> System.out.println("NIA-RELEASE artifact: " + module.relativize(p)));
+        assertThat(result.success())
+                .as("release build of :app, diags %s", result.errors())
+                .isTrue();
+        assertThat(artifacts)
+                .as("signed AAB under %s", module.resolve("target"))
+                .anyMatch(p -> p.toString().endsWith(".aab"));
     }
 
     /** Null on success, else the first diagnostic. */

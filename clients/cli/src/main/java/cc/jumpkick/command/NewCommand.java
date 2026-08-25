@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -215,7 +216,7 @@ public final class NewCommand implements CliCommand {
                 .orElse(null);
         Optional<Path> root = detectParentDir(startDir, home, noModule);
         if (root.isEmpty()) return null;
-        var info = BuildCommand.projectInfoOrNull(root.get());
+        var info = ProjectInfos.orNull(root.get());
         if (info == null) return null; // unreadable/unparseable parent — treat as standalone
         return new ParentInfo(root.get(), info);
     }

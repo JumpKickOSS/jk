@@ -375,13 +375,17 @@ class EngineProtocolTest {
         assertThat(Jsonl.intValue(file, "index", -1)).isEqualTo(3);
         assertThat(Jsonl.intValue(file, "total", -1)).isEqualTo(12);
 
-        String finish = ProtoEvents.planFinishFormat("", true, 2, 9, 1, 12, 1);
+        String finish = ProtoEvents.planFinishFormat("", true, 12, 1);
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
-        assertThat(Jsonl.intValue(finish, "formatChanged", -1)).isEqualTo(2);
-        assertThat(Jsonl.intValue(finish, "formatClean", -1)).isEqualTo(9);
-        assertThat(Jsonl.intValue(finish, "formatErrors", -1)).isEqualTo(1);
         assertThat(Jsonl.intValue(finish, "formatTotal", -1)).isEqualTo(12);
         assertThat(Jsonl.intValue(finish, "formatWorkerExit", -1)).isEqualTo(1);
+        // Only the two live fields ride: the CLI tallies changed/clean/errors (and the plan-local
+        // fifth category, unparseable) from the per-file format-file stream, so a wire tally here
+        // would be a second, poorer copy of the same fact.
+        assertThat(finish)
+                .doesNotContain("formatChanged")
+                .doesNotContain("formatClean")
+                .doesNotContain("formatErrors");
     }
 
     @Test

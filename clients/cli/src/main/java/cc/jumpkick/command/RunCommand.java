@@ -8,6 +8,7 @@ import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -96,7 +97,7 @@ public final class RunCommand {
         TestSummary[] testResultHolder = new TestSummary[1];
         try {
             boolean workspace = false;
-            var peek = BuildCommand.projectInfoOrNull(projectDir);
+            var peek = ProjectInfos.orNull(projectDir);
             if (peek != null) workspace = peek.workspaceRoot();
             CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, peek);
             if (workspace || cwdScope.workspaceMember()) {

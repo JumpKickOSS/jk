@@ -27,17 +27,6 @@ final class KotlincSpec {
     private KotlincSpec() {}
 
     /**
-     * Trainer {@code jvmTarget} when no real request is in hand (bare optimize / smoke). The
-     * trainer runs on the PROJECT's kotlinc worker classpath, and Kotlin rejects unknown JVM
-     * targets ("Unknown JVM target: 25" on pre-2.2.20 lines), so this must stay a target every
-     * supported Kotlin line accepts — do NOT bump it alongside the host JDK (a too-new
-     * value silently kills AOT training for projects pinning older Kotlin). Production
-     * train-on-miss uses the triggering request's own jvmTarget instead, which that Kotlin
-     * version already compiles with.
-     */
-    static final int TRAINER_FALLBACK_JVM_TARGET = 21;
-
-    /**
      * Render the request into the unified JSONL plugin spec. Package-private so a test can read
      * back what the compiler is actually told (see {@link #trainerCommand}, opened for the same
      * reason).
@@ -67,6 +56,7 @@ final class KotlincSpec {
         }
         Path spec = Files.createTempFile("jk-kotlinc-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(spec);
         return spec;
     }
 
@@ -78,33 +68,13 @@ final class KotlincSpec {
      * kotlin-stdlib the request pairs with {@code -no-stdlib}). Full startup + compile fidelity is
      * exactly the warmup the cache exists to skip. The trainer inherits the request's own
      * {@code jvmTarget} — the one value the project's pinned Kotlin provably accepts.
+     * ({@code WorkerAotBootstrap} deliberately skips kotlinc, so train-on-miss is the only
+     * trainer path and this is the single entry point.)
      */
     static List<String> trainerCommand(
             KotlincRequest request, String classpath, Path hostJavaHome, Path aotOutput, Path scratch)
             throws IOException {
-        return trainerCommandForOptimize(
-                hostJavaHome, classpath, aotOutput, scratch, request.classpath(), request.jvmTarget());
-    }
-
-    /**
-     * Request-free train-command entry (bare optimize / smoke). Production train-on-miss uses
-     * {@link #trainerCommand} with the real project compile classpath + jvmTarget; this path has no
-     * request, so it trains at {@link #TRAINER_FALLBACK_JVM_TARGET}.
-     */
-    static List<String> trainerCommandForOptimize(Path hostJavaHome, String classpath, Path aotOutput, Path scratch)
-            throws IOException {
-        return trainerCommandForOptimize(
-                hostJavaHome, classpath, aotOutput, scratch, List.of(), TRAINER_FALLBACK_JVM_TARGET);
-    }
-
-    private static List<String> trainerCommandForOptimize(
-            Path hostJavaHome,
-            String classpath,
-            Path aotOutput,
-            Path scratch,
-            List<Path> compileClasspath,
-            int jvmTarget)
-            throws IOException {
+        List<Path> compileClasspath = request.classpath();
         Path source = scratch.resolve("Hello.kt");
         Files.writeString(source, """
                 package demo
@@ -129,19 +99,20 @@ final class KotlincSpec {
                 """);
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                .configString("jvmTarget", String.valueOf(jvmTarget))
+                .configString("jvmTarget", String.valueOf(request.jvmTarget()))
                 .layout(Map.of("classesDir", scratch.resolve("out")))
                 .arg("-jdk-home")
                 .arg(hostJavaHome.toAbsolutePath().toString())
                 .source(source);
-        // Real compiles pass version-matched kotlin-stdlib and use -no-stdlib; bare optimize
-        // train has no project classpath, so leave the plugin's embedded stdlib resolution alone.
-        if (compileClasspath != null && !compileClasspath.isEmpty()) {
+        // Real compiles pass version-matched kotlin-stdlib and use -no-stdlib; an (unlikely)
+        // empty classpath leaves the plugin's embedded stdlib resolution alone.
+        if (!compileClasspath.isEmpty()) {
             sw.arg("-no-stdlib");
             for (Path cp : compileClasspath) sw.cp(cp, PluginProtocol.ROLE_COMPILE);
         }
         Path spec = scratch.resolve("train.spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(spec);
         // Match ForkedJavac / real PluginLoader forks so GC + classpath key the same as production
         // (dedicated train key must match real kotlinc worker keys).
         List<String> jvmFlags = new ArrayList<>();

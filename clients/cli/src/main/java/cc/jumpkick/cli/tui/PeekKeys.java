@@ -55,15 +55,19 @@ final class PeekKeys implements AutoCloseable {
      */
     static @Nullable PeekKeys attach(Runnable onCtrlO, BooleanSupplier finished) {
         if (!Interactivity.canPrompt()) return null;
-        PeekKeys keys = new PeekKeys(onCtrlO, finished);
-        return keys.start() ? keys : null;
+        return attach(Terminals.controlling(), onCtrlO, finished);
     }
 
-    private boolean start() {
+    /** {@link #attach(Runnable, BooleanSupplier)} on an explicit terminal — the testable seam. */
+    static @Nullable PeekKeys attach(TerminalSession t, Runnable onCtrlO, BooleanSupplier finished) {
+        PeekKeys keys = new PeekKeys(onCtrlO, finished);
+        return keys.start(t) ? keys : null;
+    }
+
+    private boolean start(TerminalSession t) {
         synchronized (lock) {
             ModeGuard opened = null;
             try {
-                TerminalSession t = Terminals.controlling();
                 if (!t.isLive()) return false;
                 opened = t.enter(InputMode.PLAN_KEYS);
                 terminal = t;

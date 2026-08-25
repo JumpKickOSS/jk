@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.Jsonl;
@@ -122,7 +123,7 @@ public final class SelectiveCommand implements CliCommand {
             CommandWedge.printFail("Selective", "pass --since=<ref> and/or --modules=<sel>");
             return Exit.USAGE;
         }
-        var selected = BuildCommand.projectInfoOrError(dir, modules, since);
+        var selected = ProjectInfos.orError(dir, modules, since);
         if (selected.error() != null && !selected.error().isBlank()) {
             CommandWedge.printFail("Selective", selected.error());
             return Exit.CONFIG;

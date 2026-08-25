@@ -168,7 +168,6 @@ public enum BuildStage {
             case TaskNames.PARSE_BUILD,
                     TaskNames.RESOLVE_DEPS,
                     TaskNames.ENSURE_JDK,
-                    "sync-deps",
                     TaskNames.READ_LOCK,
                     TaskNames.PARSE_LOCK,
                     TaskNames.FETCH_CATALOG,
@@ -181,7 +180,7 @@ public enum BuildStage {
                     TaskNames.RESOLVE_KOTLINC,
                     TaskNames.WRITE_LOCKFILE,
                     TaskNames.INSTALL_JDK,
-                    "prewarm",
+                    TaskNames.PREWARM,
                     TaskNames.SYNC_CAS,
                     TaskNames.SYNC_MODULES,
                     TaskNames.SYNC_PLUGINS,
@@ -197,16 +196,14 @@ public enum BuildStage {
                     TaskNames.WRITE_STAMP_KOTLIN,
                     TaskNames.WRITE_STAMP_GROOVY,
                     TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                    "ksp",
-                    "protoc" -> COMPILE;
+                    TaskNames.KSP -> COMPILE;
             // GENERATE reserved for explicit stage / future before-compile codegen tasks
             case TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS -> TEST;
-            case TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_ASSEMBLY, "embed-sha", TaskNames.BUILD_LOGIC_BEFORE_PACKAGE ->
-                PACKAGE;
-            case "train", "train-reachability" -> TRAIN;
-            case TaskNames.NATIVE_IMAGE, "native-shared" -> NATIVE;
+            case TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_ASSEMBLY, TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> PACKAGE;
+            case TaskNames.TRAIN -> TRAIN;
+            case TaskNames.NATIVE_IMAGE -> NATIVE;
             case TaskNames.WRITE_IMAGE, TaskNames.IMAGE_PLAN -> IMAGE;
-            case "install", TaskNames.CACHE_INSTALL -> PUBLISH;
+            case TaskNames.INSTALL, TaskNames.CACHE_INSTALL -> PUBLISH;
             default -> {
                 if (t.startsWith("compile")) yield COMPILE;
                 if (t.startsWith(TaskNames.WRITE_STAMP)) yield COMPILE;

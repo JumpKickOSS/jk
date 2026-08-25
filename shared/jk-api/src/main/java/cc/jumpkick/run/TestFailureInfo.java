@@ -73,10 +73,13 @@ public record TestFailureInfo(
      * here, so the separator and the worker suffix cannot drift between them. A blank module or a
      * non-positive {@code workerId} drops that part; the result is never null.
      */
+    /** The one {@code module :: test} separator — written by {@link #label}, undone by {@link #stripLabel}. */
+    public static final String SEPARATOR = " :: ";
+
     public static String label(String module, String test, int workerId) {
         StringBuilder sb = new StringBuilder();
         if (module != null && !module.isBlank()) {
-            sb.append(module).append(" :: ");
+            sb.append(module).append(SEPARATOR);
         }
         sb.append(test == null ? "" : test);
         if (workerId > 0) {
@@ -88,6 +91,27 @@ public record TestFailureInfo(
     /** This failure's {@code module :: method  [wN]} label; falls back to the class when unnamed. */
     public String label() {
         return label(module, method.isBlank() ? className : method, worker);
+    }
+
+    /**
+     * Inverse of {@link #label}: the display text after the leading {@code "module :: "} segment.
+     * With a non-null {@code module}, only that exact prefix is stripped — a label written for a
+     * different module comes back untouched. With {@code null}, whatever precedes the first
+     * separator is stripped. Neither form touches the worker suffix, and a display string that
+     * itself contains the separator keeps it (only the leading segment goes).
+     */
+    public static String stripLabel(String module, String label) {
+        if (label == null || label.isBlank()) return "";
+        String s = label.trim();
+        if (module == null) {
+            int sep = s.indexOf(SEPARATOR);
+            return sep > 0 ? s.substring(sep + SEPARATOR.length()).trim() : s;
+        }
+        String mod = module.trim();
+        if (!mod.isEmpty() && s.startsWith(mod + SEPARATOR)) {
+            return s.substring(mod.length() + SEPARATOR.length()).trim();
+        }
+        return s;
     }
 
     private static String empty(String s) {

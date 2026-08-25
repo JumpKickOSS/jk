@@ -223,7 +223,7 @@ public final class JournalWriter {
                 .put("exceptionClass", d.exceptionClass());
         if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
         if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
-        if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
+        if (d.className() != null && !d.className().isEmpty()) o.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
         if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
         if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
         if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());

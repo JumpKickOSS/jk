@@ -27,7 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
  * silently dropped the whole subtree: an unresolvable transitive must fail the solve loudly, never
  * vanish.
  */
-@Tag("integration")
+@Tag("network")
 class SigstoreGrpcClosureTest {
 
     @Test

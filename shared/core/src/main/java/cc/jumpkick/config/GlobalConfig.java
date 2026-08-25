@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import org.tomlj.TomlParseResult;
 
 /**
@@ -39,10 +40,7 @@ public final class GlobalConfig {
         NerdFontCaps hit = resolvedNerdFont;
         if (hit != null) return hit;
         NerdFontCaps fresh = nerdFont(
-                JkDirs.userConfigFile(),
-                System.getenv("JK_NERD_FONT"),
-                System.getenv("NERD_FONT"),
-                colorActivelyEnabled());
+                JkDirs.userConfigFile(), System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorEnabled());
         resolvedNerdFont = fresh;
         return fresh;
     }
@@ -51,20 +49,45 @@ public final class GlobalConfig {
     private static volatile NerdFontCaps resolvedNerdFont;
 
     /**
-     * True when color output is currently enabled — same logic as {@code Theme.colorEnabled} in
-     * the CLI layer, duplicated here so {@code kernel/core} can apply it without a circular dep.
+     * The bare no-ANSI triple — {@code --no-ansi}, {@code TERM=dumb}, {@code CI=true/1}. When true,
+     * <em>all</em> ANSI is off: color, Unicode glyphs, animations, cursor movement. Deliberately
+     * narrower than {@link #colorEnabled()}: {@code NO_COLOR} / {@code --color never} only disable
+     * color, never glyphs or animation. Owner of the triple — the interactivity axis
+     * ({@code Interactivity}: {@code JK_NONINTERACTIVE}, CI-set-at-all) and the nerd-font probe
+     * ({@code NerdFontDetect}: injectable env, reason strings) are different facts, not copies.
      */
-    static boolean colorActivelyEnabled() {
-        // No-ANSI triggers: --no-ansi flag, TERM=dumb, CI=true/1.
-        if (SessionContext.current().config().noAnsiOr(false)) return false;
-        if ("dumb".equals(System.getenv("TERM"))) return false;
-        if (EnvValues.bool(System::getenv, "CI").orElse(false)) return false;
-        var choice = SessionContext.current().config().colorOr(JkConfig.ColorChoice.AUTO);
+    public static boolean ansiSuppressed() {
+        return ansiSuppressed(SessionContext.current().config(), System::getenv);
+    }
+
+    /** Injectable overload of {@link #ansiSuppressed()} — tests pin the trigger matrix here. */
+    static boolean ansiSuppressed(JkConfig config, Function<String, String> env) {
+        if (config.noAnsiOr(false)) return true;
+        if ("dumb".equals(env.apply("TERM"))) return true;
+        return EnvValues.bool(env, "CI").orElse(false);
+    }
+
+    /**
+     * True when foreground color should be emitted: {@link #ansiSuppressed()} wins outright, then
+     * the resolved {@code --color} choice ({@code AUTO} honors {@code NO_COLOR}, never isatty).
+     */
+    public static boolean colorEnabled() {
+        return colorEnabled(SessionContext.current().config(), System::getenv);
+    }
+
+    /** Injectable overload of {@link #colorEnabled()} — tests pin the trigger matrix here. */
+    static boolean colorEnabled(JkConfig config, Function<String, String> env) {
+        if (ansiSuppressed(config, env)) return false;
+        var choice = config.colorOr(JkConfig.ColorChoice.AUTO);
         return switch (choice) {
             case ALWAYS -> true;
             case NEVER -> false;
+            // AUTO: emit color unless NO_COLOR is set. We don't gate on isatty —
+            // many jk consumers (CI logs, `less -R`, pipes into other formatters)
+            // benefit from preserved color, and users who want strictly plain
+            // output can pass `--color never`.
             case AUTO -> {
-                String nc = System.getenv("NO_COLOR");
+                String nc = env.apply("NO_COLOR");
                 yield nc == null || nc.isEmpty();
             }
         };
@@ -72,7 +95,7 @@ public final class GlobalConfig {
 
     /** As {@link #nerdFont()} but against an explicit config file — for tests. */
     static NerdFontCaps nerdFont(Path configFile) {
-        return nerdFont(configFile, System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorActivelyEnabled());
+        return nerdFont(configFile, System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorEnabled());
     }
 
     /** As {@link #nerdFont(Path)} but with explicit env values — bypasses the color gate for tests. */

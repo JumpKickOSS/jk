@@ -198,6 +198,7 @@ tasks.withType<Test>().configureEach {
 val integrationWorkerJars = listOf(
     "jk.spring-boot.plugin.jar" to ":spring-boot",
     "jk.grails.plugin.jar" to ":grails",
+    "jk.micronaut.plugin.jar" to ":micronaut",
     "jk.android.plugin.jar" to ":android",
     "jk.protobuf.plugin.jar" to ":protobuf",
     "jk.minified.plugin.jar" to ":minified",
@@ -222,29 +223,35 @@ val testApksig by configurations.creating {
 }
 dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
 
-tasks.named<Test>("integrationTest") {
-    integrationWorkerJars.forEach { (prop, cfg) ->
-        dependsOn(cfg)
-        // inputs.files is what makes the up-to-date check see a rebuilt plugin. dependsOn only
-        // orders the tasks, and a doFirst systemProperty is set at execution time — so without
-        // this, editing a plugin's source left integrationTest UP-TO-DATE and Gradle replayed the
-        // previous run's results. Revert checks against a plugin change came back green as
-        // no-ops until `--rerun` was passed by hand (JK-2404).
-        inputs.files(cfg).withPropertyName(prop).withPathSensitivity(PathSensitivity.NONE)
-        doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
+// networkTest gets the same wiring: the shipped-template scaffold-and-build tests fork the same
+// plugin workers, and the nightly `networkTest` run builds nothing else first — without the
+// dependsOn the jars are simply absent there and the tier skips its way green.
+listOf("integrationTest", "networkTest").forEach { tier ->
+    tasks.named<Test>(tier) {
+        integrationWorkerJars.forEach { (prop, cfg) ->
+            dependsOn(cfg)
+            // inputs.files is what makes the up-to-date check see a rebuilt plugin. dependsOn only
+            // orders the tasks, and a doFirst systemProperty is set at execution time — so without
+            // this, editing a plugin's source left integrationTest UP-TO-DATE and Gradle replayed
+            // the previous run's results. Revert checks against a plugin change came back green as
+            // no-ops until `--rerun` was passed by hand (JK-2404).
+            inputs.files(cfg).withPropertyName(prop).withPathSensitivity(PathSensitivity.NONE)
+            doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
+        }
+        seedWorkerRepos(
+                ":spring-boot",
+                ":grails",
+                ":micronaut",
+                ":android",
+                ":protobuf",
+                ":minified",
+                ":kotlin-compiler",
+                ":groovy-compiler",
+                ":auditor")
+        dependsOn(testApksig)
+        inputs.files(testApksig).withPropertyName("apksigClasspath").withPathSensitivity(PathSensitivity.NONE)
+        doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
     }
-    seedWorkerRepos(
-            ":spring-boot",
-            ":grails",
-            ":android",
-            ":protobuf",
-            ":minified",
-            ":kotlin-compiler",
-            ":groovy-compiler",
-            ":auditor")
-    dependsOn(testApksig)
-    inputs.files(testApksig).withPropertyName("apksigClasspath").withPathSensitivity(PathSensitivity.NONE)
-    doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +327,7 @@ val forArtifactUnpaired = mapOf(
                 "native-image", true, "the forecast probes the task pointer, not a token bag"),
         "PlannerPlugin.java|actionKey" to Triple(
                 "plugin-<step>", false, "plugin steps are not forecast (no step, no key)"),
-        "ImagePlans.java|imgKey" to Triple(
+        "ImageWrite.java|imgKey" to Triple(
                 "write-image",
                 true,
                 "the image tail is an unconditional side-effect step — always RUN, never keyed"),
@@ -796,3 +803,65 @@ val checkForecastKeyParity by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkForecastKeyParity) }
 tasks.named("jar") { dependsOn(checkForecastKeyParity) }
+
+// ---------------------------------------------------------------------------
+// Guard (letter assigned at landing): a spike-cache test roots its project in a @TempDir.
+//
+// The spike cache under `build/` persists across runs so the *network* stays warm. A test that
+// also fixes its PROJECT path re-derives the same action key every run, the action cache replays
+// the stored record, and the code under test never executes — the JK-2462 replay shape
+// (MinifiedPluginTest's javadoc: "The warm part is the network, not the work"). So every file
+// under `src/test/java` naming the spike cache must also take a `@TempDir` somewhere, which
+// qualifies the action id with a fresh absolute path per method.
+//
+// Measured 2026-08-25: 18 files name the marker — 17 conforming, 1 exempt.
+//
+// Detection-shape honesty: `@TempDir` presence does not prove the project ROOT lives inside it.
+// This closes the cheap regression (a spike test born with no @TempDir at all), not every replay;
+// the throw-probe from JK-2462 (make the code under test throw — a green run is a replay) remains
+// the strong check.
+// ---------------------------------------------------------------------------
+val checkSpikeCacheTempDir by tasks.registering {
+    group = "verification"
+    description = "Fail the build when a spike-cache test does not root its project in a @TempDir"
+    val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
+    inputs.files(testJava).withPropertyName("testJava")
+    // The one exemption, declared as a file input rather than a name in a regex: NiaScratchTest
+    // builds an external NiA checkout (env-gated), so its module roots are the clone's own
+    // directories. Moving or renaming the file fails this task loudly instead of silently
+    // narrowing the exemption to nothing.
+    val niaScratch = layout.projectDirectory.file("src/test/java/cc/jumpkick/runtime/NiaScratchTest.java")
+    inputs.file(niaScratch).withPropertyName("niaScratch")
+    val stamp = layout.buildDirectory.file("guards/spike-cache-tempdir.ok")
+    outputs.file(stamp)
+    doLast {
+        val marker = "android-spike-cache"
+        val exempt = niaScratch.asFile.canonicalFile
+        val hits = testJava.files.filter { it.readText().contains(marker) }.sortedBy { it.name }
+        if (hits.size < 10) {
+            throw GradleException("checkSpikeCacheTempDir: only ${hits.size} file(s) under"
+                    + " src/test/java name \"$marker\" (18 when this guard was measured). That is a"
+                    + " blind scan — a renamed marker or a moved tree — not a clean population.")
+        }
+        val bad = hits.filter { it.canonicalFile != exempt && !it.readText().contains("@TempDir") }
+        if (bad.isNotEmpty()) {
+            throw GradleException("A test using the persistent spike cache must root its project in"
+                    + " a per-method @TempDir, or the action cache replays the stored record and the"
+                    + " code under test never runs (see MinifiedPluginTest's javadoc):\n"
+                    + bad.joinToString("\n") { "  ${it.name}" })
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkSpikeCacheTempDir) }
+tasks.named("jar") { dependsOn(checkSpikeCacheTempDir) }
+
+// `McpDocParityTest` diffs docs/user/mcp.md's tool/resource/prompt tables against the MCP
+// registries, and the doc is not otherwise an input of `:engine:test` — without this a doc-only
+// edit leaves the task UP-TO-DATE and the parity is silently unchecked (the ActionTreeTest
+// pattern; see shared/host/build.gradle.kts).
+tasks.named<Test>("test") {
+    inputs.file(rootProject.layout.projectDirectory.file("docs/user/mcp.md"))
+            .withPropertyName("mcpDoc")
+            .withPathSensitivity(PathSensitivity.NONE)
+}

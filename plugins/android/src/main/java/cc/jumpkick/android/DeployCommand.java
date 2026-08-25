@@ -60,7 +60,8 @@ final class DeployCommand {
         // installs sign with the SAME stable debug identity the apk/aab packagers use, so a
         // universal APK from a rebuilt bundle still updates the installed app in place.
         Path aapt2 = AndroidDeps.extractAapt2(exec.requireExtra("aapt2"), work.resolve("tools"));
-        Path keystore = DebugKeystore.ensure(DebugKeystore.stableDir(), Path.of(System.getProperty("java.home")));
+        Path keystore =
+                DebugKeystore.ensure(Signing.debugStoreDir(exec.config()), Path.of(System.getProperty("java.home")));
         exec.label("bundletool build-apks");
         List<String> command = new ArrayList<>();
         command.add(

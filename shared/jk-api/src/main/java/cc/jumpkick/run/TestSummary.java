@@ -85,6 +85,21 @@ public record TestSummary(
     }
 
     /**
+     * {@link #countsMap}'s inverse for decoders that parse JSON into maps: the value found under
+     * {@link #WIRE_KEY}, or {@code null} when it is not a counts object (absent or {@code null}
+     * means the run had no test phase).
+     */
+    public static @Nullable TestSummary countsFromMap(@Nullable Object value) {
+        if (!(value instanceof Map<?, ?> m)) return null;
+        return new TestSummary(
+                count(m, "total"), count(m, "succeeded"), count(m, "failed"), count(m, "skipped"), List.of());
+    }
+
+    private static long count(Map<?, ?> counts, String key) {
+        return counts.get(key) instanceof Number n ? n.longValue() : 0;
+    }
+
+    /**
      * Read the {@link #WIRE_KEY} object out of a JSONL line. {@code null} when the line carries no
      * test counts — every producer omits the field (or writes {@code null}) for a run with no test
      * phase, so "absent" and "zero tests ran" stay distinguishable.

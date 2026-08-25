@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
-@Tag("integration")
+@Tag("network")
 class QuarkusJunit5ResolveTest {
 
     @Test

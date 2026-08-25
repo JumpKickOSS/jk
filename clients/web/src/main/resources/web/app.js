@@ -38,6 +38,7 @@ import { FailReport } from './report.js';
 import { buildProjectHash, routeFromHash } from './route.js';
 import { statusMethods } from './status.js';
 import { installTips } from './tip.js';
+import { EVENT, SSE } from './wire.js';
 import { wizardComputed, wizardMethods } from './wizard.js';
 
 // Guarded so the module can be imported headlessly under `node --test`.
@@ -229,24 +230,24 @@ export const appOptions = {
         (event) => {
           if (this.authModal || this.connection === 'unauthorized') return;
           // Live chrome vitals: change-gated on the server; apply without folding cards.
-          if (event.type === 'status') {
+          if (event.type === EVENT.status) {
             this.applyStatusEvent(event.data);
             return;
           }
-          if (event.type === 'cache') {
+          if (event.type === SSE.cache) {
             this.applyCacheEvent(event.data);
             return;
           }
           foldEvent(this.cards, { ...event, at: Date.now() });
           // Keep footer Builds Running in lockstep with activity. Prefer the post-
           // transition count on the event when present; otherwise derive from running cards.
-          if (event.type === 'request-start' || event.type === 'request-finish') {
+          if (event.type === SSE.requestStart || event.type === SSE.requestFinish) {
             this.applyActiveBuildPlans(event.data);
           }
           // The build number + journal record are written just after request-finish (writeJournal),
           // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
           // refreshes the Projects tab. Debounced so a burst of finishes triggers one reload.
-          if (event.type === 'request-finish') {
+          if (event.type === SSE.requestFinish) {
             clearTimeout(this._reconcileTimer);
             this._reconcileTimer = setTimeout(() => {
               this.loadHistory();

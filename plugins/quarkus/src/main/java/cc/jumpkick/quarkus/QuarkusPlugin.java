@@ -40,6 +40,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
     static final String AUGMENT_STEP = "quarkus-augment";
     private static final String BOOTSTRAP_EXTRA = "quarkus-bootstrap";
+    static final String PLATFORM_PROPS_EXTRA = "quarkus-platform-properties";
 
     @Override
     public PluginManifest manifest() {
@@ -139,9 +140,9 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      * parses, in one place so both ends can be read together and pinned by a test.
      *
      * <p>Offline is positional rather than a {@code -D}: the augment is a grandchild JVM, and the
-     * engine's per-job decision has to arrive as data it cannot be launched without. The old shape
-     * was a system property the augment read for itself ({@code jk.quarkus.offline}) — which
-     * nothing in the tree ever set, so {@code --offline} silently did not apply here.
+     * engine's per-job decision has to arrive as data it cannot be launched without. The platform
+     * properties path is positional for the same reason — it is a step-dependency the engine
+     * fetched through jk's repo stack, and the augment must never resolve the coordinate itself.
      */
     static List<String> augmentArgs(
             TaskExec exec, Path classes, Path outRoot, String baseName, Path listFile, String quarkusVersion) {
@@ -155,6 +156,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 exec.project().version(),
                 listFile.toString(),
                 quarkusVersion,
+                exec.requireExtra(PLATFORM_PROPS_EXTRA).toString(),
                 Boolean.toString(exec.offline()));
     }
 

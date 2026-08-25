@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -253,18 +253,15 @@ public record JkCacheConfig(
                 "cache.max-cache-size-mb is the pre-rename spelling — use cache.max-cache-size-gb");
     }
 
+    /**
+     * The warning text is also the once-per-run key: the env and file spellings are two facts,
+     * and each is said on its own — one shared flag once let whichever legacy key was read first
+     * mute the other's warning.
+     */
     private static @Nullable Double legacyMbAsGb(@Nullable Double mb, String warning) {
         if (mb == null) return null;
-        warnLegacyOnce(warning);
+        RunNotices.warnOnce(warning, () -> "jk: warning: " + warning);
         return mb / 1024.0;
-    }
-
-    private static final AtomicBoolean LEGACY_WARNED = new AtomicBoolean();
-
-    private static void warnLegacyOnce(String message) {
-        if (LEGACY_WARNED.compareAndSet(false, true)) {
-            System.err.println("jk: warning: " + message);
-        }
     }
 
     /** Action-cache budget in bytes ({@link #maxCacheSizeGb}). */

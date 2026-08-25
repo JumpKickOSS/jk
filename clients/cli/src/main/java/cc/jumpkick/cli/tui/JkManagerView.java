@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
@@ -670,16 +671,16 @@ final class JkManagerView {
     }
 
     private RichText clockFace(Countdown.Face face, long elapsedSec) {
-        String elapsed = JkManagerColor.fmtClockSeconds(elapsedSec);
+        String elapsed = DurationText.clock(elapsedSec);
         if (!face.seeded()) {
             return RichText.parse("[dark-gray]·[/] [mid-gray]" + elapsed + "[/]");
         }
         // Countdown stays mid-gray: ~remaining, then 0s, then +overrun. Elapsed stays dim, no +.
         String rem;
         if (face.remainingSec() > 0) {
-            rem = "[mid-gray]~" + JkManagerColor.fmtClockSeconds(face.remainingSec()) + "[/]";
+            rem = "[mid-gray]~" + DurationText.clock(face.remainingSec()) + "[/]";
         } else if (face.overrunSec() > 0) {
-            rem = "[mid-gray]+" + JkManagerColor.fmtClockSeconds(face.overrunSec()) + "[/]";
+            rem = "[mid-gray]+" + DurationText.clock(face.overrunSec()) + "[/]";
         } else {
             rem = "[mid-gray]0s[/]";
         }

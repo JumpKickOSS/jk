@@ -490,34 +490,41 @@ public final class SsePublisher {
     public void publishDiagnostics(long requestId, String dir, List<BuildPlanResult.Diagnostic> errors) {
         if (!eventsWanted() || errors.isEmpty()) return;
         for (BuildPlanResult.Diagnostic d : selectPublishedDiagnostics(errors)) {
-            // SSE event name equals the payload type ("error"), same as CLI JsonlShape.
-            var o = JsonOut.object()
-                    .put("schema", 1)
-                    .put("type", "error")
-                    .put("jid", requestId)
-                    .put("dir", dir)
-                    .put("task", d.step())
-                    .put("code", d.code())
-                    .put("message", EventRedaction.redactEnv(dir, d.message()));
-            if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
-            if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
-            if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
-            if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
-            if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
-                o.put("exceptionClass", d.exceptionClass());
-            if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", EventRedaction.redactEnv(dir, d.stack()));
-            if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
-            if (d.line() > 0) o.put("line", d.line());
-            if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
-            if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
-            if (d.worker() > 0) o.put("worker", d.worker());
-            if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
-            publishEvent("error", withProgress(o, requestId));
+            publishEvent("error", withProgress(errorEventJson(requestId, dir, d), requestId));
         }
         int dropped = unpublishedCount(errors);
         if (dropped > 0) {
             publishRequestError(requestId, dir, "+ " + dropped + " more errors — see the CLI output");
         }
+    }
+
+    /**
+     * The SSE {@code error} event body for one diagnostic. The event name equals the payload type
+     * ("error"), same as CLI JsonlShape; the test class rides {@link EngineProtocol#TEST_CLASS_FIELD},
+     * the journal's persisted spelling.
+     */
+    static JsonOut errorEventJson(long requestId, String dir, BuildPlanResult.Diagnostic d) {
+        var o = JsonOut.object()
+                .put("schema", 1)
+                .put("type", "error")
+                .put("jid", requestId)
+                .put("dir", dir)
+                .put("task", d.step())
+                .put("code", d.code())
+                .put("message", EventRedaction.redactEnv(dir, d.message()));
+        if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
+        if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
+        if (d.className() != null && !d.className().isEmpty()) o.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
+        if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
+        if (d.exceptionClass() != null && !d.exceptionClass().isEmpty()) o.put("exceptionClass", d.exceptionClass());
+        if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", EventRedaction.redactEnv(dir, d.stack()));
+        if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
+        if (d.line() > 0) o.put("line", d.line());
+        if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
+        if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
+        if (d.worker() > 0) o.put("worker", d.worker());
+        if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
+        return o;
     }
 
     /** A single request-level failure line (bad jk.toml, workspace orchestration error, …). */

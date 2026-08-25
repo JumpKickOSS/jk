@@ -28,7 +28,7 @@ class FormatPlansCollectTest {
         Files.writeString(target.resolve("Gen.java"), "class Gen {}");
         Files.writeString(build.resolve("Gen.kt"), "class Gen");
 
-        FormatPlans.CollectedSources found = FormatPlans.collectSources(tmp);
+        FormatSources.CollectedSources found = FormatSources.collectSources(tmp);
         assertThat(found.javaFiles()).containsExactly(keepJava);
         assertThat(found.kotlinFiles()).containsExactly(keepKt);
         assertThat(found.total()).isEqualTo(2);
@@ -41,7 +41,7 @@ class FormatPlansCollectTest {
         Files.createDirectories(src);
         Path keep = src.resolve("Keep.java");
         Files.writeString(keep, "class Keep {}");
-        assertThat(FormatPlans.collectSources(project).javaFiles()).containsExactly(keep);
+        assertThat(FormatSources.collectSources(project).javaFiles()).containsExactly(keep);
     }
 
     /**
@@ -54,23 +54,23 @@ class FormatPlansCollectTest {
      */
     @Test
     void an_unparseable_file_is_never_recorded_fresh() {
-        assertThat(FormatPlans.recordsFreshness("unparseable", false))
+        assertThat(FormatWorker.recordsFreshness("unparseable", false))
                 .as("apply mode: the rewrite pass still has not run on this file")
                 .isFalse();
-        assertThat(FormatPlans.recordsFreshness("unparseable", true)).isFalse();
-        assertThat(FormatPlans.recordsFreshness("error", false)).isFalse();
+        assertThat(FormatWorker.recordsFreshness("unparseable", true)).isFalse();
+        assertThat(FormatWorker.recordsFreshness("error", false)).isFalse();
     }
 
     /** …and the statuses that were recorded before still are. */
     @Test
     void settled_files_are_still_recorded_fresh() {
-        assertThat(FormatPlans.recordsFreshness("clean", true)).isTrue();
-        assertThat(FormatPlans.recordsFreshness("clean", false)).isTrue();
-        assertThat(FormatPlans.recordsFreshness("skipped", false)).isTrue();
-        assertThat(FormatPlans.recordsFreshness("changed", false))
+        assertThat(FormatWorker.recordsFreshness("clean", true)).isTrue();
+        assertThat(FormatWorker.recordsFreshness("clean", false)).isTrue();
+        assertThat(FormatWorker.recordsFreshness("skipped", false)).isTrue();
+        assertThat(FormatWorker.recordsFreshness("changed", false))
                 .as("apply mode wrote the formatted bytes, so the file on disk is now clean")
                 .isTrue();
-        assertThat(FormatPlans.recordsFreshness("changed", true))
+        assertThat(FormatWorker.recordsFreshness("changed", true))
                 .as("--check wrote nothing, so those bytes are still the unformatted ones")
                 .isFalse();
     }

@@ -2,13 +2,12 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.host.Os;
-import java.io.File;
+import cc.jumpkick.host.SearchPath;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 
 /**
  * JDK home for the first {@code javac} on {@code PATH} (independent of {@code JAVA_HOME} / jk
@@ -39,7 +38,7 @@ public final class ActiveJavac {
         String path = env.apply("PATH");
         if (path == null || path.isBlank()) return Optional.empty();
         String exe = JdkFingerprint.toolName("javac");
-        for (String dir : path.split(Pattern.quote(File.pathSeparator))) {
+        for (String dir : SearchPath.entries(path)) {
             if (dir.isBlank()) continue;
             Path candidate = Path.of(dir).resolve(exe);
             if (!Files.isRegularFile(candidate)) continue;

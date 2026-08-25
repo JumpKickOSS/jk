@@ -188,7 +188,7 @@ public final class TaskForecaster {
         if (m == null || m.steps() == null) return false;
         return m.steps().stream()
                 .anyMatch(p -> !p.cached()
-                        && (p.name().startsWith("compile-main")
+                        && (p.name().startsWith(TaskNames.COMPILE_MAIN)
                                 || p.name().startsWith(TaskNames.COMPILE_JAVA)
                                 || p.name().startsWith(TaskNames.COMPILE_KOTLIN)
                                 || p.name().startsWith(TaskNames.COMPILE_GROOVY)
@@ -333,14 +333,14 @@ public final class TaskForecaster {
         Path lockFile = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
             steps.add(new TaskForecast.Task(
-                    "compile-main", TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
+                    TaskNames.COMPILE_MAIN, TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
             return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
         // Digest-only staleness — the same predicate the build's freshen uses, so the
         // forecast and the live build agree on whether a lock update runs.
         if (AutoLock.isStale(dir, lockFile)) {
             steps.add(new TaskForecast.Task(
-                    "compile-main", TaskForecast.Status.RUN, "jk.toml changed — lock update needed", null));
+                    TaskNames.COMPILE_MAIN, TaskForecast.Status.RUN, "jk.toml changed — lock update needed", null));
             return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
         int sourceCount = 0, testCount = 0;
@@ -393,10 +393,10 @@ public final class TaskForecaster {
                     layout,
                     pkgDecls);
             // Collected early: mixed-language modules fold the sibling compiler's outputs into the
-            // compile-main stamp inputs (shared recipe below); the kotlin/groovy forecast sections
-            // reuse these lists.
-            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
-            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
+            // compile-main stamp inputs (shared recipe below); the kotlin/groovy sections reuse
+            // them. Owner-derived so extra-src and contributed roots gate and stamp like the build.
+            List<Path> ktSrc = PlannerCompile.mainKotlinSources(project, dir, compact);
+            List<Path> gvSrc = PlannerCompile.mainGroovySources(project, dir, compact);
             // The same predicate BuildPlanner composes the plan from — a source-list emptiness
             // test is a different question and answers differently for a Scala module.
             var langs = CompileSupport.resolveLanguages(project.project(), dir);
@@ -445,7 +445,7 @@ public final class TaskForecaster {
                     }
                 }
                 if (stampFresh) {
-                    steps.add(new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task(TaskNames.COMPILE_MAIN, TaskForecast.Status.CACHED, "", null));
                 } else {
                     CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
                             mainSrc,
@@ -460,7 +460,7 @@ public final class TaskForecaster {
                             mixedGroovy,
                             groovyJar,
                             scalaSetup));
-                    String taskId = ActionKey.qualifiedTaskId("compile-main", out);
+                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, out);
                     Path actions = CacheTree.ACTIONS.under(cache);
                     Path stateDir = actions.resolve("incremental-java").resolve(taskId);
                     long tc = Perf.start();
@@ -474,7 +474,7 @@ public final class TaskForecaster {
                             layout.generatedSourcesDir("annotations"));
                     Perf.end("  predict-compile-main", tc);
                     compileMainKey = pred.actionKey();
-                    steps.add(compileStep("compile-main", pred, compileDepDirty || force));
+                    steps.add(compileStep(TaskNames.COMPILE_MAIN, pred, compileDepDirty || force));
                     if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
                 }
             }
@@ -858,7 +858,7 @@ public final class TaskForecaster {
                 // Distinct name: test-resource drift schedules the module (material) but
                 // must not seed the compile-consumer cascade like main-resource drift.
                 steps.add(new TaskForecast.Task(
-                        "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null));
+                        TaskNames.COPY_TEST_RESOURCES, TaskForecast.Status.RUN, "test resources changed", null));
             }
 
             // ---- restore gate ----
@@ -881,7 +881,7 @@ public final class TaskForecaster {
                 }
                 if (outputsAbsent) {
                     steps.add(new TaskForecast.Task(
-                            "restore-outputs", TaskForecast.Status.RUN, "restore from cache", null));
+                            TaskNames.RESTORE_OUTPUTS, TaskForecast.Status.RUN, "restore from cache", null));
                 }
             }
 
@@ -892,12 +892,12 @@ public final class TaskForecaster {
             // cheap cache hits at execute.
             if (dep.orderDepDirty() && steps.stream().allMatch(TaskForecast.Task::cached)) {
                 steps.add(new TaskForecast.Task(
-                        "order-check", TaskForecast.Status.RUN, "ordered-after sibling rebuilding", null));
+                        TaskNames.ORDER_CHECK, TaskForecast.Status.RUN, "ordered-after sibling rebuilding", null));
             }
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.
             steps.add(new TaskForecast.Task(
-                    "compile-main",
+                    TaskNames.COMPILE_MAIN,
                     TaskForecast.Status.RUN,
                     "could not predict (" + e.getClass().getSimpleName() + ")",
                     null));

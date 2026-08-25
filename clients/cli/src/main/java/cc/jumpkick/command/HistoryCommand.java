@@ -243,7 +243,7 @@ public final class HistoryCommand extends GroupCommand {
                         .append("] ");
                 appendIf(b, Jsonl.str(d, "task"), ": ");
                 // Enriched identity: Class.method [wN] beats the legacy glued test label.
-                String cls = Jsonl.topStr(d, "class");
+                String cls = Jsonl.topStr(d, EngineProtocol.TEST_CLASS_FIELD);
                 String method = Jsonl.topStr(d, "method");
                 if (cls != null && !cls.isBlank()) {
                     String simple = cls.substring(cls.lastIndexOf('.') + 1);

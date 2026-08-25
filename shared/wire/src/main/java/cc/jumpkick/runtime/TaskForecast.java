@@ -88,9 +88,7 @@ public final class TaskForecast {
                         TaskNames.WRITE_STAMP_GROOVY,
                         TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
                         TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
-                        "embed-sha",
-                        "sync-ide" -> true;
+                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> true;
                 default -> false;
             };
         }

@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
- * Parse / sync-deps / ensure-jdk steps for {@link BuildPlanner#coreBuilder}.
+ * Parse / resolve-deps / ensure-jdk steps for {@link BuildPlanner#coreBuilder}.
  */
 public final class PlannerSetup {
 
@@ -161,32 +161,23 @@ public final class PlannerSetup {
                         javaMainSrcs = javaMainSrcRef.get();
                     }
                     List<Path> kotlinMainSrcs = kotlinMainSrcRef.get();
-                    if (kotlinMainSrcs == null) {
-                        kotlinMainSrcs = CompileSupport.collectKotlinSources(in.dir(), compact);
-                        kotlinMainSrcRef.compareAndSet(null, kotlinMainSrcs);
-                        kotlinMainSrcs = kotlinMainSrcRef.get();
-                    }
                     List<Path> groovyMainSrcs = groovyMainSrcRef.get();
-                    if (groovyMainSrcs == null) {
-                        groovyMainSrcs = CompileSupport.collectGroovySources(in.dir(), compact);
-                        groovyMainSrcRef.compareAndSet(null, groovyMainSrcs);
-                        groovyMainSrcs = groovyMainSrcRef.get();
-                    }
                     // [build] extra-src roots (variant overlays folded in by VariantApply) and
                     // plugin-contributed source roots ([[contribute.source-roots]] — grails-app/…)
                     // join the source set here — the tick suppliers' pre-walk never saw them.
-                    List<Path> extraSrcDirs = PlannerCompile.extraSourceDirs(project, in.dir());
-                    // The java+scala union is derived by PlannerCompile, not here: `jk explain`
-                    // has to reproduce JAVA_SOURCES exactly to key compile-main, and a second
-                    // copy of this fold is a drift the parity guard cannot see (JK-2479).
+                    // Each union is derived by PlannerCompile, not here: `jk explain` has to
+                    // reproduce these lists exactly to gate and key the compile steps, and a
+                    // second copy of the fold is a drift the parity guard cannot see (JK-2479).
                     javaMainSrcs = PlannerCompile.javaAndScalaSources(project, in.dir(), compact, javaMainSrcs);
                     javaMainSrcRef.set(javaMainSrcs);
-                    if (!extraSrcDirs.isEmpty()) {
-                        kotlinMainSrcs = CompileSupport.withExtraSources(kotlinMainSrcs, extraSrcDirs, ".kt");
-                        groovyMainSrcs = CompileSupport.withExtraSources(groovyMainSrcs, extraSrcDirs, ".groovy");
-                        kotlinMainSrcRef.set(kotlinMainSrcs);
-                        groovyMainSrcRef.set(groovyMainSrcs);
-                    }
+                    kotlinMainSrcs = kotlinMainSrcs == null
+                            ? PlannerCompile.mainKotlinSources(project, in.dir(), compact)
+                            : PlannerCompile.mainKotlinSources(project, in.dir(), kotlinMainSrcs);
+                    groovyMainSrcs = groovyMainSrcs == null
+                            ? PlannerCompile.mainGroovySources(project, in.dir(), compact)
+                            : PlannerCompile.mainGroovySources(project, in.dir(), groovyMainSrcs);
+                    kotlinMainSrcRef.set(kotlinMainSrcs);
+                    groovyMainSrcRef.set(groovyMainSrcs);
                     ctx.put(JAVA_SOURCES, javaMainSrcs);
                     ctx.put(KOTLIN_SOURCES, kotlinMainSrcs);
                     ctx.put(GROOVY_SOURCES, groovyMainSrcs);

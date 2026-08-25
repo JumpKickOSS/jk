@@ -8,6 +8,7 @@ import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
@@ -137,7 +138,7 @@ public final class ToolRunCommand implements CliCommand {
             Path start = cwd.toAbsolutePath().normalize();
             Path wsRoot = null;
             if (Files.isRegularFile(start.resolve(ManifestPaths.MANIFEST))) {
-                var peek = BuildCommand.projectInfoOrNull(start);
+                var peek = ProjectInfos.orNull(start);
                 if (peek != null && peek.workspaceRoot()) wsRoot = start;
                 else if (peek == null
                         && !workspaceModules(start.resolve(ManifestPaths.MANIFEST))
@@ -146,7 +147,7 @@ public final class ToolRunCommand implements CliCommand {
                 }
             }
             if (wsRoot == null) {
-                var peek = BuildCommand.projectInfoOrNull(start);
+                var peek = ProjectInfos.orNull(start);
                 if (peek != null && !peek.workspaceRootDir().isBlank()) {
                     wsRoot = Path.of(peek.workspaceRootDir());
                 }
@@ -157,7 +158,7 @@ public final class ToolRunCommand implements CliCommand {
                 if (Files.isRegularFile(direct.resolve(ManifestPaths.MANIFEST))) return direct;
                 return null;
             }
-            var rootBuild = BuildCommand.projectInfoOrNull(wsRoot);
+            var rootBuild = ProjectInfos.orNull(wsRoot);
             List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
                     ? rootBuild.moduleDirs()
                     : workspaceModules(wsRoot.resolve(ManifestPaths.MANIFEST));

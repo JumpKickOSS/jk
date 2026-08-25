@@ -355,10 +355,13 @@ class OutputWindowTest {
 
     @Test
     void force_show_on_step_failure_excludes_run_tests() {
-        assertThat(JkManager.forceShowOnStepFailure("native-image", "native")).isTrue();
-        assertThat(JkManager.forceShowOnStepFailure("compile-main", "compile")).isTrue();
-        assertThat(JkManager.forceShowOnStepFailure("run-tests", "test")).isFalse();
-        assertThat(JkManager.forceShowOnStepFailure("run-tests-fork", "test")).isFalse();
+        assertThat(JkManager.forceShowOnStepFailure("native-image")).isTrue();
+        // compile-test is group Test too and must force-open — step identity decides, not group.
+        assertThat(JkManager.forceShowOnStepFailure("compile-main")).isTrue();
+        assertThat(JkManager.forceShowOnStepFailure("compile-test")).isTrue();
+        assertThat(JkManager.forceShowOnStepFailure(null)).isTrue();
+        assertThat(JkManager.forceShowOnStepFailure("run-tests")).isFalse();
+        assertThat(JkManager.forceShowOnStepFailure("run-tests-fork")).isFalse();
     }
 
     @Test

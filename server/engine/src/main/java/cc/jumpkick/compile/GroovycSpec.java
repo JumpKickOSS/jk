@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
@@ -45,6 +46,7 @@ final class GroovycSpec {
         for (String arg : request.extraArgs()) sw.arg(arg);
         Path spec = Files.createTempFile("jk-groovyc-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(spec);
         return spec;
     }
 }

@@ -183,7 +183,7 @@ public final class PlannerKsp {
                 TaskNames.ENSURE_JDK,
                 TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         requires.addAll(sourceGenStepSteps(pluginDecls));
-        return Task.builder("ksp")
+        return Task.builder(TaskNames.KSP)
                 .stage(BuildStage.COMPILE)
                 .label("KSP")
                 .kind(TaskKind.CPU)
@@ -333,7 +333,7 @@ public final class PlannerKsp {
                     try {
                         if (!proc.waitFor(15, TimeUnit.MINUTES)) {
                             proc.destroyForcibly();
-                            ctx.error("ksp", "KSP timed out after 15 minutes\n" + captured);
+                            ctx.error(TaskNames.KSP, "KSP timed out after 15 minutes\n" + captured);
                             throw new RuntimeException("KSP timed out");
                         }
                         exit = proc.exitValue();
@@ -345,7 +345,7 @@ public final class PlannerKsp {
                     }
                     String output = captured.toString();
                     if (exit != 0) {
-                        ctx.error("ksp", output.isBlank() ? ("KSP exited " + exit) : output);
+                        ctx.error(TaskNames.KSP, output.isBlank() ? ("KSP exited " + exit) : output);
                         throw new RuntimeException("KSP processing failed");
                     }
                     // A green round still has things to say. Processor `logger.warn`/`info` is how
@@ -357,7 +357,7 @@ public final class PlannerKsp {
                         ctx.warn(diagnostic.severity(), diagnostic.message());
                     }
                     FreshnessStamp.write(
-                            outBase, BuildStamps.KSP, "ksp", "", stampInputs, stampCp, ctx.require(RELEASE));
+                            outBase, BuildStamps.KSP, TaskNames.KSP, "", stampInputs, stampCp, ctx.require(RELEASE));
                     ctx.progress(1);
                 })
                 .build();

@@ -452,8 +452,4 @@ public final class ProjectBuilds {
             return projectHome.resolve(PROJECT_METRICS);
         }
     }
-
-    private static String quote(String s) {
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-    }
 }

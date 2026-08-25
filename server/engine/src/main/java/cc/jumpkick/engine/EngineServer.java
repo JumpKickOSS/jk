@@ -480,21 +480,7 @@ public final class EngineServer implements AutoCloseable {
                             return;
                         }
                         try {
-                            if (election.displacedBySuccessor()) {
-                                log.accept("jk engine: displaced by a newer engine — yielding listeners and draining");
-                                yieldListeners(activeBuildPlans.get() == 0);
-                                return;
-                            }
-                            if (election.endpointMissing() && orphanedAndUnused()) {
-                                log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
-                                aot.stopQuietly();
-                                synchronized (lifecycleLock) {
-                                    shuttingDown = true;
-                                    closeServerChannelQuietly();
-                                    lifecycleLock.notifyAll();
-                                }
-                                return;
-                            }
+                            if (displacementTick()) return;
                         } catch (IOException ignored) {
                             // transient read failure — check again next tick
                         }
@@ -503,6 +489,30 @@ public final class EngineServer implements AutoCloseable {
                 "jk-engine-displacement-watchdog");
         t.setDaemon(true);
         t.start();
+    }
+
+    /**
+     * One watchdog check: displaced → yield listeners and drain; orphaned and unused → exit.
+     * Returns {@code true} when the watchdog's work is done. Package-private so a test can drive a
+     * tick on the calling thread.
+     */
+    boolean displacementTick() throws IOException {
+        if (election.displacedBySuccessor()) {
+            log.accept("jk engine: displaced by a newer engine — yielding listeners and draining");
+            yieldListeners(activeBuildPlans.get() == 0);
+            return true;
+        }
+        if (election.endpointMissing() && orphanedAndUnused()) {
+            log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
+            aot.stopQuietly();
+            synchronized (lifecycleLock) {
+                shuttingDown = true;
+                closeServerChannelQuietly();
+                lifecycleLock.notifyAll();
+            }
+            return true;
+        }
+        return false;
     }
 
     private void acceptLoop() {
@@ -628,30 +638,7 @@ public final class EngineServer implements AutoCloseable {
                                     s.peakActiveBuildPlans()));
                 }
                 case EngineProtocol.SHUTDOWN -> {
-                    boolean force = Jsonl.bool(line, "force", false);
-                    // Takeover already repointed the endpoint before sending shutdown — kill the
-                    // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
-                    // Voluntary `jk engine stop` still names us; leave train to finish then.
-                    if (!election.endpointNamesThisEngine()) {
-                        aot.stopQuietly();
-                    }
-                    int n;
-                    boolean willDrain;
-                    synchronized (lifecycleLock) {
-                        n = activeBuildPlans.get();
-                        willDrain = !force && n > 0;
-                        if (willDrain) {
-                            draining = true;
-                        } else {
-                            shuttingDown = true;
-                        }
-                        // Yield listeners before bye so a successor waiting on this line can bind.
-                        closeServerChannelQuietly();
-                        lifecycleLock.notifyAll();
-                    }
-                    http.stopNow();
-                    WireWriter.send(writer, ProtoLifecycle.bye(n, willDrain));
-                    if (willDrain) drain.start();
+                    handleShutdown(line, writer);
                     return;
                 }
                 case EngineProtocol.DRAIN_STATUS ->
@@ -768,22 +755,75 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
+     * A {@link EngineProtocol#SHUTDOWN} message: with plans in flight (and no {@code force}) the
+     * engine drains; otherwise it stops now. The bye line reports the plan count the decision saw.
+     * Package-private so a test can drive this path without a socket.
+     */
+    void handleShutdown(String line, BufferedWriter writer) throws IOException {
+        boolean force = Jsonl.bool(line, "force", false);
+        // Takeover already repointed the endpoint before sending shutdown — kill the
+        // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
+        // Voluntary `jk engine stop` still names us; leave train to finish then.
+        if (!election.endpointNamesThisEngine()) {
+            aot.stopQuietly();
+        }
+        int n;
+        boolean willDrain;
+        synchronized (lifecycleLock) {
+            n = activeBuildPlans.get();
+            willDrain = !force && n > 0;
+            if (!willDrain) {
+                // Decision and flag settle in one critical section, so a plan about to claim its
+                // slot can never slip between "zero plans observed" and "shutting down".
+                shuttingDown = true;
+                // Yield listeners before bye so a successor waiting on this line can bind.
+                closeServerChannelQuietly();
+                lifecycleLock.notifyAll();
+            }
+        }
+        if (willDrain) enterDrain();
+        else http.stopNow();
+        WireWriter.send(writer, ProtoLifecycle.bye(n, willDrain));
+    }
+
+    /**
+     * The one drain transition. Both entry paths — a SHUTDOWN message with plans in flight and the
+     * displacement watchdog — flip {@code draining} here, yield the listeners so a successor can
+     * bind, and start the {@link DrainReporter} — started nowhere else. A
+     * plan that claims its slot before the flag lands is simply drained too — {@link
+     * #awaitDrainComplete} watches the live count, not the count a caller saw.
+     */
+    private void enterDrain() {
+        synchronized (lifecycleLock) {
+            draining = true;
+            closeServerChannelQuietly();
+            lifecycleLock.notifyAll();
+        }
+        http.stopNow();
+        drain.start();
+    }
+
+    /**
      * Stop accepting new clients and HTTP so a successor can bind. Existing connections keep
      * running. {@code exitNow} also marks the process as shutting down (idle, or force).
      */
     private void yieldListeners(boolean exitNow) {
         aot.stopQuietly();
+        if (!exitNow) {
+            enterDrain();
+            return;
+        }
         synchronized (lifecycleLock) {
-            if (exitNow) {
-                shuttingDown = true;
-            } else {
-                draining = true;
-            }
+            shuttingDown = true;
             closeServerChannelQuietly();
             lifecycleLock.notifyAll();
         }
         http.stopNow();
-        if (draining && !shuttingDown) drain.start();
+    }
+
+    /** Test seam: whether the drain reporter has been started (drain entered). */
+    boolean drainStartedForTests() {
+        return drain.started();
     }
 
     /** After the listener is closed, wait for in-flight plans before {@link #cleanup}. */

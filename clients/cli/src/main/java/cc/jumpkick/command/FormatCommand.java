@@ -6,6 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
@@ -88,7 +89,7 @@ public final class FormatCommand implements CliCommand {
     static final int PLAN_FAILED = Exit.SOFTWARE;
 
     /** A format run's summary — the same fields whichever transport ran the plan. */
-    private record Outcome(BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
+    private record Outcome(BuildPlanResult result, int total, int workerExit) {}
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
@@ -101,7 +102,7 @@ public final class FormatCommand implements CliCommand {
             CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
-        ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
+        ProjectInfo build = ProjectInfos.orNull(projectDir);
         if (build == null) {
             CommandWedge.printFail("Format", "could not read the project summary (is the engine reachable?)");
             return Exit.CONFIG;
@@ -343,13 +344,7 @@ public final class FormatCommand implements CliCommand {
                         global.verbose),
                 steps -> listener,
                 observer);
-        return new Outcome(
-                outcome.result(),
-                outcome.changed(),
-                outcome.clean(),
-                outcome.errors(),
-                outcome.total(),
-                outcome.workerExit());
+        return new Outcome(outcome.result(), outcome.total(), outcome.workerExit());
     }
 
     /**

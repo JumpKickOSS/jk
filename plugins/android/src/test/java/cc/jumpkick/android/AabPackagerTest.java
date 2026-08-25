@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.android.apksig.ApkVerifier;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -118,6 +119,50 @@ class AabPackagerTest {
         assertThat(times(a))
                 .isNotEmpty()
                 .allSatisfy((name, time) -> assertThat(time).as("%s", name).isEqualTo(PINNED));
+    }
+
+    /**
+     * The debug arm of the bundle signer, end to end through a real jarsigner fork: no
+     * {@code [android.signing.*]} config, so the stable debug identity signs — generated under the
+     * configured {@code debug-store-dir}, where the keystore must materialize. An AAB is a signed
+     * jar, so apksig's verifier reports exactly the v1 (JAR) scheme and neither APK scheme.
+     *
+     * <p>Revert caveat: with the {@code debug-store-dir} read dropped, this run resolves the real
+     * stable dir — read-only when {@code ~/.android/debug.keystore} exists, generating one there
+     * when absent — which is exactly the defect the seam removes. The temp-dir assertion is what
+     * goes red.
+     */
+    @Test
+    void the_debug_identity_signs_the_bundle_under_the_configured_store_dir(@TempDir Path tmp) throws Exception {
+        Path storeDir = tmp.resolve("android-home");
+        FakePackageIo io = release(tmp);
+        io.config("debug-store-dir", storeDir.toString());
+        Path unsigned = tmp.resolve("unsigned.aab");
+        // Not bundletool's layout: the manifest sits at the top level because apksig's verifier —
+        // used below only to read which schemes signed the jar — refuses an archive without one
+        // there. The base-module layout has its own tests above; this one is about the signing arm.
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(unsigned))) {
+            zip.putNextEntry(new ZipEntry("AndroidManifest.xml"));
+            zip.write(BinaryXml.manifest());
+            zip.closeEntry();
+        }
+
+        AabPackager.signBundle(io, unsigned, io.artifactPath());
+
+        assertThat(DebugKeystore.path(storeDir))
+                .as("the debug identity generates under the redirected store dir")
+                .isRegularFile();
+        // Platform 24, not 1: jarsigner signs with SHA-384 digests, which the v1 scheme only
+        // admits on modern API levels — and an AAB never installs on anything older anyway.
+        ApkVerifier.Result result = new ApkVerifier.Builder(io.artifactPath().toFile())
+                .setMinCheckedPlatformVersion(24)
+                .build()
+                .verify();
+        assertThat(result.isVerifiedUsingV1Scheme())
+                .as("an AAB carries the JAR signature")
+                .isTrue();
+        assertThat(result.isVerifiedUsingV2Scheme()).isFalse();
+        assertThat(result.isVerifiedUsingV3Scheme()).isFalse();
     }
 
     /** An empty dex directory would assemble a bundle with no code in it. */

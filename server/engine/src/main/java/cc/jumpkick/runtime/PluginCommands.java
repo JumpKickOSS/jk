@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -66,12 +67,16 @@ public final class PluginCommands {
                     .layout(layout.classesDir(), dir, scratch)
                     .artifact(PluginBuild.mainArtifactPath(layout, active))
                     .commandArgs(args);
-            // Commands get the same declared tool artifacts steps do (adb from an SDK component) —
-            // best-effort: `jk android licenses` must run BEFORE licenses gate provisioning, so
-            // an unprovisionable tool is absent and only a command that needs it complains.
-            for (var tool : PluginBuild.fetchStepDependencies(
-                            project, dir, JkStores.cas(cache), PluginBuild.sdkPins(LockPaths.lockFile(dir)), true)
-                    .entrySet()) {
+            // Commands get the step lane's tools (a bundletool the packager also reads) plus the
+            // [[contribute.command-dependency]] lane (an adb no step reads) — both best-effort:
+            // `jk android licenses` must run BEFORE licenses gate provisioning, so an
+            // unprovisionable tool is absent and only a command that needs it complains.
+            var cas = JkStores.cas(cache);
+            Map<String, String> sdkPins = PluginBuild.sdkPins(LockPaths.lockFile(dir));
+            Map<String, Path> tools =
+                    new LinkedHashMap<>(PluginBuild.fetchStepDependencies(project, dir, cas, sdkPins, true));
+            tools.putAll(PluginBuild.fetchCommandDependencies(project, dir, cas, sdkPins, true));
+            for (var tool : tools.entrySet()) {
                 specWriter.extra(tool.getKey(), tool.getValue());
             }
             Path spec = specWriter.writeTempSpec();

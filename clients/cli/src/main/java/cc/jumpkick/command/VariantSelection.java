@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -70,7 +71,7 @@ final class VariantSelection {
      * engine names the vars (ProjectInfo.envRefs); only those set here ride the request.
      */
     static Map<String, String> resolveClientEnv(Path projectDir) {
-        var info = BuildCommand.projectInfoOrNull(projectDir);
+        var info = ProjectInfos.orNull(projectDir);
         if (info == null || info.envRefs().isEmpty()) return Map.of();
         Map<String, String> resolved = new LinkedHashMap<>();
         for (String name : info.envRefs()) {

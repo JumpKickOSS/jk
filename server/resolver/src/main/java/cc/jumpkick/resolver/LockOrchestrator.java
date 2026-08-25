@@ -741,10 +741,10 @@ public final class LockOrchestrator {
             "maven-resolver-transport-file");
 
     /**
-     * Fill gaps in {@code bomConstraints} for the maven-resolver family so named-locks cannot
-     * float to a major line that breaks {@code NamedLockFactory.getLock(String)}.
+     * Fill maven-resolver family gaps in {@code bomConstraints} so named-locks cannot float to a major line that
+     * breaks {@code NamedLockFactory.getLock(String)}. Public: the plugin tool-closure path aligns the same facts.
      */
-    static void alignMavenResolverFamily(
+    public static void alignMavenResolverFamily(
             Map<String, String> bomConstraints,
             Map<String, String> constraintProvenance,
             EffectivePom bomPom,

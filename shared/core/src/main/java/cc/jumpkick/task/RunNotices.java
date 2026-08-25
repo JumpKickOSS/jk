@@ -37,24 +37,48 @@ import java.util.function.Supplier;
  *
  * <h2>Where a note goes</h2>
  *
- * Standard error, which inside the engine is the engine log. It is deliberately not the build
- * report: reaching {@code TaskContext.warn} — the channel that puts a warning in front of the user
- * — needs a step's context, and the callers this exists for are static helpers several frames below
- * any plan. Widening it to the terminal means giving the engine an ambient per-request event sink,
- * which is a larger change than a warning deserves.
+ * To the run's registered {@link Sink} when the engine opened one, and to standard error
+ * otherwise. The engine opens a sink around every enveloped request — registered beside {@link
+ * IoLedger#open} and removed in the same {@code finally} — and its sink turns a note into a WARN
+ * wire line the CLI already prints, so the warning reaches the user who can act on it rather than
+ * only the engine log. Standard error remains for everything outside a request: CLI-process
+ * callers, engine housekeeping, tests.
  */
 public final class RunNotices {
 
+    /** Where a run's notices go instead of standard error; {@code code} is the notice key. */
+    @FunctionalInterface
+    public interface Sink {
+        void notice(String code, String message);
+    }
+
     /** Keyed by the run's ledger — see the class note on why the session cannot serve. */
     private static final ConcurrentHashMap<IoLedger, Set<String>> BY_RUN = new ConcurrentHashMap<>();
+
+    /** Same key as {@link #BY_RUN}: the ledger is the run's identity. */
+    private static final ConcurrentHashMap<IoLedger, Sink> SINKS = new ConcurrentHashMap<>();
 
     private static final int MAX_RUNS = 32;
     private static final int MAX_PER_RUN = 64;
 
     private RunNotices() {}
 
+    /** Route this run's notices to {@code sink} until {@link #closeSink}. */
+    public static void openSink(IoLedger run, Sink sink) {
+        if (run == null || sink == null) return;
+        if (SINKS.size() > MAX_RUNS) SINKS.clear(); // a dropped sink degrades to stderr, no worse
+        SINKS.put(run, sink);
+    }
+
+    /** Stop routing this run's notices; later notes fall back to standard error. */
+    public static void closeSink(IoLedger run) {
+        if (run == null) return;
+        SINKS.remove(run);
+    }
+
     /**
-     * Print {@code message} if this run has not already said {@code key}; otherwise do nothing.
+     * Say {@code message} if this run has not already said {@code key}; otherwise do nothing. The
+     * note goes to the run's {@link Sink} when one is open, else to standard error.
      *
      * <p>{@code message} is a supplier so a repeat costs nothing to build — the caller that has
      * already decided it has something to say is usually the one doing the formatting work.
@@ -64,25 +88,30 @@ public final class RunNotices {
     public static void warnOnce(String key, Supplier<String> message) {
         if (key == null || message == null) return;
         try {
-            if (!claim(key)) return;
+            IoLedger run = SessionContext.current().io(); // never null: Session's constructor sees to it
+            if (!claim(run, key)) return;
             String text = message.get();
-            if (text != null && !text.isEmpty()) System.err.println(text);
+            if (text == null || text.isEmpty()) return;
+            Sink sink = SINKS.get(run);
+            if (sink != null) sink.notice(key, text);
+            else System.err.println(text);
         } catch (RuntimeException e) {
-            // Unreadable session, unwritable stderr: say nothing rather than fail the build.
+            // Unreadable session, unwritable stderr, throwing sink: say nothing rather than fail
+            // the build.
         }
     }
 
     /** True the first time this run claims {@code key}, false every time after. */
-    private static boolean claim(String key) {
-        IoLedger run = SessionContext.current().io(); // never null: Session's constructor sees to it
+    private static boolean claim(IoLedger run, String key) {
         if (BY_RUN.size() > MAX_RUNS) BY_RUN.clear();
         Set<String> said = BY_RUN.computeIfAbsent(run, r -> ConcurrentHashMap.newKeySet());
         if (said.size() >= MAX_PER_RUN) said.clear(); // over-full: at worst one note is said twice
         return said.add(key);
     }
 
-    /** Forget every claim. Nothing on the build path needs this; tests do. */
+    /** Forget every claim and every sink. Nothing on the build path needs this; tests do. */
     public static void clear() {
         BY_RUN.clear();
+        SINKS.clear();
     }
 }

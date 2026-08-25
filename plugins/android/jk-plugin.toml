@@ -56,6 +56,10 @@ build-config = { type = "bool", default = false }   # generates BuildConfig.java
 # (AGP's buildConfigField, declarative): ['String BACKEND_URL = "http://example.com"']
 build-config-fields = { type = "string-list", default = [] }
 hilt         = { type = "bool", default = false }   # Hilt unmodified-source mode: superclass transform + processor toggle
+# Where the stable debug keystore lives, overriding the ecosystem default
+# ($ANDROID_USER_HOME → $ANDROID_SDK_HOME/.android → ~/.android). For hermetic
+# builds where HOME is read-only (CI sandboxes); the debug identity generates there instead.
+debug-store-dir = { type = "string" }
 
 # ---- Variant-overlayable keys -------------------------------------------------------------------
 #
@@ -143,18 +147,17 @@ artifact   = "bundletool"
 coordinate = "com.android.tools.build:bundletool:1.17.2"
 transitive = true
 
+# ---- Command-only tools (fetched when a command runs; in no step or packager key) ----
+
 # adb, for the deploy command (`jk run` onto a device) — provisioned platform-tools.
-[[contribute.step-dependency]]
+[[contribute.command-dependency]]
 artifact      = "adb"
 sdk-component = "platform-tools"
 sdk-path      = "adb"
 
-# The SDK root itself, for the provisioning verbs (`jk android licenses|sdk`, `jk avd`). No step
-# and no packager reads it — they take the NAMED components above (android-jar, adb, aapt2), each
-# of which is content-keyed on its own. `root` is a location, not an artifact: nothing is installed
-# at it, only under it, which is why the lockfile refuses to pin a revision for it and why the
-# engine keys it as `sdk:root@…` instead of walking it (walking the managed SDK root put tens of
-# gigabytes of platforms, system images and emulator into every android action key).
-[[contribute.step-dependency]]
+# The SDK root itself, for the provisioning verbs (`jk android licenses|sdk`, `jk avd`).
+# `root` is a location, not an artifact: nothing is installed at it, only under it, which is
+# why the lockfile declines to pin a revision for it.
+[[contribute.command-dependency]]
 artifact      = "sdk-root"
 sdk-component = "root"

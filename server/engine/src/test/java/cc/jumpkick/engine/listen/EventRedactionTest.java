@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.JUnitLauncher;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -45,7 +46,7 @@ class EventRedactionTest {
         // control has to announce itself — once, on stderr (merged into the engine log).
         var err = new ByteArrayOutputStream();
         var original = System.err;
-        EventRedaction.resetFailOpenWarning();
+        RunNotices.clear();
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         try {
             EventRedaction.warnFailOpen(new IllegalStateException("corrupt .env"));
@@ -56,7 +57,7 @@ class EventRedactionTest {
         String out = err.toString(StandardCharsets.UTF_8);
         assertThat(out).contains("secret redaction failed open").contains("corrupt .env");
         assertThat(out.indexOf("failed open")).isEqualTo(out.lastIndexOf("failed open"));
-        EventRedaction.resetFailOpenWarning();
+        RunNotices.clear();
     }
 
     @Test

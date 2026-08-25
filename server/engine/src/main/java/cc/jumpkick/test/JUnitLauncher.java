@@ -11,6 +11,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
@@ -976,10 +977,9 @@ public final class JUnitLauncher {
             return engineFromUniqueId(identityKey(json));
         }
 
-        /** Event worker field ({@code worker}, legacy {@code w}), else this aggregator's id. */
+        /** Event {@code worker} field, else this aggregator's id. */
         private int eventWorker(String json) {
             int w = Jsonl.intValue(json, "worker", -1);
-            if (w < 0) w = Jsonl.intValue(json, "w", -1);
             return w > 0 ? w : workerId;
         }
 
@@ -1110,69 +1110,18 @@ public final class JUnitLauncher {
         }
     }
 
-    /** Extract {@code com.example.FooTest} from a JUnit Platform unique id segment {@code [class:…]}. */
-    public static String classFromUniqueId(String id) {
-        if (id == null || id.isBlank()) return "";
-        int i = id.indexOf("[class:");
-        if (i < 0) return "";
-        int start = i + "[class:".length();
-        int end = id.indexOf(']', start);
-        if (end < 0) return "";
-        String outer = percentDecode(id.substring(start, end).trim());
-        // Nested: [class:Outer]/[nested-class:Inner] → Outer$Inner
-        StringBuilder sb = new StringBuilder(outer);
-        int from = end;
-        while (true) {
-            int n = id.indexOf("[nested-class:", from);
-            if (n < 0) break;
-            int ns = n + "[nested-class:".length();
-            int ne = id.indexOf(']', ns);
-            if (ne < 0) break;
-            sb.append('$').append(percentDecode(id.substring(ns, ne).trim()));
-            from = ne + 1;
-        }
-        return sb.toString();
-    }
-
-    /** Extract engine id from {@code [engine:junit-jupiter]}. */
-    public static String engineFromUniqueId(String id) {
-        if (id == null || id.isBlank()) return "";
-        int i = id.indexOf("[engine:");
-        if (i < 0) return "";
-        int start = i + "[engine:".length();
-        int end = id.indexOf(']', start);
-        if (end < 0) return "";
-        return percentDecode(id.substring(start, end).trim());
-    }
-
     /**
-     * JUnit Platform writes {@code [ ] / %} as {@code %XX} in unique-id strings. Decode so a
-     * fallback parse of {@code [method:bar(int%5B%5D)]} yields {@code bar(int[])}.
+     * Binary class name from a JUnit Platform unique id ({@code [class:…]} plus the
+     * {@code [nested-class:…]} join) — the shared {@link JUnitUniqueIds} walk, same as the runner's
+     * malformed-id fallback on the other side of the fork.
      */
-    static String percentDecode(String raw) {
-        if (raw == null || raw.isEmpty() || raw.indexOf('%') < 0) return raw == null ? "" : raw;
-        StringBuilder out = new StringBuilder(raw.length());
-        for (int i = 0; i < raw.length(); i++) {
-            char c = raw.charAt(i);
-            if (c == '%' && i + 2 < raw.length()) {
-                int hi = hexVal(raw.charAt(i + 1));
-                int lo = hexVal(raw.charAt(i + 2));
-                if (hi >= 0 && lo >= 0) {
-                    out.append((char) ((hi << 4) | lo));
-                    i += 2;
-                    continue;
-                }
-            }
-            out.append(c);
-        }
-        return out.toString();
+    public static String classFromUniqueId(String id) {
+        return id == null ? "" : JUnitUniqueIds.classOf(id);
     }
 
-    private static int hexVal(char c) {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        return -1;
+    /** Engine id from {@code [engine:junit-jupiter]} — the shared {@link JUnitUniqueIds} walk. */
+    public static String engineFromUniqueId(String id) {
+        return id == null ? "" : JUnitUniqueIds.engineOf(id);
     }
 
     /**

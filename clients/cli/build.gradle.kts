@@ -33,7 +33,21 @@ dependencies {
     testImplementation(project(":engine"))
     // GpgTestFixture (publish command tests).
     testImplementation(libs.bouncycastle.bcpg)
+    // JkWireModel (compiled from the IntelliJ tree, see intellijParserSrc) uses JetBrains
+    // nullness because the platform API does; compile-only, test scope, never shipped.
+    testCompileOnly("org.jetbrains:annotations:26.0.2")
 }
+
+// The IntelliJ plugin is a standalone Gradle build no gate compiles (see checkIdeClientWiring),
+// but its wire parser needs no platform SDK: JkWireModel imports only java.util/regex and
+// org.jetbrains.annotations. Compiling that ONE file into this module's tests puts the regex
+// parser itself in-gate — the parallel-array alignment and null-vs-empty rules G22 arm 4 can only
+// approximate textually — single-sourced from the plugin's own tree, materialized per build.
+val intellijParserSrc by tasks.registering(Sync::class) {
+    from(rootProject.file("clients/intellij/src/main/java")) { include("**/JkWireModel.java") }
+    into(layout.buildDirectory.dir("intellij-parser-src"))
+}
+sourceSets.test { java.srcDir(intellijParserSrc.map { it.destinationDir }) }
 
 // JK-2139: the native client must not see the plugin SPI jar (codec is :host).
 val checkCliRuntimeClasspath by tasks.registering {

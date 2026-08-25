@@ -516,8 +516,10 @@ public final class PlannerNative {
     }
 
     /**
-     * GraalVM / JDK home that has {@code bin/native-image}: client-resolved home first, then
-     * {@code $GRAALVM_HOME}, then the project JDK, then the running JVM.
+     * GraalVM / JDK home that {@code NativeImageDriver.resolve} recognises — i.e. one where
+     * {@code GraalLauncher} finds a native-image launcher; that owner defines which directories
+     * and spellings count. Order: client-resolved home first, then {@code $GRAALVM_HOME}, then
+     * the project JDK, then the running JVM.
      */
     static Path resolveNativeImageHome(Path graalHome, Path projectDir, Path jdksDir) {
         if (graalHome != null

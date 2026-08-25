@@ -8,6 +8,8 @@ import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -106,6 +108,55 @@ class RunNoticesTest {
         }
         assertThat(occurrences(err.toString(StandardCharsets.UTF_8), "the note"))
                 .isEqualTo(2);
+    }
+
+    /** One specific run, so a sink can be opened for its ledger before the body enters it. */
+    private static String inRun(Session run, Runnable body) {
+        var err = new ByteArrayOutputStream();
+        var original = System.err;
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        try {
+            SessionContext.runWhere(run, body);
+        } finally {
+            System.setErr(original);
+        }
+        return err.toString(StandardCharsets.UTF_8);
+    }
+
+    /** With a sink open for the run, a note rides the sink — once — and stderr stays silent. */
+    @Test
+    void a_run_with_a_sink_sends_notes_there_and_not_to_stderr() {
+        Session run = Session.defaults();
+        List<String> delivered = new ArrayList<>();
+        RunNotices.openSink(run.io(), (code, message) -> delivered.add(code + ": " + message));
+        String err = inRun(run, () -> {
+            for (int i = 0; i < 3; i++) RunNotices.warnOnce("k", () -> "the note");
+        });
+        assertThat(delivered).containsExactly("k: the note");
+        assertThat(err).isEmpty();
+    }
+
+    /** After {@link RunNotices#closeSink} the run's notes fall back to stderr. */
+    @Test
+    void a_closed_sink_falls_back_to_stderr() {
+        Session run = Session.defaults();
+        List<String> delivered = new ArrayList<>();
+        RunNotices.openSink(run.io(), (code, message) -> delivered.add(message));
+        RunNotices.closeSink(run.io());
+        String err = inRun(run, () -> RunNotices.warnOnce("k", () -> "the note"));
+        assertThat(delivered).isEmpty();
+        assertThat(err).contains("the note");
+    }
+
+    /** A sink is scoped to its run: another run's notes still go to stderr. */
+    @Test
+    void a_sink_hears_only_its_own_run() {
+        Session sunk = Session.defaults();
+        List<String> delivered = new ArrayList<>();
+        RunNotices.openSink(sunk.io(), (code, message) -> delivered.add(message));
+        String err = inOneRun(() -> RunNotices.warnOnce("k", () -> "someone else's note"));
+        assertThat(delivered).isEmpty();
+        assertThat(err).contains("someone else's note");
     }
 
     /** A diagnostic that fails a build is worse than one nobody reads. */

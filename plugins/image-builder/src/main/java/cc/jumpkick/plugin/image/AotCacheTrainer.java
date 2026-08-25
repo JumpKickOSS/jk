@@ -3,8 +3,8 @@ package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.jdk.JdkFingerprint;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -402,7 +402,7 @@ final class AotCacheTrainer {
         String path = System.getenv("PATH");
         if (path == null) return false;
         boolean windows = Os.isWindows();
-        for (String dir : path.split(File.pathSeparator)) {
+        for (String dir : SearchPath.entries(path)) {
             Path base = Path.of(dir, exe);
             if (Files.isExecutable(base)) return true;
             // Windows PATHEXT: docker.exe / docker.cmd / docker.bat (chocolatey shims and corp

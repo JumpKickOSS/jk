@@ -41,8 +41,8 @@ import java.util.regex.Pattern;
  * one is spelled, so it stays there and calls {@link #join} for the spelling.
  *
  * <p>Not covered: {@code PATH}. It uses the same separator character and is a different vocabulary
- * — an executable search path, not a class search path — so it keeps its own splitting and must not
- * borrow this owner.
+ * — an executable search path, not a class search path — so it belongs to {@link SearchPath} and
+ * must not borrow this owner.
  */
 public final class Classpaths {
 

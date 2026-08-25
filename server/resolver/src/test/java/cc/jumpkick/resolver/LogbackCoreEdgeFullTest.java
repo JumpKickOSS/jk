@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-@Tag("integration")
+@Tag("network")
 class LogbackCoreEdgeFullTest {
     @Test
     void micronaut_hello_shape_keeps_logback_core_edge(@TempDir Path tmp) throws Exception {

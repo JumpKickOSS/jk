@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.run.TimelineOpts;
-import cc.jumpkick.command.BuildCommand;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
@@ -87,7 +85,7 @@ final class EngineReads {
                     return Jsonl.bool(line, "changed", false);
                 });
         // Manifest just changed — drop memoized project summaries for this invocation (JK-2162).
-        if (changed) BuildCommand.forgetProjectInfo();
+        if (changed) ProjectInfos.forget();
         return changed;
     }
 

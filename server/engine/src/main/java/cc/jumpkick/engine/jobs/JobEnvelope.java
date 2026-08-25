@@ -11,14 +11,17 @@ import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.task.RunNotices;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -254,6 +257,7 @@ public final class JobEnvelope {
                 eventKind,
                 workspaceStream);
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> {
+            IoLedger io = host.runIo(eventRequestId);
             // Nothing between the lock and the try: a throw from the setup calls would
             // leak the read lock — one leak and the cache prune's write-lock tryLock never
             // succeeds again for the engine's life — and would strand the in-flight fingerprint
@@ -265,13 +269,30 @@ public final class JobEnvelope {
                 JobWorkers.open(eventRequestId);
                 // Every Session this request builds adopts this ledger, so fetches/cache traffic on
                 // the shared pools all land in one place (see IoLedger).
-                IoLedger.open(host.runIo(eventRequestId));
-                JobOutcome outcome = runner.run(requestLine, cancelToken, writer);
+                IoLedger.open(io);
+                // Run-scoped notices join this request's stream for the run's life; the finally
+                // removes the sink, or a later run's notice would ride the wrong request.
+                RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
+                JobOutcome outcome;
+                try {
+                    outcome = runner.run(requestLine, cancelToken, writer);
+                } catch (Throwable t) {
+                    // An escaped throw must not impersonate Declined: with clean rows already
+                    // recorded and no failure row, the derived verdict would read green. Rule
+                    // failure, name the exception on the record, and fall into the teardown.
+                    outcome = JobOutcome.failed(Exit.SOFTWARE);
+                    BuildAccumulator thrown = host.accumulatorOf(eventRequestId);
+                    if (thrown != null) thrown.addEscapedThrow(t);
+                    host.log("jk engine: job " + eventRequestId + " body threw "
+                            + t.getClass().getName()
+                            + (t.getMessage() == null ? "" : ": " + t.getMessage()));
+                }
                 // The one success law: the body's verdict is stamped here, nowhere else. A
                 // declined verdict leaves the journal to the accumulated facts.
                 BuildAccumulator acc = host.accumulatorOf(eventRequestId);
                 if (acc != null) acc.stamp(outcome);
             } finally {
+                RunNotices.closeSink(io);
                 IoLedger.close();
                 // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
                 // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
@@ -493,6 +514,27 @@ public final class JobEnvelope {
         }
         finish.run();
         return eventRequestId;
+    }
+
+    /**
+     * A run-scoped {@link RunNotices} note: one WARN line on the request's stream (step {@code ""},
+     * code {@code "notice"}) and the SSE feed, redacted like every other event that leaves the
+     * engine. Invoked from whatever thread noticed — the wire writer and SSE hub both take
+     * concurrent writers.
+     */
+    private void publishNotice(long id, String dir, @Nullable BufferedWriter writer, String message) {
+        String safe = EventRedaction.redactEnv(dir, message);
+        if (writer != null) WireWriter.sendQuiet(writer, ProtoEvents.warn(dir, "", "notice", safe));
+        host.publishEvent(
+                "warn",
+                JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "warn")
+                        .put("jid", id)
+                        .put("dir", dir)
+                        .put("step", "")
+                        .put("code", "notice")
+                        .put("message", safe));
     }
 
     /**

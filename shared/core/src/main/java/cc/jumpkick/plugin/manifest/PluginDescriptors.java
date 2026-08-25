@@ -334,9 +334,72 @@ public final class PluginDescriptors {
             packagerDeps.add(new PluginDescriptor.PackagerDependency(artifact, coordinate, when));
         }
 
-        List<PluginDescriptor.StepDependency> stepDeps = new ArrayList<>();
-        for (TomlTable t : tableArray(contribute, "step-dependency", displayPath)) {
-            String where = displayPath + ".contribute.step-dependency";
+        List<PluginDescriptor.StepDependency> stepDeps =
+                parseToolDependencies(contribute, "step-dependency", schemaKeys, displayPath);
+        List<PluginDescriptor.StepDependency> commandDeps =
+                parseToolDependencies(contribute, "command-dependency", schemaKeys, displayPath);
+        for (PluginDescriptor.StepDependency cd : commandDeps) {
+            if (stepDeps.stream().anyMatch(sd -> sd.artifact().equals(cd.artifact()))) {
+                throw new JkBuildParseException(displayPath + ".contribute.command-dependency: `" + cd.artifact()
+                        + "` is already a [[contribute.step-dependency]] — commands read step tools too;"
+                        + " declare it once, in the step lane");
+            }
+        }
+
+        List<PluginDescriptor.ProvidedClasspath> provided = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, "provided-classpath", displayPath)) {
+            String where = displayPath + ".contribute.provided-classpath";
+            String dependency = requireString(t, "dependency", where);
+            boolean declared = stepDeps.stream().anyMatch(sd -> sd.artifact().equals(dependency));
+            if (!declared) {
+                if (commandDeps.stream().anyMatch(cd -> cd.artifact().equals(dependency))) {
+                    throw new JkBuildParseException(where + ": `" + dependency
+                            + "` is a [[contribute.command-dependency]] — a command-only tool is provisioned"
+                            + " when its command runs and never joins a compile classpath; declare it as a"
+                            + " [[contribute.step-dependency]] if a step needs it");
+                }
+                throw new JkBuildParseException(where + ": `" + dependency
+                        + "` does not name a declared [[contribute.step-dependency]] artifact");
+            }
+            provided.add(new PluginDescriptor.ProvidedClasspath(dependency, parseCondition(t, where)));
+        }
+
+        // [contribute.resolution] — a single table (not an array): the GMM jvm-environment
+        // this plugin's projects select KMP runtime variants for.
+        String jvmEnvironment = null;
+        TomlTable resolution = contribute.getTable("resolution");
+        if (resolution != null) {
+            jvmEnvironment = resolution.getString("jvm-environment");
+            if (jvmEnvironment != null && !jvmEnvironment.equals("android") && !jvmEnvironment.equals("standard-jvm")) {
+                throw new JkBuildParseException(displayPath
+                        + ".contribute.resolution: jvm-environment must be `android` or `standard-jvm`"
+                        + " — got: " + jvmEnvironment);
+            }
+        }
+
+        return new PluginDescriptor.Contributions(
+                platformDeps,
+                compilerArgs,
+                nativeArgs,
+                kotlinPlugins,
+                packagerDeps,
+                stepDeps,
+                commandDeps,
+                provided,
+                sourceRoots,
+                jvmEnvironment);
+    }
+
+    /**
+     * One tool lane's entries — {@code [[contribute.step-dependency]]} and
+     * {@code [[contribute.command-dependency]]} share this entry shape and every field rule; only
+     * the lane they land in differs.
+     */
+    private static List<PluginDescriptor.StepDependency> parseToolDependencies(
+            TomlTable contribute, String key, Set<String> schemaKeys, String displayPath) {
+        List<PluginDescriptor.StepDependency> deps = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, key, displayPath)) {
+            String where = displayPath + ".contribute." + key;
             String artifact = requireString(t, "artifact", where);
             String coordinate = t.getString("coordinate");
             String sdkComponent = t.getString("sdk-component");
@@ -378,49 +441,13 @@ public final class PluginDescriptors {
             }
             PluginDescriptor.Condition when = parseCondition(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
-                throw new JkBuildParseException(
-                        where + ": classpath-has cannot gate a step-dependency (tool fetches are"
-                                + " decided from config/facts, not the resolved classpath)");
+                throw new JkBuildParseException(where + ": classpath-has cannot gate a " + key
+                        + " (tool fetches are decided from config/facts, not the resolved classpath)");
             }
-            stepDeps.add(new PluginDescriptor.StepDependency(
+            deps.add(new PluginDescriptor.StepDependency(
                     artifact, coordinate, transitive, sdkComponent, sdkPath, managedBy, with, when));
         }
-
-        List<PluginDescriptor.ProvidedClasspath> provided = new ArrayList<>();
-        for (TomlTable t : tableArray(contribute, "provided-classpath", displayPath)) {
-            String where = displayPath + ".contribute.provided-classpath";
-            String dependency = requireString(t, "dependency", where);
-            boolean declared = stepDeps.stream().anyMatch(sd -> sd.artifact().equals(dependency));
-            if (!declared) {
-                throw new JkBuildParseException(where + ": `" + dependency
-                        + "` does not name a declared [[contribute.step-dependency]] artifact");
-            }
-            provided.add(new PluginDescriptor.ProvidedClasspath(dependency, parseCondition(t, where)));
-        }
-
-        // [contribute.resolution] — a single table (not an array): the GMM jvm-environment
-        // this plugin's projects select KMP runtime variants for.
-        String jvmEnvironment = null;
-        TomlTable resolution = contribute.getTable("resolution");
-        if (resolution != null) {
-            jvmEnvironment = resolution.getString("jvm-environment");
-            if (jvmEnvironment != null && !jvmEnvironment.equals("android") && !jvmEnvironment.equals("standard-jvm")) {
-                throw new JkBuildParseException(displayPath
-                        + ".contribute.resolution: jvm-environment must be `android` or `standard-jvm`"
-                        + " — got: " + jvmEnvironment);
-            }
-        }
-
-        return new PluginDescriptor.Contributions(
-                platformDeps,
-                compilerArgs,
-                nativeArgs,
-                kotlinPlugins,
-                packagerDeps,
-                stepDeps,
-                provided,
-                sourceRoots,
-                jvmEnvironment);
+        return deps;
     }
 
     /**

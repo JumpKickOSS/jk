@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -213,7 +214,7 @@ public final class BuildForecasting {
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached() || TaskForecast.Module.isBookkeepingStep(s.name())) continue;
             if (!TaskForecast.Module.isMaterialWork(s.name())) continue;
-            if ("restore-outputs".equals(s.name())) {
+            if (TaskNames.RESTORE_OUTPUTS.equals(s.name())) {
                 sawRestore = true;
                 continue;
             }

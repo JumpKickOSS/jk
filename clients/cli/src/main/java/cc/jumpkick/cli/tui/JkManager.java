@@ -444,10 +444,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      * stage-change or 30s heartbeat line shows the updated {@code running N tests}.
      */
     public void notePlainTestTick(String module, String stepKey, int delta) {
-        if (!plain.animating()) return;
-        if (stepKey == null || !(stepKey.equals(TaskNames.RUN_TESTS) || stepKey.startsWith(TaskNames.RUN_TESTS))) {
-            return;
-        }
+        if (!plain.animating() || !isCuratedTestStep(stepKey)) return;
         synchronized (lock) {
             Row r = rows.get(key(module, stepKey));
             if (r != null) plain.noteTestTick(r, delta);
@@ -793,14 +790,17 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         view.writeProcessOutput(text);
     }
 
+    /** A failed tool/worker step force-opens the process-output pane; a curated test failure does not. */
+    public static boolean forceShowOnStepFailure(String step) {
+        return !isCuratedTestStep(step);
+    }
+
     /**
-     * True when a failed step should force-open the process-output pane (tool/worker crash), not
-     * when the failure is a curated test-runner result.
+     * The curated test-runner step ({@code run-tests} + forks) — keyed on step identity, never the
+     * step's group: compile-test failures are group Test too and must force-open (tool output).
      */
-    public static boolean forceShowOnStepFailure(String step, String group) {
-        // Only the test-runner step uses curated failure chrome; everything else is a tool/worker.
-        if (step == null) return true;
-        return !step.equals(TaskNames.RUN_TESTS) && !step.startsWith(TaskNames.RUN_TESTS);
+    private static boolean isCuratedTestStep(String stepKey) {
+        return stepKey != null && stepKey.startsWith(TaskNames.RUN_TESTS);
     }
 
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {

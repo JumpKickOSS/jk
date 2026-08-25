@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,14 +39,15 @@ final class Json {
         o.put("jkVersion", r.jkVersion());
 
         if (r.tests() == null) {
-            o.put("tests", null);
+            o.put(TestSummary.WIRE_KEY, null);
         } else {
-            Map<String, Object> t = new LinkedHashMap<>();
-            t.put("total", r.tests().total());
-            t.put("succeeded", r.tests().succeeded());
-            t.put("failed", r.tests().failed());
-            t.put("skipped", r.tests().skipped());
-            o.put("tests", t);
+            o.put(
+                    TestSummary.WIRE_KEY,
+                    TestSummary.countsMap(
+                            r.tests().total(),
+                            r.tests().succeeded(),
+                            r.tests().failed(),
+                            r.tests().skipped()));
         }
 
         List<Object> modules = new ArrayList<>();
@@ -73,7 +76,8 @@ final class Json {
             if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
             if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
             if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
-            if (d.className() != null && !d.className().isEmpty()) dm.put("testClass", d.className());
+            if (d.className() != null && !d.className().isEmpty())
+                dm.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
             if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
             if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
                 dm.put("exceptionClass", d.exceptionClass());
@@ -143,11 +147,10 @@ final class Json {
         }
         Map<String, Object> o = (Map<String, Object>) m;
 
-        BuildRecord.Tests tests = null;
-        if (o.get("tests") instanceof Map<?, ?> tm) {
-            Map<String, Object> t = (Map<String, Object>) tm;
-            tests = new BuildRecord.Tests(lng(t, "total"), lng(t, "succeeded"), lng(t, "failed"), lng(t, "skipped"));
-        }
+        TestSummary counts = TestSummary.countsFromMap(o.get(TestSummary.WIRE_KEY));
+        BuildRecord.Tests tests = counts == null
+                ? null
+                : new BuildRecord.Tests(counts.total(), counts.succeeded(), counts.failed(), counts.skipped());
 
         List<BuildRecord.Module> modules = new ArrayList<>();
         for (Object e : arr(o, "modules")) {
@@ -190,7 +193,7 @@ final class Json {
                     str(dm, "exceptionClass"),
                     str(dm, "module"),
                     str(dm, "engine"),
-                    str(dm, "testClass"),
+                    str(dm, EngineProtocol.TEST_CLASS_FIELD),
                     str(dm, "method"),
                     str(dm, "stack"),
                     str(dm, "file"),

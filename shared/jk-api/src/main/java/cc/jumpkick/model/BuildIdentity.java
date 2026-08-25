@@ -6,10 +6,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Running jk identity for cache keys and engine election. Releases use {@link JkVersion#VERSION};
- * {@code -SNAPSHOT} builds use jar sha256 (12 hex). Empty {@link #buildId()} means no jar identity.
+ * Running jk identity for cache keys and engine election. Releases key by {@link JkVersion#VERSION}
+ * plus the cache-key salt; {@code -SNAPSHOT} builds also fold in the jar sha256 (12 hex). Empty
+ * {@link #buildId()} means no jar identity.
  */
 public final class BuildIdentity {
+
+    /**
+     * Cache-key salt: turn this in the same commit that changes what any action key hashes. It
+     * folds into {@link #cacheKeyVersion()} on the release branch too, where the jar id does not —
+     * a rebuilt release otherwise shares the official release's whole cache namespace, and a
+     * key-shape change would collide with records the old shape wrote. Not a second product
+     * version: never printed, never parsed, never compared on its own.
+     */
+    static final int CACHE_KEY_SALT = 1;
 
     private static volatile String cachedBuildId;
 
@@ -26,9 +36,9 @@ public final class BuildIdentity {
     }
 
     /**
-     * The version string to key caches by: bare {@link JkVersion#VERSION} for releases; for
-     * {@code -SNAPSHOT} builds the build id is folded in so a rebuilt engine never restores an
-     * older engine's results under the same key.
+     * The version string to key caches by: {@link JkVersion#VERSION} plus {@link #CACHE_KEY_SALT}
+     * for releases; {@code -SNAPSHOT} builds also fold the build id in so a rebuilt engine never
+     * restores an older engine's results under the same key.
      */
     public static String cacheKeyVersion() {
         return compose(JkVersion.VERSION, buildId());
@@ -36,7 +46,13 @@ public final class BuildIdentity {
 
     /** Pure composition rule, separated for tests. */
     static String compose(String version, String id) {
-        return version.endsWith("-SNAPSHOT") && !id.isEmpty() ? version + "+" + id : version;
+        return compose(version, id, CACHE_KEY_SALT);
+    }
+
+    /** As {@link #compose(String, String)} with the salt explicit, so tests can turn it. */
+    static String compose(String version, String id, int salt) {
+        String salted = version + "#" + salt;
+        return version.endsWith("-SNAPSHOT") && !id.isEmpty() ? salted + "+" + id : salted;
     }
 
     private static String computeBuildId() {

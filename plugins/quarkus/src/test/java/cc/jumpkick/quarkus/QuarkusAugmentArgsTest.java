@@ -2,6 +2,7 @@
 package cc.jumpkick.quarkus;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.PackageIo;
@@ -14,16 +15,15 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * The augment runs in a grandchild JVM, so {@code --offline} can only reach it as an argument.
- *
- * <p>Before this, it could not reach it at all: the augment read {@code jk.quarkus.offline}, a
- * system property with exactly one occurrence in the tree — its own read. Nothing set it, so the
- * {@code setOffline(true)} arm it guarded was dead code and a Quarkus module's augment resolved
- * through Aether against Central on every offline build. The two ends of this vector are pinned
- * together on purpose: {@code QuarkusAugmentMain.main} rejects anything but ten arguments, so a
- * drift on either side is a startup failure rather than a silently dropped policy.
+ * The augment runs in a grandchild JVM, so the engine's per-job decisions — {@code --offline} and
+ * the platform-properties path the engine fetched — can only reach it as arguments. The two ends
+ * of this vector are pinned together on purpose: {@code QuarkusAugmentMain.main} rejects anything
+ * but eleven arguments, so a drift on either side is a startup failure rather than a silently
+ * dropped policy.
  */
 class QuarkusAugmentArgsTest {
+
+    private static final Path PROPS = Path.of("/store/cas/quarkus-bom-quarkus-platform-properties-3.38.3.properties");
 
     @Test
     void the_offline_decision_is_the_last_argument_the_augment_is_given() {
@@ -33,8 +33,31 @@ class QuarkusAugmentArgsTest {
 
     @Test
     void the_vector_is_the_arity_the_augment_requires() {
-        // QuarkusAugmentMain.main exits USAGE on anything but 10.
-        assertThat(argsFor(false)).hasSize(10);
+        // QuarkusAugmentMain.main exits USAGE on anything but 11.
+        assertThat(argsFor(false)).hasSize(11);
+    }
+
+    /**
+     * The platform-properties path rides the vector, sourced from the engine-supplied
+     * step-dependency — the augment never resolves the coordinate itself.
+     */
+    @Test
+    void the_platform_properties_path_is_the_engine_supplied_extra() {
+        assertThat(argsFor(false)).element(9).isEqualTo(PROPS.toString());
+    }
+
+    /** A launch without the fetched artifact fails naming the step-dependency, not silently. */
+    @Test
+    void a_missing_platform_properties_extra_refuses_to_build_the_vector() {
+        assertThatThrownBy(() -> QuarkusPlugin.augmentArgs(
+                        new ProbeExec(false, null),
+                        Path.of("/m/target/classes/main"),
+                        Path.of("/m/target/quarkus-app"),
+                        "widget",
+                        Path.of("/m/target/runtime-jars.tsv"),
+                        "3.38.3"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(QuarkusPlugin.PLATFORM_PROPS_EXTRA);
     }
 
     /** The rest of the vector is unchanged by the policy — only the last element moves. */
@@ -48,7 +71,7 @@ class QuarkusAugmentArgsTest {
 
     private static List<String> argsFor(boolean offline) {
         return QuarkusPlugin.augmentArgs(
-                new ProbeExec(offline),
+                new ProbeExec(offline, PROPS),
                 Path.of("/m/target/classes/main"),
                 Path.of("/m/target/quarkus-app"),
                 "widget",
@@ -56,8 +79,8 @@ class QuarkusAugmentArgsTest {
                 "3.38.3");
     }
 
-    /** Only the three accessors {@code augmentArgs} reads; anything else is not part of the vector. */
-    private record ProbeExec(boolean offline) implements TaskExec {
+    /** Only the four accessors {@code augmentArgs} reads; anything else is not part of the vector. */
+    private record ProbeExec(boolean offline, Path platformProps) implements TaskExec {
         @Override
         public Path moduleDir() {
             return Path.of("/m");
@@ -95,7 +118,9 @@ class QuarkusAugmentArgsTest {
 
         @Override
         public Optional<Path> extra(String name) {
-            return Optional.empty();
+            return QuarkusPlugin.PLATFORM_PROPS_EXTRA.equals(name)
+                    ? Optional.ofNullable(platformProps)
+                    : Optional.empty();
         }
 
         @Override

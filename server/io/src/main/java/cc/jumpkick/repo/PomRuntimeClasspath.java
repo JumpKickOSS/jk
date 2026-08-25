@@ -210,9 +210,12 @@ public final class PomRuntimeClasspath {
         // jumpkick specialist's warm mirror is only consulted at last resort — after central's
         // network leg. Prepending it as a priority store keeps warm forks off the network
         // entirely (and hermetic tests hermetic); a true miss still walks the remotes below.
-        MavenRepo jumpkickStore =
-                storeOnlyRepo("jumpkick", storeRoot.resolve("repos/jumpkick").toUri(), http, cas);
-        MavenRepo jumpkick = storeOnlyRepo("jumpkick", RepositorySpec.officialUrl(), http, cas);
+        MavenRepo jumpkickStore = storeOnlyRepo(
+                RepositorySpec.JUMPKICK_NAME,
+                storeRoot.resolve("repos").resolve(RepositorySpec.JUMPKICK_NAME).toUri(),
+                http,
+                cas);
+        MavenRepo jumpkick = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, RepositorySpec.officialUrl(), http, cas);
         MavenRepo central = storeOnlyRepo(RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup remotes =
                 new RepoGroup(List.of(jumpkick, central), List.of(RepositorySpec.JUMPKICK.groups(), List.of()));
@@ -340,7 +343,7 @@ public final class PomRuntimeClasspath {
                     if (parent != null
                             && "repos".equals(fileName(parent))
                             && (RepoArtifactResolver.isFirstPartyStoreName(n)
-                                    || n.equals("jumpkick")
+                                    || n.equals(RepositorySpec.JUMPKICK_NAME)
                                     || n.equals(RepositorySpec.CENTRAL))) {
                         break;
                     }

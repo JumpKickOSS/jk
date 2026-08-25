@@ -12,9 +12,9 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link ConsoleSpec#fmtDuration} is the one duration formatter in the CLI: bare millis below a
- * second, one-decimal seconds below a minute, then {@code m/h/d} compound forms — capping at days.
- * Also covers plain-mode {@link ConsoleSpec#took}.
+ * {@link ConsoleSpec#fmtDuration} is the settled took-line face of {@link DurationText}: bare millis
+ * below a second, one-decimal seconds below a minute, then {@code m/h/d} compound forms — capping
+ * at days. Also covers plain-mode {@link ConsoleSpec#took}.
  */
 class ConsoleSpecTest {
 

@@ -90,11 +90,16 @@ final class DrainReporter {
     }
 
     /**
-     * Start pushing {@code drain-status} to whoever now owns the endpoint. Idempotent — drain can
-     * be entered from the shutdown message and from the displacement watchdog, and only one
-     * reporter may run. A no-op in effect when the pointer still names us or nothing is listening:
-     * a voluntary {@code jk engine stop} has no successor to tell.
+     * Start pushing {@code drain-status} to whoever now owns the endpoint. Idempotent — {@code
+     * EngineServer.enterDrain()} is the single caller, and the CAS keeps a re-entered drain from
+     * running a second reporter. A no-op in effect when the pointer still names us or nothing is
+     * listening: a voluntary {@code jk engine stop} has no successor to tell.
      */
+    /** Whether {@link #start} has run — the observable that says drain was entered. */
+    boolean started() {
+        return started.get();
+    }
+
     void start() {
         if (!started.compareAndSet(false, true)) return;
         Thread.ofVirtual().name("jk-engine-drain-report").start(this::report);

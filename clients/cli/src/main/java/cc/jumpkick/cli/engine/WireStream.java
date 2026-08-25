@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
@@ -13,7 +12,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The client's read loop over one engine wire stream. Every hosted verb reads its events through
  * here, so the beats that are not about any one verb — discriminating the line, registering the
- * cancel handle, binding the transcript, and waiting out the engine's finish tail — exist once.
+ * cancel handle, announcing {@code job-start}, and waiting out the engine's finish tail — exist
+ * once.
  *
  * <p>Two entry points, mirroring the engine's two dispatch arms. {@link #pumpJob} is for a request
  * the engine runs as a job (its {@code VerbShape.AsyncPlan} / {@code CacheMaint} verbs): it carries
@@ -22,9 +22,26 @@ import org.jspecify.annotations.Nullable;
  * exists, so there is no handle to register and no finish line that would ever arrive. Choosing the
  * wrong one is not expressible: an inline read has no channel parameter to half-close.
  */
-final class WireStream {
+public final class WireStream {
 
     private WireStream() {}
+
+    /** Receives the facts of an engine {@code job-start} line, already decoded off the wire. */
+    @FunctionalInterface
+    public interface JobStartListener {
+        void jobStarted(long jid, long buildNumber, @Nullable String detailsPath, long etaMs);
+    }
+
+    private static volatile @Nullable JobStartListener jobStartListener;
+
+    /**
+     * Register the process-wide {@code job-start} observer. The transcript layer registers itself
+     * here so this package never names its renderers; a {@code null} listener (or none registered)
+     * makes {@code job-start} a plain bookkeeping line.
+     */
+    public static void onJobStart(@Nullable JobStartListener listener) {
+        jobStartListener = listener;
+    }
 
     /**
      * Decodes one wire line. Returning non-{@code null} is the terminal: that value becomes the
@@ -72,7 +89,7 @@ final class WireStream {
                 if (EngineProtocol.JOB_START.equals(type)) {
                     notedJid = Jsonl.longValue(line, "jid", -1);
                     EngineClient.ActiveJobs.note(notedJid);
-                    bindTranscript(line);
+                    notifyJobStart(line);
                     continue;
                 }
                 T terminal = decoder.onLine(type, line);
@@ -89,11 +106,11 @@ final class WireStream {
         }
     }
 
-    /** Bind CLI {@code details.jsonl} to the engine journal run from a {@code job-start} line. */
-    private static void bindTranscript(String jobStartLine) {
-        CliSessionTranscript session = CliSessionTranscript.active();
-        if (session == null) return;
-        session.bindJob(
+    /** Decode a {@code job-start} line and hand its facts to the registered observer, if any. */
+    private static void notifyJobStart(String jobStartLine) {
+        JobStartListener listener = jobStartListener;
+        if (listener == null) return;
+        listener.jobStarted(
                 Jsonl.longValue(jobStartLine, "jid", -1),
                 Jsonl.longValue(jobStartLine, "buildNumber", 0),
                 Jsonl.str(jobStartLine, "detailsPath"),

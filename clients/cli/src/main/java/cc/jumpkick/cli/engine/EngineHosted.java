@@ -87,11 +87,10 @@ final class EngineHosted {
                         Jsonl.str(line, "message"),
                         Jsonl.intValue(line, "index", 0),
                         Jsonl.intValue(line, "total", 0)));
+        // Per-file tallies (changed/clean/errors/unparseable) do not ride the wire: the CLI counts
+        // them from the per-file format-file stream above.
         return new EngineRequests.FormatOutcome(
                 finish.result(),
-                Jsonl.intValue(finish.finishLine(), "formatChanged", -1),
-                Jsonl.intValue(finish.finishLine(), "formatClean", -1),
-                Jsonl.intValue(finish.finishLine(), "formatErrors", -1),
                 Jsonl.intValue(finish.finishLine(), "formatTotal", -1),
                 Jsonl.intValue(finish.finishLine(), "formatWorkerExit", -1));
     }

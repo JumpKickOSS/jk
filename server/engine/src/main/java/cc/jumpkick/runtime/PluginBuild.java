@@ -33,6 +33,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.NaiveResolver;
 import cc.jumpkick.resolver.PlatformBomVersions;
 import cc.jumpkick.resolver.PubGrubResolver;
@@ -46,6 +47,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -325,8 +327,28 @@ public final class PluginBuild {
     public static Map<String, Path> fetchStepDependencies(
             JkBuild project, Path moduleDir, Cas cas, Map<String, String> sdkPins, boolean lenient)
             throws IOException, InterruptedException {
+        return fetchTools(PluginContributions.stepDependencies(project, moduleDir), project, cas, sdkPins, lenient);
+    }
+
+    /**
+     * Fetch {@code [[contribute.command-dependency]]} tools the same way — the command lane.
+     * Only plugin commands read these: a build provisions the step lane alone, so a command-only
+     * tool is never fetched by a step or packager and joins no action key.
+     */
+    public static Map<String, Path> fetchCommandDependencies(
+            JkBuild project, Path moduleDir, Cas cas, Map<String, String> sdkPins, boolean lenient)
+            throws IOException, InterruptedException {
+        return fetchTools(PluginContributions.commandDependencies(project, moduleDir), project, cas, sdkPins, lenient);
+    }
+
+    private static Map<String, Path> fetchTools(
+            List<PluginContributions.StepDep> deps,
+            JkBuild project,
+            Cas cas,
+            Map<String, String> sdkPins,
+            boolean lenient)
+            throws IOException, InterruptedException {
         Map<String, Path> out = new LinkedHashMap<>();
-        List<PluginContributions.StepDep> deps = PluginContributions.stepDependencies(project, moduleDir);
         if (deps.isEmpty()) return out;
         RepoGroup repos = null;
         for (PluginContributions.StepDep dep : deps) {
@@ -483,29 +505,23 @@ public final class PluginBuild {
         String spec = bomGav.contains("!") ? bomGav : bomGav + "!pom";
         Coordinate bom = Coordinate.parse(spec);
         EffectivePom bomPom = new EffectivePomBuilder(repos).build(bom);
+        return bomConstraintsOf(bomPom, bomGav);
+    }
+
+    /**
+     * The {@code group:artifact → version} pins {@code bomPom} manages, with the maven-resolver
+     * family aligned by its owner — {@link LockOrchestrator#alignMavenResolverFamily}, the same
+     * derivation the lock path applies (the {@code maven-resolver.version} property, else a
+     * managed api/impl pin), so a 2.x named-locks cannot land next to a 1.9 api on the tool
+     * classpath either. The provenance map is the lock path's concern; this path discards it.
+     */
+    static Map<String, String> bomConstraintsOf(EffectivePom bomPom, String bomGav) throws IOException {
         Map<String, String> constraints = new LinkedHashMap<>();
         for (Pom.Dep m : bomPom.managedDependencies()) {
             if (m.version() == null || m.version().isBlank()) continue;
             constraints.putIfAbsent(m.module(), m.version());
         }
-        // Quarkus bootstrap-bom pins maven-resolver.* via ${maven-resolver.version} but often
-        // omits named-locks from <dependencyManagement>; without a pin PubGrub highest-wins
-        // pulls 2.x named-locks next to 1.9 api → NoSuchMethodError. Align the family.
-        String resolverLine = bomPom.properties().get("maven-resolver.version");
-        if (resolverLine != null && !resolverLine.isBlank()) {
-            for (String art : List.of(
-                    "maven-resolver-api",
-                    "maven-resolver-spi",
-                    "maven-resolver-util",
-                    "maven-resolver-impl",
-                    "maven-resolver-named-locks",
-                    "maven-resolver-connector-basic",
-                    "maven-resolver-transport-wagon",
-                    "maven-resolver-transport-http",
-                    "maven-resolver-transport-file")) {
-                constraints.putIfAbsent("org.apache.maven.resolver:" + art, resolverLine);
-            }
-        }
+        LockOrchestrator.alignMavenResolverFamily(constraints, new HashMap<>(), bomPom, bomGav);
         if (constraints.isEmpty()) {
             throw new IOException("managed-by BOM " + bomGav + " contributed no managed dependency pins");
         }
