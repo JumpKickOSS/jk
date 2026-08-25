@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.RepositorySpec;
@@ -20,7 +21,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -265,7 +265,7 @@ final class HardwareProbe {
             }
             return maxWarm(samples);
         } finally {
-            deleteTree(dir);
+            PathUtil.deleteRecursively(dir);
         }
     }
 
@@ -307,7 +307,7 @@ final class HardwareProbe {
             if (fork <= 0 || workWall <= 0) return null;
             return new WorkerTimes(fork, Math.max(1, workWall - fork));
         } finally {
-            deleteTree(dir);
+            PathUtil.deleteRecursively(dir);
         }
     }
 
@@ -378,7 +378,7 @@ final class HardwareProbe {
                 long wall = maxWarm(samples);
                 return wall > 0 ? new JunitPlatformTimes(wall, PLATFORM_METHODS) : null;
             } finally {
-                deleteTree(dir);
+                PathUtil.deleteRecursively(dir);
             }
         } catch (Exception e) {
             return null;
@@ -600,7 +600,7 @@ final class HardwareProbe {
             }
             return maxWarm(samples);
         } finally {
-            deleteTree(dir);
+            PathUtil.deleteRecursively(dir);
         }
     }
 
@@ -640,21 +640,7 @@ final class HardwareProbe {
     private static void deleteContents(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) return;
         try (var stream = Files.list(dir)) {
-            for (Path p : (Iterable<Path>) stream::iterator) deleteTree(p);
-        }
-    }
-
-    private static void deleteTree(Path dir) {
-        try (var walk = Files.walk(dir)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                    // best-effort
-                }
-            });
-        } catch (IOException ignored) {
-            // best-effort
+            for (Path p : (Iterable<Path>) stream::iterator) PathUtil.deleteRecursively(p);
         }
     }
 }

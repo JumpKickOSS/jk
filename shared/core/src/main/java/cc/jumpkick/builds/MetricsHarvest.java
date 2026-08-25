@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -18,7 +19,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * Single serial worker that walks project run directories, reaps old runs, and writes host-metrics
@@ -146,7 +146,7 @@ public final class MetricsHarvest {
                 long created = attrs.creationTime().toMillis();
                 if (created <= 0) created = attrs.lastModifiedTime().toMillis();
                 if (now - created > maxAgeMillis) {
-                    deleteTree(run);
+                    PathUtil.deleteRecursively(run);
                     runs.remove(run);
                 }
             } catch (IOException ignored) {
@@ -154,7 +154,7 @@ public final class MetricsHarvest {
         }
         while (runs.size() > maxRuns) {
             Path oldest = runs.get(runs.size() - 1);
-            deleteTree(oldest);
+            PathUtil.deleteRecursively(oldest);
             runs.remove(runs.size() - 1);
         }
     }
@@ -359,18 +359,6 @@ public final class MetricsHarvest {
         if (Double.isNaN(v) || Double.isInfinite(v)) return "0";
         if (Math.abs(v - Math.rint(v)) < 1e-6) return Long.toString(Math.round(v));
         return String.format(Locale.ROOT, "%.3f", v);
-    }
-
-    private static void deleteTree(Path root) {
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException ignored) {
-        }
     }
 
     private static final class Agg {

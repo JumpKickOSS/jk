@@ -3015,3 +3015,111 @@ val checkManifestDepParity by tasks.registering {
 }
 // `check` only, not `jar`: parity is a repo-hygiene rule, not a property of the artifact.
 tasks.named("check") { dependsOn(checkManifestDepParity) }
+
+// ---------------------------------------------------------------------------
+// Guard G37 (JK-2602): recursive tree deletion has one owner, and it does not follow links.
+//
+// Defect it prevents: a delete that empties whatever a symbolic link points at. jk discovers
+// host-installed toolchains and links its registry entries to them — an sdkman or IntelliJ JDK is
+// exactly such a target — so a delete that follows a link reaches files jk did not install and
+// must not remove.
+//
+// `cc.jumpkick.host.PathUtil.deleteRecursively` is that owner. It removes a link and never enters
+// it, at the root or anywhere inside the tree, and PathUtilTest pins all three cases. What made
+// that worth enforcing rather than merely documenting is how quiet the rule is: both `Files.walk`
+// and `Files.walkFileTree` decline to follow links by DEFAULT, so the correct behaviour is the
+// absence of a FileVisitOption. "Cleanup left files behind" therefore reads like a missing
+// FOLLOW_LINKS, and adding that one enum constant is a one-word change that turns a cleanup into
+// a data-loss bug. Nineteen files had their own copy of the walk when this landed; two of them
+// were in the JDK-symlink machinery itself.
+//
+// Arm A bans FOLLOW_LINKS in any file that deletes — no allowlist, because there is no version of
+// "follow the link and delete what is there" this tree wants. Arm B bans the hand-rolled
+// children-first walk outside the owner, with four exemptions that delete *selectively* and so are
+// not tree deletes at all.
+val recursiveDeleteExemptions = mapOf(
+        "server/engine/src/main/java/cc/jumpkick/runtime/BuildLogicSupport.java"
+                to "deleteContents keeps the directory and removes only what is under it",
+        "server/engine/src/main/java/cc/jumpkick/runtime/CachePlans.java"
+                to "tallies bytes per tag and honours --dry-run, so it cannot delegate the walk",
+        "server/engine/src/main/java/cc/jumpkick/task/ActionCache.java"
+                to "pruneUnowned deletes only files absent from the owned set, plus emptied dirs",
+        "server/engine/src/main/java/cc/jumpkick/task/CacheRetention.java"
+                to "pruneEmptyDirs deletes a directory only when it is already empty")
+
+val checkOneRecursiveDelete by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a hand-rolled recursive delete, or on a delete that follows symbolic links"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/PathUtil.java")
+    inputs.file(owner).withPropertyName("pathUtil")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val exemptions = recursiveDeleteExemptions
+    val stamp = layout.buildDirectory.file("guards/one-recursive-delete.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // Self-fail arm: the owner has to still be the thing this redirects people to — a walk
+        // that does not follow links, and a root check that does not follow one either.
+        val ownerText = ownerFile.readText()
+        val ownerNeeds = listOf("walkFileTree", "NOFOLLOW_LINKS", "deleteRecursivelyOrThrow")
+                .filterNot { ownerText.contains(it) }
+        if (ownerNeeds.isNotEmpty()) {
+            throw GradleException("cc.jumpkick.host.PathUtil no longer has ${ownerNeeds.joinToString(", ")},"
+                    + " so this guard points at something that cannot serve the callers it redirects."
+                    + " Restore the owner or retire this guard deliberately.")
+        }
+
+        val hits = mutableListOf<String>()
+        var scanned = 0
+        var deleters = 0
+        mainJava.files.sorted().forEach { f ->
+            if (f == ownerFile) return@forEach
+            scanned++
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            // Comments blanked, line structure kept, so a line number means something and a
+            // javadoc explaining the rule is not itself a violation.
+            val lines = blankNonCode(f.readText(), blankStrings = false).lines()
+            // Delegation counts too: a file whose only delete is PathUtil.deleteRecursively
+            // still has no business asking a walk to follow links.
+            val deletes = lines.any {
+                it.contains(".delete(") || it.contains("deleteIfExists(") || it.contains("deleteRecursively")
+            }
+            if (!deletes) return@forEach
+            deleters++
+
+            lines.forEachIndexed { i, line ->
+                if (line.contains("FOLLOW_LINKS") && !line.contains("NOFOLLOW_LINKS")) {
+                    hits.add("  $rel:${i + 1}: FOLLOW_LINKS in a file that deletes"
+                            + "  ->  drop it; a link is removed, never entered")
+                }
+            }
+            if (rel in exemptions) return@forEach
+            lines.forEachIndexed { i, line ->
+                if (!line.contains("reverseOrder")) return@forEachIndexed
+                val window = lines.subList(i, minOf(i + 9, lines.size)).joinToString("\n")
+                if (window.contains(".delete(") || window.contains("deleteIfExists(")) {
+                    hits.add("  $rel:${i + 1}: children-first walk that deletes"
+                            + "  ->  PathUtil.deleteRecursively / deleteRecursivelyOrThrow")
+                }
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("Recursive tree deletion belongs to cc.jumpkick.host.PathUtil,"
+                    + " which removes a symbolic link instead of entering it (JK-2602). These do it"
+                    + " themselves, so each one decides that question again:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  PathUtil is on every module's classpath — :host is the floor the CLI, the"
+                    + " engine and every plugin worker already share. A delete that is genuinely"
+                    + " selective (only empty directories, only unowned files, only the contents)"
+                    + " is not a tree delete: add it to `recursiveDeleteExemptions` in this file"
+                    + " with the reason, so the next reader can tell the two apart.")
+        }
+        logger.info("one-recursive-delete: {} files scanned, {} that delete", scanned, deleters)
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkOneRecursiveDelete) }
+tasks.named("jar") { dependsOn(checkOneRecursiveDelete) }

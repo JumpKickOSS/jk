@@ -13,6 +13,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -32,7 +33,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -483,7 +483,7 @@ public final class EngineSpawn {
         recordEngineAotManifest(cache, engineJar, jdk, version, hash);
         // Drop leftover per-version cache under engine-state so it is not confused with the
         // current content-addressed AOT key.
-        deleteRecursivelyQuietly(paths.dir().resolve(version));
+        PathUtil.deleteRecursively(paths.dir().resolve(version));
         return cache;
     }
 
@@ -535,15 +535,6 @@ public final class EngineSpawn {
             AotManifest.upsert(aotDir, b.build());
         } catch (Exception ignored) {
             // never fail engine start for a human index
-        }
-    }
-
-    private static void deleteRecursivelyQuietly(Path root) {
-        if (!Files.isDirectory(root)) return;
-        try (var walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(EngineSpawn::deleteQuietly);
-        } catch (IOException ignored) {
-            // best-effort
         }
     }
 

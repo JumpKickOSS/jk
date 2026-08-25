@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -567,18 +568,9 @@ public final class ActionCachePrune {
 
     /** Depth-first delete of one task's analysis directory; returns the regular files unlinked. */
     private static int deleteTree(Path dir) throws IOException {
-        int files = 0;
-        List<Path> paths;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            paths = walk.sorted(Comparator.reverseOrder()).toList();
-        } catch (NoSuchFileException vanished) {
-            return 0;
-        }
-        for (Path path : paths) {
-            boolean regular = Files.isRegularFile(path);
-            if (Files.deleteIfExists(path) && regular) files++;
-        }
-        return files;
+        var removed = new PathUtil.Removed();
+        PathUtil.deleteRecursivelyOrThrow(dir, removed);
+        return (int) removed.files();
     }
 
     /** Unlink one entry's on-disk footprint: key record, task pointer, generation-list line. */

@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -249,11 +250,7 @@ public final class FileHashMemo {
             try (Stream<Path> children = Files.list(dir)) {
                 for (Path p : (Iterable<Path>) children::iterator) {
                     if (p.equals(keep)) continue;
-                    try (Stream<Path> tree = Files.walk(p)) {
-                        for (Path victim : (Iterable<Path>) tree.sorted(Comparator.reverseOrder())::iterator) {
-                            Files.deleteIfExists(victim);
-                        }
-                    }
+                    PathUtil.deleteRecursively(p);
                 }
             } catch (IOException | RuntimeException ignored) {
                 // Housekeeping, never load-bearing.

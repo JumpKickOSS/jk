@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AotManifest;
@@ -447,7 +448,7 @@ public final class PluginAot {
             deleteQuietly(tmp);
             deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // interrupted recording
             if (!keepClaim) deleteQuietly(claim);
-            if (scratch != null) deleteRecursivelyQuietly(scratch);
+            if (scratch != null) PathUtil.deleteRecursively(scratch);
             TRAINING.remove(cache);
         }
     }
@@ -650,14 +651,6 @@ public final class PluginAot {
     private static void deleteQuietly(Path p) {
         try {
             Files.deleteIfExists(p);
-        } catch (IOException ignored) {
-            // best-effort
-        }
-    }
-
-    private static void deleteRecursivelyQuietly(Path root) {
-        try (var walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(PluginAot::deleteQuietly);
         } catch (IOException ignored) {
             // best-effort
         }

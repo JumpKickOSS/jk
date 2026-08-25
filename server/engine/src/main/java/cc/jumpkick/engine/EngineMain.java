@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JkVersion;
@@ -13,9 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Engine JVM entrypoint ({@code:engine}). Plain Java — never a native image. Spawned by the slim
@@ -295,21 +294,7 @@ public final class EngineMain {
             System.err.println("jk engine (aot-training): " + e.getMessage());
             return 1;
         } finally {
-            if (tmp != null) deleteRecursively(tmp);
-        }
-    }
-
-    private static void deleteRecursively(Path root) {
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                    // best-effort cleanup
-                }
-            });
-        } catch (IOException ignored) {
-            // best-effort cleanup
+            if (tmp != null) PathUtil.deleteRecursively(tmp);
         }
     }
 }

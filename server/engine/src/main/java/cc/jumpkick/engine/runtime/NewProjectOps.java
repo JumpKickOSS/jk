@@ -24,7 +24,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -143,7 +142,7 @@ public final class NewProjectOps {
             if (!Files.isDirectory(target)) return;
             try (var children = Files.list(target)) {
                 for (Path child : children.toList()) {
-                    deleteRecursively(child);
+                    PathUtil.deleteRecursivelyOrThrow(child);
                 }
             }
             if (!existedBefore) Files.deleteIfExists(target);
@@ -200,7 +199,7 @@ public final class NewProjectOps {
             }
             return new Preview(prep.target().toString(), prep.template(), List.copyOf(files));
         } finally {
-            deleteRecursively(scratch);
+            PathUtil.deleteRecursivelyOrThrow(scratch);
         }
     }
 
@@ -257,7 +256,7 @@ public final class NewProjectOps {
             } finally {
                 if (extracted != null) {
                     try {
-                        deleteRecursively(extracted);
+                        PathUtil.deleteRecursivelyOrThrow(extracted);
                     } catch (IOException ignored) {
                         // extract is under JkDirs.tmp(); don't mask the apply error
                     }
@@ -362,15 +361,6 @@ public final class NewProjectOps {
         return new Prepared(name, parent, target, group, lang, layout, template, req.executable(), req);
     }
 
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path f : walk.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(f);
-            }
-        }
-    }
-
     private static Optional<TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
         try {
             return Giter8TemplateIndex.resolve(ref, lang, Giter8TemplateIndex.searchRoots(cwd));
@@ -464,7 +454,7 @@ public final class NewProjectOps {
         Path dest = cache.resolve(key);
         synchronized (CLONE_LOCKS.computeIfAbsent(key, k -> new Object())) {
             if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
-                if (Files.exists(dest)) deleteRecursively(dest);
+                if (Files.exists(dest)) PathUtil.deleteRecursivelyOrThrow(dest);
                 cloneInto(ref, cache, key, dest);
             }
         }
@@ -497,7 +487,7 @@ public final class NewProjectOps {
             url = "https://github.com/" + body + ".git";
         }
         Path staging = cache.resolve(key + ".tmp-" + ProcessHandle.current().pid());
-        if (Files.exists(staging)) deleteRecursively(staging);
+        if (Files.exists(staging)) PathUtil.deleteRecursivelyOrThrow(staging);
         List<String> args = new ArrayList<>();
         args.add("git");
         args.add("clone");
@@ -525,7 +515,7 @@ public final class NewProjectOps {
             throw new IOException("git clone interrupted", e);
         }
         if (p.exitValue() != 0) {
-            deleteRecursively(staging);
+            PathUtil.deleteRecursivelyOrThrow(staging);
             throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
         }
         try {
@@ -533,7 +523,7 @@ public final class NewProjectOps {
         } catch (IOException raced) {
             // Another process renamed first — its clone is equivalent; keep it.
             if (Files.isDirectory(dest) && !isEmptyDir(dest)) {
-                deleteRecursively(staging);
+                PathUtil.deleteRecursivelyOrThrow(staging);
             } else {
                 throw raced;
             }

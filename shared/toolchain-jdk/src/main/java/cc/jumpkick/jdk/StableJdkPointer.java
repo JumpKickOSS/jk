@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryNotEmptyException;
@@ -8,9 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.Objects;
-import java.util.stream.Stream;
 
 /**
  * Stable {@code <vendor>-<major>} handle under {@link JkDirs#jdks()} (symlink; Windows junction) that
@@ -91,14 +90,8 @@ public final class StableJdkPointer {
         } catch (NoSuchFileException gone) {
             // already removed
         } catch (DirectoryNotEmptyException realDir) {
-            try (Stream<Path> walk = Files.walk(pointer)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                    }
-                });
-            }
+            // A repoint left a real directory where the pointer belongs.
+            PathUtil.deleteRecursively(pointer);
         }
     }
 }

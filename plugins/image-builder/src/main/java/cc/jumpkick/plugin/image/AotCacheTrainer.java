@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
@@ -261,7 +262,7 @@ final class AotCacheTrainer {
 
     /** Copy a tree verbatim — the staged copy is what gets trained and what ships. */
     private static void copyTree(Path from, Path to) throws IOException {
-        deleteRecursively(to);
+        PathUtil.deleteRecursivelyOrThrow(to);
         try (var walk = Files.walk(from)) {
             for (Path p : walk.toList()) {
                 Path target = to.resolve(from.relativize(p).toString());
@@ -277,7 +278,7 @@ final class AotCacheTrainer {
 
     /** Lay out exactly what the image will contain, at the paths the image will use. */
     private static void stageLayout(ImageBuilder.Plan plan, Path staging) throws IOException {
-        deleteRecursively(staging);
+        PathUtil.deleteRecursivelyOrThrow(staging);
         Path classpathDir = Files.createDirectories(staging.resolve("classpath"));
         Path libs = Files.createDirectories(staging.resolve("libs"));
         Files.copy(
@@ -515,14 +516,5 @@ final class AotCacheTrainer {
         String[] lines = text.split("\n");
         int from = Math.max(0, lines.length - 20);
         return String.join("\n", java.util.Arrays.copyOfRange(lines, from, lines.length));
-    }
-
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
-            }
-        }
     }
 }

@@ -3,6 +3,7 @@ package cc.jumpkick.minified;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.surface.DynamicSurface;
@@ -208,7 +209,7 @@ final class MinifiedJarPackager {
             writeOutputJar(shrunk, io.artifactPath(), mainClass);
             io.label("shrunk " + mb(before) + " → " + mb(Files.size(io.artifactPath())));
         } finally {
-            deleteRecursively(work);
+            PathUtil.deleteRecursively(work);
         }
     }
 
@@ -376,19 +377,5 @@ final class MinifiedJarPackager {
 
     private static String mb(long bytes) {
         return String.format(Locale.ROOT, "%.1f MB", bytes / 1_000_000.0);
-    }
-
-    // Local copy by design: plugins stay dependency-free of jk's kernel modules.
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.delete(p);
-                } catch (IOException ignored) {
-                    /* best-effort temp cleanup */
-                }
-            });
-        }
     }
 }

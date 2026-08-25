@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -12,7 +13,6 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 
 /** {@code jk tool uninstall <name>} — remove an installed CLI tool. */
@@ -61,14 +61,7 @@ public final class ToolUninstallCommand implements CliCommand {
         }
 
         if (envExists) {
-            try (var stream = Files.walk(envDir)) {
-                stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                    }
-                });
-            }
+            PathUtil.deleteRecursively(envDir);
         }
         Files.deleteIfExists(launcher);
         Files.deleteIfExists(winLauncher);

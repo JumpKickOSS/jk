@@ -42,6 +42,7 @@ that standard.
   - [The guard registry](#the-guard-registry)
   - [Verify the number before it lands in a Done criterion](#verify-the-number-before-it-lands-in-a-done-criterion)
   - [A test that passes without executing is worse than a missing test](#a-test-that-passes-without-executing-is-worse-than-a-missing-test)
+  - [A delete that follows a symbolic link is not a delete](#a-delete-that-follows-a-symbolic-link-is-not-a-delete)
   - [The repo builds itself twice, so it has two manifests and one truth](#the-repo-builds-itself-twice-so-it-has-two-manifests-and-one-truth)
   - [A test that reads the source tree names it from the checkout root](#a-test-that-reads-the-source-tree-names-it-from-the-checkout-root)
 - [Campaign](#campaign)
@@ -803,6 +804,7 @@ Letters are allocated when a guard lands and are never reused.
 | G27 | `checkOneTerminalHandoff` | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist |
 | G35 | `checkTestPathsFromCheckoutRoot` | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist |
 | G36 | `checkManifestDepParity` | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `kind = "tests"` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist |
+| G37 | `checkOneRecursiveDelete` | a hand-rolled children-first delete outside `cc.jumpkick.host.PathUtil`, or `FOLLOW_LINKS` in any file that deletes — comment-blind, plus a self-fail arm on the owner still using `walkFileTree` and `NOFOLLOW_LINKS` | ban; four commented exemptions, each a *selective* delete rather than a tree delete |
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters
 and keep their names; they are the shape every guard above copies.
@@ -929,6 +931,53 @@ test passes, **revert the production change and confirm it goes red.** A
 test that has never been seen to fail has not been seen to work.
 
 ---
+
+### A delete that follows a symbolic link is not a delete
+
+Two of the maintainer's JDKs were emptied in place — contents gone, the
+directory left behind. jk discovers host-installed toolchains and links
+its own registry entries to them, so an sdkman or IntelliJ JDK is a
+routine link target, and a delete that follows a link reaches files jk
+never installed.
+
+`PathUtil.deleteRecursively` is the owner, and it was *mostly* right:
+`Files.walk` declines to follow links by default, so links met inside a
+tree were already unlinked rather than entered. Three things were wrong
+anyway, and the shape of them is the lesson.
+
+**The rule was the absence of a parameter.** No `FileVisitOption` meant
+no following. So the rule was unstated, untested, and one word from
+being reversed — "cleanup left files behind" reads exactly like a
+missing `FOLLOW_LINKS`. It is now a line of code with three tests on it,
+and G37 fails the build on that word appearing in any file that deletes.
+
+**A dangling link survived every cleanup.** The method gated on
+`Files.exists`, which follows: a broken link answered "absent" and
+returned early. So the one case where a link is *unambiguously* garbage
+was the one case that was never collected.
+
+**The tally followed links too.** `Files.isRegularFile` and
+`Files.size` both follow, so `jk clean` credited itself with the size of
+whatever a link pointed at — space that is still in use. Taking the
+attributes from the walk, which already has them and already has them
+NOFOLLOW, fixes the count and saves a `stat`.
+
+**And nineteen files had their own copy of the walk.** Each one decided
+the symlink question independently; two of them were in the JDK-symlink
+machinery itself. `MinifiedJarPackager`'s copy carried the reason
+"Local copy by design: plugins stay dependency-free of jk's kernel
+modules" — while the same file imported `cc.jumpkick.host.BuildStamps`
+and `DeterministicZip`, and while `:host`'s own description reads "the
+JDK-only floor the CLI, the engine and every plugin worker share" and
+names `PathUtil` in it. That is the eighth invariant comment this
+campaign has checked and found false.
+
+Fifteen of the nineteen were verbatim tree deletes and now call the
+owner. The four that remain delete *selectively* — only empty
+directories, only unowned files, only the contents and not the
+directory — and G37 names each one with its reason, because "this is a
+different operation" and "this is a copy" look identical from a
+distance.
 
 ### The repo builds itself twice, so it has two manifests and one truth
 

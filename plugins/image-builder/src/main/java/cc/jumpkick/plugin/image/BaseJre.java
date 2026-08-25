@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.image;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.plugin.build.TaskExec;
 import com.google.cloud.tools.jib.api.Containerizer;
@@ -130,11 +131,11 @@ final class BaseJre {
             return;
         }
         Path fresh = root.resolveSibling(root.getFileName() + ".fresh");
-        deleteRecursively(fresh);
+        PathUtil.deleteRecursivelyOrThrow(fresh);
         Files.createDirectories(fresh);
         unpackImage(tar, fresh);
         Files.deleteIfExists(tar);
-        deleteRecursively(root);
+        PathUtil.deleteRecursivelyOrThrow(root);
         Files.move(fresh, root);
         Files.writeString(root.resolve(".extracted"), base + "\n" + resolved + "\n");
     }
@@ -166,7 +167,7 @@ final class BaseJre {
         for (Path layer : ordered) {
             unpack(layer, root, true);
         }
-        deleteRecursively(layers);
+        PathUtil.deleteRecursivelyOrThrow(layers);
     }
 
     /**
@@ -201,15 +202,6 @@ final class BaseJre {
         return List.of();
     }
 
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
-            }
-        }
-    }
-
     private static boolean isGzip(Path file) throws IOException {
         try (InputStream in = Files.newInputStream(file)) {
             byte[] magic = in.readNBytes(2);
@@ -235,14 +227,14 @@ final class BaseJre {
                     Path dir = target.getParent();
                     if (dir != null && Files.isDirectory(dir) && dir.startsWith(dest)) {
                         try (var children = Files.list(dir)) {
-                            for (Path child : children.toList()) deleteRecursively(child);
+                            for (Path child : children.toList()) PathUtil.deleteRecursivelyOrThrow(child);
                         }
                     }
                     continue;
                 }
                 if (name.startsWith(".wh.")) {
                     Path victim = target.resolveSibling(name.substring(".wh.".length()));
-                    if (victim.startsWith(dest)) deleteRecursively(victim);
+                    if (victim.startsWith(dest)) PathUtil.deleteRecursivelyOrThrow(victim);
                     continue;
                 }
                 if (entry.isDirectory()) {

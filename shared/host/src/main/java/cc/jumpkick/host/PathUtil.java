@@ -2,10 +2,13 @@
 package cc.jumpkick.host;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.Comparator;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 
 /** Shared filesystem helpers. */
 public final class PathUtil {
@@ -56,27 +59,27 @@ public final class PathUtil {
     }
 
     /**
-     * Best-effort recursive delete (children first). Swallows every I/O failure; null/missing root
-     * is a no-op.
+     * Best-effort recursive delete. Swallows every I/O failure; a null or absent root is a no-op.
      *
-     * <p>{@link UncheckedIOException} is caught as well as {@link IOException}, and that is not
-     * defensive padding: {@code Files.walk}'s traversal is <em>lazy</em>, so a directory entry that
-     * disappears between the walk starting and the stream reaching it surfaces from
-     * {@code FileTreeIterator} as an {@code UncheckedIOException}, not an {@code IOException}. That
-     * happens routinely here — the roots this deletes are engine sockets, pid files and worker
-     * scratch that a daemon may still be tearing down concurrently. Catching only the checked half
-     * turns another process's normal cleanup into an intermittent failure in ours.
+     * <p><b>A symbolic link is removed, never entered.</b> That holds wherever the link turns up —
+     * as the root, or anywhere inside the tree — and it is the reason this is written against
+     * {@link Files#walkFileTree} rather than {@code Files.walk}. Both refuse to follow links by
+     * default, but with the stream the rule is invisible: it lives in an omitted
+     * {@code FileVisitOption}, so "cleanup left something behind" reads like a missing
+     * {@code FOLLOW_LINKS} and one added enum constant turns this method into something that
+     * deletes other people's files. Here the rule is a line of code in {@link #deleteOne} with a
+     * test on it.
+     *
+     * <p>What this cannot defend against is a <em>caller</em> that hands over a path already
+     * routed through a link — {@code <link>/sub} names a real directory, and no delete can tell it
+     * from any other. Containment checks belong on the caller's side and have to compare real
+     * paths, not string prefixes.
      */
     public static void deleteRecursively(Path root) {
-        if (root == null || !Files.exists(root)) return;
-        try (var stream = Files.walk(root)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException | UncheckedIOException ignored) {
+        try {
+            deleteTree(root, null, true);
+        } catch (IOException quietNeverThrows) {
+            throw new AssertionError(quietNeverThrows);
         }
     }
 
@@ -89,25 +92,75 @@ public final class PathUtil {
      * As {@link #deleteRecursivelyOrThrow(Path)}, tallying what came off disk — what {@code jk
      * clean} prints. The tally is mutable on purpose: a delete that fails part-way still removed
      * everything it got to, and the caller's report has to say so.
+     *
+     * <p>A link counts as itself, not as its target: the bytes reclaimed by unlinking are the
+     * link's own, and a report that added the target's size would claim space that is still in use.
      */
     public static void deleteRecursivelyOrThrow(Path root, Removed tally) throws IOException {
-        if (root == null || !Files.exists(root)) return;
-        try (var stream = Files.walk(root)) {
-            // Reverse lexicographic order visits every child before its parent: a child's path is
-            // the parent's plus a separator, so it always sorts after it.
-            var paths = stream.sorted(Comparator.reverseOrder()).toList();
-            for (Path p : paths) {
-                // Size first — a deleted file has none left to ask for — and count only a delete
-                // that actually happened.
-                long size = Files.isRegularFile(p) ? Files.size(p) : -1;
-                if (Files.deleteIfExists(p) && size >= 0) tally.add(size);
+        deleteTree(root, tally, false);
+    }
+
+    /**
+     * Children first, then the directory. {@code quiet} decides whether a failure is swallowed or
+     * handed to the caller; a vanished entry is success either way, because the roots this deletes
+     * are engine sockets, pid files and worker scratch that another process may be tearing down at
+     * the same time, and losing a race to it is not a failure of ours.
+     */
+    private static void deleteTree(Path root, Removed tally, boolean quiet) throws IOException {
+        if (root == null) return;
+        BasicFileAttributes rootAttrs;
+        try {
+            // NOFOLLOW: Files.exists() would follow, so a DANGLING link answered "absent" and this
+            // method returned without removing it — the one case where it failed to honour its own
+            // "remove the link" rule.
+            rootAttrs = Files.readAttributes(root, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (NoSuchFileException absent) {
+            return;
+        } catch (IOException e) {
+            if (quiet) return;
+            throw e;
+        }
+        // A link (or any non-directory) is one delete, whatever it points at.
+        if (!rootAttrs.isDirectory()) {
+            deleteOne(root, rootAttrs, tally, quiet);
+            return;
+        }
+        // No FileVisitOption.FOLLOW_LINKS, so a link to a directory arrives at visitFile and is
+        // removed as a leaf. Do not add it.
+        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                deleteOne(file, attrs, tally, quiet);
+                return FileVisitResult.CONTINUE;
             }
-        } catch (UncheckedIOException e) {
-            // Same lazy-walk race as deleteRecursively: an entry that vanishes mid-traversal comes
-            // out of FileTreeIterator unchecked. This method's whole contract is `throws
-            // IOException`, so hand the caller the exception type it declares rather than an
-            // unchecked one it has no reason to catch.
-            throw e.getCause() == null ? new IOException(e.getMessage(), e) : e.getCause();
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException e) throws IOException {
+                if (quiet || e instanceof NoSuchFileException) return FileVisitResult.CONTINUE;
+                throw e;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
+                if (e != null && !quiet && !(e instanceof NoSuchFileException)) throw e;
+                deleteOne(dir, null, tally, quiet);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /**
+     * One entry, never its target. {@code attrs} comes from the walk (already NOFOLLOW) so the
+     * tally sizes the link and not what it points at; null means a directory, which counts as zero.
+     */
+    private static void deleteOne(Path p, BasicFileAttributes attrs, Removed tally, boolean quiet) throws IOException {
+        try {
+            boolean gone = Files.deleteIfExists(p);
+            if (gone && tally != null && attrs != null && attrs.isRegularFile()) {
+                tally.add(attrs.size());
+            }
+        } catch (IOException e) {
+            if (!quiet) throw e;
         }
     }
 
