@@ -67,7 +67,8 @@ class BuildLayoutTest {
         assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-all.jar"));
         assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-sources.jar"));
         assertThat(layout.javadocJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-javadoc.jar"));
-        assertThat(layout.nativeBinary()).isEqualTo(dir.resolve("target/lib/widget"));
+        assertThat(layout.nativeBinary())
+                .isEqualTo(dir.resolve("target/lib").resolve(BuildLayout.nativeExecutableFileName("widget")));
         // Shared-library base: lib<artifact> in target/lib/, no extension (native-image adds it).
         assertThat(layout.nativeLibrary()).isEqualTo(dir.resolve("target/lib/libwidget"));
         assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/lib/widget.oci.tar"));
@@ -85,7 +86,8 @@ class BuildLayoutTest {
         assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/widget-1.2.3.jar"));
         assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/widget-1.2.3-all.jar"));
         assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/widget-1.2.3-sources.jar"));
-        assertThat(layout.nativeBinary()).isEqualTo(dir.resolve("target/widget"));
+        assertThat(layout.nativeBinary())
+                .isEqualTo(dir.resolve("target").resolve(BuildLayout.nativeExecutableFileName("widget")));
         assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/widget.oci.tar"));
     }
 
@@ -99,7 +101,9 @@ class BuildLayoutTest {
         assertThat(layout.classesDir()).isEqualTo(workspace.resolve("target/core/classes/main"));
         // No main → library; artifacts under target/core/lib/.
         assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/core/lib/jk-core-0.7.0.jar"));
-        assertThat(layout.nativeBinary()).isEqualTo(workspace.resolve("target/core/lib/jk-core"));
+        assertThat(layout.nativeBinary())
+                .isEqualTo(
+                        workspace.resolve("target/core/lib").resolve(BuildLayout.nativeExecutableFileName("jk-core")));
     }
 
     @Test
@@ -212,5 +216,75 @@ class BuildLayoutTest {
 
         assertThat(layout.artifact()).isEqualTo("alpha");
         assertThat(layout.version()).isEqualTo("9.9.9-SNAPSHOT");
+    }
+
+    @Test
+    void native_executable_file_name_appends_exe_only_on_windows() {
+        String saved = System.getProperty("os.name");
+        try {
+            System.setProperty("os.name", "Windows 11");
+            assertThat(BuildLayout.nativeExecutableFileName("jk")).isEqualTo("jk.exe");
+            assertThat(BuildLayout.nativeExecutableFileName("jk.exe")).isEqualTo("jk.exe");
+            assertThat(BuildLayout.nativeExecutableFileName("jk.EXE")).isEqualTo("jk.exe");
+            System.setProperty("os.name", "Linux");
+            assertThat(BuildLayout.nativeExecutableFileName("jk")).isEqualTo("jk");
+            assertThat(BuildLayout.nativeExecutableFileName("jk.exe")).isEqualTo("jk");
+            assertThat(BuildLayout.nativeExecutableFileName("jk.EXE")).isEqualTo("jk");
+        } finally {
+            System.setProperty("os.name", saved);
+        }
+    }
+
+    @Test
+    void native_binary_honors_native_name(@TempDir Path dir) {
+        JkBuild build = JkBuildParser.parse("""
+                group = "com.acme"
+                name = "jk-cli"
+                version = "1.0.0"
+                java = 25
+
+                [application]
+                main = "com.acme.Main"
+
+                [native]
+                enabled = "always"
+                name = "jk"
+                """);
+        BuildLayout layout = BuildLayout.of(dir, build);
+        assertThat(layout.nativeBinary())
+                .isEqualTo(dir.resolve("target").resolve(BuildLayout.nativeExecutableFileName("jk")));
+    }
+
+    @Test
+    void native_binary_name_with_exe_suffix_matches_bare_name(@TempDir Path dir) {
+        JkBuild withExe = JkBuildParser.parse("""
+                group = "com.acme"
+                name = "jk-cli"
+                version = "1.0.0"
+                java = 25
+
+                [application]
+                main = "com.acme.Main"
+
+                [native]
+                enabled = "always"
+                name = "jk.exe"
+                """);
+        JkBuild bare = JkBuildParser.parse("""
+                group = "com.acme"
+                name = "jk-cli"
+                version = "1.0.0"
+                java = 25
+
+                [application]
+                main = "com.acme.Main"
+
+                [native]
+                enabled = "always"
+                name = "jk"
+                """);
+        assertThat(withExe.nativeConfig().orElseThrow().name()).isEqualTo("jk");
+        assertThat(BuildLayout.of(dir, withExe).nativeBinary())
+                .isEqualTo(BuildLayout.of(dir, bare).nativeBinary());
     }
 }

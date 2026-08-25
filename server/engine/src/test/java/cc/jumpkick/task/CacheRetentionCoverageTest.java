@@ -57,7 +57,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.CACHE_CAS, root -> actionKey(root, OLD));
         m.put(CacheTree.FORMAT_STAMPS, root -> in(root, CacheTree.FORMAT_STAMPS, "ab/cd/stamp", "", OLD));
         m.put(CacheTree.FORMAT_FRESHNESS, root -> in(root, CacheTree.FORMAT_FRESHNESS, "orphan.idx", "x", OLD));
-        m.put(CacheTree.HASH_MEMO, root -> overCountCap(root, CacheTree.HASH_MEMO, 32_768));
+        m.put(CacheTree.HASH_MEMO, root -> overStoreBudget(root, CacheTree.HASH_MEMO, "memo.v1", 32L * 1024 * 1024));
         m.put(CacheTree.KOTLIN_CP_SNAPSHOTS, root -> overByteBudget(root, CacheTree.KOTLIN_CP_SNAPSHOTS));
         m.put(CacheTree.JSHELL_CP, root -> in(root, CacheTree.JSHELL_CP, "alias.jar", "x", FRESH));
         m.put(CacheTree.BASE_JRE, root -> subtree(root, CacheTree.BASE_JRE, "sha256-dead", OLD));
@@ -268,14 +268,18 @@ class CacheRetentionCoverageTest {
         return key;
     }
 
-    /** One entry over the count cap; the oldest is the victim. */
-    private static Path overCountCap(Path root, CacheTree tier, int cap) throws IOException {
-        Path victim = null;
-        for (int i = 0; i <= cap; i++) {
-            Path p = in(root, tier, (i % 256) + "/" + i, "x", OLD + (cap - i));
-            if (i == 0) victim = p;
+    /**
+     * A single-file store past its byte budget, so the whole tier resets. Sparse for the same
+     * reason as {@link #overByteBudget}: the instrument sums apparent bytes.
+     */
+    private static Path overStoreBudget(Path root, CacheTree tier, String name, long budgetBytes) throws IOException {
+        Path p = tier.under(root).resolve(name);
+        Files.createDirectories(p.getParent());
+        try (var raf = new RandomAccessFile(p.toFile(), "rw")) {
+            raf.setLength(budgetBytes + 1);
         }
-        return victim;
+        backdate(p, OLD);
+        return p;
     }
 
     /**

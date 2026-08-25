@@ -193,15 +193,16 @@ public final class IdleHousekeeping {
 
     /**
      * Drop process-wide memos whose payoff is intra-build so the trailing GC has something to
-     * reclaim: pool-thread hash caches (keys embed nano-mtime, so rebuilds mint new
-     * entries forever), resolve memos (rebuilt cheaply from the on-disk caches), the action-cache
-     * last-use stamp memo (so a long-lived engine re-stamps rather than freezing the ranking), the
-     * metrics aggregate, and any unclaimed test-wall snapshots. All are optimisations, never
-     * correctness.
+     * reclaim: resolve memos (rebuilt cheaply from the on-disk caches), the action-cache last-use
+     * stamp memo (so a long-lived engine re-stamps rather than freezing the ranking), the metrics
+     * aggregate, and any unclaimed test-wall snapshots. All are optimisations, never correctness.
+     *
+     * <p>The file hash memo is persisted here rather than dropped: it is keyed by path, so it does
+     * not grow with the number of builds, and its whole payoff is the build after this one.
      */
     private static void dropHeapResidue() {
         try {
-            FileHashMemo.clearAllThreadCaches();
+            FileHashMemo.flush();
             ActionCache.clearStampCache();
             ResolveProcessCacheControl.clearAll();
             BuildMetrics.clearSessionAggregatesMemo();

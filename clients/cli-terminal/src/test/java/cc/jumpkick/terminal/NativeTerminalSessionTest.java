@@ -2,7 +2,9 @@
 package cc.jumpkick.terminal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.terminal.posix.PosixTty;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -12,7 +14,10 @@ class NativeTerminalSessionTest {
     void controllingNeverUsesFdZero() {
         PosixTty tty = PosixTty.openControlling();
         if (tty == null) {
-            assertThat(Terminals.controlling().isLive()).isFalse();
+            // Windows binds CONIN$, not /dev/tty — a null POSIX open is not "no TTY".
+            if (!Os.isWindows()) {
+                assertThat(Terminals.controlling().isLive()).isFalse();
+            }
             return;
         }
         try {
@@ -20,6 +25,19 @@ class NativeTerminalSessionTest {
         } finally {
             tty.close();
         }
+    }
+
+    @Test
+    void planKeysReadKeyHonorsTimeout() {
+        TerminalSession s = Terminals.controlling();
+        if (!s.isLive()) {
+            return;
+        }
+        assertTimeoutPreemptively(Duration.ofSeconds(2), () -> {
+            try (ModeGuard ignored = s.enter(InputMode.PLAN_KEYS)) {
+                s.readKey(Duration.ofMillis(80));
+            }
+        });
     }
 
     @Test

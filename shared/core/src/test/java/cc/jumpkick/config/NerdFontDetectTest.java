@@ -130,6 +130,24 @@ class NerdFontDetectTest {
     }
 
     @Test
+    void alacritty_floors_at_the_wedge_it_draws_itself() {
+        // Alacritty renders the classic Powerline set out of its own tables, so the triangles are
+        // safe whatever the font says — same floor as Terminal.app. A plain font, an unreadable
+        // alacritty.toml, and a Powerline patch all land there.
+        assertThat(alacritty("JetBrains Mono")).isEqualTo(NerdFontCaps.WEDGE_ONLY);
+        assertThat(alacritty("Cascadia Mono PL")).isEqualTo(NerdFontCaps.WEDGE_ONLY);
+        assertThat(detect(env("ALACRITTY_LOG", "x")).caps()).isEqualTo(NerdFontCaps.WEDGE_ONLY);
+    }
+
+    @Test
+    void alacritty_still_upgrades_to_everything_from_its_font() {
+        // The floor must not short-circuit the lookup: Powerline Extra is not built in, so the
+        // semi-circles are still earned from the configured font.
+        assertThat(alacritty("MesloLGS NF")).isEqualTo(NerdFontCaps.ALL);
+        assertThat(alacritty("JetBrainsMonoNFM-Regular")).isEqualTo(NerdFontCaps.ALL);
+    }
+
+    @Test
     void vscode_and_zed_resolve_from_their_settings() {
         assertThat(detect(env("TERM_PROGRAM", "vscode"), new Fonts().vscode("Hack Nerd Font Mono"))
                         .caps())
@@ -166,6 +184,7 @@ class NerdFontDetectTest {
                 env("SSH_TTY", "x"),
                 env("TERM_PROGRAM", "Apple_Terminal"),
                 env("TERM_PROGRAM", "iTerm.app"),
+                env("ALACRITTY_LOG", "x"),
                 env("TERM_PROGRAM", "Hyper"),
                 env())) {
             var r = detect(e);
@@ -178,6 +197,10 @@ class NerdFontDetectTest {
 
     private static NerdFontCaps iterm(String font) {
         return detect(env("TERM_PROGRAM", "iTerm.app"), new Fonts().iterm(font)).caps();
+    }
+
+    private static NerdFontCaps alacritty(String font) {
+        return detect(env("ALACRITTY_LOG", "x"), new Fonts().alacritty(font)).caps();
     }
 
     private static NerdFontDetect.Result detect(Map<String, String> env) {

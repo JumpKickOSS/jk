@@ -38,7 +38,8 @@ class ForeignDowncallsMetadataTest {
                         "jint|jint, jint, jint|variadic2",
                         "jint|jint, jlong, void*|variadic2",
                         "jint|void*, jint|",
-                        "jint|jint|");
+                        "jint|jint|",
+                        "jint|void*, void*, jint, void*|");
     }
 
     private static String readMetadata() throws IOException {

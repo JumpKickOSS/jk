@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +36,7 @@ class CacheRetentionAutomaticPathTest {
             @TempDir Path home, @TempDir Path cache) throws Exception {
         // Test JVMs run with JK_AUTO_PRUNE=false so no suite can prune a developer's real cache;
         // the gate is not this test's subject, and JK_HOME keeps every path it reads inside tmp.
-        Path oldest = overCountCap(cache, 32_768);
+        Path overBudget = overStoreBudget(cache, 32L * 1024 * 1024);
         Path abandoned = abandonedTier(cache.resolve("runs"), "2026-05-01");
         Path stamp = file(cache.resolve("format-stamps/ab/cd/Src.java.stamp"), "");
         List<String> log = new CopyOnWriteArrayList<>();
@@ -52,7 +53,7 @@ class CacheRetentionAutomaticPathTest {
             System.clearProperty("jk.env.JK_AUTO_PRUNE");
         }
 
-        assertThat(oldest).as("the count cap is reachable from the boundary").doesNotExist();
+        assertThat(overBudget).as("a cap is reachable from the boundary").doesNotExist();
         assertThat(abandoned)
                 .as("a tier no constant names is reclaimed, not merely unbounded")
                 .doesNotExist();
@@ -81,15 +82,18 @@ class CacheRetentionAutomaticPathTest {
                 () -> {});
     }
 
-    /** One entry past the {@code hash-memo} cap; the oldest is the victim. */
-    private static Path overCountCap(Path cache, int cap) throws IOException {
-        Path oldest = null;
-        for (int i = 0; i <= cap; i++) {
-            Path entry = file(cache.resolve("hash-memo/" + (i % 256) + "/" + i), "x");
-            Files.setLastModifiedTime(entry, FileTime.fromMillis(System.currentTimeMillis() - OLD - (cap - i)));
-            if (i == 0) oldest = entry;
+    /**
+     * The {@code hash-memo} store past its byte budget, so the whole tier resets. Sparse: the
+     * instrument sums apparent bytes, the same figure it uses in production.
+     */
+    private static Path overStoreBudget(Path cache, long budgetBytes) throws IOException {
+        Path store = cache.resolve("hash-memo/memo.v1");
+        Files.createDirectories(store.getParent());
+        try (var raf = new RandomAccessFile(store.toFile(), "rw")) {
+            raf.setLength(budgetBytes + 1);
         }
-        return oldest;
+        Files.setLastModifiedTime(store, FileTime.fromMillis(System.currentTimeMillis() - OLD));
+        return store;
     }
 
     /**

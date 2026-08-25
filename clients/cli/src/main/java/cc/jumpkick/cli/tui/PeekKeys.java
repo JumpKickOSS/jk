@@ -66,7 +66,6 @@ final class PeekKeys implements AutoCloseable {
                 TerminalSession t = Terminals.controlling();
                 if (!t.isLive()) return false;
                 opened = t.enter(InputMode.PLAN_KEYS);
-                t.drain(Duration.ofMillis(40));
                 terminal = t;
                 mode = opened;
                 thread = new Thread(this::readKeys, "jk-output-keys");
@@ -121,6 +120,9 @@ final class PeekKeys implements AutoCloseable {
             t = terminal;
         }
         if (t == null) return;
+        // Drain typeahead here, not on the attach path: a leftover CONIN$ event can make the
+        // drain wait out its full timeout, and only this thread can afford that.
+        t.drain(Duration.ofMillis(40));
         while (!stopped && !finished.getAsBoolean()) {
             var key = t.readKey(Duration.ofMillis(100));
             if (key.isEmpty()) {

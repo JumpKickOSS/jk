@@ -6,8 +6,11 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,6 +24,11 @@ import java.util.stream.Stream;
  * Background CAS ingest of an output dir while a compiler still writes it. Stable {@code (size,
  * mtime)} across polls is hashed and copied into CAS; {@link #finish} re-checks drift and is the
  * authoritative pass.
+ *
+ * <p>Every walk here carries the attributes the tree walk already read, and every poll rejects an
+ * ingested file on the in-memory map before it looks at the filesystem. A poll runs every {@value
+ * #POLL_INTERVAL_MILLIS} ms for the whole compile over a tree that only grows, so a single stat
+ * per file per poll is hundreds of stats per file — on NTFS that costs more than the compile.
  */
 public final class CasPrewriter implements AutoCloseable {
 
@@ -30,7 +38,7 @@ public final class CasPrewriter implements AutoCloseable {
     private final Path outputDir;
     private final ScheduledExecutorService scheduler;
     private final ConcurrentMap<Path, Snapshot> tracked = new ConcurrentHashMap<>();
-    private final ConcurrentMap<Path, Processed> processed = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Path, String> processed = new ConcurrentHashMap<>();
     private volatile boolean running = true;
 
     private CasPrewriter(Cas cas, Path outputDir) {
@@ -69,9 +77,8 @@ public final class CasPrewriter implements AutoCloseable {
 
         Map<String, String> outputs = new TreeMap<>();
         if (!Files.exists(outputDir)) return outputs;
-        try (Stream<Path> stream = Files.walk(outputDir)) {
+        try (Stream<Path> stream = Files.find(outputDir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
             for (Path file : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(file)) continue;
                 if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
 
                 String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
@@ -79,8 +86,7 @@ public final class CasPrewriter implements AutoCloseable {
                 // same-size rewrite within one filesystem mtime tick / coarse mtime).
                 // Poll-time CAS ingest is still a win when the hex matches (put is a no-op hit).
                 String hex = Hashing.sha256Hex(file);
-                Processed pre = processed.get(file);
-                if (pre == null || !pre.hex.equals(hex)) {
+                if (!hex.equals(processed.get(file))) {
                     cas.putFile(file, hex);
                 }
                 outputs.put(relPath, hex);
@@ -102,13 +108,26 @@ public final class CasPrewriter implements AutoCloseable {
     private void pollOnce() {
         if (!running) return;
         if (!Files.isDirectory(outputDir)) return;
-        try (Stream<Path> stream = Files.walk(outputDir)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
-                if (processed.containsKey(file)) continue;
-                handleCandidate(file);
-            }
+        try {
+            Files.walkFileTree(outputDir, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (!running) return FileVisitResult.TERMINATE;
+                    // Cheapest rejections first: the walk already paid for `attrs`, and an
+                    // already-ingested file must cost a map lookup rather than a syscall.
+                    if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
+                    if (processed.containsKey(file)) return FileVisitResult.CONTINUE;
+                    if (BuildStamps.isStampFile(file.getFileName().toString())) return FileVisitResult.CONTINUE;
+                    handleCandidate(file, attrs);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    // A file that vanished mid-walk is the compiler's business, not ours.
+                    return FileVisitResult.CONTINUE;
+                }
+            });
         } catch (IOException ignored) {
             // Polling is best-effort — a transient walk failure just delays
             // processing until the next tick or the final pass.
@@ -118,20 +137,20 @@ public final class CasPrewriter implements AutoCloseable {
     /**
      * Two-poll stability rule: if a file's (size, mtime) matches what we saw last poll, it's been
      * quiet for at least one interval — safe to hash. Otherwise update the snapshot and revisit next
-     * tick.
+     * tick. {@code attrs} comes from the walk, so deciding this costs no filesystem call.
      */
-    private void handleCandidate(Path file) {
+    private void handleCandidate(Path file, BasicFileAttributes attrs) {
+        long size = attrs.size();
+        long mtime = attrs.lastModifiedTime().toMillis();
+        Snapshot prev = tracked.get(file);
+        if (prev == null || prev.size != size || prev.mtime != mtime) {
+            tracked.put(file, new Snapshot(size, mtime));
+            return;
+        }
         try {
-            long size = Files.size(file);
-            long mtime = Files.getLastModifiedTime(file).toMillis();
-            Snapshot prev = tracked.get(file);
-            if (prev != null && prev.size == size && prev.mtime == mtime) {
-                String hex = hashAndLink(file);
-                processed.put(file, new Processed(hex, size, mtime));
-                tracked.remove(file);
-            } else {
-                tracked.put(file, new Snapshot(size, mtime));
-            }
+            String hex = hashAndLink(file);
+            processed.put(file, hex);
+            tracked.remove(file);
         } catch (IOException ignored) {
             // Skip; either the file vanished mid-poll or we hit a permission
             // hiccup. The final pass will pick it up.
@@ -149,6 +168,4 @@ public final class CasPrewriter implements AutoCloseable {
     }
 
     private record Snapshot(long size, long mtime) {}
-
-    private record Processed(String hex, long size, long mtime) {}
 }

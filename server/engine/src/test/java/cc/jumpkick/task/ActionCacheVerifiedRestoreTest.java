@@ -27,7 +27,7 @@ class ActionCacheVerifiedRestoreTest {
 
     @AfterEach
     void reset() {
-        FileHashMemo.clearThreadCache();
+        FileHashMemo.reset();
         SessionContext.reset();
     }
 
@@ -59,7 +59,7 @@ class ActionCacheVerifiedRestoreTest {
                 .as("a blob whose bytes no longer match its name is dropped")
                 .isFalse();
         // The memo must not assert the recorded digest for bytes that were never verified.
-        FileHashMemo.clearThreadCache();
+        FileHashMemo.reset();
         Path a = classes.resolve("A.class");
         assertThat(Files.exists(a)).isFalse();
     }
@@ -104,12 +104,12 @@ class ActionCacheVerifiedRestoreTest {
         Files.writeString(f, "BBBB");
         Files.setLastModifiedTime(f, FileTime.from(base.plusNanos(654_321)));
 
-        // Same thread: the nano-keyed thread cache must not alias the old entry.
         String rehash = FileHashMemo.contentHash(f);
         assertThat(rehash).isEqualTo(Hashing.sha256Hex("BBBB".getBytes(StandardCharsets.UTF_8)));
 
-        // Fresh thread view (disk memo only): the seeded nano stamp no longer matches.
-        FileHashMemo.clearThreadCache();
+        // A fresh engine reading the persisted store: the seeded nano stamp no longer matches.
+        FileHashMemo.flush();
+        FileHashMemo.reset();
         assertThat(FileHashMemo.contentHash(f)).isEqualTo(Hashing.sha256Hex("BBBB".getBytes(StandardCharsets.UTF_8)));
     }
 
@@ -123,7 +123,9 @@ class ActionCacheVerifiedRestoreTest {
         String sha = Hashing.sha256Hex("CCCC".getBytes(StandardCharsets.UTF_8));
         FileHashMemo.rememberContent(f, sha);
 
-        FileHashMemo.clearThreadCache();
+        // Across a restart too: a seed is trusted on its nanosecond stamp, not on having settled.
+        FileHashMemo.flush();
+        FileHashMemo.reset();
         FileHashMemo.resetStats();
         assertThat(FileHashMemo.contentHash(f)).isEqualTo(sha);
         assertThat(FileHashMemo.contentReads())

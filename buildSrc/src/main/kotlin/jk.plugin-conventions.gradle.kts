@@ -7,41 +7,14 @@
 // `dependencies`, and optional codec-vendoring.
 
 import java.io.File
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 plugins {
     id("jk.java-conventions")
 }
 
-/**
- * Copy [src] onto [dest], replacing any existing file. Uses temp + move so concurrent
- * [installLocal] tasks staging the same project jar (e.g. plugin-sdk) do not race on
- * Kotlin [File.copyTo] overwrite (delete-then-create fails when another task already
- * unlinked the target).
- */
-fun copyReplacing(src: File, dest: File) {
-    dest.parentFile?.mkdirs()
-    val parent = dest.parentFile?.toPath() ?: dest.toPath().parent
-    val tmp = Files.createTempFile(parent, ".${dest.name}.", ".tmp")
-    try {
-        Files.copy(src.toPath(), tmp, StandardCopyOption.REPLACE_EXISTING)
-        try {
-            Files.move(
-                    tmp,
-                    dest.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: AtomicMoveNotSupportedException) {
-            Files.move(tmp, dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
-    } catch (e: Exception) {
-        runCatching { Files.deleteIfExists(tmp) }
-        throw e
-    }
-}
+/** Copy [src] onto [dest]; skip when dest already has the same bytes. */
+fun copyReplacing(src: File, dest: File) = CopyReplacing.copy(src, dest)
 
 // Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION and the
 // cc.jumpkick.engine.plugin.PluginJar registry (artifactId = jk-<projectName>).

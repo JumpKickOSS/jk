@@ -11,6 +11,7 @@ management ([JDK](jdk.md)). Prefer modules with `[native]` enabled.
 [native]
 enabled = "always"     # native-image on jk build and jk native
 # enabled = true       # jk native only (bare [native] is the same)
+# name = "jk"          # output basename (default: module name). A trailing .exe is ignored.
 # args = ["--verbose"]
 ```
 

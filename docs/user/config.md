@@ -49,8 +49,11 @@ jk self setup-terminal --mode wedge     # powerline triangles only
 jk self setup-terminal --mode pill      # half-circle pill caps only
 ```
 
-`auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal; the wedge only
-on Terminal.app; nothing over SSH, under `CI`, or on an unrecognised terminal. Env
+`auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal; at least the
+wedge on Terminal.app and Alacritty, which draw the powerline triangles themselves
+(Alacritty upgrades to both axes when its font is a Nerd Font); on iTerm2, VS Code, and
+Zed it follows the configured font. Nothing over SSH, under `CI`, or on an
+unrecognised terminal. Env
 `JK_NERD_FONT` takes all five values; host-wide `NERD_FONT` takes booleans only.
 
 Contributor TUI rules: [TUI](../contributors/tui.md).

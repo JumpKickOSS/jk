@@ -9,39 +9,45 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
-import java.util.Collections;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 /**
- * Content fingerprints for source/input files.
+ * Content fingerprints for source and input files, memoized on {@code (path, size, mtime)}.
  *
- * <ul>
- * <li><b>Thread-local walk cache</b> — each absolute path is content-hashed at most once per
- * thread (so {@code ActionKey.forJavac} + {@code snapshotInputs} share one walk).
- * <li><b>Disk memo</b> — {@code (path, size, mtime) → hex} under {@code <cache>/hash-memo/}.
- * Trust only when size+mtime match and mtime is ≥ {@link #SETTLE_MS} old; store only after
- * settle. Fail open (re-hash) on any I/O error.
- * </ul>
+ * <p>One store per cache root, held in memory for the life of the engine and persisted as a single
+ * file at {@code <cache>/hash-memo/memo.v1}. A hit costs one map read; the caller's own stat is the
+ * only filesystem call on the hot path. An entry per path — rather than a file per path — is what
+ * makes the memo pay on every platform: creating and opening small files costs an order of
+ * magnitude more on NTFS than on ext4, enough that a file-backed entry cost more to consult than
+ * the content hash it was there to avoid.
  *
- * <p>One entry per source file at {@code <cache>/hash-memo/<aa>/<sha256(abs path)>}, holding two
- * lines:
+ * <p>The map is keyed by path alone, so a rebuild replaces an entry rather than adding one and the
+ * store cannot grow with the number of builds. {@link #MAX_ENTRIES} bounds it against a workspace
+ * large enough to reach it; victims are the least recently used, which is the only honest ranking
+ * here because an entry's own timestamps measure the churn of the file it describes, not use.
  *
- * <pre>{@code
- * <size> <mtimeMillis> <token>
- * <absolute path>
- * }</pre>
+ * <p>Trust is provenance-based. {@link #rememberContent} seeds a <em>known</em> digest (a CAS blob
+ * just restored) and records the nanosecond mtime it was seeded at; such an entry is trusted
+ * immediately, but only while that stamp still matches — an in-place rewrite landing in the same
+ * millisecond tick, which compilers do to restored class files, moves the nanoseconds and voids the
+ * seed. A self-hash carries no stamp and is instead gated on {@link #SETTLE_MS}, so a same-size
+ * rewrite inside one mtime tick cannot reuse a stale digest.
  *
- * <p>The second line is what lets retention be exact: {@link CacheRetention} drops the entries
- * whose source no longer exists instead of guessing by age, which it cannot do here because
- * {@link #forceStore} rewrites on every content change and so mtime measures churn, not use. An
- * entry without that line is not trusted — {@link #lookup} fails open, the caller re-hashes, and
- * the store that follows writes the whole shape.
+ * <p>Every I/O failure fails open: the caller re-hashes. Nothing here is load-bearing, which is also
+ * why a concurrent engine writing the same store is last-writer-wins rather than locked — a lost
+ * entry costs one re-hash. For the same reason the store survives a {@code jk cache} wipe of the
+ * tier in this engine's memory; every entry is re-validated against the live file before use, so
+ * the bytes come back on the next flush rather than going stale.
  */
 public final class FileHashMemo {
 
@@ -49,113 +55,108 @@ public final class FileHashMemo {
     private static final long SETTLE_MS = 2_000;
 
     /**
-     * Pathology backstop per thread cache: the idle boundary clears these anyway, but a
-     * single build over an enormous tree must not grow one map without limit either. ~300 bytes
-     * per entry; the disk memo absorbs the cost of a mid-build clear.
+     * Entries one store keeps. Around 200 B each, so the cap is a heap bound before it is a disk
+     * one; a workspace with more distinct input files than this re-hashes its coldest.
      */
-    private static final int MAX_THREAD_ENTRIES = 131_072;
+    private static final int MAX_ENTRIES = 32_768;
 
-    /**
-     * Every live thread's walk cache, weakly held so a dead thread's map can be collected. The
-     * idle boundary clears them all ({@link #clearAllThreadCaches}) — without that, the immortal
-     * {@code jk-cpu-N} pool threads accrete entries forever, because the cache key embeds the
-     * nanosecond mtime and every rebuild mints new keys.
-     */
-    private static final Set<Map<String, String>> LIVE_CACHES =
-            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    /** Headroom over {@link #MAX_ENTRIES} before a trim runs, so inserts do not each pay for one. */
+    private static final int TRIM_SLACK = MAX_ENTRIES / 4;
 
-    /** Absolute-path → hex for the current thread (request / plan worker). */
-    private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(() -> {
-        // Concurrent map: the owner thread is the only writer on the hot path, but the idle
-        // boundary clears from another thread, and a plain HashMap can corrupt under that race.
-        Map<String, String> m = new ConcurrentHashMap<>();
-        LIVE_CACHES.add(m);
-        return m;
-    });
+    private static final String STORE_FILE = "memo.v1";
+
+    /** One loaded store per cache root. */
+    private static final ConcurrentMap<Path, Store> STORES = new ConcurrentHashMap<>();
+
+    /** Monotonic use clock; ranks victims when a store is over cap. */
+    private static final AtomicLong USE_TICK = new AtomicLong();
 
     private static final AtomicLong CONTENT_HASH_INVOCATIONS = new AtomicLong();
-    private static final AtomicLong THREAD_HITS = new AtomicLong();
-    private static final AtomicLong DISK_HITS = new AtomicLong();
+    private static final AtomicLong MEMO_HITS = new AtomicLong();
     private static final AtomicLong CONTENT_READS = new AtomicLong();
 
     private FileHashMemo() {}
 
     /**
-     * SHA-256 hex of {@code file}'s contents, using thread-local then disk memo when safe. Streams
-     * the file (never slurp) on a miss. IOException propagates (caller decides).
-     *
-     * <p>CAS-seeded digests ({@link #rememberContent}) are trusted immediately. Self-hashes are
-     * not trusted for unsettled mtimes (size+mtime alone can alias a same-tick content rewrite).
+     * SHA-256 hex of {@code file}'s contents, from the memo when the file's stat identity still
+     * matches what was recorded. Streams the file on a miss. IOException propagates (caller decides).
      */
     public static String contentHash(Path file) throws IOException {
-        CONTENT_HASH_INVOCATIONS.incrementAndGet();
         Path abs = file.toAbsolutePath().normalize();
-        long size = Files.size(abs);
-        FileTime ft = Files.getLastModifiedTime(abs);
-        long mtime = ft.toMillis();
-        boolean unsettled = System.currentTimeMillis() - mtime < SETTLE_MS;
-        // Key includes size+mtime (nanosecond precision) so a same-path rewrite — even one
-        // landing inside the same millisecond tick — never hits a stale entry.
-        String tkey = abs + "\0" + size + "\0" + ft.to(TimeUnit.NANOSECONDS);
-        Map<String, String> thread = THREAD_CACHE.get();
-        String cached = thread.get(tkey);
-        if (cached != null) {
-            // "known:" = CAS restore seed — always safe. "hash:" = self-hash — only if settled.
-            if (cached.startsWith("known:")) {
-                THREAD_HITS.incrementAndGet();
-                return cached.substring("known:".length());
-            }
-            if (cached.startsWith("hash:") && !unsettled) {
-                THREAD_HITS.incrementAndGet();
-                return cached.substring("hash:".length());
-            }
-            // Unsettled self-hash or unknown prefix — fall through and re-read.
-        }
-
-        String token = lookup(abs, size, mtime);
-        // Disk may hold a ClasspathFingerprint token (file:<hex> / jar:…) or bare hex.
-        // file: = CAS seed (trusted immediately). bare hex = self-hash (settle-gated).
-        boolean casSeed = false;
-        if (token != null) {
-            if (token.startsWith("file:") && token.length() > 5) {
-                token = token.substring(5);
-                casSeed = true;
-            } else if (token.startsWith("jar:")) {
-                token = null; // not a raw content hash — fall through to hash
-            } else if (unsettled) {
-                // bare hex from store() must not apply until settle (same-size rewrite safety)
-                token = null;
-            }
-        }
-        if (token != null) {
-            DISK_HITS.incrementAndGet();
-            // known: always trusted; hash: only when settled (same tick rewrite safety).
-            if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
-            thread.put(tkey, (casSeed ? "known:" : "hash:") + token);
-            return token;
-        }
-
-        CONTENT_READS.incrementAndGet();
-        token = Hashing.sha256Hex(abs);
-        store(abs, size, mtime, token);
-        if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
-        thread.put(tkey, "hash:" + token);
-        return token;
-    }
-
-    /** Drop this thread's walk cache (tests / long-lived worker threads). */
-    public static void clearThreadCache() {
-        THREAD_CACHE.remove();
+        return contentHash(abs, Files.readAttributes(abs, BasicFileAttributes.class));
     }
 
     /**
-     * Drop every live thread's walk cache. Called at the idle boundary so pool-thread caches do
-     * not outlive the build that filled them; safe cross-thread because the maps are concurrent.
+     * As {@link #contentHash(Path)}, for a caller that already holds {@code file}'s attributes —
+     * a tree walk hands them over, and re-reading them is the single most repeated syscall in a
+     * build. {@code file} must already be absolute and normalized.
      */
-    public static void clearAllThreadCaches() {
-        synchronized (LIVE_CACHES) {
-            for (Map<String, String> m : LIVE_CACHES) m.clear();
+    public static String contentHash(Path file, BasicFileAttributes attrs) throws IOException {
+        CONTENT_HASH_INVOCATIONS.incrementAndGet();
+        long size = attrs.size();
+        long mtime = attrs.lastModifiedTime().toMillis();
+        long nanos = attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS);
+
+        Store store = store();
+        if (store != null) {
+            Entry hit = store.get(file.toString(), size, mtime, nanos);
+            if (hit != null) {
+                MEMO_HITS.incrementAndGet();
+                return hit.token;
+            }
         }
+
+        CONTENT_READS.incrementAndGet();
+        String token = Hashing.sha256Hex(file);
+        // A file written moments ago can change again at the same size and tick; only record it
+        // once the clock can tell the two apart.
+        if (store != null && System.currentTimeMillis() - mtime >= SETTLE_MS) {
+            store.put(file.toString(), new Entry(size, mtime, -1L, token));
+        }
+        return token;
+    }
+
+    /**
+     * Seed the memo with a <em>known</em> content hash — a CAS blob this build just restored, whose
+     * bytes are complete and whose mtime is ours. Recorded with its nanosecond stamp so it is
+     * trusted without waiting out {@link #SETTLE_MS}; this is what keeps stamps and package keys
+     * cheap after {@code jk clean} plus an action-cache restore, which would otherwise re-hash
+     * every class file and jar it just wrote.
+     */
+    public static void rememberContent(Path file, String sha256Hex) {
+        if (sha256Hex == null || sha256Hex.isBlank()) return;
+        try {
+            Path abs = file.toAbsolutePath().normalize();
+            BasicFileAttributes attrs = Files.readAttributes(abs, BasicFileAttributes.class);
+            if (!attrs.isRegularFile()) return;
+            Store store = store();
+            if (store == null) return;
+            store.put(
+                    abs.toString(),
+                    new Entry(
+                            attrs.size(),
+                            attrs.lastModifiedTime().toMillis(),
+                            attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
+                            sha256Hex));
+        } catch (IOException | RuntimeException ignored) {
+            // best-effort
+        }
+    }
+
+    /**
+     * Persist every loaded store. Called at the idle boundary; the maps stay in memory, since their
+     * whole payoff is the next build. Best-effort — an unwritable cache root just means the next
+     * engine starts cold.
+     */
+    public static void flush() {
+        for (Store s : STORES.values()) {
+            s.flush();
+        }
+    }
+
+    /** Test seam: drop every loaded store, so the next lookup reloads from disk. */
+    public static void reset() {
+        STORES.clear();
     }
 
     /** Test seam: total {@link #contentHash} calls since process start (or last {@link #resetStats}). */
@@ -163,14 +164,12 @@ public final class FileHashMemo {
         return CONTENT_HASH_INVOCATIONS.get();
     }
 
-    public static long threadHits() {
-        return THREAD_HITS.get();
+    /** Test seam: lookups the memo answered without reading the file. */
+    public static long memoHits() {
+        return MEMO_HITS.get();
     }
 
-    public static long diskHits() {
-        return DISK_HITS.get();
-    }
-
+    /** Test seam: lookups that had to stream the file's bytes. */
     public static long contentReads() {
         return CONTENT_READS.get();
     }
@@ -178,116 +177,171 @@ public final class FileHashMemo {
     /** Test seam. */
     public static void resetStats() {
         CONTENT_HASH_INVOCATIONS.set(0);
-        THREAD_HITS.set(0);
-        DISK_HITS.set(0);
+        MEMO_HITS.set(0);
         CONTENT_READS.set(0);
     }
 
-    /**
-     * The memoized fingerprint token for {@code file}, or {@code null} when absent, stale, or not
-     * yet settled. {@code size}/{@code mtimeMillis} are the caller's freshly-stat'ed values (the
-     * caller stats anyway; passing them avoids a second stat).
-     *
-     * <p>Trust is provenance-based: entries carrying a {@code nano=} field were seeded from a
-     * <em>known</em> digest ({@link #rememberContent}) and are trusted immediately, but only when
-     * the file's current nanosecond mtime still matches — an in-place rewrite that lands in the
-     * same millisecond tick (compilers do this to restored class files) changes the nano stamp
-     * and voids the seed. Everything else — including prefixed tokens written by {@link #store} —
-     * is settle-gated, so a same-size rewrite in the same mtime tick cannot reuse a stale digest.
-     */
-    public static String lookup(Path file, long size, long mtimeMillis) {
-        Path abs = file.toAbsolutePath().normalize();
-        Path entry = entryPath(abs);
-        if (entry == null) return null;
-        try {
-            String record = Files.readString(entry, StandardCharsets.UTF_8);
-            int nl = record.indexOf('\n');
-            // No recorded path, or one naming a different file: nothing here is about `file`.
-            if (nl < 0 || !record.substring(nl + 1).equals(abs.toString())) return null;
-            String content = record.substring(0, nl);
-            int sp1 = content.indexOf(' ');
-            int sp2 = content.indexOf(' ', sp1 + 1);
-            if (sp1 < 0 || sp2 < 0) return null;
-            if (Long.parseLong(content.substring(0, sp1)) != size) return null;
-            if (Long.parseLong(content.substring(sp1 + 1, sp2)) != mtimeMillis) return null;
-            String token = content.substring(sp2 + 1).trim();
-            if (token.isEmpty()) return null;
-            int nanoAt = token.lastIndexOf(" nano=");
-            if (nanoAt >= 0) {
-                long recorded = Long.parseLong(token.substring(nanoAt + " nano=".length()));
-                token = token.substring(0, nanoAt).trim();
-                if (token.isEmpty()) return null;
-                long current = Files.getLastModifiedTime(file).to(TimeUnit.NANOSECONDS);
-                return recorded == current ? token : null;
-            }
-            if (System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return null;
-            return token;
-        } catch (IOException | NumberFormatException e) {
-            return null; // fail open — caller hashes content
-        }
-    }
-
-    /** Record {@code token} for {@code file}; best-effort (an I/O failure just skips the memo). */
-    public static void store(Path file, long size, long mtimeMillis, String token) {
-        if (System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return; // not settled — don't trust the stat
-        forceStore(file, size, mtimeMillis, token);
-    }
-
-    /**
-     * Seed the memo with a <em>known</em> content hash (e.g. a CAS blob just restored). Always fills
-     * the thread-local cache; also writes the disk memo without the settle delay — the bytes are
-     * complete and the mtime is ours. This is what keeps {@code TestStamp} / package keys cheap
-     * after {@code jk clean} + action-cache restore (otherwise every class file and fat jar is
-     * re-hashed / zip-walked).
-     *
-     * <p>Disk uses the {@code file:<hex>} form so {@link ClasspathFingerprint#entry} short-circuits
-     * for both class trees and jars (packagers are byte-reproducible, so raw jar SHA is a valid
-     * content fingerprint).
-     */
-    public static void rememberContent(Path file, String sha256Hex) {
-        if (sha256Hex == null || sha256Hex.isBlank()) return;
-        try {
-            Path abs = file.toAbsolutePath().normalize();
-            if (!Files.isRegularFile(abs)) return;
-            long size = Files.size(abs);
-            FileTime ft = Files.getLastModifiedTime(abs);
-            long nanos = ft.to(TimeUnit.NANOSECONDS);
-            String tkey = abs + "\0" + size + "\0" + nanos;
-            Map<String, String> thread = THREAD_CACHE.get();
-            if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
-            thread.put(tkey, "known:" + sha256Hex);
-            // Disk: file: form so entry() short-circuits; contentHash strips the prefix. The
-            // nano= stamp is the seed's provenance mark — lookup trusts it immediately but only
-            // while the file's nanosecond mtime is unchanged (see lookup).
-            forceStore(abs, size, ft.toMillis(), "file:" + sha256Hex + " nano=" + nanos);
-        } catch (IOException | RuntimeException ignored) {
-            // best-effort
-        }
-    }
-
-    private static void forceStore(Path file, long size, long mtimeMillis, String token) {
-        Path abs = file.toAbsolutePath().normalize();
-        Path entry = entryPath(abs);
-        if (entry == null) return;
-        try {
-            AtomicWrites.replace(entry, size + " " + mtimeMillis + " " + token + "\n" + abs);
-        } catch (IOException | RuntimeException e) {
-            // best-effort — the memo is an optimisation, never a requirement
-        }
-    }
-
-    /**
-     * {@code <cache>/hash-memo/<aa>/<sha256(abs path)>}, or {@code null} when no session cache
-     * resolves. {@code abs} must already be absolute and normalized — it is the string that is
-     * hashed, and the one the entry records.
-     */
-    private static Path entryPath(Path abs) {
+    /** The store for the session's cache root, or {@code null} when no session cache resolves. */
+    private static Store store() {
         try {
             Path cache = SessionContext.current().cacheDir();
-            String key = Hashing.sha256Hex(abs.toString().getBytes(StandardCharsets.UTF_8));
-            return CacheTree.HASH_MEMO.under(cache).resolve(key.substring(0, 2)).resolve(key.substring(2));
+            return STORES.computeIfAbsent(
+                    cache.toAbsolutePath().normalize(), root -> Store.load(CacheTree.HASH_MEMO.under(root)));
         } catch (RuntimeException e) {
             return null;
+        }
+    }
+
+    /**
+     * One memoized fingerprint.
+     *
+     * @param nanos nanosecond mtime this entry was seeded at, or {@code -1} for a self-hash, which
+     *     is validated by settle instead
+     */
+    private static final class Entry {
+        final long size;
+        final long mtimeMillis;
+        final long nanos;
+        final String token;
+        volatile long used;
+
+        Entry(long size, long mtimeMillis, long nanos, String token) {
+            this.size = size;
+            this.mtimeMillis = mtimeMillis;
+            this.nanos = nanos;
+            this.token = token;
+            this.used = USE_TICK.incrementAndGet();
+        }
+    }
+
+    /** The in-memory map for one cache root, plus the single file it persists to. */
+    private static final class Store {
+
+        private final Path file;
+        private final ConcurrentMap<String, Entry> entries = new ConcurrentHashMap<>();
+        private final AtomicBoolean trimming = new AtomicBoolean();
+        private volatile boolean dirty;
+
+        private Store(Path dir) {
+            this.file = dir.resolve(STORE_FILE);
+        }
+
+        static Store load(Path dir) {
+            Store s = new Store(dir);
+            try {
+                for (String line : Files.readAllLines(s.file, StandardCharsets.UTF_8)) {
+                    decode(line, s.entries);
+                }
+            } catch (IOException | RuntimeException ignored) {
+                // No store yet, or an unreadable one: start empty and refill.
+            }
+            sweepResidue(dir, s.file);
+            return s;
+        }
+
+        /**
+         * The store owns its directory, so anything beside it is residue — a sharded layout an
+         * older jk wrote, or a half-written temp from an interrupted flush. Nothing reads it and
+         * retention ranks the tier as one file, so it would otherwise sit there for good. One
+         * readdir per cache root per engine, over a directory that is normally empty.
+         */
+        private static void sweepResidue(Path dir, Path keep) {
+            try (Stream<Path> children = Files.list(dir)) {
+                for (Path p : (Iterable<Path>) children::iterator) {
+                    if (p.equals(keep)) continue;
+                    try (Stream<Path> tree = Files.walk(p)) {
+                        for (Path victim : (Iterable<Path>) tree.sorted(Comparator.reverseOrder())::iterator) {
+                            Files.deleteIfExists(victim);
+                        }
+                    }
+                }
+            } catch (IOException | RuntimeException ignored) {
+                // Housekeeping, never load-bearing.
+            }
+        }
+
+        /** The entry for {@code path} when it still describes the file the caller just stat'ed. */
+        Entry get(String path, long size, long mtimeMillis, long nanos) {
+            Entry e = entries.get(path);
+            if (e == null || e.size != size || e.mtimeMillis != mtimeMillis) return null;
+            boolean valid = e.nanos >= 0 ? e.nanos == nanos : System.currentTimeMillis() - mtimeMillis >= SETTLE_MS;
+            if (!valid) return null;
+            e.used = USE_TICK.incrementAndGet();
+            return e;
+        }
+
+        void put(String path, Entry e) {
+            entries.put(path, e);
+            dirty = true;
+            if (entries.size() > MAX_ENTRIES + TRIM_SLACK) trim();
+        }
+
+        /** Drop the least recently used down to {@link #MAX_ENTRIES}. One trim at a time. */
+        private void trim() {
+            if (!trimming.compareAndSet(false, true)) return;
+            try {
+                List<Map.Entry<String, Entry>> all = new ArrayList<>(entries.entrySet());
+                if (all.size() <= MAX_ENTRIES) return;
+                all.sort(Comparator.comparingLong(x -> x.getValue().used));
+                for (int i = 0; i < all.size() - MAX_ENTRIES; i++) {
+                    entries.remove(all.get(i).getKey(), all.get(i).getValue());
+                }
+            } finally {
+                trimming.set(false);
+            }
+        }
+
+        void flush() {
+            if (!dirty) return;
+            dirty = false;
+            try {
+                trim();
+                StringBuilder sb = new StringBuilder(entries.size() * 128);
+                for (Map.Entry<String, Entry> e : entries.entrySet()) {
+                    String path = e.getKey();
+                    // The record is one line and NUL-delimited, so a path carrying either is one
+                    // this format cannot read back. It stays live in memory and is simply not written.
+                    if (path.indexOf('\n') >= 0 || path.indexOf('\0') >= 0) continue;
+                    Entry v = e.getValue();
+                    sb.append(path)
+                            .append('\0')
+                            .append(v.size)
+                            .append('\0')
+                            .append(v.mtimeMillis)
+                            .append('\0')
+                            .append(v.nanos)
+                            .append('\0')
+                            .append(v.token)
+                            .append('\n');
+                }
+                AtomicWrites.replace(file, sb.toString());
+            } catch (IOException | RuntimeException e) {
+                // The memo is an optimisation, never a requirement.
+                dirty = true;
+            }
+        }
+
+        private static void decode(String line, ConcurrentMap<String, Entry> into) {
+            int a = line.indexOf('\0');
+            if (a < 0) return;
+            int b = line.indexOf('\0', a + 1);
+            if (b < 0) return;
+            int c = line.indexOf('\0', b + 1);
+            if (c < 0) return;
+            int d = line.indexOf('\0', c + 1);
+            if (d < 0) return;
+            String token = line.substring(d + 1);
+            if (token.isEmpty()) return;
+            try {
+                Entry e = new Entry(
+                        Long.parseLong(line.substring(a + 1, b)),
+                        Long.parseLong(line.substring(b + 1, c)),
+                        Long.parseLong(line.substring(c + 1, d)),
+                        token);
+                into.put(line.substring(0, a), e);
+            } catch (NumberFormatException malformed) {
+                // A torn or hand-edited line is not an entry.
+            }
         }
     }
 }

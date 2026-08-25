@@ -4,10 +4,8 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.CacheTree;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -76,18 +74,11 @@ public final class CacheRetention {
             public long size(Path entry) throws IOException {
                 return Files.size(entry);
             }
-
-            @Override
-            public String read(Path entry) throws IOException {
-                return Files.readString(entry, StandardCharsets.UTF_8);
-            }
         };
 
         long mtime(Path entry) throws IOException;
 
         long size(Path entry) throws IOException;
-
-        String read(Path entry) throws IOException;
     }
 
     /**
@@ -175,7 +166,7 @@ public final class CacheRetention {
 
         // Below a count cap the pass must not pay for a stat walk it will not use: hash-memo is
         // ~16k files, and enumerating names is a few ms against ~20 ms to stat them all.
-        if (bound.window() == null && bound.cap() instanceof Bound.Cap.Count(int max, var rule)) {
+        if (bound.window() == null && bound.cap() instanceof Bound.Cap.Count(int max)) {
             if (countFiles(root) <= max) return new Tally(0, 0L);
         }
 
@@ -209,18 +200,7 @@ public final class CacheRetention {
         }
 
         switch (bound.cap()) {
-            case Bound.Cap.Count(int max, Bound.VictimRule rule) -> {
-                if (max > 0 && survivors.size() > max && rule == Bound.VictimRule.SUPERSEDED_THEN_OLDEST) {
-                    List<Entry> live = new ArrayList<>(survivors.size());
-                    for (Entry e : survivors) {
-                        if (now - e.mtime() >= grace && superseded(e.path(), probe)) {
-                            out = out.plus(delete(e.path(), dryRun));
-                        } else {
-                            live.add(e);
-                        }
-                    }
-                    survivors = live;
-                }
+            case Bound.Cap.Count(int max) -> {
                 if (max > 0 && survivors.size() > max) {
                     survivors.sort(Comparator.comparingLong(Entry::mtime));
                     for (int i = 0; i < survivors.size() - max; i++) {
@@ -257,37 +237,6 @@ public final class CacheRetention {
         return out;
     }
 
-    /**
-     * Whether the source {@code entry} describes is gone, read from the path on its last line.
-     *
-     * <p>Two ways to answer "no" that are not "the file is there": an entry that records no path
-     * says nothing about anything, and a path whose every ancestor is also missing reads as a
-     * volume that is not mounted rather than a file that was deleted. Both are kept, because a
-     * dead entry costs one dirent while a wrongly-dropped live one costs a re-hash of a file the
-     * next build is about to read anyway.
-     */
-    private static boolean superseded(Path entry, Probe probe) {
-        String record;
-        try {
-            record = probe.read(entry);
-        } catch (IOException unreadable) {
-            return false;
-        }
-        int nl = record.lastIndexOf('\n');
-        if (nl < 0 || nl == record.length() - 1) return false;
-        Path source;
-        try {
-            source = Path.of(record.substring(nl + 1));
-        } catch (InvalidPathException notAPath) {
-            return false;
-        }
-        if (Files.exists(source)) return false;
-        for (Path dir = source.getParent(); dir != null && dir.getParent() != null; dir = dir.getParent()) {
-            if (Files.isDirectory(dir)) return true;
-        }
-        return false;
-    }
-
     /** Window then cap over a directory of self-contained trees. One victim is one child tree. */
     private static Tally sweepSubtrees(Path root, Bound bound, long now, long grace, boolean dryRun, Probe probe)
             throws IOException {
@@ -308,7 +257,7 @@ public final class CacheRetention {
                 survivors.add(t);
             }
         }
-        if (bound.cap() instanceof Bound.Cap.Count(int max, var rule) && max > 0 && survivors.size() > max) {
+        if (bound.cap() instanceof Bound.Cap.Count(int max) && max > 0 && survivors.size() > max) {
             survivors.sort(Comparator.comparingLong(Tree::mtime));
             for (int i = 0; i < survivors.size() - max; i++) {
                 Tree t = survivors.get(i);

@@ -48,7 +48,7 @@ class ActionKeyTest {
         Files.createDirectories(cache);
         SessionContext.runWhere(Session.defaults().withCacheDir(cache), () -> {
             try {
-                FileHashMemo.clearThreadCache();
+                FileHashMemo.reset();
                 FileHashMemo.resetStats();
                 String key = ActionKey.forJavac("compile-main", request, "0.1.0");
                 var snap = ActionKey.snapshotInputs(request);
@@ -57,7 +57,7 @@ class ActionKeyTest {
                 assertThat(FileHashMemo.contentReads())
                         .as("forJavac + snapshotInputs share one content read")
                         .isEqualTo(1);
-                assertThat(FileHashMemo.threadHits()).isGreaterThanOrEqualTo(1);
+                assertThat(FileHashMemo.memoHits()).isGreaterThanOrEqualTo(1);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

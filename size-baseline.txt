@@ -295,12 +295,14 @@
 1422  shared/core/src/main/java/cc/jumpkick/resolver/DependencyTree.java
 
 # T59: the parsed shape of jk.toml, one nested record per block. It splits cleanly by block and
-# there is no cross-block invariant — ratchet only. Thirteen lines over the previous 1,218 because
-# jk.toml itself grew a key: `[native] metadata-repository` (JK-2476) took `NativeConfig` past the
-# width where a record header fits on one line. A manifest key that this file declines to model is
-# a key the parser drops on the floor and the renderer cannot round-trip, which is the defect
-# JK-2098 filed against `graal`; growing with the format is this file's job.
-1231  shared/jk-api/src/main/java/cc/jumpkick/model/JkBuild.java
+# there is no cross-block invariant — ratchet only. Growth history: +13 over 1,218 when
+# `[native] metadata-repository` (JK-2476) took `NativeConfig` past the width where a record
+# header fits on one line; +13 more when `NativeConfig.executableBasename` landed (`jk` and
+# `jk.exe` are one logical name — the Windows action-cache fix), which belongs beside the record
+# it canonicalises. A manifest key that this file declines to model is a key the parser drops on
+# the floor and the renderer cannot round-trip, which is the defect JK-2098 filed against
+# `graal`; growing with the format is this file's job. JK-2439 owns the peel.
+1244  shared/jk-api/src/main/java/cc/jumpkick/model/JkBuild.java
 
 # T51 / T59: every wire key is typed twice, once to write and once to decode, and the pair must
 # agree. The fix is generation, not a split — two hand-written halves in two files is strictly

@@ -4,7 +4,6 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -90,16 +89,19 @@ class NerdFontDetectCostTest {
                 return Optional.empty();
             }
         };
-        // A broken source must degrade to "no glyphs", never propagate. Nerd-font detection is not
-        // allowed to fail a build.
-        for (Map<String, String> e : List.of(
-                env("TERM_PROGRAM", "iTerm.app"),
-                env("ALACRITTY_LOG", "x"),
-                env("TERM_PROGRAM", "vscode"),
-                env("TERM_PROGRAM", "zed"))) {
-            var r = NerdFontDetect.detect(e::get, hostile);
-            assertThat(r).as("env %s", e).isNotNull();
-            assertThat(r.caps()).as("env %s", e).isEqualTo(NerdFontCaps.NONE);
+        // A broken source must degrade to the terminal's floor, never propagate. Nerd-font detection
+        // is not allowed to fail a build. Alacritty's floor is the wedge it draws itself, so a dead
+        // source costs it the pill upgrade and nothing more.
+        record Case(Map<String, String> env, NerdFontCaps floor) {}
+        for (Case c : new Case[] {
+            new Case(env("TERM_PROGRAM", "iTerm.app"), NerdFontCaps.NONE),
+            new Case(env("ALACRITTY_LOG", "x"), NerdFontCaps.WEDGE_ONLY),
+            new Case(env("TERM_PROGRAM", "vscode"), NerdFontCaps.NONE),
+            new Case(env("TERM_PROGRAM", "zed"), NerdFontCaps.NONE),
+        }) {
+            var r = NerdFontDetect.detect(c.env()::get, hostile);
+            assertThat(r).as("env %s", c.env()).isNotNull();
+            assertThat(r.caps()).as("env %s", c.env()).isEqualTo(c.floor());
         }
     }
 
