@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
@@ -153,7 +154,7 @@ class ProvenanceTest {
                 root = { group = "com.foo", name = "root", version = "1.0" }
                 """);
 
-        JkBuild workspaceRoot = JkBuild.builder(new JkBuild.Project("com.example", "workspace", "0.1.0", 0))
+        JkBuild workspaceRoot = JkBuild.builder(new Project("com.example", "workspace", "0.1.0", 0))
                 .workspace(new Workspace(List.of("mod-a")))
                 .build();
 
@@ -202,8 +203,7 @@ class ProvenanceTest {
             deps.add(new Dependency(m, new VersionSelector.Exact("=1.0", "1.0")));
         }
         return new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
-                new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
+                new Project("com.example", "widget", "0.1.0", 0), new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
     }
 
     private static Lockfile lockOf(Lockfile.Artifact... packages) {

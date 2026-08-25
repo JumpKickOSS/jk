@@ -5,7 +5,7 @@
 # parser with no classpath, so it resolved nothing and shortened nothing, and twelve module audits
 # each filed the same finding independently. JK-2408 threaded the classpath in; JK-2412 swept the
 # tree. 4,306 package-qualified references across 622 files became 878 across 253, and the
-# round-3 owner sweeps took it to 650 across 144 — the count below, which the guard prints
+# round-3 owner sweeps took it to 598 across 135 — the count below, which the guard prints
 # whenever a listed file shrinks. Retighten from that printout; never retype it.
 #
 # What a package-qualified reference is, for counting: two or more all-lowercase dot-separated
@@ -42,11 +42,18 @@
 # `cc.jumpkick.scaffold.NewScaffolder` it delegates to cannot be imported.
     3  clients/cli/src/test/java/cc/jumpkick/command/NewScaffolder.java
 
-# Three simple names are claimed twice by Zinc's own API surface:
-# `JavaCompiler` is both `xsbti.compile.JavaCompiler` (imported) and `javax.tools.JavaCompiler`,
-# and `Javadoc` is both `sbt.internal.inc.javac.Javadoc` (imported) and `xsbti.compile.Javadoc`.
-# The remaining `xsbti.*` names in this file are off the format classpath (see the last section).
-   13  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java
+# `Javadoc` is claimed twice by Zinc's own API surface: `sbt.internal.inc.javac.Javadoc` (imported,
+# because it owns the `local()`/`fork()` factories) and `xsbti.compile.Javadoc`, which is what they
+# return. One of the two has to be spelled out and it is the return type.
+    1  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ScalaBridge.java
+
+# `JavaCompiler` is claimed twice by Zinc's own API surface: `xsbti.compile.JavaCompiler`
+# (imported, because it is the type this worker hands Zinc) and `sbt.internal.inc.javac.JavaCompiler`,
+# whose `local()`/`fork()` build one. Both remaining references are that second name. Was 13 before
+# JK-2439 split the Zinc SPI adapters and the scalac construction into their own files; the
+# `javax.tools.JavaCompiler` half of the collision left with ProvenanceJavac and the `Javadoc` half
+# with ScalaBridge above.
+    2  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java
 
 # This record nests its own `Diagnostic`, so the javac enum it maps
 # from stays `javax.tools.Diagnostic.Kind`.
@@ -130,7 +137,6 @@
     9  shared/core/src/main/java/cc/jumpkick/builds/ProjectBuilds.java
     5  shared/core/src/main/java/cc/jumpkick/config/ManifestProject.java
     1  shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginDescriptors.java
-   22  shared/core/src/main/java/cc/jumpkick/resolver/DependencyTree.java
     2  shared/dynamic-surface/src/main/java/cc/jumpkick/surface/DynamicSurface.java
     6  shared/jk-api/src/main/java/cc/jumpkick/run/BuildPlan.java
     3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java
@@ -167,7 +173,6 @@
     1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/engine/package-info.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
-    2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TerminalSizeTest.java
     1  clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java
     3  clients/cli/src/test/java/cc/jumpkick/command/SelfNukeCommandTest.java
     1  plugins/formatter/src/main/java/cc/jumpkick/format/CodeFormatter.java
@@ -194,7 +199,6 @@
     1  server/engine/src/test/java/cc/jumpkick/engine/jobs/JobEnvelopeTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/plugin/JvmOptionsTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/plugin/PluginProcessTest.java
-    1  server/engine/src/test/java/cc/jumpkick/engine/protocol/EngineProtocolTest.java
     2  server/engine/src/test/java/cc/jumpkick/engine/runtime/CacheInventoryOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/runtime/NewProjectOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/giter8/Giter8TemplateIndexTest.java
@@ -209,20 +213,13 @@
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java
-    5  server/io/src/test/java/cc/jumpkick/repo/MavenRepoM2LookupTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/MavenPackageSourceExclusionTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/NiaWarmLockTimingTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/PlatformBomVersionsTest.java
-    2  shared/client-io/src/main/java/cc/jumpkick/cache/ExplodedArchives.java
-    1  shared/client-io/src/main/java/cc/jumpkick/http/HostCooldown.java
-    1  shared/client-io/src/main/java/cc/jumpkick/repo/LibraryRegistrySync.java
-    1  shared/client-io/src/test/java/cc/jumpkick/cache/CasTest.java
-    2  shared/client-io/src/test/java/cc/jumpkick/cache/EngineInstallTest.java
     1  shared/client-io/src/test/java/cc/jumpkick/http/HostCooldownTest.java
     3  shared/client-io/src/test/java/cc/jumpkick/repo/RepoArtifactStoreTest.java
     1  shared/client-io/src/test/java/cc/jumpkick/repo/RepoCredentialResolverTest.java
     1  shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java
-    5  shared/core/src/test/java/cc/jumpkick/config/JkBuildParserTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/JkBuildWorkspaceTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/ModuleDotGraphTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/NerdFontDetectCostTest.java

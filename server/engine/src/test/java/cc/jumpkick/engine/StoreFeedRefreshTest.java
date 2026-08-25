@@ -158,9 +158,14 @@ class StoreFeedRefreshTest {
         assertThat(libHits.get()).isEqualTo(1);
         assertThat(lastIfNoneMatch).isEqualTo(ETAG);
         assertThat(jdkHits.get()).isZero();
-        // 304 path touches mtime so the next 12 h window is quiet.
+        // The 304 path touches mtime so the next 12h window is quiet. The bound is 5 minutes
+        // against a 12-hour window: it distinguishes "touched during this test" from "left at the
+        // fixture's backdated mtime", and nothing finer. Tightening it would make it a measurement
+        // of how long this test took to run (JK-2446).
         Instant mtime = Files.getLastModifiedTime(libs).toInstant();
-        assertThat(Duration.between(mtime, Instant.now()).toMinutes()).isLessThan(5);
+        assertThat(Duration.between(mtime, Instant.now()))
+                .as("the 304 refreshed the mtime, so the 12h quiet window restarts")
+                .isLessThan(Duration.ofMinutes(5));
     }
 
     @Test

@@ -150,7 +150,7 @@ workspace member missing its `jk.toml`, IO failure — is a **422** with `{ erro
 broken; a malformed `dir` or unknown scope is a **400**. Token-gated like `/api/project`. The SPA
 loads this **only** when the Dependencies panel opens.
 
-The default scope set is defined once — `DependencyTree.defaultScopeOrder()` (`export`, `main`,
+The default scope set is defined once — `DependencyTreeStyle.defaultScopeOrder()` (`export`, `main`,
 `runtime`) — and shared verbatim by `jk tree` and this endpoint. Declared-only is the default on
 both; `transitive=1` matches `jk tree -t` / `--transitive`.
 

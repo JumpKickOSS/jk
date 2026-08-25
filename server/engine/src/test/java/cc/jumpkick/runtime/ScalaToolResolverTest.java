@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.resolver.VersionSelectors;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -73,12 +74,12 @@ class ScalaToolResolverTest {
 
     @Test
     void exact_scala_selector_does_not_need_the_catalog() {
-        JkBuild build = JkBuild.of(JkBuild.Project.builder("com.example", "app", "1.0.0")
+        JkBuild build = JkBuild.of(Project.builder("com.example", "app", "1.0.0")
                 .scala(VersionSelector.parse("=3.8.4"))
                 .build());
         assertThat(LockPipeline.resolveScalaVersion(build, null)).isEqualTo("3.8.4");
         JkBuild javaOnly = JkBuild.of(
-                JkBuild.Project.builder("com.example", "app", "1.0.0").java(25).build());
+                Project.builder("com.example", "app", "1.0.0").java(25).build());
         assertThat(LockPipeline.resolveScalaVersion(javaOnly, null)).isNull();
     }
 }

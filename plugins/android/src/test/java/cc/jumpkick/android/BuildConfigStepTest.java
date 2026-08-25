@@ -3,6 +3,7 @@ package cc.jumpkick.android;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,7 +21,7 @@ class BuildConfigStepTest {
     /** The default build is debug: {@code DEBUG = true}, the app id is the bare namespace. */
     @Test
     void a_debug_build_generates_the_namespace_package_and_debug_true(@TempDir Path tmp) throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp);
+        FakeBuildIo exec = AndroidIo.step(tmp);
 
         BuildConfigStep.run(exec);
 
@@ -32,12 +33,12 @@ class BuildConfigStepTest {
                 .contains("public static final String APPLICATION_ID = \"com.example.app\";")
                 .contains("public static final String VERSION_NAME = \"1.0.0\";")
                 .contains("public static final int VERSION_CODE = 1;");
-        assertThat(exec.labels).contains("BuildConfig");
+        assertThat(exec.labels()).contains("BuildConfig");
     }
 
     @Test
     void a_release_build_generates_debug_false(@TempDir Path tmp) throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp).config("build-type", "release");
+        FakeBuildIo exec = AndroidIo.step(tmp).config("build-type", "release");
 
         BuildConfigStep.run(exec);
 
@@ -47,7 +48,7 @@ class BuildConfigStepTest {
     /** The variant's {@code application-id-suffix} rides {@code APPLICATION_ID}, not the package. */
     @Test
     void the_application_id_carries_the_variant_suffix_and_the_package_does_not(@TempDir Path tmp) throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp).config("application-id-suffix", ".debug");
+        FakeBuildIo exec = AndroidIo.step(tmp).config("application-id-suffix", ".debug");
 
         BuildConfigStep.run(exec);
 
@@ -59,7 +60,7 @@ class BuildConfigStepTest {
     /** {@code build-config-fields} entries are verbatim declarations, trimmed and nothing more. */
     @Test
     void custom_fields_pass_through_verbatim(@TempDir Path tmp) throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp)
+        FakeBuildIo exec = AndroidIo.step(tmp)
                 .config(
                         "build-config-fields",
                         List.of("String BACKEND_URL = \"https://api.example.com\"", "  long TIMEOUT_MS = 30000L  "));
@@ -72,7 +73,7 @@ class BuildConfigStepTest {
     }
 
     /** The file the compile step will pick up out of the {@code gen} output dir. */
-    private static String generated(FakeTaskExec exec) throws Exception {
+    private static String generated(FakeBuildIo exec) throws Exception {
         return Files.readString(exec.scratch().resolve("gen/com/example/app/BuildConfig.java"));
     }
 }

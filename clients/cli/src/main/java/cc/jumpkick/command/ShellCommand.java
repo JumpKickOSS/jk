@@ -13,7 +13,6 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.terminal.Terminals;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -71,8 +70,6 @@ public final class ShellCommand implements CliCommand {
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");
         ProcessBuilder pb = new ProcessBuilder(shell);
         pb.directory(dir.toFile());
-        Terminals.restoreForChild();
-        pb.inheritIO();
         var env = pb.environment();
         target.vars().forEach(env::put);
         // Strip the vars through which the surrounding shell could out-vote the pin we just applied
@@ -82,7 +79,7 @@ public final class ShellCommand implements CliCommand {
 
         var javaHome = target.vars().get(JkEnv.JAVA_HOME);
         CliOutput.out("Entering jk shell with JAVA_HOME=" + javaHome);
-        Process p = pb.start();
+        Process p = CliOutput.handOffTerminal(pb);
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();

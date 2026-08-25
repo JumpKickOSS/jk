@@ -65,8 +65,7 @@ class SigningPasswordFileTest {
     @Test
     void keytool_argv_carries_no_password(@TempDir Path dir) throws Exception {
         try (Signing.PasswordFile pass = Signing.passwordFile(DebugKeystore.PASSWORD)) {
-            List<String> argv =
-                    DebugKeystore.genKeypairCommand(dir.resolve("keytool"), dir.resolve("debug.keystore"), pass);
+            List<String> argv = DebugKeystore.genKeypairArgs(dir.resolve("debug.keystore"), pass);
 
             assertThat(argv).contains("-storepass:file", "-keypass:file", pass.arg());
             assertThat(argv).doesNotContain("-storepass", "-keypass", DebugKeystore.PASSWORD);

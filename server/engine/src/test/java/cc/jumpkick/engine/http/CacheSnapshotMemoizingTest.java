@@ -3,6 +3,8 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.Await;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -10,6 +12,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class CacheSnapshotMemoizingTest {
@@ -22,17 +25,27 @@ class CacheSnapshotMemoizingTest {
         int n = 8;
         AtomicInteger walks = new AtomicInteger();
         CountDownLatch callersArrived = new CountDownLatch(n);
+        List<Thread> callers = Collections.synchronizedList(new ArrayList<>());
         CacheSnapshot.Memoizing memo = CacheSnapshot.memoizing(
                 () -> {
                     walks.incrementAndGet();
                     try {
                         // Coalescing is only exercised while the walk is in flight, so hold it until
-                        // every caller has reached get(); the short tail covers the unobservable gap
-                        // between reaching get() and parking on the memo's lock.
+                        // every caller is provably contending. "Reached get()" is not that: a caller
+                        // counts down and is then briefly RUNNABLE before it parks on the memo's
+                        // lock, and this used to cover that gap with a bare Thread.sleep(50) — a
+                        // guess about scheduling on this machine (JK-2446). Thread state IS
+                        // observable, so wait for the followers to be off the CPU instead.
                         assertThat(callersArrived.await(30, TimeUnit.SECONDS))
                                 .as("all callers reach get() before the walk returns")
                                 .isTrue();
-                        Thread.sleep(50);
+                        Thread walker = Thread.currentThread();
+                        Await.until(
+                                Duration.ofSeconds(30),
+                                () -> callers.stream()
+                                        .filter(t -> t != walker)
+                                        .allMatch(t -> t.getState() != Thread.State.RUNNABLE),
+                                () -> "followers never parked on the memo lock: " + states(callers, walker));
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
@@ -47,6 +60,7 @@ class CacheSnapshotMemoizingTest {
             Thread.ofVirtual().start(() -> {
                 try {
                     start.await(30, TimeUnit.SECONDS);
+                    callers.add(Thread.currentThread());
                     callersArrived.countDown();
                     assertThat(memo.get()).isSameAs(SNAP);
                 } catch (Throwable e) {
@@ -61,6 +75,14 @@ class CacheSnapshotMemoizingTest {
         assertThat(walks.get()).isEqualTo(1);
         memo.get();
         assertThat(walks.get()).isEqualTo(1);
+    }
+
+    /** Follower thread states, for the poll's timeout message. */
+    private static String states(List<Thread> callers, Thread walker) {
+        return callers.stream()
+                .filter(t -> t != walker)
+                .map(t -> t.getName() + "=" + t.getState())
+                .collect(Collectors.joining(", "));
     }
 
     @Test

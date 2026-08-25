@@ -4,7 +4,8 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.JsonOut;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -184,43 +185,64 @@ class LiveVitalsTest {
         }
     }
 
+    /**
+     * "Hydrate did not walk the store" is a <em>negative</em>, and it used to be inferred from the
+     * clock: the capture supplier slept 1s and the test asserted the hydrate returned in under
+     * 900ms. 100ms of headroom on a machine running 59 test tasks in parallel is not a measurement,
+     * and a sleep that is "long enough" here is how a fake green hides (JK-2446).
+     *
+     * <p>This trips instead of timing. The supplier counts down a latch when it is <em>entered</em>,
+     * so the test observes the walk itself rather than its duration; re-arming the latch after the
+     * seed gives the negative assertion a positive control — the same latch is proved to fire on the
+     * seed walk, so "it never fired" cannot mean "the latch was never wired up".
+     *
+     * <p>Reading the count immediately after {@code hydrateFor} returns is sound because
+     * {@code hydrateFor} is synchronous and, by its own contract, schedules nothing: any walk it was
+     * going to start has started by the time the frames are readable.
+     */
+    private record WalkProbe(Supplier<CacheSnapshot> capture, AtomicReference<CountDownLatch> started) {
+        static WalkProbe returning(CacheSnapshot snapshot) {
+            AtomicReference<CountDownLatch> started = new AtomicReference<>(new CountDownLatch(1));
+            return new WalkProbe(
+                    () -> {
+                        started.get().countDown();
+                        return snapshot;
+                    },
+                    started);
+        }
+
+        void assertWalked(String why) throws InterruptedException {
+            assertThat(started.get().await(30, TimeUnit.SECONDS)).as(why).isTrue();
+            started.set(new CountDownLatch(1)); // re-arm for the next claim
+        }
+
+        void assertDidNotWalk(String why) {
+            assertThat(started.get().getCount()).as(why).isEqualTo(1L);
+        }
+    }
+
     @Test
     void hydrate_serves_last_snapshot_without_a_fresh_walk() throws Exception {
-        // connect hydrate must not run the store walk on the connect path. With a
-        // captured snapshot present, the frame arrives immediately even when a fresh capture
-        // would take much longer than the read timeout.
+        // connect hydrate must re-send the stored snapshot, never run the store walk on the
+        // connect path: exclusive walks allocate tens of MiB, and a reconnect storm would repeat it.
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         CacheSnapshot snapshot = new CacheSnapshot(
                 10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0, 0, 0, 0, 0);
-        AtomicInteger captures = new AtomicInteger();
-        Supplier<CacheSnapshot> slowCapture = () -> {
-            captures.incrementAndGet();
-            try {
-                Thread.sleep(1_000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            return snapshot;
-        };
-        try (LiveVitals live = new LiveVitals(hub, status::get, slowCapture);
+        WalkProbe probe = WalkProbe.returning(snapshot);
+        try (LiveVitals live = new LiveVitals(hub, status::get, probe.capture());
                 HttpEvents.Subscription sub = hub.subscribe()) {
-            // Seed the snapshot the way the sampler would (one slow capture, off-path here).
+            // Seed the snapshot the way the sampler would — and prove the probe fires on a real walk,
+            // so the "did not walk" claim below cannot pass by being wired to nothing.
             live.publishCache(true);
             assertThat(sub.next(2_000)).contains("event: cache");
-            int afterSeed = captures.get();
+            probe.assertWalked("the seed publishCache(true) must walk");
 
-            long before = System.nanoTime();
             live.hydrateFor(sub);
             // First hydrate frame is the status; the cache frame follows from the stored snapshot.
-            String status1 = sub.next(500);
-            String frame = sub.next(500);
-            long elapsedMillis = (System.nanoTime() - before) / 1_000_000;
-            assertThat(status1).isNotNull().contains("event: status");
-            assertThat(frame).isNotNull().contains("event: cache").contains("\"thin\":true");
-            assertThat(elapsedMillis).isLessThan(900); // served from the stored snapshot, not a walk
-            Thread.sleep(50);
-            assertThat(captures.get()).isEqualTo(afterSeed); // no async refresh walk on hydrate
+            assertThat(sub.next(2_000)).isNotNull().contains("event: status");
+            assertThat(sub.next(2_000)).isNotNull().contains("event: cache").contains("\"thin\":true");
+            probe.assertDidNotWalk("hydrate re-sends the stored snapshot; it must not walk");
         }
     }
 
@@ -228,18 +250,17 @@ class LiveVitalsTest {
     void hydrate_without_snapshot_does_not_walk() throws Exception {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
-        AtomicInteger captures = new AtomicInteger();
-        Supplier<CacheSnapshot> capture = () -> {
-            captures.incrementAndGet();
-            return new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0, 0, 0, 0, 0);
-        };
-        try (LiveVitals live = new LiveVitals(hub, status::get, capture);
+        WalkProbe probe = WalkProbe.returning(
+                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0, 0, 0, 0, 0));
+        try (LiveVitals live = new LiveVitals(hub, status::get, probe.capture());
                 HttpEvents.Subscription sub = hub.subscribe()) {
             live.hydrateFor(sub);
-            assertThat(sub.next(500)).contains("event: status");
-            assertThat(sub.next(100)).isNull(); // no cache frame without a stored snapshot
-            Thread.sleep(50);
-            assertThat(captures.get()).isZero();
+            assertThat(sub.next(2_000)).contains("event: status");
+            // No stored snapshot, so no cache frame — and hydrate must not go and make one. The read
+            // below is bounded rather than latched because it asserts the ABSENCE of a frame on a
+            // queue that `hydrateFor` has already finished writing to.
+            assertThat(sub.next(200)).isNull();
+            probe.assertDidNotWalk("hydrate with no stored snapshot must not walk either");
         }
     }
 

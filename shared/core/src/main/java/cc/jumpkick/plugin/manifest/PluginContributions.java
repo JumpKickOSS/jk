@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -33,13 +34,13 @@ public final class PluginContributions {
      * (before resolution; the manifest loader already rejected classpath-has conditions here).
      */
     public static List<PlatformDep> platformDependencies(
-            JkBuild.Project project, boolean nativeDeclared, Map<String, PluginConfig> pluginConfigs) {
+            Project project, boolean nativeDeclared, Map<String, PluginConfig> pluginConfigs) {
         return platformDependencies(project, nativeDeclared, pluginConfigs, PluginTableRegistry.manifests());
     }
 
     /** As above against an explicit manifest set (the parser passes built-ins + resolved third-party). */
     public static List<PlatformDep> platformDependencies(
-            JkBuild.Project project,
+            Project project,
             boolean nativeDeclared,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> manifests) {
@@ -404,7 +405,7 @@ public final class PluginContributions {
     private static boolean holds(
             PluginDescriptor.Condition when,
             PluginConfig config,
-            JkBuild.Project project,
+            Project project,
             boolean nativeDeclared,
             Set<String> classpathModules,
             String pluginId) {

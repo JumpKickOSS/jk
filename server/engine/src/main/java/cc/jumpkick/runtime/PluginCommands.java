@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -66,6 +67,11 @@ public final class PluginCommands {
                     .project(PluginBuild.facts(project, project.mainClass()))
                     .layout(layout.classesDir(), dir, scratch)
                     .artifact(PluginBuild.mainArtifactPath(layout, active))
+                    // The project's pinned JDK, so `PluginCommandExec.tool("keytool")` forks the
+                    // same JDK the build compiles with. Non-installing: a command must run before
+                    // provisioning (`jk android licenses`), so this locates a pin or falls back to
+                    // the running JVM — it never fetches one.
+                    .javaHome(JavaHomes.resolveJavaHome(dir))
                     .commandArgs(args);
             // Commands get the step lane's tools (a bundletool the packager also reads) plus the
             // [[contribute.command-dependency]] lane (an adb no step reads) — both best-effort:

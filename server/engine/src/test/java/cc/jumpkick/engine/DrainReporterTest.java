@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.testing.Await;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -180,7 +182,7 @@ class DrainReporterTest {
                 .as("the reporter did run")
                 .isTrue();
         draining.set(false);
-        waitUntil(() -> connector.handed.get(0).closed);
+        Await.until(Duration.ofSeconds(5), () -> connector.handed.get(0).closed);
 
         assertThat(connector.handed).hasSize(1);
         assertThat(connector.linesOn(0))
@@ -214,13 +216,5 @@ class DrainReporterTest {
         r.predecessorFinished(-1);
 
         assertThat(log).isEmpty();
-    }
-
-    private static void waitUntil(BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) throw new AssertionError("condition not met within 5s");
-            Thread.sleep(5);
-        }
     }
 }

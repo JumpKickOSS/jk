@@ -8,6 +8,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
+import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,7 +27,7 @@ public final class CompileSupport {
     private CompileSupport() {}
 
     /** One shared language answer for engine lanes and the resolver inject. */
-    public static Languages resolveLanguages(JkBuild.Project project, Path projectDir) {
+    public static Languages resolveLanguages(Project project, Path projectDir) {
         return Languages.resolve(project, projectDir);
     }
 
@@ -43,13 +44,13 @@ public final class CompileSupport {
     }
 
     /** Whether this project uses the flat ({@code src/}/{@code test/}) layout. */
-    public static boolean isSimpleLayout(JkBuild.Project project, Path projectDir) {
+    public static boolean isSimpleLayout(Project project, Path projectDir) {
         return SourceLayout.isSimpleLayout(project, projectDir);
     }
 
     /**
      * Path-only layout probe: honors {@code layout =} in {@code jk.toml} when present, else the
-     * tree. Prefer {@link #isSimpleLayout(JkBuild.Project, Path)} when the project is already
+     * tree. Prefer {@link #isSimpleLayout(Project, Path)} when the project is already
      * parsed (workspace inheritance).
      */
     public static boolean isSimpleLayout(Path projectDir) {

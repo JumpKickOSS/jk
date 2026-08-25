@@ -22,6 +22,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -89,7 +90,7 @@ public final class PlannerTails {
                 leaves.add(TaskNames.NATIVE_IMAGE);
                 joinStage = BuildStage.NATIVE;
             }
-            if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
+            if (project.project().sourcesMode() == SourcesMode.ALWAYS) {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
             }

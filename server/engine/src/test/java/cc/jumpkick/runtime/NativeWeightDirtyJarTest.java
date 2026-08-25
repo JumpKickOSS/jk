@@ -4,8 +4,10 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.JkThreads;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,6 +18,16 @@ import org.junit.jupiter.api.io.TempDir;
  * 100% for the entire Graal run).
  */
 class NativeWeightDirtyJarTest {
+
+    /**
+     * Backdate {@code older} a clear minute behind {@code newer}. Two writes in a row can land on
+     * the same mtime tick on a coarse filesystem, and a {@code Thread.sleep(20)} between them is a
+     * bet on this machine's clock resolution rather than a statement of the fixture's shape.
+     */
+    private static void stampOlder(Path older, Path newer) throws IOException {
+        long newerMillis = Files.getLastModifiedTime(newer).toMillis();
+        Files.setLastModifiedTime(older, FileTime.fromMillis(newerMillis - 60_000L));
+    }
 
     @Test
     void nativeWeight_over_reserves_when_main_sources_are_dirty(@TempDir Path dir) throws Exception {
@@ -37,8 +49,10 @@ class NativeWeightDirtyJarTest {
         Path jar = target.resolve("demo-0.0.1.jar");
         Path nativeBin = target.resolve("demo");
         Files.writeString(jar, "old-jar");
-        Thread.sleep(20);
         Files.writeString(nativeBin, "old-native");
+        // "Native binary newer than the jar" is the fixture's whole point, so state it instead of
+        // sleeping 20ms and trusting the filesystem's mtime granularity to notice (JK-2446).
+        stampOlder(jar, nativeBin);
         // No classes stamp / stamp older than source → mainJarWillChange
         assertThat(EffortWeights.mainJarWillChange(dir)).isTrue();
         int w = EffortWeights.nativeWeight(dir);
@@ -95,8 +109,9 @@ class NativeWeightDirtyJarTest {
         Path jar = dir.resolve("target/demo-0.0.1.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "jar");
-        Thread.sleep(20);
-        Files.writeString(dir.resolve("target/demo"), "native-bin");
+        Path nativeBin = dir.resolve("target/demo");
+        Files.writeString(nativeBin, "native-bin");
+        stampOlder(jar, nativeBin);
 
         // Without over-reserve, a "fresh" binary can collapse to SKIP/TOKEN.
         // With over-reserve (dirty prepare), full learned/cold wall is reserved up front.

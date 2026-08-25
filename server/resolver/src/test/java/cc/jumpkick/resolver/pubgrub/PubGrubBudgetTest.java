@@ -80,17 +80,24 @@ class PubGrubBudgetTest {
                 .version("leaf", "1.0")
                 .version("leaf", "2.0")
                 .build();
-        PubGrubSolver solver = new PubGrubSolver(src, 10_000, 5_000);
-        long start = System.nanoTime();
+        // "Does not thrash" is a claim about WORK, and the work here is the solver's own step
+        // budget — not the wall clock. A tight decision budget makes the claim deterministic: a
+        // thrashing solve exhausts it and reports "budget exceeded", while a solve that fails
+        // closed on the real conflict never approaches it. This used to read
+        // `assertThat(ms).isLessThan(2_000L)`, which measured the machine — on a pure in-memory
+        // solve with no I/O to be slow at, that number only ever moved under load (JK-2446).
+        // @Timeout(5) above stays as the liveness net: if the solve hangs, the test still ends.
+        PubGrubSolver solver = new PubGrubSolver(src, /* maxDecisions */ 16, /* timeoutMs */ 0);
         assertThatThrownBy(() -> solver.solve(
                         "root",
                         "1.0",
                         List.of(
                                 Term.positive("a", VersionSet.exact("1.0")),
                                 Term.positive("b", VersionSet.exact("1.0")))))
-                .isInstanceOf(UnsatisfiableException.class);
-        long ms = (System.nanoTime() - start) / 1_000_000L;
-        assertThat(ms).as("unsat should fail closed quickly, not thrash").isLessThan(2_000L);
+                .isInstanceOf(UnsatisfiableException.class)
+                .satisfies(ex -> assertThat(Diagnostics.render(((UnsatisfiableException) ex).rootCause()))
+                        .as("fails closed on the diamond conflict, not by burning the budget")
+                        .doesNotContain("budget exceeded"));
     }
 
     @Test
@@ -115,8 +122,11 @@ class PubGrubBudgetTest {
             }
         };
 
-        PubGrubSolver solver = new PubGrubSolver(src, 50_000, 0);
-        long start = System.nanoTime();
+        // Same substitution as above: a tight decision budget in place of a millisecond budget.
+        // The old form also let "budget" satisfy the message assertion, so a solve that thrashed
+        // into its own budget and one that failed closed on the missing version were
+        // indistinguishable — and the `< 5_000L` next to it was a fact about the machine.
+        PubGrubSolver solver = new PubGrubSolver(src, /* maxDecisions */ 16, /* timeoutMs */ 0);
         assertThatThrownBy(() -> solver.solve(
                         "root",
                         "1.0",
@@ -126,10 +136,13 @@ class PubGrubBudgetTest {
                 .isInstanceOf(UnsatisfiableException.class)
                 .satisfies(ex -> {
                     String msg = Diagnostics.render(((UnsatisfiableException) ex).rootCause());
-                    assertThat(msg.toLowerCase()).containsAnyOf("budget", "loop", "watermark", "no version", "cannot");
+                    assertThat(msg.toLowerCase())
+                            .as("names the unsatisfiable requirement")
+                            .containsAnyOf("loop", "watermark", "no version", "cannot");
+                    assertThat(msg)
+                            .as("fails closed on the missing version, not by burning the budget")
+                            .doesNotContain("budget exceeded");
                 });
-        long ms = (System.nanoTime() - start) / 1_000_000L;
-        assertThat(ms).as("must not spin for minutes").isLessThan(5_000L);
     }
 
     @Test

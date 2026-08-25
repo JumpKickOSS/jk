@@ -239,7 +239,7 @@ public final class WorkspaceMerge {
         // sibling's name directly.
         JkBuild sibling = siblingByArtifact.get(name);
         if (sibling != null) {
-            JkBuild.Project p = sibling.project();
+            Project p = sibling.project();
             String module = p.group() + ":" + p.name();
             // Preserve kind so a tests-kind edge stays distinguishable until classpath
             // resolution (WorkspaceClasspath keys off kind). For lock, siblings are dropped.

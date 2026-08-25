@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
@@ -37,6 +38,6 @@ class LockOrchestratorFloatingBomTest {
     private static JkBuild jkBuild(Map<Scope, List<Dependency>> byScope) {
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
         copy.putAll(byScope);
-        return new JkBuild(new JkBuild.Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(copy));
+        return new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(copy));
     }
 }

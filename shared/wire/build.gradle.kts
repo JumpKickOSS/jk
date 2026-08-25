@@ -15,6 +15,11 @@ dependencies {
     api(project(":core"))
     // EngineProtocol encodes/decodes with the shared Jsonl codec (not the plugin SPI).
     api(project(":host"))
+    // TEST ONLY. `EngineProtocol.INVOCATION_PHASE` frames carry the wire names of :plugin-sdk's
+    // InvocationPhase enum, and EngineProtocolTest closes that set against the enum itself rather
+    // than restating it. The enum is the owner; production code here only ever sees the String, so
+    // this edge stays out of `api`/`implementation` and never reaches a client classpath (JK-2444).
+    testImplementation(project(":plugin-sdk"))
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +65,7 @@ fun readsTheKey(body: String, name: String): Boolean {
     return false
 }
 
+// Guard G28 (JK-2424).
 val checkNoRetiredWireSpelling by tasks.registering {
     group = "verification"
     description = "Fail the build on a retired wire-key spelling typed as a field key in production source"

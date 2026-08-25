@@ -73,10 +73,9 @@ public final class GradleCommand implements CliCommand {
         List<String> command = new ArrayList<>();
         command.add(gradleBin.toString());
         command.addAll(args);
-        ProcessBuilder pb =
-                new ProcessBuilder(command).directory(projectDir.toFile()).inheritIO();
+        ProcessBuilder pb = new ProcessBuilder(command).directory(projectDir.toFile());
         PassthroughEnv.apply(pb.environment(), jdk.map(InstalledJdk::home).orElse(null));
-        Process p = pb.start();
+        Process p = CliOutput.handOffTerminal(pb);
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();

@@ -10,6 +10,7 @@ import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -66,7 +67,7 @@ public final class PomImporter {
         Pom pom = PomParser.parse(doc);
         ImportReport.Builder report = ImportReport.builder();
 
-        JkBuild.Project project = mapProject(pom, doc, report, suppressParentMatching);
+        Project project = mapProject(pom, doc, report, suppressParentMatching);
         Map<Scope, List<Dependency>> byScope = mapDependencies(pom, report);
         List<RepositorySpec> repos = mapRepositories(doc, report);
         warnUnsupportedSections(doc, report, /* isWorkspaceRoot= */ false);
@@ -123,7 +124,7 @@ public final class PomImporter {
 
         ImportReport.Builder report = ImportReport.builder();
         Pom rootPomParsed = PomParser.parse(rootDoc);
-        JkBuild.Project rootProject = mapProject(rootPomParsed, rootDoc, report, null);
+        Project rootProject = mapProject(rootPomParsed, rootDoc, report, null);
         // Root coords serve as the "expected parent" for children.
         Pom.Parent expectedParent =
                 new Pom.Parent(rootProject.group(), rootPomParsed.artifactId(), rootProject.version());
@@ -169,7 +170,7 @@ public final class PomImporter {
     }
 
     /**
-     * Map {@code group:artifact} → sibling {@link JkBuild.Project#name()} for every unit in the
+     * Map {@code group:artifact} → sibling {@link Project#name()} for every unit in the
      * workspace (root + members) so inter-module deps become {@code workspace = true}.
      */
     private static Map<String, String> siblingGaIndex(JkBuild root, Collection<JkBuild> modules) {
@@ -247,7 +248,7 @@ public final class PomImporter {
 
     // --- project ------------------------------------------------------------
 
-    private static JkBuild.Project mapProject(
+    private static Project mapProject(
             Pom pom, Document doc, ImportReport.Builder report, Pom.Parent suppressParentMatching) {
         String group = pom.groupId();
         String version = pom.version();
@@ -281,7 +282,7 @@ public final class PomImporter {
         VersionSelector kotlin = kotlinFromPom(doc, report);
         // A Kotlin project sets `kotlin` and leaves `java` at 0 (mutually exclusive).
         int java = kotlin != null ? 0 : jdk;
-        return JkBuild.Project.builder(group, pom.artifactId(), version)
+        return Project.builder(group, pom.artifactId(), version)
                 .jdkMajor(jdk)
                 .java(java)
                 .kotlin(kotlin)

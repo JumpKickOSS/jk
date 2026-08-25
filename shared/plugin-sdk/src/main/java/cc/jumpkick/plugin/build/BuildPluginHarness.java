@@ -496,6 +496,23 @@ public final class BuildPluginHarness {
                     .filter(Files::isRegularFile);
         }
 
+        /**
+         * Loud rather than defaulted: a command spec with no {@code java-home} line is an engine
+         * bug, and the wrong fallback ({@code System.getProperty("java.home")}) is invisible —
+         * it silently runs the tool on the engine's floor JDK. Same reasoning as the fail-closed
+         * {@code offline} default, opposite direction: there is no safe guess for a JDK.
+         */
+        @Override
+        public Path javaHome() {
+            Path home = spec.javaHome();
+            if (home == null) {
+                throw new IllegalStateException("this command's spec states no JDK — the engine writes it with"
+                        + " SpecWriter.javaHome(). A command body must not fall back to the worker JVM's own"
+                        + " java.home: that is the engine's floor JDK, not the project's pin.");
+            }
+            return home;
+        }
+
         @Override
         public boolean offline() {
             return spec.offline();

@@ -5,13 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.testing.Await;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
-import java.util.function.BooleanSupplier;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -96,20 +98,16 @@ class PluginAotTest {
         Path cache = dir.resolve("java-compiler-0000000000000000.aot");
         PluginAot.trainAsync(
                 "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
-        waitUntil(Duration.ofSeconds(10), () -> Files.exists(cache));
-        Thread.sleep(100); // let the publish sweep finish
+        // The sweep runs inside runTrainer, between publishing the cache and dropping the claim —
+        // so the claim's disappearance is the "trainer done, sweep included" signal. Waiting on
+        // Files.exists(cache) alone races the sweep, which is why this used to carry a bare
+        // Thread.sleep(100): a guess about this machine, and no assertion at all (JK-2446).
+        Path claim = cache.resolveSibling(cache.getFileName() + ".training");
+        Await.until(Duration.ofSeconds(30), () -> Files.exists(cache) && !Files.exists(claim));
         for (Path p : runner) assertThat(p).exists();
     }
 
     // ---- training lifecycle -------------------------------------------------------------------
-
-    private static void waitUntil(Duration timeout, BooleanSupplier cond) throws InterruptedException {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (!cond.getAsBoolean()) {
-            if (System.nanoTime() > deadline) throw new AssertionError("condition not met within " + timeout);
-            Thread.sleep(10);
-        }
-    }
 
     @Test
     void publish_keeps_the_n_most_recently_used_caches_and_expires_dead_keys() throws Exception {
@@ -137,8 +135,8 @@ class PluginAotTest {
         // A stand-in trainer: any command that writes the aot output and exits 0.
         PluginAot.trainAsync(
                 "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
-        waitUntil(Duration.ofSeconds(10), () -> Files.exists(cache));
-        waitUntil(Duration.ofSeconds(10), () -> !Files.exists(stale[4]));
+        Await.until(Duration.ofSeconds(10), () -> Files.exists(cache));
+        Await.until(Duration.ofSeconds(10), () -> !Files.exists(stale[4]));
 
         // Keep 4 by recency: the new cache + the 3 youngest stale keys; the rest reclaimed.
         assertThat(stale[0]).exists();
@@ -157,7 +155,7 @@ class PluginAotTest {
     void failed_training_leaves_a_sticky_noaot_marker_instead_of_a_cache() throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("aot2")).resolve("javac-failkey000000000.aot");
         PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "exit 1"));
-        waitUntil(Duration.ofSeconds(10), () -> Files.exists(AotCacheFiles.marker(cache)));
+        Await.until(Duration.ofSeconds(10), () -> Files.exists(AotCacheFiles.marker(cache)));
         assertThat(cache).doesNotExist();
     }
 
@@ -171,7 +169,7 @@ class PluginAotTest {
             PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "sleep 30"));
             long claimedAt = Files.getLastModifiedTime(claim).toMillis();
             // The timeout branch refreshes the claim's mtime — the observable "overran" signal.
-            waitUntil(Duration.ofSeconds(10), () -> {
+            Await.until(Duration.ofSeconds(10), () -> {
                 try {
                     return Files.getLastModifiedTime(claim).toMillis() > claimedAt;
                 } catch (IOException e) {
@@ -192,9 +190,18 @@ class PluginAotTest {
     void a_fresh_claim_file_from_another_process_blocks_training() throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("aot3")).resolve("javac-claimed000000000.aot");
         Files.createFile(cache.resolveSibling(cache.getFileName() + ".training")); // fresh foreign claim
-        PluginAot.trainAsync(
-                "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
-        Thread.sleep(300); // trainAsync claims synchronously; nothing should have been spawned
+        // Observe the forbidden ACTION, not a side effect of it three steps downstream. The trainer
+        // command is only ever built inside runTrainer, i.e. only if trainAsync spawned a thread —
+        // so the latch firing IS "training started". Sleeping 300ms and then checking the cache file
+        // could not tell "never spawned" from "spawned but slow" (JK-2446).
+        CountDownLatch trainerBuilt = new CountDownLatch(1);
+        PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> {
+            trainerBuilt.countDown();
+            return List.of("bash", "-c", "echo trained > '" + aotOutput + "'");
+        });
+        assertThat(trainerBuilt.await(30, TimeUnit.SECONDS))
+                .as("a fresh foreign claim must block training, but the trainer command was built")
+                .isFalse();
         assertThat(cache).doesNotExist();
     }
 }

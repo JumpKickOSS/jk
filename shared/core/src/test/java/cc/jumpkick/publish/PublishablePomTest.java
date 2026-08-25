@@ -8,6 +8,7 @@ import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.util.EnumMap;
@@ -20,8 +21,7 @@ class PublishablePomTest {
 
     @Test
     void minimal_publishable_pom_has_required_fields_only() {
-        JkBuild project =
-                new JkBuild(new JkBuild.Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty());
+        JkBuild project = new JkBuild(new Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty());
         String xml = PublishablePom.render(project, null).xml();
 
         assertThat(xml).contains("<groupId>com.example</groupId>");
@@ -44,8 +44,7 @@ class PublishablePomTest {
         byScope.put(Scope.MAIN, List.of(Dependency.git("lib", "com.example:lib", source)));
         String xml = PublishablePom.render(
                         new JkBuild(
-                                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
-                                new JkBuild.Dependencies(byScope)),
+                                new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope)),
                         null)
                 .xml();
 
@@ -65,8 +64,8 @@ class PublishablePomTest {
         Dependency externalTests = Dependency.of("helpers", "com.acme:helpers", VersionSelector.parse("=1.2.3"))
                 .withKind(DependencyKind.TESTS);
         byScope.put(Scope.TEST, List.of(siblingTests, externalTests));
-        JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild project =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
 
         String xml =
                 PublishablePom.render(project, null, Set.of("com.example:lib")).xml();
@@ -85,8 +84,8 @@ class PublishablePomTest {
                 Scope.TEST,
                 List.of(Dependency.of("lib", "com.example:lib", VersionSelector.parse("=1.0.0"))
                         .withKind(DependencyKind.TESTS)));
-        JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild project =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
 
         assertThat(PublishablePom.render(project, null).xml()).contains("<artifactId>lib</artifactId>");
     }
@@ -101,8 +100,7 @@ class PublishablePomTest {
 
         String xml = PublishablePom.render(
                         new JkBuild(
-                                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
-                                new JkBuild.Dependencies(byScope)),
+                                new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope)),
                         null)
                 .xml();
 
@@ -119,8 +117,7 @@ class PublishablePomTest {
                 List.of(new Dependency("org.projectlombok:lombok", VersionSelector.parse("=1.18.30"))));
         String xml = PublishablePom.render(
                         new JkBuild(
-                                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
-                                new JkBuild.Dependencies(byScope)),
+                                new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope)),
                         null)
                 .xml();
         // Compile-time only; not part of the consumer-facing artifact surface.
@@ -140,9 +137,7 @@ class PublishablePomTest {
                 new PublishablePom.Scm("https://github.com/example/widget", null, null));
 
         String xml = PublishablePom.render(
-                        new JkBuild(
-                                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
-                                JkBuild.Dependencies.empty()),
+                        new JkBuild(new Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty()),
                         meta)
                 .xml();
 
@@ -157,7 +152,7 @@ class PublishablePomTest {
 
     @Test
     void project_description_is_emitted_when_metadata_omits_it() {
-        JkBuild.Project p = JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        Project p = Project.builder("com.example", "widget", "1.0.0")
                 .jdkMajor(25)
                 .java(21)
                 .description("A widget from jk.toml.")
@@ -169,7 +164,7 @@ class PublishablePomTest {
 
     @Test
     void metadata_description_overrides_project_description() {
-        JkBuild.Project p = JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        Project p = Project.builder("com.example", "widget", "1.0.0")
                 .jdkMajor(25)
                 .java(21)
                 .description("from jk.toml")
@@ -191,8 +186,7 @@ class PublishablePomTest {
 
         String xml = PublishablePom.render(
                         new JkBuild(
-                                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
-                                new JkBuild.Dependencies(byScope)),
+                                new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope)),
                         null)
                 .xml();
 
@@ -215,8 +209,7 @@ class PublishablePomTest {
         byScope.put(Scope.MAIN, List.of(new Dependency("com.acme:lib", VersionSelector.parse("latest"))));
         String xml = PublishablePom.render(
                         new JkBuild(
-                                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
-                                new JkBuild.Dependencies(byScope)),
+                                new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope)),
                         null,
                         Set.of(),
                         Map.of("com.acme:lib", "9.9.9"))

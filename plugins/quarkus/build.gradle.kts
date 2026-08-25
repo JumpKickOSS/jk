@@ -19,4 +19,6 @@ dependencies {
     // Real PlatformImportsImpl for the platform-properties injection tests — the injection is
     // pure model + file I/O, so the tests exercise the production types, not stand-ins.
     testImplementation("io.quarkus:quarkus-bootstrap-app-model:$quarkusBootstrap")
+    // `FakeBuildIo` — the shared engine-side fake for a packager/step body (JK-2443).
+    testImplementation(testFixtures(project(":plugin-sdk")))
 }

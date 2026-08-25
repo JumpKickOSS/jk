@@ -7,6 +7,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -39,6 +41,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Same harness as {@link AndroidWorkspaceTest}: real tools, persistent CAS/SDK under build/.
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class AndroidReleaseTest {
 
     @Test

@@ -141,8 +141,8 @@ class DependencyGraphModelTest {
     // one default scope set, shared by jk tree and the graph endpoint from one definition.
     @Test
     void default_scopes_are_the_jk_tree_defaults_from_one_definition(@TempDir Path dir) throws Exception {
-        assertThat(DependencyGraphModel.defaultScopes()).isEqualTo(DependencyTree.defaultScopeOrder());
-        assertThat(DependencyGraphModel.parseScopes(null)).isEqualTo(DependencyTree.defaultScopeOrder());
+        assertThat(DependencyGraphModel.defaultScopes()).isEqualTo(DependencyTreeStyle.defaultScopeOrder());
+        assertThat(DependencyGraphModel.parseScopes(null)).isEqualTo(DependencyTreeStyle.defaultScopeOrder());
 
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "g"

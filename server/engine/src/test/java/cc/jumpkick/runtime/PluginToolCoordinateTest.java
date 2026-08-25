@@ -8,19 +8,12 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -31,33 +24,14 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class PluginToolCoordinateTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-    private final AtomicInteger metadataRequests = new AtomicInteger();
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            String path = exchange.getRequestURI().getPath();
-            if (path.endsWith("/maven-metadata.xml")) metadataRequests.incrementAndGet();
-            byte[] body = served.get(path);
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
+    /** Version-list reads, counted off the server's own request log rather than a side counter. */
+    private long metadataRequests() {
+        return http.requested().stream()
+                .filter(p -> p.endsWith("/maven-metadata.xml"))
+                .count();
     }
 
     @Test
@@ -67,9 +41,9 @@ class PluginToolCoordinateTest {
         Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "com.android.tools:r8:8.5.35");
 
         assertThat(coord.version()).isEqualTo("8.5.35");
-        assertThat(metadataRequests)
+        assertThat(metadataRequests())
                 .describedAs("an exact pin must not consult maven-metadata.xml")
-                .hasValue(0);
+                .isEqualTo(0);
     }
 
     @Test
@@ -80,7 +54,7 @@ class PluginToolCoordinateTest {
         Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "org.springframework.boot:spring-boot-loader:^4");
 
         assertThat(coord.version()).isEqualTo("4.1.0");
-        assertThat(metadataRequests).hasValue(1);
+        assertThat(metadataRequests()).isEqualTo(1);
     }
 
     @Test
@@ -102,7 +76,7 @@ class PluginToolCoordinateTest {
 
         assertThat(coord.version()).isEqualTo("8.7.3-12006047");
         assertThat(coord.classifier()).isEqualTo("linux");
-        assertThat(metadataRequests).hasValue(0);
+        assertThat(metadataRequests()).isEqualTo(0);
     }
 
     @Test
@@ -112,7 +86,7 @@ class PluginToolCoordinateTest {
         Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "io.micronaut.aot:micronaut-aot-cli:=3.1.0");
 
         assertThat(coord.version()).isEqualTo("3.1.0");
-        assertThat(metadataRequests).hasValue(0);
+        assertThat(metadataRequests()).isEqualTo(0);
     }
 
     @Test
@@ -122,15 +96,15 @@ class PluginToolCoordinateTest {
 
         assertThat(PluginBuild.resolveToolVersion(repos, "com.android.tools:r8", "8.13.19"))
                 .isEqualTo("8.13.19");
-        assertThat(metadataRequests).hasValue(0);
+        assertThat(metadataRequests()).isEqualTo(0);
 
         assertThat(PluginBuild.resolveToolVersion(repos, "com.android.tools:r8", "^8.13.19"))
                 .isEqualTo("8.20.0");
-        assertThat(metadataRequests).hasValue(1);
+        assertThat(metadataRequests()).isEqualTo(1);
     }
 
     private RepoGroup repos(Path tmp) {
-        return RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("cas"))));
+        return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), new Cas(tmp.resolve("cas"))));
     }
 
     private void serveMetadata(String group, String artifact, List<String> versions) {
@@ -141,8 +115,9 @@ class PluginToolCoordinateTest {
                 .append("</artifactId><versioning><versions>");
         for (String v : versions) xml.append("<version>").append(v).append("</version>");
         xml.append("</versions></versioning></metadata>");
-        served.put(
-                "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                xml.toString().getBytes(StandardCharsets.UTF_8));
+        http.served()
+                .put(
+                        "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
+                        xml.toString().getBytes(StandardCharsets.UTF_8));
     }
 }

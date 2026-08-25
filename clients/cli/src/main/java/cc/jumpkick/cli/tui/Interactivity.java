@@ -56,11 +56,6 @@ public final class Interactivity {
         return Terminals.stdoutIsTty() && !forcedNonInteractive();
     }
 
-    /** Restore original attrs before an {@code inheritIO} child. No-op if no session was opened. */
-    public static void restoreForChildProcess() {
-        Terminals.restoreForChild();
-    }
-
     /** Restore + close native fds. Safe when no session was opened. */
     public static void prepareProcessExit() {
         Terminals.shutdown();

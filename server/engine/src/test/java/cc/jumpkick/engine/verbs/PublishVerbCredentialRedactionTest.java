@@ -17,6 +17,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.testing.SysProps;
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +27,7 @@ import java.util.function.Function;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.io.TempDir;
  * that line is therefore the last place a live credential can enter the engine unannounced — and a
  * publish is exactly the verb whose worker quotes a {@code 401} body back at the user.
  */
+@ExtendWith(SysProps.class)
 class PublishVerbCredentialRedactionTest {
 
     /** Shaped like the bearer token a CI job would export; it is not one. */
@@ -65,6 +68,10 @@ class PublishVerbCredentialRedactionTest {
                 version = "1.0.0"
                 """);
         Path worker = Files.createFile(tmp.resolve("jk-publisher.jar"));
+        // Restored by @ExtendWith(SysProps.class) on the class. It used to be three copies of a
+        // `finally { clearProperty(...) }`, one per test, each of which left the property set if
+        // anything between `project(tmp)` and the `try` threw — including this method itself and the
+        // precondition assertion above the first `try` (JK-2446).
         System.setProperty(PluginJar.PUBLISHER.jarProperty(), worker.toString());
         return dir;
     }
@@ -105,11 +112,7 @@ class PublishVerbCredentialRedactionTest {
                 .as("precondition: the token is not masked before the request is decoded")
                 .isTrue();
 
-        try {
-            new PublishVerb(host).run(bearerRequest(dir, tmp.resolve("cache"), TOKEN), Session.CancelToken.NONE, null);
-        } finally {
-            System.clearProperty(PluginJar.PUBLISHER.jarProperty());
-        }
+        new PublishVerb(host).run(bearerRequest(dir, tmp.resolve("cache"), TOKEN), Session.CancelToken.NONE, null);
 
         assertThat(host.masked)
                 .as("the verb never reached the worker error path")
@@ -148,11 +151,7 @@ class PublishVerbCredentialRedactionTest {
                 false,
                 false);
 
-        try {
-            new PublishVerb(host).run(request, Session.CancelToken.NONE, null);
-        } finally {
-            System.clearProperty(PluginJar.PUBLISHER.jarProperty());
-        }
+        new PublishVerb(host).run(request, Session.CancelToken.NONE, null);
 
         assertThat(host.masked)
                 .as("the verb never reached the worker error path")
@@ -174,11 +173,7 @@ class PublishVerbCredentialRedactionTest {
         Path other = Files.createDirectories(tmp.resolve("other"));
         CapturingHost host = new CapturingHost(worker401(TOKEN));
 
-        try {
-            new PublishVerb(host).run(bearerRequest(dir, tmp.resolve("cache"), TOKEN), Session.CancelToken.NONE, null);
-        } finally {
-            System.clearProperty(PluginJar.PUBLISHER.jarProperty());
-        }
+        new PublishVerb(host).run(bearerRequest(dir, tmp.resolve("cache"), TOKEN), Session.CancelToken.NONE, null);
 
         assertThat(host.masked).isNotEmpty();
         assertThat(host.redactErrors(other.toString(), List.of(worker401(TOKEN)))

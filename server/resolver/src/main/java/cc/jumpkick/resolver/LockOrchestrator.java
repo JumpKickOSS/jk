@@ -10,6 +10,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
@@ -1046,7 +1047,7 @@ public final class LockOrchestrator {
             Map<String, String> bomConstraints,
             LinkedHashMap<String, Dependency> mainDeduped) {
         Set<String> added = new LinkedHashSet<>();
-        JkBuild.Project p = project.project();
+        Project p = project.project();
         // Same inference the engine uses to enable lanesan unpinned project with
         // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too
         // jk run and packaging read the lock only. Pin-only keying shipped jars that died with

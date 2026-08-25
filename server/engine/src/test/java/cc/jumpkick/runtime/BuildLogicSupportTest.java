@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.runtime.BuildLogicFixtures.generated;
+import static cc.jumpkick.runtime.BuildLogicFixtures.mergedFiles;
+import static cc.jumpkick.runtime.BuildLogicFixtures.runTwice;
+import static cc.jumpkick.runtime.BuildLogicFixtures.writeLineCount;
+import static cc.jumpkick.runtime.BuildLogicFixtures.writeStamp;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -12,7 +17,6 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -23,14 +27,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
 class BuildLogicSupportTest {
-
-    /**
-     * BEFORE_COMPILE output is codegen: it lands in the generated-source root the compilers read,
-     * not in classes/. One dir per task.
-     */
-    private static Path generated(BuildLayout layout, String task, String file) {
-        return BuildLogicSupport.generatedSourceRoot(layout).resolve(task).resolve(file);
-    }
 
     @Test
     void convention_jk_build_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
@@ -250,16 +246,6 @@ class BuildLogicSupportTest {
                         .append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertEquals(firstRun, mergedFiles(classes), "a cache hit must replay every produced file");
-    }
-
-    /** Relative paths of everything under {@code classes}, sorted. */
-    private static List<String> mergedFiles(Path classes) throws IOException {
-        try (var walk = Files.walk(classes)) {
-            return walk.filter(Files::isRegularFile)
-                    .map(p -> classes.relativize(p).toString().replace('\\', '/'))
-                    .sorted()
-                    .toList();
-        }
     }
 
     /**
@@ -567,236 +553,5 @@ class BuildLogicSupportTest {
                 """);
         Files.writeString(project.resolve(".jk-build/src/X.java"), "class X {}");
         assertTrue(BuildLogicToml.resolve(project).isEmpty());
-    }
-
-    @Test
-    void groovy_stem_script_before_compile_and_cache_hit(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-        Files.createDirectories(project.resolve(".jk-build"));
-        Files.writeString(project.resolve(".jk-build/before-compile.groovy"), """
-                def stamp = outDir.resolve("from-groovy.txt")
-                stamp.toFile().parentFile.mkdirs()
-                stamp.toFile().text = "hello-from-script\\n"
-                """);
-
-        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-
-        StringBuilder labels = new StringBuilder();
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
-                        .append(';')));
-        Path groovyOut = generated(layout, "before-compile", "from-groovy.txt");
-        assertTrue(Files.isRegularFile(groovyOut), labels.toString());
-        assertEquals("hello-from-script", Files.readString(groovyOut).trim());
-        assertTrue(labels.toString().contains("before-compile"), labels.toString());
-
-        Files.delete(groovyOut);
-        labels.setLength(0);
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
-                        .append(';')));
-        assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        assertTrue(Files.isRegularFile(groovyOut), "a cache hit must restore the source root");
-    }
-
-    @Test
-    void kotlin_spi_contributor_before_compile(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        Files.writeString(logicSrc.resolve("KtMarkerLogic.kt"), """
-                package demo
-                import cc.jumpkick.plugin.buildlogic.*
-                import java.nio.file.Files
-
-                class KtMarkerLogic : BuildLogicContributor {
-                  override fun register(g: BuildLogicGraph) {
-                    g.task("kt-before-compile", BuildLogicAnchor.BEFORE_COMPILE) { ctx ->
-                      // joinToString is kotlin-stdlib, first touched HERE — inside the task body,
-                      // long after registration. It resolves out of the stdlib jar, so it fails if
-                      // the defining loader was closed at the end of discovery.
-                      val text = listOf("from", "kt").joinToString("-")
-                      Files.writeString(ctx.outDir().resolve("kt-before.txt"), text)
-                    }
-                  }
-                }
-                """);
-
-        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-
-        StringBuilder labels = new StringBuilder();
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
-                        .append(';')));
-        Path ktOut = generated(layout, "kt-before-compile", "kt-before.txt");
-        assertTrue(Files.isRegularFile(ktOut), labels.toString());
-        assertEquals("from-kt", Files.readString(ktOut).trim());
-        assertTrue(labels.toString().contains("kt-before-compile"), labels.toString());
-
-        Files.delete(ktOut);
-        labels.setLength(0);
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
-                        .append(';')));
-        assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        assertTrue(Files.isRegularFile(ktOut), "a cache hit must restore the source root");
-    }
-
-    @Test
-    void scripts_only_jk_build_no_java_ok(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve(".jk-build"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(
-                project.resolve(".jk-build/after-resources.groovy"),
-                "outDir.resolve('script-only.txt').toFile().text = 'ok\\n'\n");
-
-        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertTrue(Files.isRegularFile(classes.resolve("script-only.txt")));
-    }
-
-    @Test
-    void kts_stem_script_before_compile_and_cache_hit(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-        Files.createDirectories(project.resolve(".jk-build"));
-        Files.writeString(project.resolve(".jk-build/before-compile.kts"), """
-                // SPDX-License-Identifier: Apache-2.0
-                import java.nio.file.Files
-                Files.createDirectories(outDir)
-                Files.writeString(outDir.resolve("from-kts.txt"), "hello-from-kts")
-                """);
-
-        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-
-        StringBuilder labels = new StringBuilder();
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
-                        .append(';')));
-        Path ktsOut = generated(layout, "before-compile", "from-kts.txt");
-        assertTrue(Files.isRegularFile(ktsOut), labels.toString());
-        assertEquals("hello-from-kts", Files.readString(ktsOut).trim());
-        assertTrue(labels.toString().contains("before-compile"), labels.toString());
-
-        Files.delete(ktsOut);
-        labels.setLength(0);
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
-                        .append(';')));
-        assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        assertTrue(Files.isRegularFile(ktsOut), "a cache hit must restore the source root");
-    }
-
-    private static void writeStamp(Path file, String fqcn) throws Exception {
-        String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-        String pkg = fqcn.contains(".") ? fqcn.substring(0, fqcn.lastIndexOf('.')) : "";
-        Files.writeString(file, """
-                package %s;
-                import java.nio.file.*;
-                public class %s {
-                  public static void main(String[] args) throws Exception {
-                    Path out = null;
-                    for (int i = 0; i < args.length; i++) {
-                      if ("--out".equals(args[i])) out = Path.of(args[++i]);
-                    }
-                    Files.createDirectories(out);
-                    Files.writeString(out.resolve("stamp.txt"), "ok");
-                  }
-                }
-                """.formatted(pkg, simple));
-    }
-
-    private static void writeLineCount(Path file, String fqcn) throws Exception {
-        String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-        String pkg = fqcn.contains(".") ? fqcn.substring(0, fqcn.lastIndexOf('.')) : "";
-        Files.writeString(file, """
-                package %s;
-                import java.nio.file.*;
-                import java.util.stream.Stream;
-                public class %s {
-                  public static void main(String[] args) throws Exception {
-                    Path project = null, out = null;
-                    for (int i = 0; i < args.length; i++) {
-                      if ("--project".equals(args[i])) project = Path.of(args[++i]);
-                      else if ("--out".equals(args[i])) out = Path.of(args[++i]);
-                    }
-                    long n = 0;
-                    Path src = project.resolve("src");
-                    try (Stream<Path> w = Files.walk(src)) {
-                      for (Path f : (Iterable<Path>) w::iterator) {
-                        if (Files.isRegularFile(f) && f.toString().endsWith(".java"))
-                          n += Files.readAllLines(f).size();
-                      }
-                    }
-                    Files.createDirectories(out);
-                    Files.writeString(out.resolve("line-count.txt"), Long.toString(n));
-                  }
-                }
-                """.formatted(pkg, simple));
-    }
-
-    private static void runTwice(Path project, Path cacheRoot, String ignoredMain) throws Exception {
-        ActionCache ac = new ActionCache(new Cas(cacheRoot.resolve("cas")), cacheRoot.resolve("actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-
-        StringBuilder labels = new StringBuilder();
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, s -> labels.append(s).append(';')));
-        Path generated = classes.resolve("line-count.txt");
-        assertTrue(Files.isRegularFile(generated), "expected generated resource");
-        String first = Files.readString(generated).trim();
-        assertTrue(Integer.parseInt(first) > 0);
-
-        Files.delete(generated);
-        labels.setLength(0);
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, s -> labels.append(s).append(';')));
-        assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        assertEquals(first, Files.readString(generated).trim());
     }
 }

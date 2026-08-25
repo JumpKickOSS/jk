@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import com.android.apksig.ApkVerifier;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -46,7 +47,7 @@ class AabPackagerTest {
      */
     @Test
     void every_entry_of_the_proto_link_lands_under_its_bundletool_prefix(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         Path baseZip = tmp.resolve("base.zip");
 
         AabPackager.assembleBase(io, protoLink(tmp), dexDir(tmp), baseZip);
@@ -68,7 +69,7 @@ class AabPackagerTest {
     /** The manifest is only renamed, never rewritten: it is already protobuf by this point. */
     @Test
     void the_proto_manifest_is_moved_not_transformed(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         Path baseZip = tmp.resolve("base.zip");
 
         AabPackager.assembleBase(io, protoLink(tmp), dexDir(tmp), baseZip);
@@ -80,7 +81,7 @@ class AabPackagerTest {
     /** AGP's precedence again: the app's own assets beat a dependency's at the same path. */
     @Test
     void the_modules_own_asset_beats_a_dependencys_at_the_same_path(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         Path baseZip = tmp.resolve("base.zip");
 
         AabPackager.assembleBase(io, protoLink(tmp), dexDir(tmp), baseZip);
@@ -91,7 +92,7 @@ class AabPackagerTest {
     /** Whatever the link chose to compress stays that way through the relocation. */
     @Test
     void the_compression_method_of_a_relocated_entry_survives(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         Path baseZip = tmp.resolve("base.zip");
 
         AabPackager.assembleBase(io, protoLink(tmp), dexDir(tmp), baseZip);
@@ -108,10 +109,10 @@ class AabPackagerTest {
      */
     @Test
     void two_assemblies_of_the_same_inputs_produce_the_same_base_module(@TempDir Path tmp) throws Exception {
-        FakePackageIo first = release(tmp.resolve("run-1"));
+        FakeBuildIo first = release(tmp.resolve("run-1"));
         Path a = tmp.resolve("a.zip");
         AabPackager.assembleBase(first, protoLink(tmp.resolve("run-1")), dexDir(tmp.resolve("run-1")), a);
-        FakePackageIo second = release(tmp.resolve("run-2"));
+        FakeBuildIo second = release(tmp.resolve("run-2"));
         Path b = tmp.resolve("b.zip");
         AabPackager.assembleBase(second, protoLink(tmp.resolve("run-2")), dexDir(tmp.resolve("run-2")), b);
 
@@ -135,7 +136,7 @@ class AabPackagerTest {
     @Test
     void the_debug_identity_signs_the_bundle_under_the_configured_store_dir(@TempDir Path tmp) throws Exception {
         Path storeDir = tmp.resolve("android-home");
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         io.config("debug-store-dir", storeDir.toString());
         Path unsigned = tmp.resolve("unsigned.aab");
         // Not bundletool's layout: the manifest sits at the top level because apksig's verifier —
@@ -168,7 +169,7 @@ class AabPackagerTest {
     /** An empty dex directory would assemble a bundle with no code in it. */
     @Test
     void a_dex_directory_with_no_dex_files_in_it_is_refused(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         Path emptyDex = Files.createDirectories(tmp.resolve("empty-dex"));
 
         assertThatThrownBy(() -> AabPackager.assembleBase(io, protoLink(tmp), emptyDex, tmp.resolve("base.zip")))
@@ -183,10 +184,10 @@ class AabPackagerTest {
      */
     @Test
     void a_build_without_the_proto_resource_link_is_refused(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         Path packaged = Files.createDirectories(io.step("android-res").resolve("packaged"));
         Files.copy(protoLink(tmp), packaged.resolve("resources.ap_")); // the binary link only
-        FakePackageIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex");
+        FakeBuildIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex");
 
         assertThatThrownBy(() -> AabPackager.produce(io))
                 .isInstanceOf(IllegalStateException.class)
@@ -199,10 +200,10 @@ class AabPackagerTest {
      */
     @Test
     void a_build_with_no_bundletool_artifact_is_refused(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         Path packaged = Files.createDirectories(io.step("android-res").resolve("packaged"));
         Files.copy(protoLink(tmp), packaged.resolve("resources-proto.ap_"));
-        FakePackageIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex");
+        FakeBuildIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex");
 
         assertThatThrownBy(() -> AabPackager.produce(io))
                 .isInstanceOf(IllegalStateException.class)
@@ -212,21 +213,21 @@ class AabPackagerTest {
     // ---- fixtures -----------------------------------------------------------------------
 
     /** A release app's dependency and asset surface; the packagers read nothing else from it. */
-    private static FakePackageIo release(Path root) throws Exception {
-        FakePackageIo io = new FakePackageIo(Files.createDirectories(root), "app-1.0.0.aab");
+    private static FakeBuildIo release(Path root) throws Exception {
+        FakeBuildIo io = AndroidIo.packager(Files.createDirectories(root), "app-1.0.0.aab");
         io.config("build-type", "release");
-        FakePackageIo.write(io.moduleDir().resolve("assets/config.json"), "from-the-module");
-        Path aar = io.aar("widgets.aar");
-        FakePackageIo.write(aar.resolve("assets/config.json"), "from-the-dependency");
-        FakePackageIo.write(aar.resolve("assets/aar-only.txt"), "only here");
-        FakePackageIo.write(aar.resolve("jni/arm64-v8a/libnative.so"), "ELF");
+        FakeBuildIo.write(io.moduleDir().resolve("assets/config.json"), "from-the-module");
+        Path aar = io.container("widgets.aar");
+        FakeBuildIo.write(aar.resolve("assets/config.json"), "from-the-dependency");
+        FakeBuildIo.write(aar.resolve("assets/aar-only.txt"), "only here");
+        FakeBuildIo.write(aar.resolve("jni/arm64-v8a/libnative.so"), "ELF");
         return io;
     }
 
     private static Path dexDir(Path root) throws Exception {
         Path dex = Files.createDirectories(root.resolve("dex-out"));
-        FakePackageIo.write(dex.resolve("classes.dex"), "dex-one");
-        FakePackageIo.write(dex.resolve("classes2.dex"), "dex-two");
+        FakeBuildIo.write(dex.resolve("classes.dex"), "dex-one");
+        FakeBuildIo.write(dex.resolve("classes2.dex"), "dex-two");
         return dex;
     }
 

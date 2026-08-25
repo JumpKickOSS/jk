@@ -8,6 +8,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -154,7 +155,7 @@ public final class ManifestBuild {
 
     static JkBuild.Dependencies withPlatformContributions(
             JkBuild.Dependencies deps,
-            JkBuild.Project project,
+            Project project,
             boolean nativeDeclared,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installedManifests) {

@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -36,7 +37,7 @@ class HiltTransformStepTest {
     @Test
     void an_annotated_activitys_superclass_is_rewritten_to_the_generated_base_and_links(@TempDir Path tmp)
             throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp);
+        FakeBuildIo exec = AndroidIo.step(tmp);
         writeClass(exec, "android/app/Activity", plainClass("android/app/Activity", "java/lang/Object", false));
         writeClass(exec, "app/Hilt_MainActivity", plainClass("app/Hilt_MainActivity", "android/app/Activity", false));
         writeClass(exec, "app/MainActivity", plainClass("app/MainActivity", "android/app/Activity", true));
@@ -52,7 +53,7 @@ class HiltTransformStepTest {
                     .newInstance();
             assertThat(activity.getClass().getSuperclass().getName()).isEqualTo("app.Hilt_MainActivity");
         }
-        assertThat(exec.labels).contains("hilt transform (1 class)");
+        assertThat(exec.labels()).contains("hilt transform (1 class)");
     }
 
     /**
@@ -62,7 +63,7 @@ class HiltTransformStepTest {
      */
     @Test
     void a_receivers_override_calls_up_into_the_generated_bases_on_receive(@TempDir Path tmp) throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp);
+        FakeBuildIo exec = AndroidIo.step(tmp);
         writeClass(exec, "android/content/Context", plainClass("android/content/Context", "java/lang/Object", false));
         writeClass(exec, "android/content/Intent", plainClass("android/content/Intent", "java/lang/Object", false));
         writeClass(exec, "app/BaseReceiver", plainClass("app/BaseReceiver", "java/lang/Object", false));
@@ -94,7 +95,7 @@ class HiltTransformStepTest {
     @Test
     void an_annotated_class_with_no_generated_base_is_refused_with_the_processor_hint(@TempDir Path tmp)
             throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp);
+        FakeBuildIo exec = AndroidIo.step(tmp);
         writeClass(exec, "android/app/Activity", plainClass("android/app/Activity", "java/lang/Object", false));
         writeClass(exec, "app/Lonely", plainClass("app/Lonely", "android/app/Activity", true));
 
@@ -113,7 +114,7 @@ class HiltTransformStepTest {
     @Test
     void nested_and_already_rewritten_entry_points_and_resources_pass_through_untouched(@TempDir Path tmp)
             throws Exception {
-        FakeTaskExec exec = new FakeTaskExec(tmp);
+        FakeBuildIo exec = AndroidIo.step(tmp);
         writeClass(exec, "android/app/Activity", plainClass("android/app/Activity", "java/lang/Object", false));
         byte[] nested = plainClass("app/Outer$Inner", "android/app/Activity", true);
         writeClass(exec, "app/Outer$Inner", nested);
@@ -127,13 +128,13 @@ class HiltTransformStepTest {
         assertThat(Files.readAllBytes(out.resolve("app/Outer$Inner.class"))).isEqualTo(nested);
         assertThat(Files.readAllBytes(out.resolve("app/Already.class"))).isEqualTo(already);
         assertThat(out.resolve("app.properties")).hasContent("key=value");
-        assertThat(exec.labels).contains("hilt transform (0 classes)");
+        assertThat(exec.labels()).contains("hilt transform (0 classes)");
     }
 
     // ---- fixtures -----------------------------------------------------------------------
 
     /** Write generated fixture bytes where the step's input walk will find them. */
-    private static void writeClass(FakeTaskExec exec, String internalName, byte[] bytes) throws IOException {
+    private static void writeClass(FakeBuildIo exec, String internalName, byte[] bytes) throws IOException {
         Path file = exec.classesDir().resolve(internalName + ".class");
         Files.createDirectories(file.getParent());
         Files.write(file, bytes);

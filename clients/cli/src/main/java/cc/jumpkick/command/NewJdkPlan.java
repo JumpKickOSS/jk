@@ -2,7 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.jdk.JdkSelector;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -29,7 +29,7 @@ final class NewJdkPlan {
      */
     static Spec parseExplicit(String raw) {
         String arg = raw.trim();
-        if (JkBuild.Project.hasPointRelease(arg)) {
+        if (Project.hasPointRelease(arg)) {
             throw new IllegalArgumentException("--jdk "
                     + arg
                     + " must not pin a point release — use \"<vendor>-<major>\" or \"<major>\" "

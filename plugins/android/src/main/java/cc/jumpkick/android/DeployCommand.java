@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DomXml;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.build.PluginCommandExec;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipFile;
 import org.w3c.dom.Element;
@@ -60,27 +54,21 @@ final class DeployCommand {
         // installs sign with the SAME stable debug identity the apk/aab packagers use, so a
         // universal APK from a rebuilt bundle still updates the installed app in place.
         Path aapt2 = AndroidDeps.extractAapt2(exec.requireExtra("aapt2"), work.resolve("tools"));
-        Path keystore =
-                DebugKeystore.ensure(Signing.debugStoreDir(exec.config()), Path.of(System.getProperty("java.home")));
+        Path keystore = DebugKeystore.ensure(Signing.debugStoreDir(exec.config()), exec.javaHome());
         exec.label("bundletool build-apks");
-        List<String> command = new ArrayList<>();
-        command.add(
-                JdkFingerprint.java(Path.of(System.getProperty("java.home"))).toString());
-        command.add("-cp");
-        command.add(Classpaths.join(ManifestStep.jarsIn(bundletool)));
-        command.add("com.android.tools.build.bundletool.BundleToolMain");
-        command.add("build-apks");
-        command.add("--bundle=" + aab.toAbsolutePath());
-        command.add("--output=" + apks.toAbsolutePath());
-        command.add("--mode=universal");
-        command.add("--aapt2=" + aapt2.toAbsolutePath());
         try (Signing.PasswordFile pass = Signing.passwordFile(DebugKeystore.PASSWORD)) {
-            command.addAll(signingFlags(keystore, pass));
-            Process process =
-                    new ProcessBuilder(command).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (process.waitFor() != 0) {
-                throw new IllegalStateException("bundletool build-apks failed:\n" + output);
+            var run = exec.java()
+                    .classpath(ManifestStep.jarsIn(bundletool))
+                    .mainClass("com.android.tools.build.bundletool.BundleToolMain")
+                    .arg("build-apks")
+                    .arg("--bundle=" + aab.toAbsolutePath())
+                    .arg("--output=" + apks.toAbsolutePath())
+                    .arg("--mode=universal")
+                    .arg("--aapt2=" + aapt2.toAbsolutePath())
+                    .args(signingFlags(keystore, pass))
+                    .run();
+            if (run.exit() != 0) {
+                throw new IllegalStateException("bundletool build-apks failed:\n" + run.output());
             }
         }
         // universal.apks is a zip: universal.apk + toc.pb.
@@ -124,18 +112,9 @@ final class DeployCommand {
 
     /** Fork adb, streaming its output through the command channel; returns its exit code. */
     private static int adb(PluginCommandExec exec, Path adb, String... args) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>();
-        command.add(adb.toAbsolutePath().toString());
-        command.addAll(List.of(args));
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        try (BufferedReader reader =
-                new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!line.isBlank()) exec.out("  " + line);
-            }
-        }
-        int exit = process.waitFor();
+        int exit = exec.tool(adb).args(List.of(args)).stream(line -> {
+            if (!line.isBlank()) exec.out("  " + line);
+        });
         if (exit != 0) {
             exec.out("adb " + args[0] + " failed (exit " + exit + ") — is a device connected? (`adb devices`)");
         }

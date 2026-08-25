@@ -145,8 +145,12 @@ class JobWorkersTest {
             long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
             assertThat(killed).isEqualTo(1);
             assertThat(p.isAlive()).isFalse();
-            // Must not wait far past grace (poll + force); allow generous CI slack.
-            assertThat(ms).isLessThan(3_000L);
+            // LIVENESS, not performance: the grace asked for above is 300ms, so 3s is 10x it.
+            // What this can catch is a shutdown that ignores its grace entirely; what it must not
+            // become is a measurement of how fast this machine forks and reaps (JK-2446).
+            assertThat(ms)
+                    .as("honoured the 300ms grace rather than waiting out the child's own 120s sleep")
+                    .isLessThan(3_000L);
             assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
         } finally {
             if (p.isAlive()) p.destroyForcibly();

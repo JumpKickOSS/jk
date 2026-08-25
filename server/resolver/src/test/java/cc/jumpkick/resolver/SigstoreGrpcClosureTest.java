@@ -8,6 +8,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -60,8 +61,7 @@ class SigstoreGrpcClosureTest {
         by.put(
                 Scope.MAIN,
                 List.of(new Dependency("dev.sigstore:sigstore-java", VersionSelector.parseFloating("2.2.0"))));
-        JkBuild project =
-                new JkBuild(new JkBuild.Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
+        JkBuild project = new JkBuild(new Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
         Lockfile lock = new LockOrchestrator(repos).lock(project, "test");
 
         Lockfile.Artifact sigstore = lock.artifacts().stream()

@@ -36,6 +36,10 @@ dependencies {
     // JkWireModel (compiled from the IntelliJ tree, see intellijParserSrc) uses JetBrains
     // nullness because the platform API does; compile-only, test scope, never shipped.
     testCompileOnly("org.jetbrains:annotations:26.0.2")
+    // The tree's shared test primitives (`cc.jumpkick.testing`): `Await`, `ShortTempDirs`,
+    // `SysProps`, `LoopbackHttp`. A separate source set of :host, so `checkCliRuntimeClasspath`
+    // below still sees a runtime classpath with no test code and no JUnit on it (JK-2443).
+    testImplementation(testFixtures(project(":host")))
 }
 
 // The IntelliJ plugin is a standalone Gradle build no gate compiles (see checkIdeClientWiring),
@@ -50,22 +54,41 @@ val intellijParserSrc by tasks.registering(Sync::class) {
 sourceSets.test { java.srcDir(intellijParserSrc.map { it.destinationDir }) }
 
 // JK-2139: the native client must not see the plugin SPI jar (codec is :host).
+//
+// JK-2443 added the test-fixtures entries. `:host` now carries a `testFixtures` source set (the
+// tree's shared test primitives) and `:cli` consumes it as `testImplementation`, so the fixtures —
+// and JUnit, which they compile against — are one wrong configuration keyword away from the native
+// image. That mistake would not fail anything else: the image would just get bigger and start
+// reaching reflective JUnit machinery that GraalVM cannot see. This is the arm that notices.
 val checkCliRuntimeClasspath by tasks.registering {
     val runtime = configurations.named("runtimeClasspath")
     inputs.files(runtime)
     doLast {
-        val forbidden = runtime.get().incoming.artifacts.artifactFiles.files.filter { f ->
+        val files = runtime.get().incoming.artifacts.artifactFiles.files
+        // Self-fail: an empty or unrecognisable classpath satisfies every ban below vacuously.
+        if (files.none { it.name.startsWith("host") || it.name.startsWith("jk-host") }) {
+            throw GradleException(
+                    "The CLI runtime classpath guard resolved ${files.size} artifacts and none of them"
+                            + " is the :host jar, so it is not looking at the native client's classpath."
+                            + " Fix the guard before trusting a green run.")
+        }
+        val forbidden = files.filter { f ->
             val n = f.name
             n.startsWith("plugin-sdk")
                     || n.startsWith("jk-plugin-sdk")
                     || n.startsWith("maven-artifact")
                     || n.startsWith("plexus-utils")
                     || n.startsWith("jline")
+                    || n.contains("-test-fixtures")
+                    || n.startsWith("junit-")
+                    || n.startsWith("assertj-")
+                    || n.startsWith("opentest4j")
+                    || n.startsWith("apiguardian")
         }
         if (forbidden.isNotEmpty()) {
             throw GradleException(
-                    "CLI runtimeClasspath must not contain plugin-sdk / maven-artifact / plexus-utils: "
-                            + forbidden)
+                    "CLI runtimeClasspath must not contain plugin-sdk / maven-artifact / plexus-utils,"
+                            + " nor any test-fixtures or test-framework jar: " + forbidden)
         }
     }
 }
@@ -132,6 +155,7 @@ tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoPa
 // two suites that deliberately prime the shared store rather than isolate it (JK-2451); ratcheting
 // that root needs those declared first, so this guard does not pretend to cover it.
 // ---------------------------------------------------------------------------
+// Guard G31 (JK-2453).
 val checkTestRootsDeclared by tasks.registering {
     group = "verification"
     description = "Fail when a :cli test reads the ambient state root without @IsolatedState"
@@ -568,3 +592,75 @@ graalvmNative {
 
 }
 
+
+// ---------------------------------------------------------------------------
+// Guard G27 (JK-2432): the terminal is handed to a child in exactly one place.
+//
+// `CliOutput.handOffTerminal(pb)` restores the terminal out of whatever mode jk put it in and then
+// starts the child on inherited stdio. Those two steps are a pair, and spelling them separately is
+// how three of the ten handoff sites came to skip the restore: `jk gradle`, `jk mvn` and `jk self
+// update`'s engine takeover called `inheritIO().start()` with jk's raw mode still installed, so an
+// interactive child's own line editing did not work. `Interactivity.restoreForChildProcess` was a
+// second public wrapper for the restore half with zero production callers and one test asserting it
+// does not throw; it is gone.
+//
+// The pattern is `inheritIO`, not `new ProcessBuilder`: this module forks plenty of children that
+// must NOT inherit stdio (the engine daemon spawn redirects to files, `jk bsp serve` keeps stdout
+// for its own JSON-RPC frames — see IdeEngineClient). Inheriting is the thing that needs the pair.
+//
+// Measured 2026-08-25: one occurrence across 285 files under src/main/java, inside the owner.
+// No allowlist. Self-failing: the owner must still contain it, or the guard is pointing at nothing.
+// ---------------------------------------------------------------------------
+/** [src] with comments blanked (newlines kept) so a scan matches code, not prose about the code. */
+fun handoffGuardCode(src: String): String {
+    val out = StringBuilder(src.length)
+    var i = 0
+    while (i < src.length) {
+        when {
+            src.startsWith("//", i) -> while (i < src.length && src[i] != '\n') { out.append(' '); i++ }
+            src.startsWith("/*", i) -> {
+                val end = src.indexOf("*/", i + 2)
+                val stop = if (end < 0) src.length else end + 2
+                while (i < stop) { out.append(if (src[i] == '\n') '\n' else ' '); i++ }
+            }
+            else -> { out.append(src[i]); i++ }
+        }
+    }
+    return out.toString()
+}
+
+val checkOneTerminalHandoff by tasks.registering {
+    group = "verification"
+    description = "Fail when a CLI command inherits stdio outside CliOutput.handOffTerminal"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    val ownerName = "CliOutput.java"
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val stamp = layout.buildDirectory.file("guards/one-terminal-handoff.ok")
+    outputs.file(stamp)
+    doLast {
+        val files = mainJava.files.sorted()
+        if (files.size < 200) {
+            throw GradleException("The terminal-handoff guard scanned ${files.size} files under"
+                    + " src/main/java; it was measured against 285. The include pattern has stopped"
+                    + " seeing the module — fix it before trusting a green run.")
+        }
+        val owner = files.singleOrNull { it.name == ownerName }
+                ?: throw GradleException("$ownerName is not under src/main/java any more, so this guard"
+                        + " has lost the owner it exempts. Point it at the new owner or retire it.")
+        if (!handoffGuardCode(owner.readText()).contains("inheritIO()")) {
+            throw GradleException("$ownerName no longer calls inheritIO(), so handOffTerminal has stopped"
+                    + " being the handoff and this guard is exempting a file that does nothing.")
+        }
+        val hits = files.filter { it != owner && handoffGuardCode(it.readText()).contains("inheritIO(") }
+                .map { "  ${it.name}" }
+        if (hits.isNotEmpty()) {
+            throw GradleException("Handing this terminal to a child means restoring it out of jk's mode"
+                    + " first, and that pair has one owner: CliOutput.handOffTerminal(pb). These files"
+                    + " inherit stdio themselves:\n" + hits.joinToString("\n")
+                    + "\n  A child that inherits jk's raw mode gets no line editing of its own.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkOneTerminalHandoff) }
+tasks.named("jar") { dependsOn(checkOneTerminalHandoff) }

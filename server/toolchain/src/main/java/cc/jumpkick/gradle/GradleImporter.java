@@ -7,6 +7,7 @@ import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -214,7 +215,7 @@ public final class GradleImporter {
         // A Kotlin project sets `kotlin` (a version) and leaves `java` at 0 —
         // the two are mutually exclusive. javaRelease() falls back to jdk.
         int java = kotlin != null ? 0 : jdk;
-        JkBuild.Project project = JkBuild.Project.builder(group, defaultArtifact, version)
+        Project project = Project.builder(group, defaultArtifact, version)
                 .jdkMajor(jdk)
                 .java(java)
                 .kotlin(kotlin)

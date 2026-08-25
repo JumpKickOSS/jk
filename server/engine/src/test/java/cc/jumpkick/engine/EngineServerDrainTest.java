@@ -6,21 +6,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.util.AotSettings;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * The two entry paths into drain, isolated from each other. A takeover fires both — the successor
@@ -30,17 +28,8 @@ import org.junit.jupiter.api.Test;
  */
 class EngineServerDrainTest {
 
-    // UDS paths are capped at ~104 bytes (macOS/BSD) / ~108 (Linux) — @TempDir nests too deep
-    // under Gradle's build dir. Short-path temp dirs under the system temp root instead.
-    private final List<Path> tempDirs = new ArrayList<>();
-
-    private Path shortTempDir() throws IOException {
-        Path root =
-                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
-        Path dir = Files.createTempDirectory(root, "jkd-");
-        tempDirs.add(dir);
-        return dir;
-    }
+    @RegisterExtension
+    final ShortTempDirs tempDirs = new ShortTempDirs("jkd-");
 
     @AfterEach
     void cleanup() {
@@ -48,25 +37,12 @@ class EngineServerDrainTest {
         // test also plans the shared worker heap. Reset both statics for the rest of the JVM.
         AotSettings.clearTrainingSuppressionForTests();
         JvmOptions.resetSharedPlanForTests();
-        for (Path dir : tempDirs) {
-            try (var walk = Files.walk(dir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                        // best-effort
-                    }
-                });
-            } catch (IOException | UncheckedIOException ignored) {
-                // engine teardown may still be deleting its own files — best-effort
-            }
-        }
     }
 
     /** SHUTDOWN with a plan in flight must enter drain, not just answer bye. */
     @Test
     void shutdown_with_active_plans_enters_drain() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         assertThat(server.claimPlanSlotForTests()).isTrue();
         StringWriter out = new StringWriter();
@@ -91,7 +67,7 @@ class EngineServerDrainTest {
     @Test
     @Tag("integration")
     void a_displacement_tick_enters_drain_without_a_shutdown_line() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread runner = new Thread(
                 () -> {
@@ -105,7 +81,7 @@ class EngineServerDrainTest {
         runner.setDaemon(true);
         runner.start();
         try {
-            waitUntil(Duration.ofSeconds(10), () -> Files.isRegularFile(EnginePaths.endpoint(p)));
+            Await.until(Duration.ofSeconds(10), () -> Files.isRegularFile(EnginePaths.endpoint(p)));
             assertThat(server.claimPlanSlotForTests()).isTrue();
             assertThat(server.drainStartedForTests()).isFalse();
 
@@ -120,16 +96,6 @@ class EngineServerDrainTest {
             server.releasePlanSlotForTests();
             server.close();
             runner.join(10_000);
-        }
-    }
-
-    private static void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) {
-                throw new AssertionError("condition not met within " + timeout);
-            }
-            Thread.sleep(10);
         }
     }
 }

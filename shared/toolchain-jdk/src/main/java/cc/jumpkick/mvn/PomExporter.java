@@ -4,6 +4,8 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -24,26 +26,26 @@ public final class PomExporter {
 
     /** Export with traditional (Maven) source dirs and no locked versions (collapses selectors). */
     public static Result export(JkBuild jkBuild) {
-        return export(jkBuild, JkBuild.Layout.TRADITIONAL, Map.of());
+        return export(jkBuild, Layout.TRADITIONAL, Map.of());
     }
 
     /** Export with traditional (Maven) source dirs. */
     public static Result export(JkBuild jkBuild, Map<String, String> locked) {
-        return export(jkBuild, JkBuild.Layout.TRADITIONAL, locked);
+        return export(jkBuild, Layout.TRADITIONAL, locked);
     }
 
     /**
      * Export as {@code pom.xml}. {@code locked} module→version uses exact pins when present;
      * otherwise selectors collapse with a warning. {@code SIMPLE} emits flat source dirs.
      */
-    public static Result export(JkBuild jkBuild, JkBuild.Layout layout, Map<String, String> locked) {
+    public static Result export(JkBuild jkBuild, Layout layout, Map<String, String> locked) {
         if (locked == null) locked = Map.of();
-        if (layout == null) layout = JkBuild.Layout.TRADITIONAL;
+        if (layout == null) layout = Layout.TRADITIONAL;
         ImportReport.Builder report = ImportReport.builder();
         StringBuilder sb = new StringBuilder(1024);
         PomXml.appendPreamble(sb);
 
-        JkBuild.Project p = jkBuild.project();
+        Project p = jkBuild.project();
         appendCoords(sb, p, jkBuild.isWorkspaceRoot());
         appendProperties(sb, p);
         appendModules(sb, jkBuild);
@@ -57,7 +59,7 @@ public final class PomExporter {
         return new Result(sb.toString(), report.build());
     }
 
-    private static void appendCoords(StringBuilder sb, JkBuild.Project p, boolean workspaceRoot) {
+    private static void appendCoords(StringBuilder sb, Project p, boolean workspaceRoot) {
         sb.append("  <groupId>").append(PomXml.escape(p.group())).append("</groupId>\n");
         sb.append("  <artifactId>").append(PomXml.escape(p.name())).append("</artifactId>\n");
         sb.append("  <version>").append(PomXml.escape(p.version())).append("</version>\n");
@@ -67,7 +69,7 @@ public final class PomExporter {
         }
     }
 
-    private static void appendProperties(StringBuilder sb, JkBuild.Project p) {
+    private static void appendProperties(StringBuilder sb, Project p) {
         sb.append('\n');
         sb.append("  <properties>\n");
         sb.append("    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n");
@@ -187,12 +189,8 @@ public final class PomExporter {
     private static final String JAR_PLUGIN = "3.4.1"; // org.apache.maven.plugins:maven-jar-plugin
 
     private static void appendBuild(
-            StringBuilder sb,
-            JkBuild jkBuild,
-            JkBuild.Layout layout,
-            Map<String, String> locked,
-            ImportReport.Builder report) {
-        JkBuild.Project p = jkBuild.project();
+            StringBuilder sb, JkBuild jkBuild, Layout layout, Map<String, String> locked, ImportReport.Builder report) {
+        Project p = jkBuild.project();
         List<Dependency> processors = jkBuild.dependencies().of(Scope.PROCESSOR);
         boolean kotlin = p.kotlin() != null;
         boolean toolchain = p.jdk() != null && !p.jdk().isBlank();
@@ -200,7 +198,7 @@ public final class PomExporter {
         boolean nativeImg = jkBuild.nativeMode() == JkBuild.NativeMode.ALWAYS;
         boolean jarManifest = jkBuild.mainClass() != null || !jkBuild.manifest().isEmpty();
         boolean anyPlugin = !processors.isEmpty() || kotlin || toolchain || assembly || nativeImg || jarManifest;
-        boolean simple = layout == JkBuild.Layout.SIMPLE;
+        boolean simple = layout == Layout.SIMPLE;
         if (!anyPlugin && !simple) return;
 
         sb.append('\n').append("  <build>\n");
@@ -226,7 +224,7 @@ public final class PomExporter {
         sb.append("  </build>\n");
     }
 
-    private static void appendKotlinPlugin(StringBuilder sb, JkBuild.Project p, ImportReport.Builder report) {
+    private static void appendKotlinPlugin(StringBuilder sb, Project p, ImportReport.Builder report) {
         String ver = extractVersion(p.kotlin(), "kotlin", report);
         sb.append("      <plugin>\n");
         sb.append("        <groupId>org.jetbrains.kotlin</groupId>\n");
@@ -276,7 +274,7 @@ public final class PomExporter {
      * Gradle's foojay-resolver), so `project.jdk` reproduces jk's JDK auto-provisioning rather than
      * requiring a hand-edited toolchains.xml.
      */
-    private static void appendToolchainsPlugin(StringBuilder sb, JkBuild.Project p) {
+    private static void appendToolchainsPlugin(StringBuilder sb, Project p) {
         int major = p.jdkMajor();
         sb.append("      <plugin>\n");
         sb.append("        <groupId>org.mvnsearch</groupId>\n");

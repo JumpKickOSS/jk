@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.VersionSelector;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -76,7 +77,7 @@ public final class LockfileModules {
     }
 
     /** Build a lock pin from an already-resolved project (no pending workspace inherits). */
-    public static Lockfile.ModuleEntry fromProject(String path, JkBuild.Project p) {
+    public static Lockfile.ModuleEntry fromProject(String path, Project p) {
         String sources =
                 switch (p.sourcesMode()) {
                     case DISABLED -> null;

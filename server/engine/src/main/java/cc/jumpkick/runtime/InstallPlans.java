@@ -19,6 +19,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.publish.PublishablePom;
@@ -241,7 +242,7 @@ public final class InstallPlans {
     }
 
     /** Project {@code [m2] install} and the machine {@code JK_M2_INSTALL} / {@code [m2] install} policy. */
-    private static boolean installToMavenLocal(JkBuild.Project p) {
+    private static boolean installToMavenLocal(Project p) {
         return p.m2install() && JkM2Config.resolve().install();
     }
 

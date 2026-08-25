@@ -241,9 +241,7 @@ public final class SelfCommand extends GroupCommand {
             }
             Path newJk = pathClient(JkDirs.binDir());
             if (Files.isRegularFile(newJk)) {
-                new ProcessBuilder(newJk.toString(), "engine", "start")
-                        .inheritIO()
-                        .start()
+                CliOutput.handOffTerminal(new ProcessBuilder(newJk.toString(), "engine", "start"))
                         .waitFor();
                 CliOutput.out("engine " + target + " is taking over"
                         + (in.isSet("now") ? "" : " (running builds finish on the old engine)"));

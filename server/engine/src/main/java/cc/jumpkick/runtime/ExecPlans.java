@@ -31,6 +31,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.PluginModule;
@@ -255,12 +256,12 @@ public final class ExecPlans {
     }
 
     private static String sanitizeIdentity(String value) {
-        if (value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value)) return "";
+        if (value == null || value.isBlank() || Project.VERSION_FROM_WORKSPACE.equals(value)) return "";
         return value;
     }
 
     private static String sanitizeJdk(String jdk) {
-        if (jdk == null || jdk.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(jdk)) return "";
+        if (jdk == null || jdk.isBlank() || Project.VERSION_FROM_WORKSPACE.equals(jdk)) return "";
         return jdk;
     }
 
@@ -295,7 +296,7 @@ public final class ExecPlans {
                     && !p.inheritsFromWorkspace()) {
                 return build;
             }
-            var resolved = new JkBuild.Project(
+            var resolved = new Project(
                     group,
                     p.name(),
                     version,
@@ -317,7 +318,7 @@ public final class ExecPlans {
     }
 
     private static boolean blankOrSentinel(String value) {
-        return value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value);
+        return value == null || value.isBlank() || Project.VERSION_FROM_WORKSPACE.equals(value);
     }
 
     static int countSources(Path module, boolean main) {
@@ -970,7 +971,7 @@ public final class ExecPlans {
         if (!Files.isRegularFile(mainJar)) {
             return ExecPlan.error("aot-cache", "jar not found at " + mainJar + " — build before --aot-cache");
         }
-        int major = JkBuild.Project.majorOf(project.project().jdk());
+        int major = Project.majorOf(project.project().jdk());
         String tier = major >= 25 ? "aot" : "cds";
 
         List<String> libNames = new ArrayList<>();

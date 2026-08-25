@@ -12,6 +12,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.lang.classfile.ClassFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -34,6 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
  * are warm (same shared cache as KspRoomHiltTest).
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class HiltTransformTest {
 
     @Test

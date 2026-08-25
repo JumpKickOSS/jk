@@ -36,7 +36,12 @@ class CliTokenProbeTest {
         var token = CliTokenProbe.REAL.token(List.of(helper.toString()));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         assertThat(token).contains("tok");
-        assertThat(elapsedMs).as("must not hang").isLessThan(30_000);
+        // LIVENESS, not performance: the defect was a deadlock (nothing drained stderr, so the
+        // child never exited). 30s against a probe that should finish in milliseconds is a hang
+        // detector, and saying so keeps the next reader from tightening it into a benchmark.
+        assertThat(elapsedMs)
+                .as("LIVENESS: the probe returned at all rather than deadlocking")
+                .isLessThan(30_000);
     }
 
     @Test
@@ -46,7 +51,11 @@ class CliTokenProbeTest {
         var token = CliTokenProbe.REAL.token(List.of(helper.toString()));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         assertThat(token).isEmpty();
-        assertThat(elapsedMs).as("5s cap is real").isLessThan(30_000);
+        // LIVENESS, not performance: the helper sleeps 600s and the cap is 5s, so any number
+        // between them proves the cap fired. 30s is 6x the cap deliberately.
+        assertThat(elapsedMs)
+                .as("LIVENESS: the 5s cap fired instead of awaiting the helper's 600s sleep")
+                .isLessThan(30_000);
     }
 
     @Test

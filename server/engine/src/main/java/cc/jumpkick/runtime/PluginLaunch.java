@@ -9,7 +9,6 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
 
@@ -37,20 +36,16 @@ final class PluginLaunch {
     static List<String> javaCommand(Path workerJar, List<String> extraJvmArgs, Path spec) throws IOException {
         PluginLoader.sealNetworkPolicy(spec);
         Path javaExe = JdkFingerprint.java(JavaHomes.runningJavaHome());
-        String cp = WorkerLaunchClasspath.resolve(workerJar);
-        List<String> jvmFlags = new ArrayList<>(extraJvmArgs);
-        // batchFlags applied inside JvmOptions.javaCommand via concurrency=1 — but PluginLoader
-        // expects raw flags only. Use the same heap plan as before.
-        List<String> rest = new ArrayList<>();
-        // Reuse PluginLoader.command shape: javaExe + jvmFlags + -cp + main + args
-        // JvmOptions.javaCommand prepends java + memory flags around `rest`.
-        List<String> afterMem = new ArrayList<>();
-        afterMem.addAll(jvmFlags);
-        afterMem.add("-cp");
-        afterMem.add(cp);
-        afterMem.add(mainClassOf(workerJar));
-        afterMem.add(spec.toAbsolutePath().toString());
-        return JvmOptions.javaCommand(javaExe.toString(), 1, afterMem);
+        // One argv assembly (PluginLoader.command), then JvmOptions re-heads it with the java
+        // binary plus this job's memory flags — the heap plan is what this launcher adds over a
+        // bare PluginLoader.command fork, and concurrency=1 is "one requested JVM".
+        List<String> command = PluginLoader.command(
+                javaExe,
+                WorkerLaunchClasspath.resolve(workerJar),
+                extraJvmArgs,
+                mainClassOf(workerJar),
+                List.of(spec.toAbsolutePath().toString()));
+        return JvmOptions.javaCommand(javaExe.toString(), 1, command.subList(1, command.size()));
     }
 
     /**

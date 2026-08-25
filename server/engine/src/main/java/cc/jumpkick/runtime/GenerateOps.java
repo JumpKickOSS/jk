@@ -14,6 +14,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.mvn.PomExporter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -110,7 +111,7 @@ public final class GenerateOps {
         Loaded loaded = load(dir);
 
         Map<String, JkBuild> byRel = new LinkedHashMap<>();
-        Map<String, JkBuild.Layout> layoutByRel = new LinkedHashMap<>();
+        Map<String, Layout> layoutByRel = new LinkedHashMap<>();
         layoutByRel.put("", resolveLayout(dir, loaded.root()));
         for (Map.Entry<Path, JkBuild> e : loaded.modules().entrySet()) {
             String rel = dir.relativize(e.getKey()).toString().replace('\\', '/');
@@ -165,8 +166,8 @@ public final class GenerateOps {
         }
     }
 
-    private static JkBuild.Layout resolveLayout(Path dir, JkBuild build) {
-        return SourceLayout.isSimpleLayout(build.project(), dir) ? JkBuild.Layout.SIMPLE : JkBuild.Layout.TRADITIONAL;
+    private static Layout resolveLayout(Path dir, JkBuild build) {
+        return SourceLayout.isSimpleLayout(build.project(), dir) ? Layout.SIMPLE : Layout.TRADITIONAL;
     }
 
     private static void addNotes(List<String> notes, ImportReport report) {

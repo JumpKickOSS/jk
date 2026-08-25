@@ -17,7 +17,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -218,11 +217,10 @@ public final class AppWatchLoop {
     private Process startApp(ExecPlan plan, List<String> appArgs) throws IOException {
         List<String> command = new ArrayList<>(plan.argv());
         command.addAll(appArgs);
-        Terminals.restoreForChild();
-        return new ProcessBuilder(command)
-                .directory(Path.of(plan.workingDir()).toFile())
-                .inheritIO()
-                .start();
+        // No skipTrailingBlank: watch keeps printing after the app starts, so the envelope's
+        // closing blank is still jk's to emit.
+        return CliOutput.handOffTerminal(
+                new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile()));
     }
 
     private Process restartApp(Process app, ExecPlan plan, List<String> appArgs)

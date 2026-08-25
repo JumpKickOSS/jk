@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.build.InvocationPhase;
@@ -139,8 +140,7 @@ class EngineProtocolTest {
         assertThat(ProtoSession.variantOf(line)).isEqualTo("release|tier=free");
         assertThat(ProtoSession.clientEnvOf(line)).containsExactly(Map.entry("KEY_PASS", "s3cret"));
         // A non-encoded line is rejected, not silently mangled.
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> ProtoSession.withSession("not-json", "release", Map.of(), null))
+        assertThatThrownBy(() -> ProtoSession.withSession("not-json", "release", Map.of(), null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

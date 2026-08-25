@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,7 +16,7 @@ class BuildLayoutTest {
 
     /** Library project: no {@code main}. Artifacts land in {@code target/lib/}. */
     private static JkBuild project(String artifact, String version) {
-        return JkBuild.of(new JkBuild.Project("com.acme", artifact, version, 25));
+        return JkBuild.of(new Project("com.acme", artifact, version, 25));
     }
 
     /** Application project: has {@code [application].main}. Artifacts land in {@code target/}. */

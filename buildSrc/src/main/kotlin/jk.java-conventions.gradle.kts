@@ -377,13 +377,30 @@ val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 
 val checkFileSizeCaps by tasks.registering {
     group = "verification"
     description = "Fail the build when a file grows past size-baseline.txt or over its hard cap"
+    // Test sources are capped too, and by the same numbers (JK-2444). The caps in the charter are
+    // per LANGUAGE, and `.java` is `.java` — but this task used to scan `src/main` only, so a rule
+    // stated for an extension was enforced for a directory. What that hole cost was measurable: the
+    // single largest file in the tree was `JkBuildParserTest` at 2,334 lines, 2.9x the hard cap for
+    // its own language and 5.6x its 416-line subject, and no guard could see it. Nor could the
+    // doc/guard parity arm below, which compares extensions and is blind to directory scope.
+    //
+    // The counter-argument — that splitting a suite can duplicate a fixture, and duplication is
+    // this tree's actual defect vector — argues for the exception band, not for a second number.
+    // The band already exists: `size-baseline.txt` plus a stated invariant, reviewable as a diff.
+    // Measured when this landed: 975 Java test files, p50 104 lines, p99 638, and every one of them
+    // at or under 800.
     val sources = fileTree(layout.projectDirectory) {
         include("src/main/java/**/*.java")
         include("src/main/kotlin/**/*.kt")
         include("src/main/resources/**/*.js")
         include("src/main/resources/**/*.mjs")
+        include("src/test/java/**/*.java")
+        include("src/test/kotlin/**/*.kt")
+        include("src/testFixtures/java/**/*.java")
+        include("src/test/js/**/*.js")
+        include("src/test/js/**/*.mjs")
     }
-    inputs.files(sources).withPropertyName("productionSources")
+    inputs.files(sources).withPropertyName("cappedSources")
     val baseline = rootProject.layout.projectDirectory.file("size-baseline.txt")
     inputs.file(baseline).withPropertyName("sizeBaseline")
     // The caps are a house rule before they are a task, and the rule is written down in

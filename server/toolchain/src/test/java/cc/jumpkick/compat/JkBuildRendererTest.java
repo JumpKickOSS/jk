@@ -9,6 +9,7 @@ import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -24,8 +25,7 @@ class JkBuildRendererTest {
 
     @Test
     void renders_a_minimal_project_block() {
-        JkBuild model =
-                new JkBuild(new JkBuild.Project("com.example", "widget", "1.0.0", 25), JkBuild.Dependencies.empty());
+        JkBuild model = new JkBuild(new Project("com.example", "widget", "1.0.0", 25), JkBuild.Dependencies.empty());
         String out = JkBuildRenderer.render(model);
         assertThat(out).isEqualTo("""
                 group    = "com.example"
@@ -38,7 +38,7 @@ class JkBuildRendererTest {
 
     @Test
     void renders_application_and_native_blocks_when_set() {
-        JkBuild model = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        JkBuild model = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .kotlin(VersionSelector.parseFloating("=2.3.21"))
                         .build())
@@ -56,7 +56,7 @@ class JkBuildRendererTest {
     @Test
     void graal_native_spec_round_trips_but_graalvm_default_is_elided() {
         // JK-2098: "native" is a distinct legal spec — eliding it re-parses as "graalvm".
-        JkBuild base = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        JkBuild base = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .build())
                 .nativeConfig(
@@ -64,7 +64,7 @@ class JkBuildRendererTest {
                 .build();
         assertThat(JkBuildRenderer.render(base)).contains("graal      = \"native\"");
 
-        JkBuild dflt = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        JkBuild dflt = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .build())
                 .nativeConfig(
@@ -80,7 +80,7 @@ class JkBuildRendererTest {
      */
     @Test
     void metadata_repository_round_trips_and_only_the_default_is_elided() {
-        JkBuild pinned = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        JkBuild pinned = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .build())
                 .nativeConfig(new JkBuild.NativeConfig(
@@ -96,7 +96,7 @@ class JkBuildRendererTest {
         assertThat(JkBuildParser.parse(rendered).nativeConfig().orElseThrow().metadataRepository())
                 .isEqualTo(VersionSelector.parseFloating("=1.1.4"));
 
-        JkBuild dflt = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        JkBuild dflt = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .build())
                 .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null))
@@ -107,7 +107,7 @@ class JkBuildRendererTest {
     @Test
     void renders_description_when_set() {
         JkBuild model = new JkBuild(
-                JkBuild.Project.builder("com.example", "widget", "1.0.0")
+                Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .java(25)
                         .description("A tiny widget library.")
@@ -122,7 +122,7 @@ class JkBuildRendererTest {
 
     @Test
     void m2integration_opt_out_round_trips() {
-        JkBuild model = JkBuild.of(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        JkBuild model = JkBuild.of(Project.builder("com.example", "widget", "1.0.0")
                 .jdkMajor(25)
                 .java(25)
                 .m2integration(false)
@@ -138,7 +138,7 @@ class JkBuildRendererTest {
 
     @Test
     void m2install_opt_out_round_trips() {
-        JkBuild model = JkBuild.of(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+        JkBuild model = JkBuild.of(Project.builder("com.example", "widget", "1.0.0")
                 .jdkMajor(25)
                 .java(25)
                 .m2install(false)
@@ -154,7 +154,7 @@ class JkBuildRendererTest {
 
     @Test
     void application_presence_alone_drives_is_application() {
-        JkBuild withApplication = JkBuild.builder(JkBuild.Project.builder("com.example", "app", "1.0.0")
+        JkBuild withApplication = JkBuild.builder(Project.builder("com.example", "app", "1.0.0")
                         .jdkMajor(25)
                         .java(25)
                         .build())
@@ -165,7 +165,7 @@ class JkBuildRendererTest {
                 .isTrue();
 
         // No [application] at all → isApplication() false, nothing emitted.
-        JkBuild lib = JkBuild.of(new JkBuild.Project("com.example", "lib", "1.0.0", 25));
+        JkBuild lib = JkBuild.of(new Project("com.example", "lib", "1.0.0", 25));
         assertThat(JkBuildRenderer.render(lib)).doesNotContain("[application]");
         assertThat(JkBuildParser.parse(JkBuildRenderer.render(lib)).isApplication())
                 .isFalse();
@@ -176,8 +176,8 @@ class JkBuildRendererTest {
         var manifest = new LinkedHashMap<String, String>();
         manifest.put("Implementation-Title", "jk-test-runner");
         manifest.put("Implementation-Version", "1.0.0");
-        JkBuild model = JkBuild.of(new JkBuild.Project("com.example", "widget", "1.0.0", 21))
-                .withManifest(manifest);
+        JkBuild model =
+                JkBuild.of(new Project("com.example", "widget", "1.0.0", 21)).withManifest(manifest);
 
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("[manifest]");
@@ -205,8 +205,8 @@ class JkBuildRendererTest {
                 Scope.TEST,
                 List.of(new Dependency("org.junit.jupiter:junit-jupiter", VersionSelector.parse("5.11.0"))));
 
-        JkBuild model = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild model =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
 
         // Main scope sub-table appears before the test sub-table.
@@ -237,8 +237,8 @@ class JkBuildRendererTest {
                 "github.com/acme/widgets", "https://github.com/acme/widgets", new GitRefSpec.Tag("v1.0.0"));
         byScope.put(Scope.MAIN, List.of(Dependency.git("widgets", "git:widgets", git)));
 
-        JkBuild model = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild model =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
 
         assertThat(out).contains("widgets = { git = \"https://github.com/acme/widgets\", tag = \"v1.0.0\" }");
@@ -251,7 +251,7 @@ class JkBuildRendererTest {
     @Test
     void renders_repositories_block_when_present() {
         JkBuild model = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
+                new Project("com.example", "widget", "1.0.0", 21),
                 JkBuild.Dependencies.empty(),
                 List.of(new RepositorySpec(
                         "sonatype", URI.create("https://s01.oss.sonatype.org/content/repositories/snapshots/"))));
@@ -262,7 +262,7 @@ class JkBuildRendererTest {
 
     @Test
     void renders_workspace_block() {
-        JkBuild model = JkBuild.builder(new JkBuild.Project("com.example", "widget-parent", "1.0.0", 21))
+        JkBuild model = JkBuild.builder(new Project("com.example", "widget-parent", "1.0.0", 21))
                 .workspace(new Workspace(List.of("core", "app")))
                 .build();
         String out = JkBuildRenderer.render(model);
@@ -279,8 +279,7 @@ class JkBuildRendererTest {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(Scope.MAIN, List.of(Dependency.workspace("lib")));
         byScope.put(Scope.TEST, List.of(Dependency.workspace("lib", DependencyKind.TESTS)));
-        JkBuild model =
-                new JkBuild(new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild model = new JkBuild(new Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("lib.workspace = true");
         assertThat(out).contains("lib = { workspace = true, kind = \"tests\" }");
@@ -293,8 +292,7 @@ class JkBuildRendererTest {
                 Scope.TEST,
                 List.of(Dependency.of("helpers", "com.acme:helpers", VersionSelector.parse("=1.2.3"))
                         .withKind(DependencyKind.TESTS)));
-        JkBuild model =
-                new JkBuild(new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild model = new JkBuild(new Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("kind = \"tests\"");
         assertThat(out).contains("com.acme");
@@ -310,8 +308,8 @@ class JkBuildRendererTest {
                         new Dependency("com.example:pinned", VersionSelector.parse("=1.0.0")),
                         new Dependency("com.example:floating", VersionSelector.parseFloating("^2.0.0"))));
 
-        JkBuild model = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild model =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
 
         // Exact pins retain the leading `=`; caret selectors emit the bare
@@ -337,7 +335,7 @@ class JkBuildRendererTest {
                         "org.springframework.boot:spring-boot-dependencies", VersionSelector.parse("3.4.0"))));
 
         JkBuild model = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
+                new Project("com.example", "widget", "1.0.0", 21),
                 new JkBuild.Dependencies(byScope),
                 List.of(new RepositorySpec(
                         "internal", URI.create("https://nexus.example.com/repository/maven-public/"))));

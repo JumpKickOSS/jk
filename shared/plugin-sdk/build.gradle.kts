@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.java-conventions")
+    `java-test-fixtures`
     `maven-publish`
 }
 
@@ -35,6 +36,20 @@ tasks.compileJava {
 // :host publishes as `cc.jumpkick:jk-host` — see shared/host/build.gradle.kts (JK-2466).
 dependencies {
     api(project(":host"))
+    // The SPI's own fake (`FakeBuildIo`) lives in `testFixtures`, so the four plugin modules that
+    // drive a packager or a step body share one implementation of these interfaces instead of four.
+    // It is here rather than in :host's testFixtures because it names PackageIo/TaskExec, and :host
+    // is the floor those types sit on — reach decides placement, not convenience.
+    testFixturesApi(libs.junit.jupiter)
+}
+
+// Test fixtures are NOT part of what `cc.jumpkick:jk-plugin-sdk` publishes: a third-party plugin
+// author compiles against the SPI, and the fake engine jk tests itself with is not part of that
+// contract. Without this, Gradle would add testFixtures variants plus a `-test-fixtures` jar to the
+// publication and name JUnit in the SDK's module metadata.
+val sdkJavaComponent = components["java"] as AdhocComponentWithVariants
+listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name ->
+    sdkJavaComponent.withVariantsFromConfiguration(configurations[name]) { skip() }
 }
 
 // The one library artifact a third-party build plugin compiles against. NOT jk.plugin-conventions:
@@ -157,6 +172,7 @@ fun blankJavaComments(src: String): String {
 // plugins/*/src/main/java plus this module's own src/main/java. Tests are exempt: they
 // legitimately build specs both ways. Measured 2026-08-25: 0 violations over 119 files
 // (70 plugin, 49 plugin-sdk).
+// Guard G29 (JK-2471).
 val checkWorkerOfflineFromSpec by tasks.registering {
     group = "verification"
     description = "Fail the build on a JK_OFFLINE / offline-property read in worker sources (use TaskExec.offline())"

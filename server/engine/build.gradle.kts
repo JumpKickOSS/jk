@@ -42,6 +42,11 @@ dependencies {
     // XZ inflate for release client binaries (`EngineMain --inflate-xz`). The native CLI must
     // not link this — it shells out to the engine jar.
     implementation(libs.tukaani.xz)
+
+    // The tree's one poll-until-true helper (`cc.jumpkick.testing.Await`), so this module's tests
+    // do not carry a private copy of the loop. Test-only source set: nothing here reaches `main`,
+    // the fat jar or a worker (JK-2443/JK-2446).
+    testImplementation(testFixtures(project(":host")))
 }
 
 // Production engine has no flattened catalog — BuiltInPluginJars reads each
@@ -821,6 +826,7 @@ tasks.named("jar") { dependsOn(checkForecastKeyParity) }
 // the throw-probe from JK-2462 (make the code under test throw — a green run is a replay) remains
 // the strong check.
 // ---------------------------------------------------------------------------
+// Guard G32 (JK-2462).
 val checkSpikeCacheTempDir by tasks.registering {
     group = "verification"
     description = "Fail the build when a spike-cache test does not root its project in a @TempDir"

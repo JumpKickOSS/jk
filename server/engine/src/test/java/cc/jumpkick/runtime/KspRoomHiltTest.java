@@ -12,6 +12,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -37,6 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
  * under build/ so repeat runs are warm.
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class KspRoomHiltTest {
 
     @Test

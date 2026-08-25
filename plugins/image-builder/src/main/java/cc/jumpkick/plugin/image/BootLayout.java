@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,16 +57,18 @@ final class BootLayout {
     static Extracted extract(Path bootJar, Path dest, Path javaBin) throws IOException, InterruptedException {
         deleteRecursively(dest);
         Files.createDirectories(dest);
-        List<String> command = List.of(
-                javaBin.toString(),
-                "-Djarmode=tools",
-                "-jar",
-                bootJar.toAbsolutePath().toString(),
-                "extract",
-                "--force",
-                "--destination",
-                dest.toAbsolutePath().toString());
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        // start(), not run(): this fork needs the timeout below, and run() drains to EOF. The argv
+        // still comes from the SDK's one fork owner.
+        Process process = new TaskExec.ToolRun(javaBin)
+                .args(List.of(
+                        "-Djarmode=tools",
+                        "-jar",
+                        bootJar.toAbsolutePath().toString(),
+                        "extract",
+                        "--force",
+                        "--destination",
+                        dest.toAbsolutePath().toString()))
+                .start();
         // Drain on a separate thread: readAllBytes() on this thread blocks to EOF, which makes
         // the timeout below unreachable while the child holds its pipe open.
         StringBuilder captured = new StringBuilder();

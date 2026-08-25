@@ -12,8 +12,9 @@ import cc.jumpkick.engine.EngineServer;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.ServerSocketChannel;
@@ -21,12 +22,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * Exercises {@link EngineClient} against a real, in-process {@link EngineServer} — everything except
@@ -37,16 +37,8 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class EngineClientTest {
 
-    private final List<Path> tempDirs = new ArrayList<>();
-
-    private Path shortTempDir() throws IOException {
-        // Prefer /tmp: macOS TMPDIR under /var/folders overflows UDS sun_path (~104 bytes).
-        Path root =
-                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
-        Path dir = Files.createTempDirectory(root, "jkc-");
-        tempDirs.add(dir);
-        return dir;
-    }
+    @RegisterExtension
+    final ShortTempDirs tempDirs = new ShortTempDirs("jkc-");
 
     @AfterEach
     void cleanup() {
@@ -54,28 +46,6 @@ class EngineClientTest {
         // which mutates JvmOptions' process-wide static heap plan — reset it so it doesn't leak into
         // unrelated tests sharing this test JVM.
         JvmOptions.resetSharedPlanForTests();
-        for (Path dir : tempDirs) {
-            try (var walk = Files.walk(dir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                        // best-effort
-                    }
-                });
-            } catch (IOException | UncheckedIOException ignored) {
-                // engine under test may still be tearing down its own files concurrently — Files.walk's
-                // lazy traversal wraps a file disappearing mid-walk as an UncheckedIOException, not IOException
-            }
-        }
-    }
-
-    private static void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) throw new AssertionError("condition not met within " + timeout);
-            Thread.sleep(10);
-        }
     }
 
     private static Thread startInBackground(EngineServer server) {
@@ -84,7 +54,7 @@ class EngineClientTest {
                     try {
                         server.run();
                     } catch (IOException ignored) {
-                        // surfaced via the socket never appearing; waitUntil below will time out
+                        // surfaced via the socket never appearing; the Await below will time out
                     }
                 },
                 "test-engine-server");
@@ -95,19 +65,19 @@ class EngineClientTest {
 
     @Test
     void ping_is_false_when_nothing_is_listening() throws IOException {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         assertThat(EngineClient.ping(EnginePaths.activeSocket(p))).isFalse();
     }
 
     @Test
     void ping_handshake_and_status_round_trip_against_a_real_engine() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "7.7.7", null);
         startInBackground(server);
         // Endpoint is written before acceptLoop (AOT plan / HTTP / warmup still run first).
         // Wait for a real pong — cold CI can take longer than the 2s connect timeout between
         // writeEndpoint and the accept loop, so "endpoint exists" alone races.
-        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         var hs = EngineClient.handshake(EnginePaths.activeSocket(p), "7.7.7");
         assertThat(hs).isPresent();
@@ -126,10 +96,10 @@ class EngineClientTest {
 
     @Test
     void stop_gracefully_shuts_a_running_engine_down() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.stop(EnginePaths.activeSocket(p))).isTrue();
         serverThread.join(5_000);
@@ -138,16 +108,16 @@ class EngineClientTest {
 
     @Test
     void stop_on_a_non_running_engine_is_a_no_op_success() throws IOException {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         assertThat(EngineClient.stop(EnginePaths.activeSocket(p))).isTrue();
     }
 
     @Test
     void a_normal_engine_reports_not_draining_and_zero_plans() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         startInBackground(server);
-        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.handshake(EnginePaths.activeSocket(p), "1.0")
                         .orElseThrow()
@@ -162,10 +132,10 @@ class EngineClientTest {
 
     @Test
     void drain_of_an_idle_engine_reports_zero_jobs_and_shuts_it_down() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.drain(EnginePaths.activeSocket(p))).isZero(); // no in-flight jobs → immediate exit
         serverThread.join(5_000);
@@ -174,10 +144,10 @@ class EngineClientTest {
 
     @Test
     void force_stop_shuts_a_running_engine_down() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         long pid = EngineClient.readPidForSocket(EnginePaths.activeSocket(p));
         // In-process EngineServer records this JVM's pid; forceStop must not kill us.
@@ -191,7 +161,7 @@ class EngineClientTest {
     @Test
     void handshake_is_empty_within_seconds_against_a_silent_peer() throws Exception {
         // Accept connections, never read or write — models a wedged engine.
-        Path dir = shortTempDir();
+        Path dir = tempDirs.create();
         Path sock = dir.resolve("silent.sock");
         try (var server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
             server.bind(UnixDomainSocketAddress.of(sock));
@@ -215,8 +185,12 @@ class EngineClientTest {
             long t0 = System.nanoTime();
             assertThat(EngineClient.handshake(sock, "1.0")).isEmpty();
             long ms = (System.nanoTime() - t0) / 1_000_000L;
-            // exchange watchdog is 2s — must not wait for stream idle (minutes).
-            assertThat(ms).isLessThan(8_000L);
+            // LIVENESS, not performance: the exchange watchdog is 2s and the alternative is the
+            // stream-idle timeout, which is minutes. 8s is 4x the watchdog on purpose — a tighter
+            // budget would be measuring this machine rather than the watchdog (JK-2446).
+            assertThat(ms)
+                    .as("gave up on the 2s exchange watchdog, not after the minutes-long stream idle")
+                    .isLessThan(8_000L);
         }
     }
 
@@ -228,7 +202,7 @@ class EngineClientTest {
 
     @Test
     void drain_on_a_non_running_engine_is_minus_one() throws IOException {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         assertThat(EngineClient.drain(EnginePaths.activeSocket(p))).isEqualTo(-1);
     }
 
@@ -242,10 +216,10 @@ class EngineClientTest {
         String previousOsName = System.getProperty("os.name");
         System.setProperty("os.name", "Windows 11");
         try {
-            EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+            EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
             EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "7.7.7", null);
             startInBackground(server);
-            waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+            Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
             var hs = EngineClient.handshake(EnginePaths.activeSocket(p), "7.7.7");
             assertThat(hs).isPresent();
@@ -268,7 +242,7 @@ class EngineClientTest {
      */
     @Test
     void engine_artifact_resolution_prefers_override_then_product_lib() throws IOException {
-        Path dir = shortTempDir();
+        Path dir = tempDirs.create();
         // Pointer lives beside the jars under this isolated product lib — no ambient JK_HOME involved.
         EngineInstall install = new EngineInstall(dir.resolve("lib"));
 
@@ -312,13 +286,13 @@ class EngineClientTest {
         // jk cache prune's request carries no dir, so the engine journals it against the cache
         // path: Ctrl-C's dir-scoped cancel can never match it and the jid from job-start is the
         // only handle that reaches the job. Same for jk tool resolve and jk tool run <script>.
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, Jk.VERSION, null);
         startInBackground(server);
-        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
         EngineClient.ActiveJobs.forgetAll();
 
-        Path cache = Files.createDirectories(shortTempDir().resolve("cache"));
+        Path cache = Files.createDirectories(tempDirs.create().resolve("cache"));
         List<Long> liveWhileRunning = new ArrayList<>();
         EngineRequests.CacheMaintSummary[] summary = new EngineRequests.CacheMaintSummary[1];
         BuildPlanResult result = EngineClient.runCacheMaintenance(
@@ -342,10 +316,10 @@ class EngineClientTest {
 
     @Test
     void ensure_running_returns_immediately_when_a_matching_version_engine_is_already_up() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "3.3.3", null);
         startInBackground(server);
-        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         EngineClient.Handshake hs = EngineClient.ensureRunning(p, "3.3.3");
         assertThat(hs.version()).isEqualTo("3.3.3");

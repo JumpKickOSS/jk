@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.host.Os;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -78,7 +77,7 @@ final class DebugKeystore {
         Path staging = Files.createTempFile(dir, ".debug-keystore-", ".tmp");
         Files.delete(staging); // keytool creates the store itself and refuses an existing empty file
         try {
-            run(keytool(javaHome), staging);
+            run(javaHome, staging);
             try {
                 Files.move(staging, keystore);
             } catch (FileAlreadyExistsException raceLost) {
@@ -92,10 +91,13 @@ final class DebugKeystore {
         return keystore;
     }
 
-    /** The generation argv, readable by a test: no password appears in it. */
-    static List<String> genKeypairCommand(Path keytool, Path keystore, Signing.PasswordFile pass) {
+    /**
+     * The generation args after the tool itself, readable by a test: no password appears in them.
+     * The {@code keytool} path is not spelled here — {@link TaskExec.ToolRun} resolves it off the
+     * build's JDK and owns the Windows {@code .exe} shape.
+     */
+    static List<String> genKeypairArgs(Path keystore, Signing.PasswordFile pass) {
         return List.of(
-                keytool.toString(),
                 "-genkeypair",
                 "-keystore",
                 keystore.toAbsolutePath().toString(),
@@ -115,11 +117,6 @@ final class DebugKeystore {
                 "CN=Android Debug,O=Android,C=US");
     }
 
-    /** {@code <javaHome>/bin/keytool}, {@code .exe} on Windows. */
-    private static Path keytool(Path javaHome) {
-        return javaHome.resolve("bin").resolve(Os.isWindows() ? "keytool.exe" : "keytool");
-    }
-
     /**
      * The one {@code keytool -genkeypair} invocation in the plugin: 2048-bit RSA, ~27 years of
      * validity and the standard debug distinguished name. Two copies of this argv had drifted apart
@@ -129,14 +126,13 @@ final class DebugKeystore {
      * same {@link Signing#passwordFile} route the release passwords take, so there is one shape to
      * read and no example of the risky spelling left in the plugin to copy.
      */
-    private static void run(Path keytool, Path keystore) throws IOException, InterruptedException {
+    private static void run(Path javaHome, Path keystore) throws IOException, InterruptedException {
         try (Signing.PasswordFile pass = Signing.passwordFile(PASSWORD)) {
-            List<String> command = genKeypairCommand(keytool, keystore, pass);
-            Process process =
-                    new ProcessBuilder(command).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (process.waitFor() != 0) {
-                throw new IOException("keytool failed to generate the debug keystore:\n" + output);
+            var result = new TaskExec.ToolRun(javaHome, "keytool")
+                    .args(genKeypairArgs(keystore, pass))
+                    .run();
+            if (result.exit() != 0) {
+                throw new IOException("keytool failed to generate the debug keystore:\n" + result.output());
             }
         }
     }

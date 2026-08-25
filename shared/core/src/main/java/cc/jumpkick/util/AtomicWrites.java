@@ -9,6 +9,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.function.IntConsumer;
 
 /**
  * Atomic write via temp sibling + move ({@code REPLACE_EXISTING} fallback). A crash leaves a
@@ -61,7 +62,7 @@ public final class AtomicWrites {
             } catch (AccessDeniedException e) {
                 // A POSIX EACCES is permanent; only Windows' transient sharing denial is worth waiting out.
                 if (!Os.isWindows() || attempt == MOVE_ATTEMPTS) throw e;
-                sleepBriefly(attempt);
+                backOff.accept(attempt);
             }
         }
     }
@@ -78,6 +79,19 @@ public final class AtomicWrites {
             Files.move(staging, target);
         }
     }
+
+    /**
+     * The retry back-off, as a seam. Production always sleeps; {@code AtomicWritesTest} swaps in a
+     * counter so it can assert <em>how many times</em> the move was retried instead of how many
+     * milliseconds it took.
+     *
+     * <p>The seam exists because the alternative did not work. "A POSIX denial does not retry" was
+     * asserted as {@code elapsedMs < 140} — 140 ms being the sum of the seven back-offs — which on a
+     * loaded machine is a coin toss and says nothing about retrying either way. Attempt count is the
+     * property; milliseconds were a proxy for it (JK-2446). Package-private, non-final, and never
+     * reassigned outside a test.
+     */
+    static IntConsumer backOff = AtomicWrites::sleepBriefly;
 
     private static void sleepBriefly(int attempt) {
         try {

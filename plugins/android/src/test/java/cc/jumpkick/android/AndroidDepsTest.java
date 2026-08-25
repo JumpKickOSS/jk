@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -70,10 +71,10 @@ class AndroidDepsTest {
      */
     @Test
     void only_container_entries_are_aars_and_they_keep_classpath_order(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app.apk");
-        Path first = io.aar("first.aar");
-        io.jar("plain.jar");
-        Path second = io.aar("second.aar");
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk");
+        Path first = io.container("first.aar");
+        io.file("plain.jar", "not-really-a-jar");
+        Path second = io.container("second.aar");
 
         List<AndroidDeps.Aar> aars = AndroidDeps.aars(io.runtimeEntries());
 
@@ -87,13 +88,13 @@ class AndroidDepsTest {
      */
     @Test
     void an_aars_namespace_comes_from_its_manifests_package_attribute(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app.apk");
-        Path withManifest = io.aar("widgets.aar");
-        FakePackageIo.write(
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk");
+        Path withManifest = io.container("widgets.aar");
+        FakeBuildIo.write(
                 withManifest.resolve("AndroidManifest.xml"),
                 "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n"
                         + "    package=\"com.example.widgets\" />\n");
-        Path without = io.aar("bare.aar");
+        Path without = io.container("bare.aar");
 
         assertThat(new AndroidDeps.Aar("widgets.aar", withManifest).namespace()).isEqualTo("com.example.widgets");
         assertThat(new AndroidDeps.Aar("bare.aar", without).namespace()).isNull();
@@ -102,12 +103,12 @@ class AndroidDepsTest {
     /** An empty {@code res/} is not resources; the merge must not add it as a link input. */
     @Test
     void an_empty_or_absent_res_directory_is_not_resources(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app.apk");
-        Path empty = io.aar("empty.aar");
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk");
+        Path empty = io.container("empty.aar");
         Files.createDirectories(empty.resolve("res"));
-        Path none = io.aar("none.aar");
-        Path some = io.aar("some.aar");
-        FakePackageIo.write(some.resolve("res/values/strings.xml"), "<resources/>");
+        Path none = io.container("none.aar");
+        Path some = io.container("some.aar");
+        FakeBuildIo.write(some.resolve("res/values/strings.xml"), "<resources/>");
 
         assertThat(new AndroidDeps.Aar("empty.aar", empty).hasRes()).isFalse();
         assertThat(new AndroidDeps.Aar("none.aar", none).hasRes()).isFalse();
@@ -121,14 +122,14 @@ class AndroidDepsTest {
      */
     @Test
     void the_earlier_aars_asset_wins_and_the_modules_own_beats_both(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app.apk");
-        FakePackageIo.write(io.moduleDir().resolve("assets/dup.txt"), "from-the-module");
-        Path first = io.aar("first.aar");
-        FakePackageIo.write(first.resolve("assets/dup.txt"), "from-first");
-        FakePackageIo.write(first.resolve("assets/aar-dup.txt"), "from-first");
-        Path second = io.aar("second.aar");
-        FakePackageIo.write(second.resolve("assets/dup.txt"), "from-second");
-        FakePackageIo.write(second.resolve("assets/aar-dup.txt"), "from-second");
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk");
+        FakeBuildIo.write(io.moduleDir().resolve("assets/dup.txt"), "from-the-module");
+        Path first = io.container("first.aar");
+        FakeBuildIo.write(first.resolve("assets/dup.txt"), "from-first");
+        FakeBuildIo.write(first.resolve("assets/aar-dup.txt"), "from-first");
+        Path second = io.container("second.aar");
+        FakeBuildIo.write(second.resolve("assets/dup.txt"), "from-second");
+        FakeBuildIo.write(second.resolve("assets/aar-dup.txt"), "from-second");
 
         Map<String, Path> merged = AndroidDeps.mergedAssets(io);
 
@@ -143,9 +144,9 @@ class AndroidDepsTest {
     /** The same rule for {@code jni/<abi>/*.so}: two AARs shipping the same library, earlier wins. */
     @Test
     void the_earlier_aars_native_lib_wins_a_path_conflict(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app.apk");
-        FakePackageIo.write(io.aar("first.aar").resolve("jni/arm64-v8a/dup.so"), "ELF-first");
-        FakePackageIo.write(io.aar("second.aar").resolve("jni/arm64-v8a/dup.so"), "ELF-second");
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk");
+        FakeBuildIo.write(io.container("first.aar").resolve("jni/arm64-v8a/dup.so"), "ELF-first");
+        FakeBuildIo.write(io.container("second.aar").resolve("jni/arm64-v8a/dup.so"), "ELF-second");
 
         Map<String, Path> libs = AndroidDeps.nativeLibs(io);
 

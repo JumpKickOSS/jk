@@ -14,7 +14,7 @@ import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.util.List;
 import java.util.Optional;
 
@@ -72,7 +72,7 @@ final class NewJdkChoice {
             String arch = HostPlatform.currentArch();
             int major = catalogQuiet()
                     .flatMap(c -> JdkKeywords.resolveToMajorSpec(c, a, os, arch))
-                    .map(JkBuild.Project::majorOf)
+                    .map(Project::majorOf)
                     .filter(m -> m > 0)
                     .orElse(NewWizard.LATEST_LTS_MAJOR);
             return new NewJdkPlan.Spec(major, Integer.toString(major));
@@ -101,7 +101,7 @@ final class NewJdkChoice {
         }
         int preferred = parent != null
                 ? (parent.jdkMajor() > 0 ? parent.jdkMajor() : parent.javaRelease())
-                : defaultJdk.map(JkBuild.Project::majorOf).orElse(0);
+                : defaultJdk.map(Project::majorOf).orElse(0);
         int floor = NewWizard.jdkFloor(answers, parent);
         return NewJdkPlan.autoCandidate(candidates, floor, preferred, NewWizard.LATEST_LTS_MAJOR)
                 .orElseGet(() -> candidates.getFirst());

@@ -7,67 +7,44 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 class EffectivePomBuilderTest {
 
-    private HttpServer server;
-    private ExecutorService serverPool;
-    private URI base;
-    private final Map<String, byte[]> poms = new HashMap<>();
+    /**
+     * {@code concurrent()} because the default executor runs handlers on the single dispatch
+     * thread, so a held response blocks every other request — the concurrent-walker tests below
+     * could never get two fetches in flight and silently fell back to serial fetching.
+     */
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp().concurrent();
+
     /** When set, invoked with the request path before a registered POM is served (may block). */
     private volatile Consumer<String> beforeServe;
 
     @BeforeEach
-    void start() throws IOException {
+    void start() {
         EffectivePomBuilder.clearProcessCache();
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        // The default executor runs handlers on the single dispatch thread, so a held response
-        // blocks every other request — the concurrent-walker tests could never get two fetches
-        // in flight and silently fell back to serial fetching.
-        serverPool = Executors.newCachedThreadPool();
-        server.setExecutor(serverPool);
-        // Single catch-all handler that serves any registered POM and 404s otherwise.
-        server.createContext("/", exchange -> {
-            byte[] body = poms.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                Consumer<String> gate = beforeServe;
-                if (gate != null) gate.accept(exchange.getRequestURI().getPath());
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
+        http.beforeServe(path -> {
+            Consumer<String> gate = beforeServe;
+            if (gate != null) gate.accept(path);
         });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-        serverPool.shutdownNow();
     }
 
     @Test
@@ -451,6 +428,47 @@ class EffectivePomBuilderTest {
                 .hasMessageContaining("cycle");
     }
 
+    /**
+     * Liveness bound for the two cycle walks. A healthy run fails in milliseconds, so this is never
+     * approached — it exists only so a genuine stall ends the test instead of hanging the suite. It
+     * is deliberately far larger than any plausible scheduling delay, because it must never be the
+     * thing that decides whether the test passes.
+     */
+    private static final int LIVENESS_SECONDS = 120;
+
+    /**
+     * Wait for {@code f} to fail, keeping "the cycle was not detected" and "this machine was busy"
+     * apart.
+     *
+     * <p>These two used to be one assertion —
+     * {@code assertThatThrownBy(() -> f.get(20, SECONDS)).isInstanceOf(ExecutionException.class)} —
+     * and under a loaded {@code checkAll --rerun-tasks} (337 guard tasks and 59 test tasks in
+     * parallel) it reported <em>"Expecting actual throwable to be an instance of
+     * ExecutionException but was TimeoutException"</em>. That message names neither cause: the walk
+     * had not finished for want of CPU, and the assertion could not tell that from cycle detection
+     * being broken. Correct in intent, unsound in mechanism (JK-2446).
+     *
+     * <p>So the deadline here is a <em>liveness</em> check and says so when it fires; the
+     * correctness claim — that the failure is a {@code PomParseException} naming a cycle — is
+     * asserted by the caller on the exception this returns.
+     */
+    private static ExecutionException awaitFailure(Future<EffectivePom> f) throws InterruptedException {
+        try {
+            EffectivePom completed = f.get(LIVENESS_SECONDS, TimeUnit.SECONDS);
+            throw new AssertionError("the walk completed instead of failing on the cycle: " + completed.groupId() + ":"
+                    + completed.artifactId() + ":" + completed.version());
+        } catch (TimeoutException stalled) {
+            throw new AssertionError(
+                    "LIVENESS, not correctness: the walk neither completed nor failed within "
+                            + LIVENESS_SECONDS + "s, so it stalled (or this machine was saturated)."
+                            + " Cycle detection was never reached, and is asserted separately on the"
+                            + " exception this call never got to return.",
+                    stalled);
+        } catch (ExecutionException failed) {
+            return failed;
+        }
+    }
+
     @Test
     void concurrent_walkers_on_a_parent_cycle_fail_loudly_instead_of_deadlocking(@TempDir Path tempDir)
             throws Exception {
@@ -493,7 +511,7 @@ class EffectivePomBuilderTest {
         };
 
         Cas cas = new Cas(tempDir.resolve("cache"));
-        MavenRepo repo = new MavenRepo("local", base, new Http(), cas);
+        MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
         EffectivePomBuilder builder1 = new EffectivePomBuilder(repo);
         EffectivePomBuilder builder2 = new EffectivePomBuilder(repo);
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -501,8 +519,7 @@ class EffectivePomBuilderTest {
             Future<EffectivePom> fa = pool.submit(() -> builder1.build(Coordinate.of("org.example", "a", "1.0")));
             Future<EffectivePom> fb = pool.submit(() -> builder2.build(Coordinate.of("org.example", "b", "1.0")));
             for (Future<EffectivePom> f : List.of(fa, fb)) {
-                assertThatThrownBy(() -> f.get(20, TimeUnit.SECONDS))
-                        .isInstanceOf(ExecutionException.class)
+                assertThat(awaitFailure(f))
                         .cause()
                         .isInstanceOf(PomParseException.class)
                         .hasMessageContaining("cycle");
@@ -584,7 +601,7 @@ class EffectivePomBuilderTest {
         };
 
         Cas cas = new Cas(tempDir.resolve("cache"));
-        MavenRepo repo = new MavenRepo("local", base, new Http(), cas);
+        MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
         EffectivePomBuilder builder1 = new EffectivePomBuilder(repo);
         EffectivePomBuilder builder2 = new EffectivePomBuilder(repo);
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -592,8 +609,7 @@ class EffectivePomBuilderTest {
             Future<EffectivePom> fa = pool.submit(() -> builder1.build(Coordinate.of("org.example", "a", "1.0")));
             Future<EffectivePom> fx = pool.submit(() -> builder2.build(Coordinate.of("org.example", "x", "1.0")));
             for (Future<EffectivePom> f : List.of(fa, fx)) {
-                assertThatThrownBy(() -> f.get(20, TimeUnit.SECONDS))
-                        .isInstanceOf(ExecutionException.class)
+                assertThat(awaitFailure(f))
                         .cause()
                         .isInstanceOf(PomParseException.class)
                         .hasMessageContaining("cycle");
@@ -679,7 +695,7 @@ class EffectivePomBuilderTest {
 
     private EffectivePomBuilder newBuilder(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
-        return new EffectivePomBuilder(new MavenRepo("local", base, new Http(), cas));
+        return new EffectivePomBuilder(new MavenRepo("local", http.base(), new Http(), cas));
     }
 
     private void registerPom(String group, String artifact, String version, String body) {
@@ -694,6 +710,6 @@ class EffectivePomBuilderTest {
                 + "-"
                 + version
                 + ".pom";
-        poms.put(path, body.getBytes(StandardCharsets.UTF_8));
+        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
     }
 }

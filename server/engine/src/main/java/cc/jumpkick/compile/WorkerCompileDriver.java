@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
@@ -44,8 +45,6 @@ public final class WorkerCompileDriver {
 
     /** Mirrors the {@code jk-groovy-compiler} manifest prefix. */
     private static final String GROOVY_PREFIX = "##JKGC:";
-
-    private static final String WORKER_MAIN = "cc.jumpkick.plugin.process.PluginMain";
 
     /** How much non-protocol worker chatter to keep for a worker that dies before speaking. */
     private static final int CHATTER_TAIL = 40;
@@ -158,16 +157,19 @@ public final class WorkerCompileDriver {
         Path hostJavaHome = JavaHomes.runningJavaHome();
         Fork fork = plan(job, hostJavaHome);
         try {
-            List<String> rest = new ArrayList<>(fork.jvmFlags());
-            rest.addAll(List.of(
-                    // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
-                    "--enable-native-access=ALL-UNNAMED",
-                    "-cp",
+            List<String> jvmFlags = new ArrayList<>(fork.jvmFlags());
+            // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
+            jvmFlags.add("--enable-native-access=ALL-UNNAMED");
+            Path javaExe = JdkFingerprint.java(hostJavaHome);
+            // One worker argv assembly for the whole engine (PluginLoader.command); JvmOptions
+            // re-heads it with the java binary plus this job's memory flags. This used to be a
+            // third open-coded copy of the same six elements, with its own WORKER_MAIN constant.
+            List<String> assembled = PluginLoader.command(
+                    javaExe,
                     fork.classpath(),
-                    WORKER_MAIN,
-                    "@" + fork.spec().toAbsolutePath()));
-            List<String> cmd =
-                    JvmOptions.javaCommand(JdkFingerprint.java(hostJavaHome).toString(), 1, rest);
+                    jvmFlags,
+                    List.of("@" + fork.spec().toAbsolutePath()));
+            List<String> cmd = JvmOptions.javaCommand(javaExe.toString(), 1, assembled.subList(1, assembled.size()));
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             String[] status = {null};

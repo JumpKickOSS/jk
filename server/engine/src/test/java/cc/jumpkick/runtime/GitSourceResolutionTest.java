@@ -12,6 +12,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenRepo;
@@ -67,7 +68,7 @@ class GitSourceResolutionTest {
 
     /** A consuming project with a single git dependency on the library. */
     private JkBuild consumer(GitSource lib) {
-        JkBuild.Project project = new JkBuild.Project("com.example", "app", "0.1.0", 25);
+        Project project = new Project("com.example", "app", "0.1.0", 25);
         Dependency git = Dependency.git("com.acme:widgets", lib);
         JkBuild.Dependencies deps = new JkBuild.Dependencies(Map.of(Scope.MAIN, List.of(git)));
         return new JkBuild(project, deps);

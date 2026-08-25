@@ -10,23 +10,21 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolver.ResolveObserver;
-import com.sun.net.httpserver.HttpServer;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -36,9 +34,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class LockFreshenConservativeTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @TempDir
     Path isolatedStore;
@@ -56,9 +53,8 @@ class LockFreshenConservativeTest {
     }
 
     @AfterEach
-    void stop() {
+    void releaseStoreOverride() {
         System.clearProperty("jk.env.JK_STORE_DIR");
-        server.stop(0);
     }
 
     /**
@@ -67,20 +63,8 @@ class LockFreshenConservativeTest {
      * masked for the whole TTL and the assertions would go vacuous.
      */
     private void restartServer() throws IOException {
-        if (server != null) server.stop(0);
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+        http.stop();
+        http.start();
     }
 
     @Test
@@ -88,7 +72,7 @@ class LockFreshenConservativeTest {
         project(tmp);
         serveLib("1.0");
 
-        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, base, false);
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false);
         assertThat(first.status()).isZero();
         assertThat(libVersion(first.lockfile())).isEqualTo("1.0");
 
@@ -102,14 +86,14 @@ class LockFreshenConservativeTest {
         dropLibIndexCache();
         touchManifest(tmp); // whitespace-only edit → digest-stale, so the freshen actually resolves
 
-        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, base, true);
+        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, http.base(), true);
         assertThat(freshened.status()).isZero();
         assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
 
         restartServer();
         serveLib("1.0", "1.1");
         dropLibIndexCache();
-        LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache3"), List.of(), true, base, false);
+        LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache3"), List.of(), true, http.base(), false);
         assertThat(explicit.status()).isZero();
         assertThat(libVersion(explicit.lockfile()))
                 .as("explicit jk lock must float to latest within the declared range")
@@ -121,12 +105,12 @@ class LockFreshenConservativeTest {
         project(tmp);
         serveLib("1.0");
 
-        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, base, false)
+        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false)
                         .status())
                 .isZero();
 
         // Repo is now unreachable: only the single-flight skip can succeed.
-        server.stop(0);
+        http.stop();
         LockFlow.Result skipped =
                 LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, URI.create("http://127.0.0.1:9/"), true);
         assertThat(skipped.status()).isZero();
@@ -139,7 +123,7 @@ class LockFreshenConservativeTest {
         serveLib("1.0");
         Path lockFile = tmp.resolve("jk-lock.toml");
 
-        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, base, false)
+        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false)
                         .status())
                 .isZero();
 
@@ -154,7 +138,7 @@ class LockFreshenConservativeTest {
         serveLib("1.0", "1.1");
         restartServer();
 
-        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, base, true);
+        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, http.base(), true);
         assertThat(freshened.status()).isZero();
         assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
         assertThat(LockFreshness.isStale(tmp, lockFile)).isFalse();
@@ -165,7 +149,7 @@ class LockFreshenConservativeTest {
         project(tmp);
         serveLib("1.0");
 
-        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, base, false)
+        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false)
                         .status())
                 .isZero();
         serveLib("1.0", "1.1");
@@ -174,7 +158,16 @@ class LockFreshenConservativeTest {
 
         var effective = JkBuildParser.parse(tmp.resolve("jk.toml"));
         var plan = LockPlans.lockBuildPlan(
-                tmp, effective, tmp.resolve("cache2"), base, List.of(), true, false, true, ResolveObserver.NOOP, null);
+                tmp,
+                effective,
+                tmp.resolve("cache2"),
+                http.base(),
+                List.of(),
+                true,
+                false,
+                true,
+                ResolveObserver.NOOP,
+                null);
         var result = plan.run();
         assertThat(result.success()).isTrue();
         Lockfile lock = plan.get(LockPlans.LOCKFILE).orElseThrow();
@@ -203,7 +196,7 @@ class LockFreshenConservativeTest {
                 extra-feat = { deps = ["extra"] }
                 """);
 
-        LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, base, false);
+        LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base(), false);
         assertThat(explicit.status()).isZero();
         assertThat(hasArtifact(explicit.lockfile(), "com.foo:extra")).isTrue();
 
@@ -211,7 +204,7 @@ class LockFreshenConservativeTest {
         restartServer();
         // Same argument shape as BuildService.ensureWorkspaceLockFresh (features=[],
         // noDefaultFeatures=false, conservative=true): the feature-gated dep must survive.
-        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, base, true);
+        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base(), true);
         assertThat(freshened.status()).isZero();
         assertThat(hasArtifact(freshened.lockfile(), "com.foo:extra")).isTrue();
         assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
@@ -235,7 +228,7 @@ class LockFreshenConservativeTest {
                 lib = { group = "com.foo", name = "lib", version = "^1.0" }
                 """);
 
-        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, base, false);
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base(), false);
         assertThat(first.status()).isZero();
         assertThat(first.lockfile().kotlin()).isEqualTo("2.1.0");
     }
@@ -277,7 +270,7 @@ class LockFreshenConservativeTest {
         String metadata = "<metadata><groupId>" + group + "</groupId><artifactId>" + artifact
                 + "</artifactId><versioning><versions><version>" + version
                 + "</version></versions></versioning></metadata>";
-        served.put(prefix + "/maven-metadata.xml", metadata.getBytes(StandardCharsets.UTF_8));
+        http.served().put(prefix + "/maven-metadata.xml", metadata.getBytes(StandardCharsets.UTF_8));
         String pom = """
                 <project>
                   <groupId>%s</groupId>
@@ -285,9 +278,11 @@ class LockFreshenConservativeTest {
                   <version>%s</version>
                 </project>
                 """.formatted(group, artifact, version);
-        served.put(
-                prefix + "/" + version + "/" + artifact + "-" + version + ".pom", pom.getBytes(StandardCharsets.UTF_8));
-        served.put(prefix + "/" + version + "/" + artifact + "-" + version + ".jar", emptyJar());
+        http.served()
+                .put(
+                        prefix + "/" + version + "/" + artifact + "-" + version + ".pom",
+                        pom.getBytes(StandardCharsets.UTF_8));
+        http.served().put(prefix + "/" + version + "/" + artifact + "-" + version + ".jar", emptyJar());
     }
 
     private void serveLib(String... versions) {
@@ -295,7 +290,7 @@ class LockFreshenConservativeTest {
         body.append("<metadata><groupId>com.foo</groupId><artifactId>lib</artifactId><versioning><versions>");
         for (String v : versions) body.append("<version>").append(v).append("</version>");
         body.append("</versions></versioning></metadata>");
-        served.put("/com/foo/lib/maven-metadata.xml", body.toString().getBytes(StandardCharsets.UTF_8));
+        http.served().put("/com/foo/lib/maven-metadata.xml", body.toString().getBytes(StandardCharsets.UTF_8));
         for (String v : versions) {
             String pom = """
                     <project>
@@ -304,21 +299,21 @@ class LockFreshenConservativeTest {
                       <version>%s</version>
                     </project>
                     """.formatted(v);
-            served.put("/com/foo/lib/" + v + "/lib-" + v + ".pom", pom.getBytes(StandardCharsets.UTF_8));
-            served.put("/com/foo/lib/" + v + "/lib-" + v + ".jar", emptyJar());
+            http.served().put("/com/foo/lib/" + v + "/lib-" + v + ".pom", pom.getBytes(StandardCharsets.UTF_8));
+            http.served().put("/com/foo/lib/" + v + "/lib-" + v + ".jar", emptyJar());
         }
     }
 
     /**
-     * Evict process + on-disk indexes for {@code com.foo:lib} at the current {@link #base}.
+     * Evict process + on-disk indexes for {@code com.foo:lib} at the current {@link #http.base()}.
      * Metadata is keyed by URL and lives 24h; a loopback port recycled across
-     * {@link #restartServer()} calls can otherwise hide newly served versions from plain
+     * {@link #restartServer()} calls can otherwise hide newly http.served() versions from plain
      * {@code lock}. Operates on the {@code @TempDir}-isolated store, never the
      * developer's.
      */
     private void dropLibIndexCache() throws IOException {
         ResolveProcessCacheControl.clearAll();
-        String root = base.toString();
+        String root = http.base().toString();
         if (!root.endsWith("/")) root = root + "/";
         URI metaUri = URI.create(root).resolve("com/foo/lib/maven-metadata.xml");
         Path metaDir = JkStores.store().resolve("metadata");

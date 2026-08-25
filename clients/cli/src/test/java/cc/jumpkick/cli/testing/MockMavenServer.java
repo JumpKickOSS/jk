@@ -1,96 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.testing;
 
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import org.junit.jupiter.api.extension.AfterEachCallback;
-import org.junit.jupiter.api.extension.BeforeEachCallback;
-import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * In-process HTTP stub of a Maven repository for the CLI command tests.
+ * The Maven-repository <em>documents</em> the CLI command tests need, on top of the shared
+ * {@link LoopbackHttp} socket.
  *
- * <p>Register it with {@code @RegisterExtension} on an instance field: the server binds an
- * ephemeral 127.0.0.1 port before each test (so parallel suites never race over a port) and stops
- * after it. Responses come straight from the {@link #served()} map — a test describes a repository
- * by seeding paths, not by writing handlers — and unknown paths get a 404 so a missing fixture
- * entry fails fast as a resolution error instead of hanging.
+ * <p>Register it with {@code @RegisterExtension} on an instance field: the inherited extension
+ * binds an ephemeral 127.0.0.1 port before each test (so parallel suites never race over a port)
+ * and stops after it. Responses come straight from the {@code served()} map — a test describes a
+ * repository by seeding paths, not by writing handlers — and unknown paths get a 404 so a missing
+ * fixture entry fails fast as a resolution error instead of hanging.
  *
- * <p>This class exists because a dozen command tests used to carry byte-identical copies of the
- * server plumbing and the pom/metadata/jar registration helpers; keep additions here so they stay
- * shared.
+ * <p><strong>Why this class still exists after {@code LoopbackHttp} took the plumbing.</strong>
+ * Everything below is a document shape a <em>third party</em> emits: a Maven POM, a
+ * {@code maven-metadata.xml}, a repository path layout. Those are hand-written here, deliberately
+ * unlike what jk's own writers produce — see {@link #registerMetadata}. Only the transport is
+ * shared, because the transport is not the thing under test.
  */
-public final class MockMavenServer implements BeforeEachCallback, AfterEachCallback {
-
-    private final Map<String, byte[]> served = new HashMap<>();
-    private HttpServer server;
-    private URI base;
-
-    @Override
-    public void beforeEach(ExtensionContext context) throws IOException {
-        start();
-    }
-
-    @Override
-    public void afterEach(ExtensionContext context) {
-        stop();
-    }
-
-    /** Bind 127.0.0.1 on an ephemeral port and serve the {@link #served()} map. */
-    public void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    /**
-     * Idempotent so offline tests can kill the server mid-test (proving no network is needed) and
-     * the extension's after-each teardown stays harmless.
-     */
-    public void stop() {
-        if (server != null) {
-            server.stop(0);
-            server = null;
-        }
-    }
-
-    /** Base URL of the running server, e.g. {@code http://127.0.0.1:<port>} (no trailing slash). */
-    public URI base() {
-        return base;
-    }
-
-    /**
-     * Live path-to-body map backing the server. Mutable on purpose: tests put entries directly for
-     * bespoke content (scripts, archives, classifier artifacts) and fixtures like
-     * {@code DefaultTestDepsFixture.seed(...)} bulk-seed it.
-     */
-    public Map<String, byte[]> served() {
-        return served;
-    }
+public final class MockMavenServer extends LoopbackHttp {
 
     /** Serve {@code body} as the pom of {@code group:artifact:version}. */
     public void registerPom(String group, String artifact, String version, String body) {
-        served.put(mavenPath(group, artifact, version, "pom"), body.getBytes(StandardCharsets.UTF_8));
+        served().put(mavenPath(group, artifact, version, "pom"), body.getBytes(StandardCharsets.UTF_8));
     }
 
     /** Serve {@code bytes} as the jar of {@code group:artifact:version}. */
     public void registerJar(String group, String artifact, String version, byte[] bytes) {
-        served.put(mavenPath(group, artifact, version, "jar"), bytes);
+        served().put(mavenPath(group, artifact, version, "jar"), bytes);
     }
 
     /**
@@ -111,9 +50,9 @@ public final class MockMavenServer implements BeforeEachCallback, AfterEachCallb
                 .append("</artifactId><versioning><versions>");
         for (String v : versions) xml.append("<version>").append(v).append("</version>");
         xml.append("</versions></versioning></metadata>");
-        served.put(
-                "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                xml.toString().getBytes(StandardCharsets.UTF_8));
+        served().put(
+                        "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
+                        xml.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     /** Serve a dependency-free pom (full XML prolog form) for {@code group:artifact:version}. */
@@ -127,7 +66,7 @@ public final class MockMavenServer implements BeforeEachCallback, AfterEachCallb
                   <version>%s</version>
                 </project>
                 """.formatted(group, artifact, version);
-        served.put(mavenPath(group, artifact, version, "pom"), pom.getBytes());
+        served().put(mavenPath(group, artifact, version, "pom"), pom.getBytes());
     }
 
     /** Minimal pom body with no dependencies; pair with {@link #registerPom}. */

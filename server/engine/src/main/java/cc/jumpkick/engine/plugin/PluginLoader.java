@@ -191,12 +191,25 @@ public final class PluginLoader {
      * the stream themselves via {@link PluginClient}.
      */
     public static List<String> command(Path javaExe, String classpath, List<String> jvmFlags, List<String> args) {
+        return command(javaExe, classpath, jvmFlags, WORKER_MAIN, args);
+    }
+
+    /**
+     * As {@link #command(Path, String, List, List)} for a jar that declares its own
+     * {@code Main-Class} instead of running under {@link #WORKER_MAIN}. <strong>The one worker argv
+     * assembly in the engine</strong> — every fork of a jk worker JVM, generic or compiler, orders
+     * its elements here. It was two: {@code PluginLaunch} open-coded the same six-element shape
+     * beside a comment reading "Reuse PluginLoader.command shape", which is a copy admitting to
+     * being one.
+     */
+    public static List<String> command(
+            Path javaExe, String classpath, List<String> jvmFlags, String mainClass, List<String> args) {
         var cmd = new ArrayList<String>();
         cmd.add(javaExe.toString());
         cmd.addAll(jvmFlags);
         cmd.add("-cp");
         cmd.add(classpath);
-        cmd.add(WORKER_MAIN);
+        cmd.add(mainClass);
         cmd.addAll(args);
         return cmd;
     }

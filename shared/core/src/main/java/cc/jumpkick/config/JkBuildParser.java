@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Profiles;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
@@ -204,7 +205,7 @@ public final class JkBuildParser {
         rejectRemovedProjectTable(result);
         // Workspace roots keep concrete project defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
-        JkBuild.Project project = ManifestProject.parseProject(result, workspaceRoot);
+        Project project = ManifestProject.parseProject(result, workspaceRoot);
         LibraryCatalog effective = catalog;
         Workspace workspace = ManifestTables.parseWorkspace(result, effective);
         JkBuild.Dependencies deps = ManifestDeps.parseDependencies(result, workspace, effective);

@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.DomXml;
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -29,8 +30,8 @@ class ResourceMergerTest {
     void the_earlier_dependency_wins_a_file_resource(@TempDir Path tmp) throws Exception {
         Path first = aar(tmp, "first");
         Path second = aar(tmp, "second");
-        FakePackageIo.write(first.resolve("res/drawable/ic_logo.xml"), "<vector>first</vector>");
-        FakePackageIo.write(second.resolve("res/drawable/ic_logo.xml"), "<vector>second</vector>");
+        FakeBuildIo.write(first.resolve("res/drawable/ic_logo.xml"), "<vector>first</vector>");
+        FakeBuildIo.write(second.resolve("res/drawable/ic_logo.xml"), "<vector>second</vector>");
 
         Path out = merge(tmp, first, second);
 
@@ -44,10 +45,10 @@ class ResourceMergerTest {
     void the_earlier_dependency_wins_a_value_and_the_later_one_still_contributes(@TempDir Path tmp) throws Exception {
         Path first = aar(tmp, "first");
         Path second = aar(tmp, "second");
-        FakePackageIo.write(first.resolve("res/values/strings.xml"), resources("""
+        FakeBuildIo.write(first.resolve("res/values/strings.xml"), resources("""
                 <string name="shared">from-first</string>
                 """));
-        FakePackageIo.write(second.resolve("res/values/strings.xml"), resources("""
+        FakeBuildIo.write(second.resolve("res/values/strings.xml"), resources("""
                 <string name="shared">from-second</string>
                 <string name="only_second">kept</string>
                 """));
@@ -68,13 +69,13 @@ class ResourceMergerTest {
     @Test
     void every_dependencys_values_file_is_read_whatever_it_is_called(@TempDir Path tmp) throws Exception {
         Path first = aar(tmp, "first");
-        FakePackageIo.write(first.resolve("res/values/strings.xml"), resources("""
+        FakeBuildIo.write(first.resolve("res/values/strings.xml"), resources("""
                 <string name="a">A</string>
                 """));
-        FakePackageIo.write(first.resolve("res/values/colors.xml"), resources("""
+        FakeBuildIo.write(first.resolve("res/values/colors.xml"), resources("""
                 <color name="brand">#FF0000</color>
                 """));
-        FakePackageIo.write(first.resolve("res/values/notxml.txt"), "ignored");
+        FakeBuildIo.write(first.resolve("res/values/notxml.txt"), "ignored");
 
         Path out = merge(tmp, first);
 
@@ -88,10 +89,10 @@ class ResourceMergerTest {
     @Test
     void each_resource_qualifier_merges_into_its_own_file(@TempDir Path tmp) throws Exception {
         Path first = aar(tmp, "first");
-        FakePackageIo.write(first.resolve("res/values/strings.xml"), resources("""
+        FakeBuildIo.write(first.resolve("res/values/strings.xml"), resources("""
                 <string name="hello">Hello</string>
                 """));
-        FakePackageIo.write(first.resolve("res/values-fr/strings.xml"), resources("""
+        FakeBuildIo.write(first.resolve("res/values-fr/strings.xml"), resources("""
                 <string name="hello">Bonjour</string>
                 """));
 
@@ -113,7 +114,7 @@ class ResourceMergerTest {
     @Test
     void a_typed_item_does_not_collide_with_a_string_of_the_same_name(@TempDir Path tmp) throws Exception {
         Path first = aar(tmp, "first");
-        FakePackageIo.write(first.resolve("res/values/values.xml"), resources("""
+        FakeBuildIo.write(first.resolve("res/values/values.xml"), resources("""
                 <string name="submit">Submit</string>
                 <item type="id" name="submit"/>
                 <item type="dimen" name="submit">4dp</item>
@@ -137,13 +138,13 @@ class ResourceMergerTest {
     void namespace_declarations_from_the_dependencies_reach_the_merged_root(@TempDir Path tmp) throws Exception {
         Path first = aar(tmp, "first");
         Path second = aar(tmp, "second");
-        FakePackageIo.write(first.resolve("res/values/strings.xml"), """
+        FakeBuildIo.write(first.resolve("res/values/strings.xml"), """
                 <?xml version="1.0" encoding="utf-8"?>
                 <resources xmlns:tools="http://schemas.android.com/tools">
                     <string name="a" tools:ignore="MissingTranslation">A</string>
                 </resources>
                 """);
-        FakePackageIo.write(second.resolve("res/values/strings.xml"), """
+        FakeBuildIo.write(second.resolve("res/values/strings.xml"), """
                 <?xml version="1.0" encoding="utf-8"?>
                 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
                     <string name="b">B</string>
@@ -186,7 +187,7 @@ class ResourceMergerTest {
     @Test
     void a_dependency_with_no_configuration_directories_still_yields_a_tree(@TempDir Path tmp) throws Exception {
         Path odd = aar(tmp, "odd");
-        FakePackageIo.write(odd.resolve("res/stray.txt"), "not a configuration directory");
+        FakeBuildIo.write(odd.resolve("res/stray.txt"), "not a configuration directory");
 
         Path out = tmp.resolve("merged");
         Path merged = ResourceMerger.mergeDepRes(aars(odd), out);
@@ -205,14 +206,14 @@ class ResourceMergerTest {
         Path first = aar(tmp, "first");
         Path second = aar(tmp, "second");
         Path third = aar(tmp, "third");
-        FakePackageIo.write(first.resolve("res/values/strings.xml"), resources("""
+        FakeBuildIo.write(first.resolve("res/values/strings.xml"), resources("""
                 <string name="one">1</string>
                 <string name="two">2</string>
                 """));
-        FakePackageIo.write(second.resolve("res/values/strings.xml"), resources("""
+        FakeBuildIo.write(second.resolve("res/values/strings.xml"), resources("""
                 <string name="three">3</string>
                 """));
-        FakePackageIo.write(third.resolve("res/values/strings.xml"), resources("""
+        FakeBuildIo.write(third.resolve("res/values/strings.xml"), resources("""
                 <string name="four">4</string>
                 """));
 

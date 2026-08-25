@@ -38,7 +38,12 @@ class PluginProcessWatchdogTest {
                 400L);
 
         assertThat(exit).isNotZero();
-        assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(15));
+        // LIVENESS, not performance: the watchdog was given 400ms and the child would otherwise
+        // hold the job open indefinitely. 15s is ~37x the watchdog on purpose; a tight budget here
+        // would be a measurement of this machine (JK-2446).
+        assertThat(Duration.between(start, Instant.now()))
+                .as("the 400ms watchdog fired instead of the job wedging")
+                .isLessThan(Duration.ofSeconds(15));
     }
 
     @Test
@@ -62,7 +67,11 @@ class PluginProcessWatchdogTest {
                 0L);
 
         assertThat(exit).isZero();
-        assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(20));
+        // LIVENESS, not performance: with no watchdog (0L) the guard being tested is that an orphan
+        // holding stdout cannot wedge the job. 20s is a hang detector, not a budget.
+        assertThat(Duration.between(start, Instant.now()))
+                .as("the job finished rather than wedging on the orphan's stdout handle")
+                .isLessThan(Duration.ofSeconds(20));
     }
 
     @Test

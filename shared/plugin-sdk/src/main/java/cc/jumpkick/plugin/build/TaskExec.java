@@ -10,7 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * What a {@link TaskSpec.Body} gets to work with, inside the plugin's worker JVM: the resolved
@@ -102,21 +105,30 @@ public interface TaskExec {
         return tool("java");
     }
 
-    /** One JDK-tool subprocess: build args, run, get exit + combined output. */
+    /**
+     * One tool subprocess: build args, run, get exit + combined output. <strong>The one process
+     * fork in the plugin family</strong> — {@link #start()} owns the only {@code ProcessBuilder} a
+     * plugin needs, so a plugin never hand-rolls argv assembly, the Windows {@code .exe} shape or
+     * the stderr merge. Obtain one from your exec surface ({@link TaskExec#tool}, {@link
+     * PackageIo#tool}, {@link PluginCommandExec#tool}); the constructors are public because a
+     * plugin's own static helper is handed a {@code javaHome} or an executable path and has no exec
+     * surface to ask — an owner a caller cannot reach is not an owner.
+     */
     final class ToolRun {
         private final Path javaHome;
         private final String bin;
         private final Path executable;
         private final List<String> args = new ArrayList<>();
+        private final Map<String, String> env = new LinkedHashMap<>();
         private Path cwd;
 
-        ToolRun(Path javaHome, String bin) {
+        public ToolRun(Path javaHome, String bin) {
             this.javaHome = javaHome;
             this.bin = bin;
             this.executable = null;
         }
 
-        ToolRun(Path executable) {
+        public ToolRun(Path executable) {
             this.javaHome = null;
             this.bin = null;
             this.executable = executable;
@@ -148,10 +160,22 @@ public interface TaskExec {
             return this;
         }
 
+        /** One child-environment entry, added to (not replacing) the inherited environment. */
+        public ToolRun env(String name, String value) {
+            env.put(name, value);
+            return this;
+        }
+
+        /** As {@link #env(String, String)} for a whole table, in iteration order. */
+        public ToolRun env(Map<String, String> more) {
+            env.putAll(more);
+            return this;
+        }
+
         /**
-         * The command line {@link #run()} forks, resolved head first: the absolute executable, or
+         * The command line {@link #start()} forks, resolved head first: the absolute executable, or
          * the {@code javaHome} tool via {@link JdkFingerprint#tool} (which owns the Windows
-         * {@code .exe} shape), then the args in call order. The one assembly — {@code run()}
+         * {@code .exe} shape), then the args in call order. The one assembly — every fork below
          * builds its {@code ProcessBuilder} from this list.
          */
         public List<String> command() {
@@ -164,18 +188,40 @@ public interface TaskExec {
             return command;
         }
 
-        /** Fork and drain: exit code + combined stdout/stderr. */
-        public Result run() throws IOException, InterruptedException {
+        /**
+         * Start the child and hand it back, stderr merged into stdout. The one {@code
+         * ProcessBuilder} construction in the plugin family: {@link #run()} and {@link #stream}
+         * are drains over this, and a plugin that needs its own drain — a timeout, a daemon it
+         * leaves running, an early return on a marker line — takes the {@link Process} from here
+         * rather than assembling a second launcher.
+         */
+        public Process start() throws IOException {
             ProcessBuilder pb = new ProcessBuilder(command()).redirectErrorStream(true);
             if (cwd != null) pb.directory(cwd.toFile());
-            Process process = pb.start();
+            pb.environment().putAll(env);
+            return pb.start();
+        }
+
+        /** Fork and drain: exit code + combined stdout/stderr. */
+        public Result run() throws IOException, InterruptedException {
             StringBuilder output = new StringBuilder();
+            int exit = stream(line -> output.append(line).append('\n'));
+            return new Result(exit, output.toString());
+        }
+
+        /**
+         * Fork and drain line by line into {@code sink} (blank lines included, no trailing
+         * newline), returning the exit code. For output a plugin reports as it arrives instead of
+         * buffering — an {@code adb install}'s progress, a tool's log.
+         */
+        public int stream(Consumer<String> sink) throws IOException, InterruptedException {
+            Process process = start();
             try (BufferedReader reader =
                     new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
-                while ((line = reader.readLine()) != null) output.append(line).append('\n');
+                while ((line = reader.readLine()) != null) sink.accept(line);
             }
-            return new Result(process.waitFor(), output.toString());
+            return process.waitFor();
         }
 
         public record Result(int exit, String output) {}

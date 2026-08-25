@@ -9,6 +9,10 @@ description = "jk resolver: PubGrub solver and conflict diagnostics"
 dependencies {
     implementation(project(":core"))
     implementation(project(":io"))
+    // The tree's shared test primitives (`cc.jumpkick.testing`): `LoopbackHttp` — the loopback
+    // route-table server eight suites here each carried a copy of — and `SysProps`, which closes
+    // this module's `jk.m2.local` leak. A :host source set that never reaches main (JK-2443).
+    testImplementation(testFixtures(project(":host")))
 }
 
 // `ResolveProcessCacheExtension` (a ServiceLoader-registered JUnit extension) drops the

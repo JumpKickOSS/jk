@@ -9,11 +9,11 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -23,16 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 /** Exercises the full plan: init -> add -> lock -> tree / why / sync. */
 @IsolatedStore
 @Tag("integration")
+@SysProps.TempRoots("jk.m2.local")
 class ReadSideIntegrationTest {
-
-    // These tests drive the real fetch plan against a mock Maven server; fetched
-    // artifacts mirror into the Maven local repo. Point that at a throwaway dir (see
-    // M2Dirs) so stub artifacts never overwrite the developer's real ~/.m2 — the
-    // fixture reuses real coordinates (junit-jupiter et al).
-    @BeforeAll
-    static void isolateM2(@TempDir Path m2) {
-        System.setProperty("jk.m2.local", m2.toString());
-    }
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();

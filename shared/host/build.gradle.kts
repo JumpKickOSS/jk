@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.java-conventions")
+    `java-test-fixtures`
     `maven-publish`
 }
 
@@ -22,6 +23,140 @@ java {
 tasks.compileJava {
     options.release.set(17)
 }
+
+// ---------------------------------------------------------------------------
+// `testFixtures` — the tree's shared TEST primitives. Separate source set, so none of this reaches
+// `main`, the native image, a worker jar or a published POM (see the publish skip and
+// `checkHostTestFixturesStayOutOfProduction` below).
+//
+// The zero-dependency rule above governs `main`; these classes only ever run inside a Gradle test
+// JVM, so they may name JUnit. What they may NOT name is any jk module: :host is the floor, and a
+// fixture here reaching :core or :plugin-sdk would invert the layering the whole module exists for.
+// The plugin SPI's own fake lives in `:plugin-sdk`'s testFixtures for exactly that reason.
+dependencies {
+    testFixturesApi(libs.junit.jupiter)
+}
+
+// Test fixtures are NOT part of what `cc.jumpkick:jk-host` publishes. Without this, Gradle adds
+// `testFixturesApiElements`/`testFixturesRuntimeElements` variants plus a `-test-fixtures`
+// classified jar to the publication, so a third party resolving the SDK's floor would be offered
+// jk's JUnit test scaffolding — and the published module metadata would name JUnit as a dependency
+// of the one artifact whose selling point is having none.
+val hostJavaComponent = components["java"] as AdhocComponentWithVariants
+listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name ->
+    hostJavaComponent.withVariantsFromConfiguration(configurations[name]) { skip() }
+}
+
+// ---------------------------------------------------------------------------
+// Guard (letter assigned at landing, JK-2443): a test fixture never reaches production.
+//
+// Defect it prevents: the one way a shared test artifact can be catastrophically wrong. `:host` and
+// `:plugin-sdk` are the two modules every jk process and every third-party plugin links, and both
+// now publish to Maven Central. A `testFixtures` source set on a published module is a variant away
+// from shipping JUnit as a transitive dependency of `cc.jumpkick:jk-host` — and one keyword
+// (`implementation` where `testImplementation` was meant) away from a fixture landing inside the
+// native image or a worker jar, where nothing else would notice until GraalVM failed to see a
+// reflective JUnit lookup at runtime.
+//
+// Three arms, because three different things can go wrong and each is observable somewhere else:
+//   1. PUBLISHED — the generated POM and Gradle module metadata of both publishing modules name no
+//      test-fixtures variant and no test-framework dependency. Reads the real generated files.
+//   2. WIRING — no build script hands a `testFixtures(...)` dependency to a non-test configuration.
+//      A text scan over every build script, which is where the mistake is actually typed. This is
+//      the arm that generalises: it covers the 15 worker modules' flattened POMs (built from
+//      `runtimeClasspath`) and the native image, without resolving 31 configurations.
+//   3. `:cli`'s `checkCliRuntimeClasspath` — the real resolved classpath of the native client.
+//      It lives in that module because that is where the fact is.
+//
+// Self-fail arms: the publication files must exist and be non-trivial, the scan must find build
+// scripts, and it must find at least one real `testFixtures(` usage — a scan that sees no fixtures
+// at all would pass this guard while the whole mechanism had been deleted.
+// Guard G34 (JK-2443).
+val checkTestFixturesStayOutOfProduction by tasks.registering {
+    group = "verification"
+    description = "Fail when a testFixtures variant reaches a publication, a POM or a production configuration"
+    dependsOn(
+            "generatePomFileForHostPublication",
+            "generateMetadataFileForHostPublication",
+            ":plugin-sdk:generatePomFileForSdkPublication",
+            ":plugin-sdk:generateMetadataFileForSdkPublication")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val publications = rootProject.layout.projectDirectory.let { root ->
+        listOf(
+                root.file("shared/host/build/publications/host/pom-default.xml"),
+                root.file("shared/host/build/publications/host/module.json"),
+                root.file("shared/plugin-sdk/build/publications/sdk/pom-default.xml"),
+                root.file("shared/plugin-sdk/build/publications/sdk/module.json"))
+    }
+    val buildScripts = fileTree(rootProject.layout.projectDirectory) {
+        include("build.gradle.kts", "*/*/build.gradle.kts", "buildSrc/src/main/kotlin/*.gradle.kts")
+    }
+    inputs.files(buildScripts).withPropertyName("buildScripts")
+    val stamp = layout.buildDirectory.file("guards/test-fixtures-out-of-production.ok")
+    outputs.file(stamp)
+    doLast {
+        // ---- arm 1: what actually gets published -------------------------------------------
+        val banned = listOf("test-fixtures", "testFixtures", "junit", "assertj", "opentest4j")
+        val published = mutableListOf<String>()
+        publications.forEach { f ->
+            val file = f.asFile
+            if (!file.isFile || file.length() < 100) {
+                throw GradleException("The test-fixtures guard cannot read"
+                        + " ${file.relativeTo(treeRoot).invariantSeparatorsPath} (missing or"
+                        + " implausibly small), so arm 1 is not checking anything. Fix the"
+                        + " dependsOn wiring before trusting a green run.")
+            }
+            val text = file.readText()
+            banned.filter { text.contains(it, ignoreCase = true) }.forEach {
+                published.add("  ${file.relativeTo(treeRoot).invariantSeparatorsPath}: names \"$it\"")
+            }
+        }
+        if (published.isNotEmpty()) {
+            throw GradleException("A published POM or module descriptor names a test fixture or a"
+                    + " test framework. jk-host and jk-plugin-sdk are what third parties compile"
+                    + " against; jk's test scaffolding is not part of that contract. Skip the"
+                    + " testFixtures variants on the publication:\n" + published.joinToString("\n"))
+        }
+
+        // ---- arm 2: how the dependency is declared ----------------------------------------
+        val productionConfigurations = Regex(
+                """^\s*(api|implementation|compileOnly|compileOnlyApi|runtimeOnly|annotationProcessor)\s*\(""")
+        val scripts = buildScripts.files.sorted()
+        if (scripts.size < 20) {
+            throw GradleException("The test-fixtures guard scanned ${scripts.size} build scripts; the"
+                    + " tree has 31 modules. The include pattern has stopped seeing it.")
+        }
+        var fixtureUses = 0
+        val wiring = mutableListOf<String>()
+        scripts.forEach { f ->
+            f.readLines().forEachIndexed { i, raw ->
+                val line = raw.substringBefore("//")
+                if (!line.contains("testFixtures(")) return@forEachIndexed
+                fixtureUses++
+                if (productionConfigurations.containsMatchIn(line)) {
+                    wiring.add("  ${f.relativeTo(treeRoot).invariantSeparatorsPath}:${i + 1}:"
+                            + " ${line.trim()}")
+                }
+            }
+        }
+        if (fixtureUses == 0) {
+            throw GradleException("The test-fixtures guard found no `testFixtures(` dependency in any"
+                    + " build script. Either the shared fixtures were deleted — in which case delete"
+                    + " this guard deliberately — or the scan is broken.")
+        }
+        if (wiring.isNotEmpty()) {
+            throw GradleException("A testFixtures variant is wired into a production configuration."
+                    + " That puts test code on a worker's flattened POM and inside the native image:\n"
+                    + wiring.joinToString("\n")
+                    + "\n  Use testImplementation / testCompileOnly / testRuntimeOnly.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+// `check` only, not `jar`: arm 1 reads this module's own generated module metadata, which Gradle
+// derives from the jar, so hanging it off `jar` too is a genuine cycle. `checkAll` depends on every
+// module's `check` (JK-2498), so it runs in the gate either way.
+tasks.named("check") { dependsOn(checkTestFixturesStayOutOfProduction) }
 
 // Published, because `cc.jumpkick:jk-plugin-sdk` api-exposes these types (JK-2466). Without
 // coordinates here Gradle rendered the SDK's only dependency from its own defaults —
@@ -281,6 +416,7 @@ fun javaCodeOnly(src: String): String {
     return out.toString()
 }
 
+// Guard G30 (JK-2490).
 val checkPropertiesStoreOwner by tasks.registering {
     group = "verification"
     description = "Fail the build on a Properties.store() call in main sources (use DeterministicProperties.render)"

@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import com.android.apksig.ApkVerifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,12 +35,12 @@ class SigningTest {
     /** No {@code [android.signing.*]} reference means the debug identity, and nothing else. */
     @Test
     void a_config_with_no_store_file_is_not_a_release_build(@TempDir Path tmp) throws Exception {
-        assertThat(Signing.hasReleaseConfig(new FakePackageIo(tmp, "app.apk"))).isFalse();
+        assertThat(Signing.hasReleaseConfig(AndroidIo.packager(tmp, "app.apk"))).isFalse();
     }
 
     @Test
     void a_config_naming_a_store_file_is_a_release_build(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
 
         assertThat(Signing.hasReleaseConfig(io)).isTrue();
     }
@@ -61,7 +62,7 @@ class SigningTest {
     /** {@code key-password} defaults to {@code store-password} — the common single-password store. */
     @Test
     void an_absent_key_password_falls_back_to_the_store_password(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp);
+        FakeBuildIo io = release(tmp);
         io.secret("signing.key-password", null); // the engine simply omits it
 
         assertThat(Signing.release(io).key()).isNotNull();
@@ -70,7 +71,7 @@ class SigningTest {
     /** A store path that resolves to nothing is a configuration error, named as one. */
     @Test
     void a_missing_store_file_is_refused_by_path(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app.apk")
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk")
                 .config("signing.store-file", tmp.resolve("nowhere.jks").toString())
                 .config("signing.key-alias", "upload");
 
@@ -86,7 +87,7 @@ class SigningTest {
      */
     @Test
     void an_alias_that_is_not_in_the_store_is_refused_by_name(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = release(tmp).config("signing.key-alias", "not-in-here");
+        FakeBuildIo io = release(tmp).config("signing.key-alias", "not-in-here");
 
         assertThatThrownBy(() -> Signing.release(io))
                 .isInstanceOf(IllegalStateException.class)
@@ -105,7 +106,7 @@ class SigningTest {
     @Test
     void a_jks_format_store_loads_and_yields_its_alias(@TempDir Path tmp) throws Exception {
         Path jks = keystore(tmp.resolve("jks"), "JKS", "release.jks");
-        FakePackageIo io = new FakePackageIo(tmp, "app.apk")
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk")
                 .config("signing.store-file", jks.toString())
                 .config("signing.key-alias", "upload")
                 .secret("signing.store-password", PASSWORD)
@@ -130,7 +131,7 @@ class SigningTest {
         Security.setProperty("keystore.type.compat", "false");
         try {
             for (Path store : List.of(jksNamedAsP12, pkcs12NamedAsJks)) {
-                FakePackageIo io = new FakePackageIo(tmp, "app.apk")
+                FakeBuildIo io = AndroidIo.packager(tmp, "app.apk")
                         .config("signing.store-file", store.toString())
                         .config("signing.key-alias", "upload")
                         .secret("signing.store-password", PASSWORD)
@@ -187,10 +188,10 @@ class SigningTest {
     // ---- fixtures -----------------------------------------------------------------------
 
     /** A release-configured IO whose store is a real keystore the plugin's own keytool call made. */
-    private static FakePackageIo release(Path tmp) throws Exception {
+    private static FakeBuildIo release(Path tmp) throws Exception {
         Path keystore = DebugKeystore.ensure(
                 Files.createDirectories(tmp.resolve("keys")), Path.of(System.getProperty("java.home")));
-        return new FakePackageIo(tmp, "app.apk")
+        return AndroidIo.packager(tmp, "app.apk")
                 .config("signing.store-file", keystore.toAbsolutePath().toString())
                 .config("signing.key-alias", DebugKeystore.ALIAS)
                 .secret("signing.store-password", PASSWORD)

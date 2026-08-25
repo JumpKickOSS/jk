@@ -11,6 +11,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyTree;
+import cc.jumpkick.resolver.DependencyTreeStyle;
 import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.resolver.Provenance;
 import java.io.IOException;
@@ -22,14 +23,14 @@ import java.util.stream.Collectors;
 /**
  * Engine-hosted {@code jk tree} / {@code jk why} (thin-client contract): both need the parsed
  * project + lock (and tree walks path-dep composites, re-parsing module tomls), so the graph
- * reasoning runs engine-side. The tree renders with {@link DependencyTree.Styling#markers()} —
+ * reasoning runs engine-side. The tree renders with {@link DependencyTreeStyle.Styling#markers()} —
  * the client, which owns the Theme, substitutes the marker tags with its real stylers.
  */
 public final class GraphOps {
 
     private GraphOps() {}
 
-    /** The marker-tagged tree, ready for {@link DependencyTree#applyStyling} client-side. */
+    /** The marker-tagged tree, ready for {@link DependencyTreeStyle#applyStyling} client-side. */
     public static String treeRender(Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopeNames)
             throws IOException {
         JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
@@ -38,7 +39,7 @@ public final class GraphOps {
                 ? null
                 : scopeNames.stream().map(Scope::fromCanonical).toList();
         return DependencyTree.render(
-                project, lock, dir, maxDepth, DependencyTree.Styling.markers(), flatten, scopes, stack);
+                project, lock, dir, maxDepth, DependencyTreeStyle.Styling.markers(), flatten, scopes, stack);
     }
 
     public static WhyReport why(Path dir, String query) {

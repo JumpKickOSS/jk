@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@link TaskExec.ToolRun#command()} — the one assembly {@code run()} forks, pinned without
- * forking anything. Sixteen production call sites across eight plugins go through this class.
+ * forking anything. Twenty production call sites across seven plugins go through this class.
  *
  * <p>Honesty note on the head pin: on Linux a hand-built {@code <javaHome>/bin/<tool>} produces
  * the same string as {@link JdkFingerprint#tool}, so the agree-with-owner assertion distinguishes

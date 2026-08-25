@@ -5,6 +5,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.plugin.build.TaskExec;
 import com.google.cloud.tools.jib.api.Containerizer;
 import com.google.cloud.tools.jib.api.InvalidImageReferenceException;
 import com.google.cloud.tools.jib.api.Jib;
@@ -298,9 +299,9 @@ final class BaseJre {
     /** True when {@code java -version} exits 0 and says something. */
     private static boolean runsVersion(Path javaBin) throws InterruptedException {
         try {
-            Process p = new ProcessBuilder(javaBin.toString(), "-version")
-                    .redirectErrorStream(true)
-                    .start();
+            // start(), not run(): the 60s bound below is the point of this probe, and run() drains
+            // to EOF. The argv comes from the SDK's one fork owner either way.
+            Process p = new TaskExec.ToolRun(javaBin).arg("-version").start();
             String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             return p.waitFor(60, TimeUnit.SECONDS) && p.exitValue() == 0 && !out.isBlank();
         } catch (IOException e) {

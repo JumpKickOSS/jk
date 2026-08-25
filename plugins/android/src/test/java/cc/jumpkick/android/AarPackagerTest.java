@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -34,7 +35,7 @@ class AarPackagerTest {
     @Test
     void the_aar_carries_the_manifest_the_classes_jar_the_symbols_and_the_raw_resources(@TempDir Path tmp)
             throws Exception {
-        FakePackageIo io = library(tmp);
+        FakeBuildIo io = library(tmp);
 
         AarPackager.produce(io);
 
@@ -56,7 +57,7 @@ class AarPackagerTest {
      */
     @Test
     void resource_entries_keep_their_qualifier_directory(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = library(tmp);
+        FakeBuildIo io = library(tmp);
 
         AarPackager.produce(io);
 
@@ -75,7 +76,7 @@ class AarPackagerTest {
     @Test
     void the_conventional_classes_jar_is_written_beside_the_aar_from_the_same_bytes(@TempDir Path tmp)
             throws Exception {
-        FakePackageIo io = library(tmp);
+        FakeBuildIo io = library(tmp);
 
         AarPackager.produce(io);
 
@@ -91,7 +92,7 @@ class AarPackagerTest {
     /** Without a merged manifest there is no AAR to write, and saying so beats a zip nobody can use. */
     @Test
     void an_aar_without_the_merged_manifest_is_refused(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "lib-1.0.0.aar");
+        FakeBuildIo io = AndroidIo.packager(tmp, "lib-1.0.0.aar");
         Files.createDirectories(io.step("android-manifest")); // ran, produced nothing
 
         assertThatThrownBy(() -> AarPackager.produce(io))
@@ -103,9 +104,9 @@ class AarPackagerTest {
     /** A library need not have resources at all; the manifest and the classes are the minimum. */
     @Test
     void a_library_with_no_resources_still_packages(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "lib-1.0.0.aar");
-        FakePackageIo.write(io.step("android-manifest").resolve("merged/AndroidManifest.xml"), MANIFEST);
-        FakePackageIo.write(io.classesDir().resolve("com/example/lib/Widget.class"), "class");
+        FakeBuildIo io = AndroidIo.packager(tmp, "lib-1.0.0.aar");
+        FakeBuildIo.write(io.step("android-manifest").resolve("merged/AndroidManifest.xml"), MANIFEST);
+        FakeBuildIo.write(io.classesDir().resolve("com/example/lib/Widget.class"), "class");
 
         AarPackager.produce(io);
 
@@ -122,9 +123,9 @@ class AarPackagerTest {
      */
     @Test
     void two_runs_over_the_same_inputs_produce_the_same_aar(@TempDir Path tmp) throws Exception {
-        FakePackageIo first = library(tmp.resolve("run-1"));
+        FakeBuildIo first = library(tmp.resolve("run-1"));
         AarPackager.produce(first);
-        FakePackageIo second = library(tmp.resolve("run-2"));
+        FakeBuildIo second = library(tmp.resolve("run-2"));
         AarPackager.produce(second);
 
         assertThat(Files.readAllBytes(second.artifactPath()))
@@ -150,16 +151,16 @@ class AarPackagerTest {
             """;
 
     /** A library module as the earlier steps leave it: merged manifest, linked symbols, raw res. */
-    private static FakePackageIo library(Path root) throws Exception {
-        FakePackageIo io = new FakePackageIo(Files.createDirectories(root), "lib-1.0.0.aar");
+    private static FakeBuildIo library(Path root) throws Exception {
+        FakeBuildIo io = AndroidIo.packager(Files.createDirectories(root), "lib-1.0.0.aar");
         io.config("library", Boolean.TRUE);
-        FakePackageIo.write(io.step("android-manifest").resolve("merged/AndroidManifest.xml"), MANIFEST);
+        FakeBuildIo.write(io.step("android-manifest").resolve("merged/AndroidManifest.xml"), MANIFEST);
         Path res = io.step("android-res");
-        FakePackageIo.write(res.resolve("packaged/R.txt"), "int string app_name 0x7f0f0000\n");
-        FakePackageIo.write(res.resolve("raw-res/values/strings.xml"), "<resources/>");
-        FakePackageIo.write(res.resolve("raw-res/drawable-hdpi/ic.xml"), "<vector/>");
-        FakePackageIo.write(io.classesDir().resolve("com/example/lib/Widget.class"), "class");
-        FakePackageIo.write(io.classesDir().resolve("com/example/lib/R.class"), "generated");
+        FakeBuildIo.write(res.resolve("packaged/R.txt"), "int string app_name 0x7f0f0000\n");
+        FakeBuildIo.write(res.resolve("raw-res/values/strings.xml"), "<resources/>");
+        FakeBuildIo.write(res.resolve("raw-res/drawable-hdpi/ic.xml"), "<vector/>");
+        FakeBuildIo.write(io.classesDir().resolve("com/example/lib/Widget.class"), "class");
+        FakeBuildIo.write(io.classesDir().resolve("com/example/lib/R.class"), "generated");
         return io;
     }
 

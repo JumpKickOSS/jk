@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.tui;
+package cc.jumpkick.cli.theme;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.theme.Gradient;
-import cc.jumpkick.cli.theme.JkDarkTheme;
-import cc.jumpkick.cli.theme.Rgb;
-import cc.jumpkick.cli.theme.Theme;
 import org.junit.jupiter.api.Test;
 
 class GradientTest {

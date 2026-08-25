@@ -4,12 +4,12 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.UncheckedIOException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
@@ -22,10 +22,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * The election rules, without an engine: startup mutex, the same-version/same-build incumbent
@@ -39,17 +39,10 @@ class EngineElectionTest {
 
     private static final String VERSION = "9.9.9-test";
 
-    private final List<Path> tempDirs = new ArrayList<>();
-    private final List<AutoCloseable> openables = new ArrayList<>();
+    @RegisterExtension
+    final ShortTempDirs tempDirs = new ShortTempDirs("jke-");
 
-    private Path shortTempDir() throws IOException {
-        // Prefer /tmp: macOS TMPDIR under /var/folders overflows UDS sun_path (~104 bytes).
-        Path root =
-                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
-        Path dir = Files.createTempDirectory(root, "jke-");
-        tempDirs.add(dir);
-        return dir;
-    }
+    private final List<AutoCloseable> openables = new ArrayList<>();
 
     private <T extends AutoCloseable> T closeLater(T c) {
         openables.add(c);
@@ -62,19 +55,6 @@ class EngineElectionTest {
             try {
                 c.close();
             } catch (Exception ignored) {
-                // best-effort
-            }
-        }
-        for (Path dir : tempDirs) {
-            try (var walk = Files.walk(dir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                        // best-effort
-                    }
-                });
-            } catch (IOException | UncheckedIOException ignored) {
                 // best-effort
             }
         }
@@ -136,7 +116,7 @@ class EngineElectionTest {
 
     @Test
     void winning_claims_the_first_generation_and_points_the_endpoint_at_it() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
 
         EngineElection.Won won = e.win();
@@ -157,7 +137,7 @@ class EngineElectionTest {
 
     @Test
     void the_startup_mutex_refuses_a_spawn_that_arrives_mid_election() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
         Files.createDirectories(p.dir());
         // Stand in for another spawn that is between probe and endpoint write.
@@ -172,7 +152,7 @@ class EngineElectionTest {
 
     @Test
     void an_incumbent_of_the_same_version_and_build_wins_and_the_newcomer_loses_quietly() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         closeLater(new FakeIncumbent(p, 1, VERSION, "aaaa"));
 
         assertThat(election(p, "aaaa", 4242).win())
@@ -190,7 +170,7 @@ class EngineElectionTest {
      */
     @Test
     void a_different_build_id_takes_over_into_the_next_generation() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         closeLater(new FakeIncumbent(p, 1, VERSION, "aaaa"));
 
         EngineElection.Won won = election(p, "bbbb", 4242).win();
@@ -208,7 +188,7 @@ class EngineElectionTest {
 
     @Test
     void a_crashed_generations_leftover_socket_file_is_reclaimed_not_a_bind_failure() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EnginePaths.Paths gen1 = EnginePaths.generation(p, 1);
         Files.createDirectories(gen1.dir());
         // A killed engine leaves its socket and token behind; its lock, though, is free.
@@ -225,7 +205,7 @@ class EngineElectionTest {
 
     @Test
     void an_endpoint_naming_another_generation_reads_as_displaced() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
         closeLater(e.win().listener());
 
@@ -238,7 +218,7 @@ class EngineElectionTest {
     /** The filename alone is not identity: a recreated state dir reuses the generation name. */
     @Test
     void a_pid_file_naming_another_process_reads_as_displaced() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
         EngineElection.Won won = e.win();
         closeLater(won.listener());
@@ -250,7 +230,7 @@ class EngineElectionTest {
 
     @Test
     void a_missing_endpoint_is_orphaned_not_displaced() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
         closeLater(e.win().listener());
 
@@ -264,7 +244,7 @@ class EngineElectionTest {
 
     @Test
     void retiring_drops_this_generations_files_and_the_endpoint_it_owns() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
         EngineElection.Won won = e.win();
         won.listener().close();
@@ -281,7 +261,7 @@ class EngineElectionTest {
     /** A lame duck must not un-point an endpoint its successor now owns. */
     @Test
     void retiring_leaves_a_successors_endpoint_alone() throws Exception {
-        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
         EngineElection.Won won = e.win();
         won.listener().close();

@@ -259,12 +259,36 @@ forked worker   no descriptor, camel config keys, engine hardcodes argv,
 
 Any uniformity rule is written per family, and a rule that reads as a
 style violation across the two is usually a family boundary being crossed
-correctly. Seven modules under `plugins/` carry a descriptor; the rest are
-workers. The directory split that would let a convention plugin enforce
-the distinction mechanically is JK-2429; until it lands, the descriptor's
-presence is the test — and `checkWireProtocolPrefixPairs` (G5) is what
-keeps a worker's two ends of the prefix agreeing, since it has no
-descriptor to derive it from.
+correctly. Of the 15 modules under `plugins/`, 7 carry a descriptor and 8
+are workers — a clean partition, and `checkPluginFamily` (G25) holds it:
+each module's own `check` derives its family from the descriptor and
+asserts the architectural consequence, which is the **shape of its
+wire-prefix pair**. An SPI plugin's prefix is named by its descriptor and
+its plugin class and by no engine source; a worker's is named by its
+worker class and by exactly the engine source that hardcodes its argv.
+`checkWireProtocolPrefixPairs` (G5) keeps the pair a pair; G25 says which
+family owns it.
+
+**The `plugins/` vs `workers/` directory split is withdrawn** (JK-2429).
+The descriptor's presence already declares the family. A second directory
+declaring it again is a copy that has to be kept in sync, and a guard
+reading the directory would still have to consult the descriptor to know
+whether the directory was right — two spellings of one fact, which is the
+defect this campaign exists to remove. The directory also carries no
+build-graph meaning: Gradle project names here are family-neutral
+(`:android`, `:auditor`), so every `project(":x")` reference is invariant
+under a rename, *including* the worker-jar lists in
+`clients/cli/build.gradle.kts` and `server/engine/build.gradle.kts`. What
+a rename would buy is legibility, at the cost of 8 `git mv`s, 15
+`projectDir` lines, `jk.toml`, a `jk-lock.toml` re-lock and 13 test files.
+What G25 buys instead is the case a directory name cannot see: a module
+whose family and whose actual engine wiring disagree.
+
+The ticket also asked for **two** convention scripts. There is one,
+`jk.plugin-conventions`, with a family arm inside it — because everything
+else in that script (thin fat-jar, flattened worker POM, staged repo,
+`installLocal`) is identical for both families, and splitting it would
+duplicate 340 lines to express one boolean.
 
 Manual constructor injection of concrete `final` classes. An interface
 exists only when there are two production implementations, a process
@@ -398,6 +422,28 @@ shape, JS should converge on the Java caps.
 CSS is exempt outright — splitting a cascade on line count is a
 regression risk with no readability win, so `clients/web/.../style.css`
 is absent from the guard by design.
+
+**The caps are per language, not per directory — so tests are capped too,
+by the same numbers.** `checkFileSizeCaps` scoped itself to `src/main` for
+most of this campaign, and the cost of that was measurable: the largest
+file in the tree was a *test*, `JkBuildParserTest` at 2,334 lines — 2.9x
+the hard cap for its own language, and 5.6x its 416-line subject, which it
+had grown around by accretion one config table at a time. No guard could
+see it, and neither could the doc/guard parity check below, which compares
+extensions and is blind to directory scope. JK-2444 extended the scan to
+`src/test/java`, `src/test/kotlin`, `src/test/js` and `src/testFixtures`.
+
+The objection to capping tests is real and it is not an exemption:
+splitting a suite can duplicate a fixture, and duplicated scaffolding is
+this tree's actual defect vector. That argues for the **exception band**,
+which already exists and costs a `size-baseline.txt` entry plus a stated
+invariant — a reviewable diff. It does not argue for a second number for
+the same extension, which is precisely the drift the parity check exists
+to prevent. In practice the band was not needed for Java: the two contract
+suites most likely to need it, `EngineServerTest` (real socket) and the
+SPA/route tests, both split mechanically into one shared harness apiece
+with no assertion touched. When this landed, 975 Java test files measured
+p50 104 lines, p99 638, and none over 800.
 
 Soft caps are a review signal. The hard caps are the gate, enforced by
 `checkFileSizeCaps` against the checked-in `size-baseline.txt`, wired to
@@ -591,6 +637,13 @@ accumulator stamps are the state machine — do not draw a 12-type
 - One concern per change. The engine stays bootable. Touching
   `EngineServer` and `BuildPlanner` together is allowed only when a
   single improvement requires both.
+- **A `--tests` subset is a development signal, not a verdict.** Which
+  siblings share a JVM fork changes the outcome: a four-class subset
+  reproducibly failed 17 of one class's 24 tests while the class passed
+  alone *and* the full tier passed 65 of 65 suites. Iterate with subsets;
+  cite a whole-tier run in a Done criterion, and re-check a
+  subset-only failure whole before filing it. The dangerous direction is
+  the quiet one — a subset that passes says nothing about the tier.
 
 ---
 
@@ -733,15 +786,53 @@ Letters are allocated when a guard lands and are never reused.
 | G22 | `checkIdeClientWiring` | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist |
 | G23 | `checkNoOrphanTestTags` | a `@Tag` no test task runs, a tag no tier owns, or a `TestTiers` table that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions |
 | G24 | `checkSingleAotMarkerSpelling` | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist |
+| G25 | `checkPluginFamily` | a module under `plugins/` whose family — SPI or forked worker — is not consistent with its `jk-plugin.toml`, its wire prefix's owner, and its config-key schema; four arms plus a self-fail | ban, no exceptions (7/8 partition over 15 modules) |
+| G26 | `checkNoUnownedSpawn` | a process fork outside the declared owner (`PluginLoader.command` engine-side, `TaskExec.ToolRun` plugin-side) | ban, 3-fork allowlist |
+| G27 | `checkTerminalHandoffOwner` | `inheritIO` outside `CliOutput.handOffTerminal`, plus a self-fail if the owner stops calling it | ban, no allowlist |
+| G28 | `checkNoRetiredWireSpelling` | a retired wire-key spelling typed as a field key in production source | ban, declared inputs + self-fail floors |
+| G29 | `checkWorkerOfflineFromSpec` | a `JK_OFFLINE` / offline-property read in worker sources (use `TaskExec.offline()`) | ban, no allowlist |
+| G30 | `checkPropertiesStoreOwner` | a `Properties.store()` call in main sources (use `DeterministicProperties.render`) | ban, no allowlist |
+| G31 | `checkTestRootsDeclared` | a `:cli` test reading the ambient state root without `@IsolatedState` | ratchet |
+| G32 | `checkSpikeCacheTempDir` | a spike-cache test that does not root its project in a `@TempDir` | ban, one env-gated exception |
+| G33 | `checkCatalogLockParity` | `gradle/libs.versions.toml` and `jk-lock.toml` disagreeing on a shared module version | ban |
+| G34 | `checkTestFixturesStayOutOfProduction` | a `testFixtures(...)` dependency on a non-test configuration, or a test-fixtures/JUnit/AssertJ jar on the CLI's runtime classpath — scans every build script, plus a self-fail arm | ban, no allowlist |
+| G25 | `checkPluginFamily` | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist |
+| G26 | `checkPluginForkOwner` | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express until JK-2493) |
+| G27 | `checkOneTerminalHandoff` | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist |
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters
 and keep their names; they are the shape every guard above copies.
+
+**This table drifted, and that is worth recording.** Six guards landed
+carrying no letter at all — G28 through G33 above were lettered when the
+drift was found, not when they shipped. A registry that lags the code is
+the same defect as a baseline that lags the tree, and it has the same fix:
+reconcile by listing both sides and diffing them.
+
+Two spellings of the letter comment exist — `// Guard G20 (JK-2420):` and
+`// G22 — JK-2449:` — and a scan for the first form silently misses the
+second. That is the campaign's own lesson landing on its own registry: a
+probe's answer is bounded by what the probe can see. Match on the letter,
+not on the word.
+
+    guards in code:     grep -h 'val check.* by tasks.registering' \
+                          buildSrc/src/main/kotlin/*.kts */*/build.gradle.kts
+    guards in registry: grep -o '`check[A-Za-z]*`' code-as-art.md
+
+Run that before adding a row. Thirty-three to twenty-nine was the gap.
 
 A guard does not have to live in `buildSrc`. G19, G22 and G24 sit in the
 `build.gradle.kts` of the module that owns the fact — which is the right
 home when the ban list comes from one module's source. Wire it to that
 module's `check` **and** `jar`, and remember `checkAll` now depends on
 every module's `check` (JK-2498), so it will run.
+
+A third home: a **convention script**. G25 and G26 live in
+`jk.plugin-conventions`, so each of the 15 plugin modules checks *itself*
+— the failure names the offending module, the fix is local, and the
+revert check is one narrow task (`./gradlew :auditor:checkPluginFamily`)
+rather than a tree-wide scan whose message has to say where it looked.
+Use this when the rule is per-module and the family already has a script.
 
 **A guard that ships as a test is subject to Gradle's up-to-date
 check.** `ActionTreeTest` enforces an owner-sourced ban list from

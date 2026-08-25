@@ -15,6 +15,7 @@ import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Optional Now-in-Android workspace sweep. Builds every module under a local NiA clone that
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
         matches = "1",
         disabledReason = "optional NiA marathon; export JK_NIA_SCRATCH=1 and JK_NIA_ROOT=/path/to/nowinandroid")
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class NiaScratchTest {
 
     private static final Path NIA = Path.of(System.getenv().getOrDefault("JK_NIA_ROOT", "/tmp/nowinandroid"));

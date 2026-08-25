@@ -15,7 +15,7 @@ import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -167,7 +167,7 @@ public final class NewCommand implements CliCommand {
 
         /** The JDK toolchain version (which JDK runs the build). */
         int jdkMajor() {
-            int major = JkBuild.Project.majorOf(info.jdk());
+            int major = Project.majorOf(info.jdk());
             return major > 0 ? major : info.javaRelease();
         }
 
@@ -592,8 +592,8 @@ public final class NewCommand implements CliCommand {
         } else if (parent != null && parent.jdkMajor() > 0) {
             int m = parent.jdkMajor();
             jdkSpec = new NewJdkPlan.Spec(m, Integer.toString(m));
-        } else if (defaultJdk.map(JkBuild.Project::majorOf).orElse(0) > 0) {
-            int m = JkBuild.Project.majorOf(defaultJdk.get());
+        } else if (defaultJdk.map(Project::majorOf).orElse(0) > 0) {
+            int m = Project.majorOf(defaultJdk.get());
             jdkSpec = new NewJdkPlan.Spec(m, Integer.toString(m));
         } else {
             jdkSpec = new NewJdkPlan.Spec(NewWizard.LATEST_LTS_MAJOR, Integer.toString(NewWizard.LATEST_LTS_MAJOR));
@@ -677,7 +677,7 @@ public final class NewCommand implements CliCommand {
             resolvedJdkMajor = parent.jdkMajor() > 0 ? parent.jdkMajor() : parent.javaRelease();
             resolvedJdkIdentifier = Optional.empty(); // modules write no lock
         } else if (defaultJdk.isPresent()) {
-            resolvedJdkMajor = JkBuild.Project.majorOf(defaultJdk.get());
+            resolvedJdkMajor = Project.majorOf(defaultJdk.get());
             resolvedJdkIdentifier = defaultJdk;
         } else {
             resolvedJdkMajor = pickedOpt.major();

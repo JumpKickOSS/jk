@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.publish.testkit.GpgTestFixture;
 import cc.jumpkick.repo.MavenMetadata;
 import com.sun.net.httpserver.HttpServer;
@@ -87,7 +87,7 @@ class MavenPublisherTest {
     private void publishVersion(String version) throws Exception {
         new MavenPublisher(base, null, null)
                 .publish(
-                        new JkBuild.Project("com.example", "widget", version, 21),
+                        new Project("com.example", "widget", version, 21),
                         List.of(new MavenPublisher.Artifact(
                                 ".jar", ("jar-" + version).getBytes(StandardCharsets.UTF_8))));
     }
@@ -100,7 +100,7 @@ class MavenPublisherTest {
     @Test
     void publishes_jar_pom_and_four_checksums_each() throws Exception {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
-        JkBuild.Project project = new JkBuild.Project("com.example", "widget", "1.0.0", 21);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jarBytes = "fake-jar".getBytes(StandardCharsets.UTF_8);
         byte[] pomBytes = "<project/>".getBytes(StandardCharsets.UTF_8);
         publisher.publish(
@@ -132,7 +132,7 @@ class MavenPublisherTest {
     void basic_auth_header_is_attached_when_credentials_provided() throws Exception {
         MavenPublisher publisher = new MavenPublisher(base, "alice", "swordfish");
         publisher.publish(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
+                new Project("com.example", "widget", "1.0.0", 21),
                 List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3})));
 
         String expected =
@@ -144,7 +144,7 @@ class MavenPublisherTest {
     void bearer_credential_attaches_bearer_header() throws Exception {
         MavenPublisher publisher = new MavenPublisher(base, new RepoCredential.Bearer("tok-123"));
         publisher.publish(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
+                new Project("com.example", "widget", "1.0.0", 21),
                 List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3})));
 
         assertThat(authHeaders.values()).isNotEmpty().allMatch(h -> h.equals("Bearer tok-123"));
@@ -156,7 +156,7 @@ class MavenPublisherTest {
         GpgSigner signer = GpgSigner.fromKeyFile(key.secretKeyFile(), "test-pass".toCharArray());
 
         MavenPublisher publisher = new MavenPublisher(base, null, null);
-        JkBuild.Project project = new JkBuild.Project("com.example", "widget", "1.0.0", 21);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jarBytes = "fake-jar".getBytes(StandardCharsets.UTF_8);
         publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jarBytes)), SigningOptions.of(signer));
 
@@ -179,7 +179,7 @@ class MavenPublisherTest {
                 .getBytes(StandardCharsets.UTF_8);
 
         MavenPublisher publisher = new MavenPublisher(base, null, null);
-        JkBuild.Project project = new JkBuild.Project("com.example", "widget", "1.0.0", 21);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jarBytes = "fake-jar".getBytes(StandardCharsets.UTF_8);
         publisher.publish(
                 project, List.of(new MavenPublisher.Artifact(".jar", jarBytes)), new SigningOptions(null, fake));
@@ -204,7 +204,7 @@ class MavenPublisherTest {
 
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         publisher.publish(
-                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
+                new Project("com.example", "widget", "1.0.0", 21),
                 List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3})),
                 new SigningOptions(gpg, fake));
 
@@ -342,7 +342,7 @@ class MavenPublisherTest {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         failNext = true;
         assertThatThrownBy(() -> publisher.publish(
-                        new JkBuild.Project("com.example", "widget", "1.0.0", 21),
+                        new Project("com.example", "widget", "1.0.0", 21),
                         List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3}))))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("401");

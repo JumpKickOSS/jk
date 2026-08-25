@@ -20,6 +20,10 @@ dependencies {
     implementation(libs.apksig)
     // ASM, for the Hilt superclass transform (android-hilt-transform) — same bundling story.
     implementation(libs.asm)
+    // `FakeBuildIo` — the shared engine-side fake for a packager/step body (JK-2443). Replaces
+    // this module's own FakePackageIo + FakeTaskExec, which were the same fake written twice
+    // because neither SPI interface extends the other.
+    testImplementation(testFixtures(project(":plugin-sdk")))
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +65,7 @@ val knownCatalogLockDrift = setOf(
         "org.slf4j:slf4j-nop",
 )
 
+// Guard G33 (JK-2557).
 val checkCatalogLockParity by tasks.registering {
     group = "verification"
     description = "Fail the build when gradle/libs.versions.toml and jk-lock.toml disagree on a shared module"

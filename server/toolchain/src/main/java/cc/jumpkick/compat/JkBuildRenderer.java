@@ -6,6 +6,7 @@ import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -49,7 +50,7 @@ public final class JkBuildRenderer {
         }
     }
 
-    private static void renderProject(StringBuilder sb, JkBuild.Project p) {
+    private static void renderProject(StringBuilder sb, Project p) {
         sb.append("group    = ").append(quote(p.group())).append('\n');
         sb.append("name     = ").append(quote(p.name())).append('\n');
         sb.append("version  = ").append(quote(p.version())).append('\n');

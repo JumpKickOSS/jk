@@ -3,7 +3,8 @@ package cc.jumpkick.layout;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
+import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -73,10 +74,10 @@ class SourceLayoutTest {
     @Test
     void explicit_simple_wins_even_with_maven_dirs(@TempDir Path tmp) throws Exception {
         Files.createDirectories(tmp.resolve("src/main/resources"));
-        JkBuild.Project project = JkBuild.Project.builder("t", "app", "1")
+        Project project = Project.builder("t", "app", "1")
                 .jdkMajor(25)
                 .java(25)
-                .layout(JkBuild.Layout.SIMPLE)
+                .layout(Layout.SIMPLE)
                 .build();
         assertThat(SourceLayout.isSimpleLayout(project, tmp)).isTrue();
     }
@@ -85,10 +86,10 @@ class SourceLayoutTest {
     void explicit_traditional_wins_on_mill_tree(@TempDir Path tmp) throws Exception {
         Files.createDirectories(tmp.resolve("src"));
         Files.writeString(tmp.resolve("src/Main.java"), "class Main {}");
-        JkBuild.Project project = JkBuild.Project.builder("t", "app", "1")
+        Project project = Project.builder("t", "app", "1")
                 .jdkMajor(25)
                 .java(25)
-                .layout(JkBuild.Layout.TRADITIONAL)
+                .layout(Layout.TRADITIONAL)
                 .build();
         assertThat(SourceLayout.isSimpleLayout(project, tmp)).isFalse();
     }
@@ -106,11 +107,11 @@ class SourceLayoutTest {
         assertThat(ModuleLayout.isCompact(tmp)).isTrue();
     }
 
-    private static JkBuild.Project autoProject() {
-        return JkBuild.Project.builder("t", "app", "1")
+    private static Project autoProject() {
+        return Project.builder("t", "app", "1")
                 .jdkMajor(25)
                 .java(25)
-                .layout(JkBuild.Layout.AUTO)
+                .layout(Layout.AUTO)
                 .build();
     }
 }

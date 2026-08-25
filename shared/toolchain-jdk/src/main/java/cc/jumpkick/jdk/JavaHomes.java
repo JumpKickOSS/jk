@@ -9,6 +9,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -79,7 +80,7 @@ public final class JavaHomes {
                     // leave 0 — resolver falls back
                 }
             }
-            return JkBuild.of(JkBuild.Project.builder("local", "local", "0")
+            return JkBuild.of(Project.builder("local", "local", "0")
                     .jdk(jdk)
                     .java(release)
                     .build());

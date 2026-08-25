@@ -268,4 +268,5 @@ build rather than skipping; opt out deliberately with `JK_WEB_JS_SKIP=1`:
 ./gradlew :web:test
 ```
 
-Server-side rendering/auth behavior is covered by `HttpEngineServerTest` in `server/engine`.
+Server-side rendering/auth behavior is covered by `HttpStaticContentTest` and `HttpApiAuthTest` in
+`server/engine` (both over the shared `HttpEngineServerHarness`).

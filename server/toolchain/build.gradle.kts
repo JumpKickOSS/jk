@@ -16,4 +16,8 @@ dependencies {
     implementation(project(":resolver"))
     // JdkInstaller extracts tar.gz archives using MinimalTar (built-in, no library).
     // JdkCatalogClient downloads jdks.json (uncompressed) — no XZ or JSON library needed.
+    // The tree's shared test primitives (`cc.jumpkick.testing.LoopbackHttp`) — the loopback
+    // route-table server this module's suites each carried a copy of. A :host source set that
+    // never reaches main, the fat jar or a worker POM (JK-2443).
+    testImplementation(testFixtures(project(":host")))
 }

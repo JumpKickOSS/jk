@@ -11,23 +11,21 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import com.sun.net.httpserver.HttpServer;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -44,25 +42,11 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class LockOrchestratorBomTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @BeforeEach
     void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
         serveJUnitDefaults();
     }
 
@@ -108,12 +92,8 @@ class LockOrchestratorBomTest {
                 + "-"
                 + version
                 + ".jar";
-        served.put(path, new byte[] {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
+        http.served()
+                .put(path, new byte[] {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
     }
 
     @Test
@@ -392,7 +372,7 @@ class LockOrchestratorBomTest {
     }
 
     private static JkBuild jkBuildWithFeatures(JkBuild.Dependencies deps, Features features) {
-        return JkBuild.builder(new JkBuild.Project("com.example", "test", "0.1.0", 25))
+        return JkBuild.builder(new Project("com.example", "test", "0.1.0", 25))
                 .dependencies(deps)
                 .features(features)
                 .build();
@@ -565,7 +545,7 @@ class LockOrchestratorBomTest {
 
     private RepoGroup repoGroup(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
-        return RepoGroup.of(new MavenRepo("local", base, new Http(), cas));
+        return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), cas));
     }
 
     private static JkBuild jkBuildWithPlatformDeps(Dependency... platformDeps) {
@@ -576,11 +556,11 @@ class LockOrchestratorBomTest {
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
         copy.putAll(byScope);
         JkBuild.Dependencies deps = new JkBuild.Dependencies(copy);
-        return new JkBuild(new JkBuild.Project("com.example", "test", "0.1.0", 25), deps);
+        return new JkBuild(new Project("com.example", "test", "0.1.0", 25), deps);
     }
 
     private void servePath(String path, String body) {
-        served.put(path, body.getBytes(StandardCharsets.UTF_8));
+        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
     }
 
     private void servePom(String group, String artifact, String version, String body) {

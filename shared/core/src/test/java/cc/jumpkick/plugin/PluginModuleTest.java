@@ -4,6 +4,7 @@ package cc.jumpkick.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,7 @@ class PluginModuleTest {
     void absent_markers_are_not_a_worker(@TempDir Path dir) {
         assertThat(PluginModule.isWorker(dir)).isFalse();
         assertThat(PluginModule.isWorker(null)).isFalse();
-        JkBuild lib = JkBuild.of(new JkBuild.Project("g", "n", "1", 25));
+        JkBuild lib = JkBuild.of(new Project("g", "n", "1", 25));
         assertThat(PluginModule.mainClass(dir, lib)).isNull();
     }
 
@@ -23,7 +24,7 @@ class PluginModuleTest {
     void root_jk_plugin_toml_marks_a_worker(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk-plugin.toml"), "[plugin]\nid = \"x\"\ntable = \"x\"\n");
         assertThat(PluginModule.isWorker(dir)).isTrue();
-        assertThat(PluginModule.mainClass(dir, JkBuild.of(new JkBuild.Project("g", "n", "1", 25))))
+        assertThat(PluginModule.mainClass(dir, JkBuild.of(new Project("g", "n", "1", 25))))
                 .isEqualTo(PluginModule.WORKER_MAIN);
     }
 

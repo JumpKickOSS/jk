@@ -9,7 +9,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -139,12 +138,14 @@ final class AvdCommand {
             return 1;
         }
         exec.label("emulator " + name);
-        List<String> command = new ArrayList<>(List.of(
-                emulator.toAbsolutePath().toString(), "-avd", name, "-no-window", "-no-audio", "-no-boot-anim"));
-        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-        pb.environment().put("ANDROID_AVD_HOME", avdHome.toAbsolutePath().toString());
-        pb.environment().put("ANDROID_SDK_ROOT", root.toAbsolutePath().toString());
-        Process process = pb.start();
+        // start(), not stream(): the emulator is left running after the boot line, so this drives
+        // its own drain rather than waiting for EOF. The argv and the environment still come from
+        // the one fork owner.
+        Process process = exec.tool(emulator)
+                .args(List.of("-avd", name, "-no-window", "-no-audio", "-no-boot-anim"))
+                .env("ANDROID_AVD_HOME", avdHome.toAbsolutePath().toString())
+                .env("ANDROID_SDK_ROOT", root.toAbsolutePath().toString())
+                .start();
         // Stream until the boot line (or EOF) — the emulator keeps running detached after.
         try (BufferedReader reader =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {

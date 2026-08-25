@@ -10,19 +10,13 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -31,31 +25,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class MavenPackageSourceExclusionTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @Test
     void exclusion_drops_module_when_only_path(@TempDir Path tempDir) throws Exception {
@@ -688,11 +659,11 @@ class MavenPackageSourceExclusionTest {
 
     private RepoGroup repoGroup(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
-        return RepoGroup.of(new MavenRepo("local", base, new Http(), cas));
+        return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), cas));
     }
 
     private void servePath(String path, String body) {
-        served.put(path, body.getBytes(StandardCharsets.UTF_8));
+        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
     }
 
     private void servePom(String group, String artifact, String version, String body) {

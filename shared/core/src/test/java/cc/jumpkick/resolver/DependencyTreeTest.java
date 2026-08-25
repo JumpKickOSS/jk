@@ -9,6 +9,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
@@ -62,13 +63,14 @@ class DependencyTreeTest {
                 pkg("com.foo:a", "1.0", List.of("com.foo:leaf@1.0")),
                 pkg("com.foo:b", "1.0", List.of("com.foo:leaf@1.0")),
                 pkg("com.foo:leaf", "1.0", List.of()));
-        var styling = new DependencyTree.Styling(
+        var styling = new DependencyTreeStyle.Styling(
                 UnaryOperator.identity(),
                 UnaryOperator.identity(),
                 UnaryOperator.identity(),
                 UnaryOperator.identity(),
                 s -> "<dim>" + s + "</dim>", // reference styler
-                UnaryOperator.identity()); // scope badge
+                UnaryOperator.identity(), // scope badge
+                UnaryOperator.identity()); // bold root coord
 
         String rendered = DependencyTree.render(project, lock, Integer.MAX_VALUE, styling);
 
@@ -107,7 +109,7 @@ class DependencyTreeTest {
         var main = List.of(Dependency.of(
                 "web", "org.springframework.boot:spring-boot-starter-webmvc", VersionSelector.parse("=4.1.0")));
         JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(Scope.PLATFORM, platform, Scope.MAIN, main)));
         Lockfile lock = lockOf(pkg("org.springframework.boot:spring-boot-starter-webmvc", "4.1.0", List.of()));
 
@@ -115,10 +117,10 @@ class DependencyTreeTest {
         assertThat(rendered).contains("org.springframework.boot:spring-boot-dependencies:4.1.0");
         assertThat(rendered).contains("(platform)");
         assertThat(rendered).doesNotContain("spring-boot-dependencies (missing)");
-        assertThat(rendered).doesNotContain("spring-boot-dependencies" + DependencyTree.MISSING_SUFFIX);
+        assertThat(rendered).doesNotContain("spring-boot-dependencies" + DependencyTreeStyle.MISSING_SUFFIX);
         // Real missing main dep still marked
         JkBuild missingMain = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
                         Scope.PLATFORM,
                         platform,
@@ -137,11 +139,11 @@ class DependencyTreeTest {
         deps.add(Dependency.git(
                 "com.foo:forked", GitSource.of("https://x/forked", "https://x/forked", new GitRefSpec.Branch("main"))));
         JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
-                new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
+                new Project("com.example", "widget", "0.1.0", 0), new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
         Lockfile lock = lockOf(pkg("com.foo:forked", "main-SNAPSHOT", List.of()));
 
-        String rendered = DependencyTree.render(project, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        String rendered =
+                DependencyTree.render(project, lock, tmp, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
 
         assertThat(rendered).contains("com.foo:forked:main-SNAPSHOT");
         assertThat(rendered).doesNotContain("[git:");
@@ -154,11 +156,10 @@ class DependencyTreeTest {
         deps.add(Dependency.git(
                 "com.foo:forked", GitSource.of("https://x/forked", "https://x/forked", new GitRefSpec.Branch("main"))));
         JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
-                new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
+                new Project("com.example", "widget", "0.1.0", 0), new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
 
         String rendered =
-                DependencyTree.render(project, lockOf(), tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+                DependencyTree.render(project, lockOf(), tmp, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
 
         assertThat(rendered).contains("com.foo:forked (missing)");
     }
@@ -166,7 +167,7 @@ class DependencyTreeTest {
     @Test
     void direct_deps_are_grouped_into_scope_sections(@org.junit.jupiter.api.io.TempDir Path tmp) {
         JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
                         Scope.MAIN, List.of(new Dependency("com.foo:lib", new VersionSelector.Exact("=1.0", "1.0"))),
                         Scope.TEST,
@@ -179,7 +180,7 @@ class DependencyTreeTest {
                 lock,
                 tmp,
                 Integer.MAX_VALUE,
-                DependencyTree.Styling.plain(),
+                DependencyTreeStyle.Styling.plain(),
                 false,
                 List.of(Scope.MAIN, Scope.TEST));
 
@@ -196,18 +197,19 @@ class DependencyTreeTest {
     @Test
     void default_scopes_are_export_main_runtime_only(@org.junit.jupiter.api.io.TempDir Path tmp) {
         JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
                         Scope.MAIN, List.of(new Dependency("com.foo:lib", new VersionSelector.Exact("=1.0", "1.0"))),
                         Scope.TEST,
                                 List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))))));
         Lockfile lock = lockOf(pkg("com.foo:lib", "1.0", List.of()), pkg("org.junit:junit", "5.0", List.of()));
 
-        String rendered = DependencyTree.render(project, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        String rendered =
+                DependencyTree.render(project, lock, tmp, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
 
         assertThat(rendered).contains("main").contains("com.foo:lib");
         assertThat(rendered).doesNotContain("test").doesNotContain("org.junit:junit");
-        assertThat(DependencyTree.defaultScopeOrder()).containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+        assertThat(DependencyTreeStyle.defaultScopeOrder()).containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
     }
 
     /**
@@ -217,30 +219,33 @@ class DependencyTreeTest {
     @Test
     void empty_selection_names_the_scopes_that_do_have_deps(@org.junit.jupiter.api.io.TempDir Path tmp) {
         JkBuild testOnly = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
                         Scope.TEST,
                         List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))))));
         Lockfile lock = lockOf(pkg("org.junit:junit", "5.0", List.of()));
 
-        String rendered = DependencyTree.render(testOnly, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        String rendered =
+                DependencyTree.render(testOnly, lock, tmp, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
 
         assertThat(rendered).contains("found in: test").contains("-s test");
 
         // Two populated scopes → steer to `-s all` instead of listing one flag per scope.
         JkBuild testAndDev = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
                         Scope.TEST,
                                 List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))),
                         Scope.DEV, List.of(new Dependency("com.foo:tool", new VersionSelector.Exact("=1.0", "1.0"))))));
-        String two = DependencyTree.render(testAndDev, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        String two =
+                DependencyTree.render(testAndDev, lock, tmp, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
         assertThat(two).contains("found in: test, dev").contains("-s all");
 
         // No deps anywhere → plain "(no dependencies)", no bogus steer.
-        JkBuild none = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0), new JkBuild.Dependencies(Map.of()));
-        String empty = DependencyTree.render(none, lockOf(), tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        JkBuild none =
+                new JkBuild(new Project("com.example", "widget", "0.1.0", 0), new JkBuild.Dependencies(Map.of()));
+        String empty =
+                DependencyTree.render(none, lockOf(), tmp, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
         assertThat(empty).contains("(no dependencies)").doesNotContain("found in:");
     }
 
@@ -275,8 +280,8 @@ class DependencyTreeTest {
         Files.writeString(b.resolve("jk-lock.toml"), EMPTY_LOCK);
 
         JkBuild rootProject = JkBuildParser.parse(root.resolve("jk.toml"));
-        String rendered =
-                DependencyTree.render(rootProject, lockOf(), root, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        String rendered = DependencyTree.render(
+                rootProject, lockOf(), root, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
 
         assertThat(rendered).contains("com.acme:ws:9.9.9"); // root
         // Scope-first: a `main` section is the top-level node, and module b (the only
@@ -330,7 +335,7 @@ class DependencyTreeTest {
                 pkg("com.foo:leaf", "1.0", List.of("com.foo:grand@1.0")), pkg("com.foo:grand", "1.0", List.of()));
 
         JkBuild member = JkBuildParser.parse(b.resolve("jk.toml"));
-        String declared = DependencyTree.render(member, lock, b, 0, DependencyTree.Styling.plain());
+        String declared = DependencyTree.render(member, lock, b, 0, DependencyTreeStyle.Styling.plain());
         assertThat(declared).contains("com.acme:b:9.9.9");
         assertThat(declared).contains("com.acme:a:9.9.9");
         assertThat(declared).doesNotContain("(missing)");
@@ -338,7 +343,8 @@ class DependencyTreeTest {
         assertThat(declared).doesNotContain("com.foo:leaf");
         assertThat(declared).doesNotContain("com.foo:grand");
 
-        String transitive = DependencyTree.render(member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        String transitive =
+                DependencyTree.render(member, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
         assertThat(transitive).contains("com.acme:a:9.9.9");
         assertThat(transitive).contains("com.acme:c:9.9.9");
         assertThat(transitive).contains("com.foo:leaf:1.0");
@@ -346,7 +352,8 @@ class DependencyTreeTest {
         assertThat(transitive).doesNotContain("(missing)");
         assertThat(transitive).doesNotContain("[workspace]");
 
-        String flat = DependencyTree.render(member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true);
+        String flat =
+                DependencyTree.render(member, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), true);
         assertThat(flat)
                 .contains("com.acme:a:9.9.9")
                 .contains("com.acme:c:9.9.9")
@@ -397,14 +404,14 @@ class DependencyTreeTest {
 
         JkBuild member = JkBuildParser.parse(b.resolve("jk.toml"));
         String tree = DependencyTree.render(
-                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), false, List.of(Scope.TEST));
+                member, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.TEST));
         assertThat(tree).contains("com.acme:a:1.0");
         assertThat(tree).contains("com.foo:api:1.0"); // a's export dep IS on b's classpath
         assertThat(tree).contains("com.foo:driver:1.0"); // a's runtime dep rides too
         assertThat(tree).doesNotContain("com.foo:mocks"); // a's test deps never do
 
         String flat = DependencyTree.render(
-                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true, List.of(Scope.TEST));
+                member, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), true, List.of(Scope.TEST));
         assertThat(flat).contains("com.foo:api:1.0").contains("com.foo:driver:1.0");
         assertThat(flat).doesNotContain("com.foo:mocks");
     }
@@ -450,14 +457,14 @@ class DependencyTreeTest {
 
         JkBuild member = JkBuildParser.parse(b.resolve("jk.toml"));
         String tree = DependencyTree.render(
-                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), false, List.of(Scope.MAIN));
+                member, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN));
         assertThat(tree).contains("com.acme:a:1.0");
         assertThat(tree).contains("com.foo:driver:1.0"); // a's external runtime dep rides
         assertThat(tree).doesNotContain("com.acme:c"); // a's runtime MODULE edge does not chain
         assertThat(tree).doesNotContain("com.foo:hidden");
 
         String flat = DependencyTree.render(
-                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true, List.of(Scope.MAIN));
+                member, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), true, List.of(Scope.MAIN));
         assertThat(flat).contains("com.foo:driver:1.0");
         assertThat(flat).doesNotContain("com.acme:c").doesNotContain("com.foo:hidden");
     }
@@ -473,7 +480,7 @@ class DependencyTreeTest {
                 pkg("com.foo:leaf", "1.0", List.of()));
 
         String rendered =
-                DependencyTree.render(project, lock, dir, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true);
+                DependencyTree.render(project, lock, dir, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), true);
 
         // Whole closure present, flat, with no back-reference markers.
         assertThat(rendered)
@@ -492,7 +499,7 @@ class DependencyTreeTest {
         var main = List.of(new Dependency("com.foo:m", new VersionSelector.Exact("=1.0", "1.0")));
         var test = List.of(new Dependency("com.foo:t", new VersionSelector.Exact("=1.0", "1.0")));
         JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(Scope.MAIN, main, Scope.TEST, test)));
         Lockfile lock = lockOf(pkg("com.foo:m", "1.0", List.of()), pkg("com.foo:t", "1.0", List.of()));
 
@@ -501,7 +508,7 @@ class DependencyTreeTest {
                 lock,
                 dir,
                 Integer.MAX_VALUE,
-                DependencyTree.Styling.plain(),
+                DependencyTreeStyle.Styling.plain(),
                 false,
                 List.of(Scope.TEST, Scope.MAIN));
 
@@ -516,7 +523,7 @@ class DependencyTreeTest {
         var main = List.of(new Dependency("com.foo:m", new VersionSelector.Exact("=1.0", "1.0")));
         var test = List.of(new Dependency("com.foo:t", new VersionSelector.Exact("=1.0", "1.0")));
         JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(Scope.MAIN, main, Scope.TEST, test)));
         Lockfile lock = lockOf(pkg("com.foo:m", "1.0", List.of()), pkg("com.foo:t", "1.0", List.of()));
 
@@ -525,7 +532,7 @@ class DependencyTreeTest {
                 lock,
                 dir,
                 Integer.MAX_VALUE,
-                DependencyTree.Styling.plain(),
+                DependencyTreeStyle.Styling.plain(),
                 false,
                 List.of(Scope.MAIN, Scope.TEST),
                 true);
@@ -554,8 +561,7 @@ class DependencyTreeTest {
             deps.add(new Dependency(m, new VersionSelector.Exact("=1.0", "1.0")));
         }
         return new JkBuild(
-                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
-                new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
+                new Project("com.example", "widget", "0.1.0", 0), new JkBuild.Dependencies(Map.of(Scope.MAIN, deps)));
     }
 
     private static Lockfile lockOf(Lockfile.Artifact... packages) {

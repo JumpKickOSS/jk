@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.util.List;
@@ -418,13 +419,12 @@ class PluginContributionsTest {
                 """, "p.toml");
         var configs = Map.of("ktextra", PluginTableRegistry.validate(manifest, org.tomlj.Toml.parse("")));
 
-        JkBuild.Project thin =
-                JkBuild.Project.builder("g", "m", "1.0").jdkMajor(25).java(21).build();
+        Project thin = Project.builder("g", "m", "1.0").jdkMajor(25).java(21).build();
         assertThat(PluginContributions.platformDependencies(thin, false, configs, List.of(manifest)))
                 .as("no kotlin → condition false")
                 .isEmpty();
 
-        JkBuild.Project resolved = JkBuild.Project.builder("g", "m", "1.0")
+        Project resolved = Project.builder("g", "m", "1.0")
                 .jdkMajor(25)
                 .java(21)
                 .kotlin(VersionSelector.parse("=2.4.0"))

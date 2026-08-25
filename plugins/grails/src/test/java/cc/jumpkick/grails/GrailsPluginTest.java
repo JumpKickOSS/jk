@@ -3,19 +3,13 @@ package cc.jumpkick.grails;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
-import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,7 +23,7 @@ class GrailsPluginTest {
 
     @Test
     void the_manifest_records_the_resolved_boot_version_and_the_grails_line(@TempDir Path tmp) throws Exception {
-        FakeIo io = new FakeIo(tmp, Map.of("version", "8.0.0-M4", "boot-version", "4"));
+        FakeBuildIo io = fake(tmp, Map.of("version", "8.0.0-M4", "boot-version", "4"));
 
         GrailsPlugin.produceJar(io);
 
@@ -46,101 +40,29 @@ class GrailsPluginTest {
             assertThat(jar.getEntry("BOOT-INF/lib/spring-boot-4.1.2.jar")).isNotNull();
         }
     }
-
-    /** A fake {@link PackageIo}: real files on disk, no engine, no network. */
-    private static final class FakeIo implements PackageIo {
-        private final Path tmp;
-        private final Map<String, Object> config;
-        private final Path loader;
-        private final List<RuntimeEntry> entries;
-
-        FakeIo(Path tmp, Map<String, Object> config) throws IOException {
-            this.tmp = tmp;
-            this.config = config;
-            Files.createDirectories(tmp.resolve("classes/com/example"));
-            Files.write(tmp.resolve("classes/com/example/Application.class"), new byte[] {1, 2, 3});
-            this.loader = jar("spring-boot-loader.jar", "org/springframework/boot/loader/launch/JarLauncher.class");
-            this.entries = List.of(
-                    new RuntimeEntry(
-                            "grails-core-8.0.0-M4.jar",
-                            jar("grails-core-8.0.0-M4.jar", "grails/core/Marker.class"),
-                            false,
-                            null,
-                            "org.apache.grails",
-                            "grails-core",
-                            "8.0.0-M4"),
-                    new RuntimeEntry(
-                            "spring-boot-4.1.2.jar",
-                            jar("spring-boot-4.1.2.jar", "org/springframework/boot/SpringApplication.class"),
-                            false,
-                            null,
-                            "org.springframework.boot",
-                            "spring-boot",
-                            "4.1.2"));
-        }
-
-        private Path jar(String name, String entryName) throws IOException {
-            Path path = Files.createDirectories(tmp.resolve("blobs")).resolve(name);
-            try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(path))) {
-                jos.putNextEntry(new JarEntry(entryName));
-                jos.write(new byte[] {0xC, 0xA});
-                jos.closeEntry();
-            }
-            return path;
-        }
-
-        @Override
-        public boolean offline() {
-            return false;
-        }
-
-        @Override
-        public Path classesDir() {
-            return tmp.resolve("classes");
-        }
-
-        @Override
-        public Path moduleDir() {
-            return tmp;
-        }
-
-        @Override
-        public List<RuntimeEntry> runtimeEntries() {
-            return entries;
-        }
-
-        @Override
-        public PluginConfig config() {
-            return new PluginConfig("grails", config);
-        }
-
-        @Override
-        public ProjectFacts project() {
-            return new ProjectFacts(
-                    "com.example", "gnotes", "1.0.0", 25, "com.example.Application", false, false, Map.of());
-        }
-
-        @Override
-        public Optional<Path> stepOutput(String step) {
-            return Optional.empty();
-        }
-
-        @Override
-        public Optional<Path> extra(String name) {
-            return "spring-boot-loader".equals(name) ? Optional.of(loader) : Optional.empty();
-        }
-
-        @Override
-        public Path artifactPath() {
-            return tmp.resolve("target/gnotes-1.0.0.jar");
-        }
-
-        @Override
-        public Path javaHome() {
-            return Path.of(System.getProperty("java.home"));
-        }
-
-        @Override
-        public void label(String text) {}
+    /**
+     * The shared engine fake, plus the three inputs a Grails jar needs: a compiled application
+     * class, the Boot loader jar the engine fetches as a packager dependency, and a closure whose
+     * order is the classpath order the packager merges in. All of it is this plugin's fixture
+     * <em>content</em>, so it stays here rather than in the shared fake.
+     */
+    private static FakeBuildIo fake(Path tmp, Map<String, Object> config) throws IOException {
+        FakeBuildIo io = new FakeBuildIo(tmp, "grails")
+                .config(config)
+                .offline(false)
+                .project("com.example", "gnotes", "1.0.0", "com.example.Application");
+        FakeBuildIo.write(io.classesDir().resolve("com/example/Application.class"), "not-really-bytecode");
+        io.extra(
+                "spring-boot-loader",
+                io.jar("spring-boot-loader.jar", "org/springframework/boot/loader/launch/JarLauncher.class"));
+        io.entry(
+                "grails-core-8.0.0-M4.jar", "org.apache.grails", "grails-core", "8.0.0-M4", "grails/core/Marker.class");
+        io.entry(
+                "spring-boot-4.1.2.jar",
+                "org.springframework.boot",
+                "spring-boot",
+                "4.1.2",
+                "org/springframework/boot/SpringApplication.class");
+        return io;
     }
 }

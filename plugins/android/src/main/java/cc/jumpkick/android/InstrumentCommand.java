@@ -2,12 +2,8 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.plugin.build.PluginCommandExec;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -144,17 +140,8 @@ final class InstrumentCommand {
 
     private static int adbLines(PluginCommandExec exec, Path adb, Consumer<String> sink, String... args)
             throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>();
-        command.add(adb.toAbsolutePath().toString());
-        command.addAll(List.of(args));
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        try (BufferedReader reader =
-                new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!line.isBlank()) sink.accept(line);
-            }
-        }
-        return process.waitFor();
+        return exec.tool(adb).args(List.of(args)).stream(line -> {
+            if (!line.isBlank()) sink.accept(line);
+        });
     }
 }

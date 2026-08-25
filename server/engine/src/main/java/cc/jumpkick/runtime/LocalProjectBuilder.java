@@ -14,6 +14,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.publish.PublishablePom;
@@ -173,8 +174,8 @@ public final class LocalProjectBuilder {
 
     /** A copy of {@code project} whose project coordinate/version are replaced. */
     private static JkBuild withCoordinate(JkBuild project, String group, String artifact, String version) {
-        JkBuild.Project p = project.project();
-        JkBuild.Project overridden = new JkBuild.Project(
+        Project p = project.project();
+        Project overridden = new Project(
                 group,
                 artifact,
                 version,

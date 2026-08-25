@@ -121,10 +121,10 @@ public final class DependencyGraphModel {
 
     /**
      * Default scopes match {@code jk tree}: export, main, runtime
-     * ({@link cc.jumpkick.resolver.DependencyTree#defaultScopeOrder()}).
+     * ({@link DependencyTreeStyle#defaultScopeOrder()}).
      */
     public static List<Scope> defaultScopes() {
-        return List.copyOf(DependencyTree.defaultScopeOrder());
+        return List.copyOf(DependencyTreeStyle.defaultScopeOrder());
     }
 
     /**

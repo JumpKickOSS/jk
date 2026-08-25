@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.tui;
+package cc.jumpkick.terminal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.terminal.Size;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -14,11 +13,15 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 /**
- * Probing terminal size is a native ioctl / console call. {@link RenderContext#current()} runs on
- * every animation frame (80ms period) — so the probe must happen once and be cached, with
- * {@link Size#refresh()} re-probing only at plan boundaries.
+ * Probing terminal size is a native ioctl / console call, and the CLI's animation loop reads the
+ * size on every frame (80ms period) — so the probe must happen once and be cached, with
+ * {@link Size#refresh()} re-probing only at plan boundaries. The matching assertion about the
+ * CLI-side reader is {@code cc.jumpkick.cli.tui.RenderContextSizeProbeTest} over in {@code :cli},
+ * which is where {@code RenderContext} lives.
  */
 class SizeTest {
 
@@ -50,15 +53,6 @@ class SizeTest {
     }
 
     @Test
-    void render_context_snapshots_do_not_reprobe() {
-        Size.columns();
-        for (int i = 0; i < 25; i++) {
-            RenderContext.current();
-        }
-        assertThat(probes.get()).isEqualTo(1);
-    }
-
-    @Test
     void refresh_reprobes_and_updates_the_cache() {
         assertThat(Size.columns()).isEqualTo(120);
         Size.probe = () -> {
@@ -71,7 +65,7 @@ class SizeTest {
     }
 
     @Test
-    @org.junit.jupiter.api.condition.DisabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+    @DisabledOnOs(OS.WINDOWS)
     void sigwinch_invalidates_the_cache_so_the_next_read_reprobes() throws Exception {
         // a mid-build resize must reach post-resize rendering (failure snippets,
         // settle wedges) without waiting for the next plan start. The handler only drops the

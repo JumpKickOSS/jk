@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -55,8 +56,16 @@ public final class PathUtil {
     }
 
     /**
-     * Best-effort recursive delete (children first). Swallows {@link IOException}; null/missing
-     * root is a no-op.
+     * Best-effort recursive delete (children first). Swallows every I/O failure; null/missing root
+     * is a no-op.
+     *
+     * <p>{@link UncheckedIOException} is caught as well as {@link IOException}, and that is not
+     * defensive padding: {@code Files.walk}'s traversal is <em>lazy</em>, so a directory entry that
+     * disappears between the walk starting and the stream reaching it surfaces from
+     * {@code FileTreeIterator} as an {@code UncheckedIOException}, not an {@code IOException}. That
+     * happens routinely here — the roots this deletes are engine sockets, pid files and worker
+     * scratch that a daemon may still be tearing down concurrently. Catching only the checked half
+     * turns another process's normal cleanup into an intermittent failure in ours.
      */
     public static void deleteRecursively(Path root) {
         if (root == null || !Files.exists(root)) return;
@@ -67,7 +76,7 @@ public final class PathUtil {
                 } catch (IOException ignored) {
                 }
             });
-        } catch (IOException ignored) {
+        } catch (IOException | UncheckedIOException ignored) {
         }
     }
 
@@ -93,6 +102,12 @@ public final class PathUtil {
                 long size = Files.isRegularFile(p) ? Files.size(p) : -1;
                 if (Files.deleteIfExists(p) && size >= 0) tally.add(size);
             }
+        } catch (UncheckedIOException e) {
+            // Same lazy-walk race as deleteRecursively: an entry that vanishes mid-traversal comes
+            // out of FileTreeIterator unchecked. This method's whole contract is `throws
+            // IOException`, so hand the caller the exception type it declares rather than an
+            // unchecked one it has no reason to catch.
+            throw e.getCause() == null ? new IOException(e.getMessage(), e) : e.getCause();
         }
     }
 

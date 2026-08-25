@@ -3,7 +3,10 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
 
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
+import cc.jumpkick.model.Project;
+import cc.jumpkick.model.ProjectInherit;
+import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.model.VersionSelector;
 import java.util.Locale;
 import java.util.Set;
@@ -45,7 +48,7 @@ public final class ManifestProject {
      *     members resolve them from the root; standalones drop optional inherits and still require
      *     concrete group+version (or fail if those were omitted).
      */
-    static JkBuild.Project parseProject(TomlTable root, boolean workspaceRoot) {
+    static Project parseProject(TomlTable root, boolean workspaceRoot) {
         // name is the module identity — never workspace-inherited (Cargo package.name rule).
         if (root.isTable("name")) {
             throw new JkBuildParseException(
@@ -54,29 +57,24 @@ public final class ManifestProject {
         if (!root.contains("name")) {
             throw new JkBuildParseException("jk.toml is missing required key `name`");
         }
-        java.util.EnumSet<JkBuild.ProjectInherit> inherits = java.util.EnumSet.noneOf(JkBuild.ProjectInherit.class);
+        java.util.EnumSet<ProjectInherit> inherits = java.util.EnumSet.noneOf(ProjectInherit.class);
 
         String name = requireString(root, "name", "name");
 
         String group = parseInheritableString(
-                root,
-                "group",
-                JkBuild.ProjectInherit.GROUP,
-                inherits,
-                workspaceRoot,
-                /* requiredWhenRootOrStandalone */ true);
+                root, "group", ProjectInherit.GROUP, inherits, workspaceRoot, /* requiredWhenRootOrStandalone */ true);
 
         String version = parseInheritableString(
                 root,
                 "version",
-                JkBuild.ProjectInherit.VERSION,
+                ProjectInherit.VERSION,
                 inherits,
                 workspaceRoot,
                 /* requiredWhenRootOrStandalone */ true);
 
         String jdk;
         if (isWorkspaceInherit(root, "jdk") || (!workspaceRoot && !root.contains("jdk"))) {
-            inherits.add(JkBuild.ProjectInherit.JDK);
+            inherits.add(ProjectInherit.JDK);
             jdk = null;
         } else {
             jdk = parseJdkSpec(root);
@@ -84,7 +82,7 @@ public final class ManifestProject {
 
         int java;
         if (isWorkspaceInherit(root, "java") || (!workspaceRoot && !root.contains("java"))) {
-            inherits.add(JkBuild.ProjectInherit.JAVA);
+            inherits.add(ProjectInherit.JAVA);
             java = 0;
         } else {
             java = parseJavaRelease(root);
@@ -93,7 +91,7 @@ public final class ManifestProject {
 
         VersionSelector kotlin;
         if (isWorkspaceInherit(root, "kotlin") || (!workspaceRoot && !root.contains("kotlin"))) {
-            inherits.add(JkBuild.ProjectInherit.KOTLIN);
+            inherits.add(ProjectInherit.KOTLIN);
             kotlin = null;
         } else {
             kotlin = parseKotlinVersion(root);
@@ -101,7 +99,7 @@ public final class ManifestProject {
 
         VersionSelector groovy;
         if (isWorkspaceInherit(root, "groovy") || (!workspaceRoot && !root.contains("groovy"))) {
-            inherits.add(JkBuild.ProjectInherit.GROOVY);
+            inherits.add(ProjectInherit.GROOVY);
             groovy = null;
         } else {
             groovy = parseGroovyVersion(root);
@@ -109,7 +107,7 @@ public final class ManifestProject {
 
         VersionSelector scala;
         if (isWorkspaceInherit(root, "scala") || (!workspaceRoot && !root.contains("scala"))) {
-            inherits.add(JkBuild.ProjectInherit.SCALA);
+            inherits.add(ProjectInherit.SCALA);
             scala = null;
         } else {
             scala = parseScalaVersion(root);
@@ -117,24 +115,24 @@ public final class ManifestProject {
 
         // sources = true → PUBLISH; sources = "always" → ALWAYS; absent/false → DISABLED
         // description is special: omit stays null (no auto-inherit). Explicit description.workspace = true ok.
-        JkBuild.SourcesMode sourcesMode;
+        SourcesMode sourcesMode;
         if (isWorkspaceInherit(root, "sources") || (!workspaceRoot && !root.contains("sources"))) {
-            inherits.add(JkBuild.ProjectInherit.SOURCES);
-            sourcesMode = JkBuild.SourcesMode.DISABLED;
+            inherits.add(ProjectInherit.SOURCES);
+            sourcesMode = SourcesMode.DISABLED;
         } else {
             Object sourcesRaw = root.get("sources");
             if ("always".equalsIgnoreCase(sourcesRaw instanceof String s ? s : "")) {
-                sourcesMode = JkBuild.SourcesMode.ALWAYS;
+                sourcesMode = SourcesMode.ALWAYS;
             } else if (Boolean.TRUE.equals(sourcesRaw)) {
-                sourcesMode = JkBuild.SourcesMode.PUBLISH;
+                sourcesMode = SourcesMode.PUBLISH;
             } else {
-                sourcesMode = JkBuild.SourcesMode.DISABLED;
+                sourcesMode = SourcesMode.DISABLED;
             }
         }
 
         String description;
         if (isWorkspaceInherit(root, "description")) {
-            inherits.add(JkBuild.ProjectInherit.DESCRIPTION);
+            inherits.add(ProjectInherit.DESCRIPTION);
             description = null;
         } else {
             // Omitted description stays unset — never auto-inherits from the workspace root.
@@ -145,22 +143,22 @@ public final class ManifestProject {
         boolean m2integration = m2.integration;
         boolean m2install = m2.install;
 
-        JkBuild.Layout layout;
+        Layout layout;
         if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
-            inherits.add(JkBuild.ProjectInherit.LAYOUT);
-            layout = JkBuild.Layout.AUTO;
+            inherits.add(ProjectInherit.LAYOUT);
+            layout = Layout.AUTO;
         } else if (root.contains("layout")) {
             String layoutRaw = root.getString("layout");
             try {
-                layout = JkBuild.Layout.parse(layoutRaw);
+                layout = Layout.parse(layoutRaw);
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException(e.getMessage());
             }
         } else {
-            layout = JkBuild.Layout.AUTO;
+            layout = Layout.AUTO;
         }
 
-        return new JkBuild.Project(
+        return new Project(
                 group,
                 name,
                 version,
@@ -183,8 +181,7 @@ public final class ManifestProject {
      * {@code [m2] integration} / {@code [m2] install} (both default true). A module may inherit
      * the whole table ({@code [m2] workspace = true}) or either key.
      */
-    private static M2Flags parseM2(
-            TomlTable root, boolean workspaceRoot, java.util.EnumSet<JkBuild.ProjectInherit> inherits) {
+    private static M2Flags parseM2(TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
         if (root.contains("m2integration") || root.contains("m2install")) {
             throw new JkBuildParseException(
                     "m2integration / m2install moved under [m2] — use `integration` and `install`");
@@ -206,21 +203,21 @@ public final class ManifestProject {
                         "[m2] workspace = true cannot be combined with explicit integration/install"
                                 + " — drop one (JK-2323)");
             }
-            inherits.add(JkBuild.ProjectInherit.M2INTEGRATION);
-            inherits.add(JkBuild.ProjectInherit.M2INSTALL);
+            inherits.add(ProjectInherit.M2INTEGRATION);
+            inherits.add(ProjectInherit.M2INSTALL);
             return new M2Flags(true, true);
         }
         return new M2Flags(
-                parseM2Bool(root, "integration", workspaceRoot, JkBuild.ProjectInherit.M2INTEGRATION, inherits),
-                parseM2Bool(root, "install", workspaceRoot, JkBuild.ProjectInherit.M2INSTALL, inherits));
+                parseM2Bool(root, "integration", workspaceRoot, ProjectInherit.M2INTEGRATION, inherits),
+                parseM2Bool(root, "install", workspaceRoot, ProjectInherit.M2INSTALL, inherits));
     }
 
     private static boolean parseM2Bool(
             TomlTable root,
             String key,
             boolean workspaceRoot,
-            JkBuild.ProjectInherit inherit,
-            java.util.EnumSet<JkBuild.ProjectInherit> inherits) {
+            ProjectInherit inherit,
+            java.util.EnumSet<ProjectInherit> inherits) {
         // Guard the type: a top-level `m2 = "yes"` must surface as a clean parse error, not a raw
         // tomlj type exception from getTable (JK-2323).
         TomlTable m2 = root.isTable("m2") ? root.getTable("m2") : null;
@@ -244,8 +241,8 @@ public final class ManifestProject {
     static String parseInheritableString(
             TomlTable root,
             String key,
-            JkBuild.ProjectInherit inherit,
-            java.util.EnumSet<JkBuild.ProjectInherit> inherits,
+            ProjectInherit inherit,
+            java.util.EnumSet<ProjectInherit> inherits,
             boolean workspaceRoot,
             boolean required) {
         String path = key;
@@ -255,14 +252,14 @@ public final class ManifestProject {
                         + ".workspace = true` is only valid" + " on workspace modules)");
             }
             inherits.add(inherit);
-            return JkBuild.VERSION_FROM_WORKSPACE;
+            return Project.VERSION_FROM_WORKSPACE;
         }
         if (!root.contains(key)) {
             if (workspaceRoot || required) {
                 // Members: omit → inherit. Roots: omit of group/version → error.
                 if (!workspaceRoot) {
                     inherits.add(inherit);
-                    return JkBuild.VERSION_FROM_WORKSPACE;
+                    return Project.VERSION_FROM_WORKSPACE;
                 }
             }
             if (required) {
@@ -311,7 +308,7 @@ public final class ManifestProject {
     static String parseJdkSpec(TomlTable root) {
         String spec = parseVersionSpec(root, "jdk", "jdk", "\"temurin-25\" or \"25\"");
         if (spec == null || isVersionKeyword(spec)) return spec;
-        int major = JkBuild.Project.majorOf(spec);
+        int major = Project.majorOf(spec);
         if (major == 0) {
             throw new JkBuildParseException(
                     "jdk = \"" + spec + "\" must include a major version (e.g. \"temurin-25\" or \"25\")");
@@ -345,7 +342,7 @@ public final class ManifestProject {
         }
         if (spec.isEmpty()) return null;
         if (isVersionKeyword(spec)) return spec;
-        if (JkBuild.Project.hasPointRelease(spec)) {
+        if (Project.hasPointRelease(spec)) {
             throw new JkBuildParseException(pathLabel
                     + " = \""
                     + spec

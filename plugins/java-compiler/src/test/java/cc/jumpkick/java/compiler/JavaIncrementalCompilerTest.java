@@ -167,6 +167,40 @@ class JavaIncrementalCompilerTest {
         assertThat(workdir.resolve("zinc")).isRegularFile();
     }
 
+    @Test
+    void a_generated_file_whose_annotation_was_removed_is_pruned(@TempDir Path dir) throws Exception {
+        // GeneratedProvenance is the only thing that can do this. Generated files are not in Zinc's
+        // source set, so WidgetGen.class is an unattributed product Zinc never prunes: without the
+        // provenance map from the previous run, dropping @gen.Gen leaves a stale class in the jar.
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+
+        Path src = dir.resolve("src/app/Widget.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package app; @gen.Gen public class Widget {}");
+
+        Path classOut = dir.resolve("classes");
+        Path genOut = dir.resolve("gen-src");
+        Path workdir = dir.resolve("zinc-work");
+
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("first compile")
+                .isZero();
+        assertThat(genOut.resolve("app/WidgetGen.java")).isRegularFile();
+        assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
+        assertThat(workdir.resolve("provenance.tsv")).isRegularFile();
+
+        // Same class, no annotation: the processor generates nothing this round.
+        Files.writeString(src, "package app; public class Widget {}");
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("second compile")
+                .isZero();
+
+        assertThat(genOut.resolve("app/WidgetGen.java")).doesNotExist();
+        assertThat(classOut.resolve("app/WidgetGen.class")).doesNotExist();
+        assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
+    }
+
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {
         Path srcDir = outDir.resolve("_src");
         Files.createDirectories(outDir);

@@ -3,8 +3,8 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.RepoTransports;
@@ -77,10 +77,9 @@ public final class MavenPublisher {
     /**
      * Upload {@code artifacts} for {@code project} with no signing — every artifact gets its four
      * checksum files but no {@code.asc} or {@code.sigstore} sidecar. See {@link
-     * #publish(JkBuild.Project, Iterable, SigningOptions)} for the signed variant.
+     * #publish(Project, Iterable, SigningOptions)} for the signed variant.
      */
-    public Result publish(JkBuild.Project project, Iterable<Artifact> artifacts)
-            throws IOException, InterruptedException {
+    public Result publish(Project project, Iterable<Artifact> artifacts) throws IOException, InterruptedException {
         return publish(project, artifacts, SigningOptions.none());
     }
 
@@ -88,7 +87,7 @@ public final class MavenPublisher {
      * Upload {@code artifacts} for {@code project}. Per artifact: body + four checksums; optional
      * {@code.asc} / {@code.sigstore} (each with their own checksums).
      */
-    public Result publish(JkBuild.Project project, Iterable<Artifact> artifacts, SigningOptions signing)
+    public Result publish(Project project, Iterable<Artifact> artifacts, SigningOptions signing)
             throws IOException, InterruptedException {
         if (signing == null) signing = SigningOptions.none();
         Map<String, Integer> results = new LinkedHashMap<>();
@@ -135,7 +134,7 @@ public final class MavenPublisher {
      * per-version artifacts are already uploaded and immutable, so re-running publish is the whole
      * recovery.
      */
-    private void publishMetadata(JkBuild.Project project, String groupPath, Map<String, Integer> results, long[] bytes)
+    private void publishMetadata(Project project, String groupPath, Map<String, Integer> results, long[] bytes)
             throws IOException, InterruptedException {
         String relPath = groupPath + "/" + project.name() + "/maven-metadata.xml";
         URI uri = repoBase.resolve(relPath);

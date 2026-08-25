@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.testing.FakeBuildIo;
 import com.android.apksig.ApkVerifier;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -51,7 +52,7 @@ class ApkPackagerTest {
     @Test
     void the_apk_carries_the_linked_resources_every_dex_the_assets_and_the_native_libs(@TempDir Path tmp)
             throws Exception {
-        FakePackageIo io = app(tmp);
+        FakeBuildIo io = app(tmp);
 
         ApkPackager.produce(io);
 
@@ -76,7 +77,7 @@ class ApkPackagerTest {
      */
     @Test
     void the_compression_method_of_every_entry_survives_the_copy(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = app(tmp);
+        FakeBuildIo io = app(tmp);
 
         ApkPackager.produce(io);
 
@@ -93,7 +94,7 @@ class ApkPackagerTest {
     /** AGP's precedence: the module's own assets win a path conflict with a dependency's. */
     @Test
     void the_modules_own_asset_beats_a_dependencys_at_the_same_path(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = app(tmp);
+        FakeBuildIo io = app(tmp);
 
         ApkPackager.produce(io);
 
@@ -108,7 +109,7 @@ class ApkPackagerTest {
      */
     @Test
     void the_signed_apk_verifies_under_v1_v2_and_v3(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = app(tmp);
+        FakeBuildIo io = app(tmp);
 
         ApkPackager.produce(io);
 
@@ -145,9 +146,9 @@ class ApkPackagerTest {
     @Test
     void two_builds_of_the_same_inputs_produce_the_same_apk(@TempDir Path tmp) throws Exception {
         Path keys = tmp.resolve("keys"); // one identity: a second key would differ for the wrong reason
-        FakePackageIo first = app(tmp.resolve("run-1"), keys);
+        FakeBuildIo first = app(tmp.resolve("run-1"), keys);
         ApkPackager.produce(first);
-        FakePackageIo second = app(tmp.resolve("run-2"), keys);
+        FakeBuildIo second = app(tmp.resolve("run-2"), keys);
         ApkPackager.produce(second);
 
         assertThat(Files.readAllBytes(second.artifactPath()))
@@ -173,7 +174,7 @@ class ApkPackagerTest {
     @Test
     void a_build_with_no_signing_config_signs_with_the_debug_identity(@TempDir Path tmp) throws Exception {
         Path storeDir = tmp.resolve("android-home");
-        FakePackageIo io = builtApp(tmp).config("debug-store-dir", storeDir.toString());
+        FakeBuildIo io = builtApp(tmp).config("debug-store-dir", storeDir.toString());
 
         ApkPackager.produce(io);
 
@@ -196,9 +197,9 @@ class ApkPackagerTest {
     /** R8's mapping/seeds/usage land at the stable {@code target/r8/} the retrace tooling reads. */
     @Test
     void the_r8_retrace_artifacts_are_copied_beside_the_target_tree(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = app(tmp);
-        FakePackageIo.write(io.step("android-r8").resolve("mapping/mapping.txt"), "com.example.App -> a.a:\n");
-        FakePackageIo.write(io.step("android-r8").resolve("mapping/seeds.txt"), "com.example.App\n");
+        FakeBuildIo io = app(tmp);
+        FakeBuildIo.write(io.step("android-r8").resolve("mapping/mapping.txt"), "com.example.App -> a.a:\n");
+        FakeBuildIo.write(io.step("android-r8").resolve("mapping/seeds.txt"), "com.example.App\n");
         Files.createDirectories(io.step("android-r8").resolve("dex"));
         Files.copy(
                 io.step("android-dex").resolve("dex/classes.dex"),
@@ -214,7 +215,7 @@ class ApkPackagerTest {
     /** A minified build dexes through R8, so its output is the one the APK must be built from. */
     @Test
     void the_r8_output_is_preferred_over_the_plain_dex_output(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = app(tmp);
+        FakeBuildIo io = app(tmp);
         Files.createDirectories(io.step("android-r8").resolve("dex"));
 
         assertThat(ApkPackager.dexOutput(io)).isEqualTo(io.step("android-r8").resolve("dex"));
@@ -222,7 +223,7 @@ class ApkPackagerTest {
 
     @Test
     void a_build_with_no_dex_output_at_all_is_refused(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app-1.0.0.apk");
+        FakeBuildIo io = AndroidIo.packager(tmp, "app-1.0.0.apk");
         resourcePackage(io.step("android-res").resolve("packaged/resources.ap_"));
 
         assertThatThrownBy(() -> ApkPackager.produce(io))
@@ -232,8 +233,8 @@ class ApkPackagerTest {
 
     @Test
     void a_build_with_no_linked_resources_is_refused(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app-1.0.0.apk");
-        FakePackageIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex");
+        FakeBuildIo io = AndroidIo.packager(tmp, "app-1.0.0.apk");
+        FakeBuildIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex");
 
         assertThatThrownBy(() -> ApkPackager.produce(io))
                 .isInstanceOf(IllegalStateException.class)
@@ -243,7 +244,7 @@ class ApkPackagerTest {
     /** An empty dex directory passes the "did the step run" check and must not become an empty APK. */
     @Test
     void a_dex_directory_with_no_dex_files_in_it_is_refused(@TempDir Path tmp) throws Exception {
-        FakePackageIo io = new FakePackageIo(tmp, "app-1.0.0.apk");
+        FakeBuildIo io = AndroidIo.packager(tmp, "app-1.0.0.apk");
         resourcePackage(io.step("android-res").resolve("packaged/resources.ap_"));
         Files.createDirectories(io.step("android-dex").resolve("dex"));
 
@@ -259,12 +260,12 @@ class ApkPackagerTest {
      * signing identity. The keystore is minted by the plugin's own {@code keytool} generation into
      * the temp dir, so the fixture and the product agree on what a keystore looks like.
      */
-    private static FakePackageIo app(Path root) throws Exception {
+    private static FakeBuildIo app(Path root) throws Exception {
         return app(root, root.resolve("keys"));
     }
 
-    private static FakePackageIo app(Path root, Path keysDir) throws Exception {
-        FakePackageIo io = builtApp(root);
+    private static FakeBuildIo app(Path root, Path keysDir) throws Exception {
+        FakeBuildIo io = builtApp(root);
         Path keystore =
                 DebugKeystore.ensure(Files.createDirectories(keysDir), Path.of(System.getProperty("java.home")));
         io.config("signing.store-file", keystore.toAbsolutePath().toString())
@@ -275,17 +276,17 @@ class ApkPackagerTest {
     }
 
     /** The app after the resource and dex steps, with no signing config yet — the debug-arm shape. */
-    private static FakePackageIo builtApp(Path root) throws Exception {
-        FakePackageIo io = new FakePackageIo(Files.createDirectories(root), "app-1.0.0.apk");
+    private static FakeBuildIo builtApp(Path root) throws Exception {
+        FakeBuildIo io = AndroidIo.packager(Files.createDirectories(root), "app-1.0.0.apk");
         resourcePackage(io.step("android-res").resolve("packaged/resources.ap_"));
-        FakePackageIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex-one");
-        FakePackageIo.write(io.step("android-dex").resolve("dex/classes2.dex"), "dex-two");
-        FakePackageIo.write(io.moduleDir().resolve("assets/config.json"), "from-the-module");
+        FakeBuildIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex-one");
+        FakeBuildIo.write(io.step("android-dex").resolve("dex/classes2.dex"), "dex-two");
+        FakeBuildIo.write(io.moduleDir().resolve("assets/config.json"), "from-the-module");
 
-        Path aar = io.aar("widgets.aar");
-        FakePackageIo.write(aar.resolve("assets/config.json"), "from-the-dependency");
-        FakePackageIo.write(aar.resolve("assets/aar-only.txt"), "only here");
-        FakePackageIo.write(aar.resolve("jni/arm64-v8a/libnative.so"), "ELF");
+        Path aar = io.container("widgets.aar");
+        FakeBuildIo.write(aar.resolve("assets/config.json"), "from-the-dependency");
+        FakeBuildIo.write(aar.resolve("assets/aar-only.txt"), "only here");
+        FakeBuildIo.write(aar.resolve("jni/arm64-v8a/libnative.so"), "ELF");
         return io;
     }
 
