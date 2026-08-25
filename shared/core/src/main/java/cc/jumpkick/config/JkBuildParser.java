@@ -260,7 +260,7 @@ public final class JkBuildParser {
         }
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
         // the Build block, which already carries the other test-scoped setting, test-plugin-jars.
-        Map<String, String> testEnv = ManifestBuild.parseTestEnv(result);
+        List<JkBuild.TestEnvDecl> testEnv = ManifestBuild.parseTestEnv(result);
         if (!testEnv.isEmpty()) {
             build = new JkBuild.Build(
                     build.orderAfter(),

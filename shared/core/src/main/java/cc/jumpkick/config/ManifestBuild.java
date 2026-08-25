@@ -317,7 +317,7 @@ public final class ManifestBuild {
                     List.of(),
                     platformPolicy,
                     unmappedPolicy,
-                    Map.of());
+                    List.of());
         }
 
         List<String> orderAfter = new ArrayList<>();
@@ -444,7 +444,7 @@ public final class ManifestBuild {
                 testSerialTags,
                 platformPolicy,
                 unmappedPolicy,
-                Map.of());
+                List.of());
     }
 
     /**
@@ -461,25 +461,72 @@ public final class ManifestBuild {
      * portable tokens and a digest. {@code [test] env} is one of the few positions where
      * {@code ${VAR}} is legal at all — see {@link Interpolation}.
      */
-    static Map<String, String> parseTestEnv(TomlTable root) {
+    /**
+     * {@code [test] env} — an array whose element shape says which of the two statements it is.
+     *
+     * <pre>{@code
+     * env = [
+     *   "JK_WEB_JS_SKIP",                       # forward the caller's, if set
+     *   { TZ = "UTC", LANG = "C" },             # set these outright
+     * ]
+     * }</pre>
+     *
+     * <p>A bare string is a name and nothing else: it may not carry {@code =} or {@code ${…}}.
+     * Both are rejected rather than interpreted, because both are how the same idea is spelled in
+     * the two neighbouring formats a reader is likely arriving from — a {@code .env} file and a
+     * {@code docker run -e} flag — and quietly accepting either would make {@code "TZ=UTC"} a
+     * variable literally named {@code TZ=UTC}.
+     */
+    static List<JkBuild.TestEnvDecl> parseTestEnv(TomlTable root) {
         TomlTable test = root.getTable("test");
-        if (test == null) return Map.of();
-        TomlTable env = test.getTable("env");
-        if (env == null) return Map.of();
-        Map<String, String> out = new LinkedHashMap<>();
-        for (String key : env.keySet()) {
-            Object value = env.get(List.of(key));
-            if (value == null) continue;
-            if (!(value instanceof String s)) {
-                if (value instanceof Boolean || value instanceof Long || value instanceof Double) {
-                    out.put(key, String.valueOf(value));
-                    continue;
-                }
-                throw new JkBuildParseException("[test].env." + key + " must be a string (or a bare boolean/number)");
-            }
-            out.put(key, s);
+        if (test == null) return List.of();
+        Object raw = test.get(List.of("env"));
+        if (raw == null) return List.of();
+        if (!(raw instanceof TomlArray arr)) {
+            throw new JkBuildParseException("[test] env must be an array — a bare name to forward the"
+                    + " caller's value, or a table to set one: env = [\"CI\", { TZ = \"UTC\" }]");
         }
-        return out;
+        List<JkBuild.TestEnvDecl> out = new ArrayList<>();
+        for (int i = 0; i < arr.size(); i++) {
+            Object element = arr.get(i);
+            String where = "[test].env[" + i + "]";
+            if (element instanceof String name) {
+                out.add(new JkBuild.TestEnvDecl.Forward(forwardName(name, where)));
+            } else if (element instanceof TomlTable table) {
+                for (String key : table.keySet()) {
+                    out.add(new JkBuild.TestEnvDecl.Set(key, scalar(table.get(List.of(key)), where + "." + key)));
+                }
+            } else {
+                throw new JkBuildParseException(
+                        where + " must be a name to forward (a string) or a table of values to set");
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /** A forwarded name is a name: no value half, no reference. */
+    private static String forwardName(String raw, String where) {
+        String name = raw.trim();
+        if (name.isEmpty()) throw new JkBuildParseException(where + " is an empty environment variable name");
+        if (name.indexOf('=') >= 0) {
+            throw new JkBuildParseException(where + " (\"" + raw + "\") looks like NAME=value. A bare string"
+                    + " forwards the caller's value; to set one, use a table: { "
+                    + name.substring(0, name.indexOf('=')) + " = \""
+                    + name.substring(name.indexOf('=') + 1) + "\" }");
+        }
+        if (name.indexOf('$') >= 0) {
+            throw new JkBuildParseException(where + " (\"" + raw + "\") is a variable name, not a value —"
+                    + " ${…} is expanded in the table form, not here");
+        }
+        return name;
+    }
+
+    private static String scalar(Object value, String where) {
+        if (value instanceof String s) return s;
+        if (value instanceof Boolean || value instanceof Long || value instanceof Double) {
+            return String.valueOf(value);
+        }
+        throw new JkBuildParseException(where + " must be a string (or a bare boolean/number)");
     }
 
     /**

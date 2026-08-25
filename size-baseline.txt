@@ -214,14 +214,21 @@
 # each and the type costs one import line. Net vocabulary went down; the file crossed its baseline
 # only because it was sitting exactly on it. The invariant above is unchanged and is still the
 # reason the rest stays.
-1082  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
+# +2 for the envRefs union: a workspace root's own manifest declares almost nothing, so resolving
+# only it meant a member's `[test] env` never reached the client and `FOO=x jk build` did nothing.
+# The module builds were already loaded here for their names — collecting them costs a list and one
+# add. Two statements, no new logic.
+1084  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
 
 # T58: step bodies shared by the Planner* collaborators. No invariant holds it here — ratchet only.
 # JK-2438 note: this is the file most of the deleted BuildPlanner facade forwarded to, and it did not
 # grow by a line — the delegates were re-exports, not relocated code. Every member here has at least
 # one caller (checked), so there is no free deletion; the honest next move is to split the file by
 # collaborator, which is a design decision rather than a cleanup.
-950  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
+# +1 for `[test] env` becoming an array: the two testStampExtras signatures name JkBuild.TestEnvDecl
+# where they named Map<String, String>, and the shorter spelling that keeps both on one line costs
+# an import — the same trade recorded for ExecPlans above. No statement was added to the file.
+951  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
 
 # T58: plugin discovery, the contribution fold and the plugin step bodies. Ratchet only.
 # JK-2438 found the seam and could not take it in scope: `loadBomConstraints` spells the nine
@@ -295,7 +302,7 @@
 # pair it with plugins/test-runner's JUnitUniqueId, which parses the same [engine:…][class:…] segments
 # with the same percent-decode — the copy is cross-module, so a shared owner has to land in a module
 # both can reach, and that is a bigger change than a nested-class lift.
-1151  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
+1148  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
 
 # T59 + JK-2419: the three scope solves (main / test / processor) must stay independent of each
 # other and produce one lockfile — a shared mutable universe between them is how a test-only

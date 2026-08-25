@@ -90,7 +90,13 @@ public final class TestVerb implements HostedVerb {
                     .withCancel(cancelToken)
                     .withJvm(ProtoSession.jvmTuning(requestLine))
                     .withParallelTests(parallelTests)
-                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine));
+                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine))
+                    // The request's env belongs on the session too, not only on the request: it is
+                    // what BuildEnv hands every build-path caller, and without it `FOO=x jk build`
+                    // reached variant `env:` indirection (which is passed the request's map
+                    // directly) but nothing that asked BuildEnv — so `[test] env` resolved against
+                    // the daemon's own environment instead of the caller's.
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
 
             BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                             entryDir,

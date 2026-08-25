@@ -2,7 +2,9 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
@@ -11,6 +13,7 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Variants.Selection;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -210,13 +213,55 @@ public final class VariantApply {
         return v;
     }
 
-    /** Every {@code env:NAME} name referenced anywhere in {@code build}'s plugin configs. */
+    /**
+     * Every environment variable name this manifest depends on, for the client to resolve and ship
+     * with the request.
+     *
+     * <p>Two vocabularies, one list: {@code env:NAME} in a plugin config (signing credentials), and
+     * {@code [test] env} — both the bare names it forwards and the {@code ${NAME}} references in the
+     * values it sets. The second half was the gap: {@code [test] env} resolved through
+     * {@code BuildEnv}, which falls back to the engine's own environment, and the engine is a daemon
+     * started by some earlier shell. So {@code JK_WEB_JS_SKIP=1 jk build} did nothing, while the
+     * same variable exported before the daemon started worked — and kept working for every later
+     * build in that daemon, which is the worse of the two failures.
+     */
     public static List<String> envRefs(JkBuild build) {
+        return envRefs(List.of(build));
+    }
+
+    /**
+     * The union over several manifests — what a workspace needs, not just its root.
+     *
+     * <p>A workspace root's own manifest declares almost nothing; the module that wants a variable
+     * is one of its members. Resolving only the root is why {@code JK_WEB_JS_SKIP=1 jk build} still
+     * did nothing after {@code [test] env} learned to declare it: the name was in
+     * {@code clients/web/jk.toml}, and the client was reading the root. The union is over every
+     * loaded module rather than the {@code -m} selection, so that narrowing a build cannot narrow
+     * what the environment is allowed to say — an undeclared name resolves to nothing anyway.
+     */
+    public static List<String> envRefs(Collection<JkBuild> builds) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
+        for (JkBuild build : builds) collectEnvRefs(build, names);
+        return List.copyOf(names);
+    }
+
+    private static void collectEnvRefs(JkBuild build, LinkedHashSet<String> names) {
         for (PluginConfig config : build.pluginConfigs().values()) {
             collectEnvRefs(config.values(), names);
         }
-        return List.copyOf(names);
+        for (JkBuild.TestEnvDecl decl : build.build().testEnv()) {
+            switch (decl) {
+                case JkBuild.TestEnvDecl.Forward forward -> names.add(forward.name());
+                case JkBuild.TestEnvDecl.Set set -> collectReferences(set.value(), names);
+            }
+        }
+    }
+
+    /** The {@code ${NAME}} references in one value, minus jk's own layout tokens. */
+    private static void collectReferences(String value, Set<String> names) {
+        for (String name : Interpolation.references(value)) {
+            if (!TestEnvValues.isPathToken(name)) names.add(name);
+        }
     }
 
     @SuppressWarnings("unchecked")

@@ -8,3 +8,11 @@ jk-host = { workspace = true, kind = "tests" }
 jk-engine-api.workspace = true
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[test]
+# The JS tier's opt-out, forwarded from the shell that ran `jk`. A bare name means "if the caller
+# has it, the test JVM gets it" — unset stays unset, which is what makes it usable as an escape
+# hatch rather than something every build has to set. Declaring it is also what carries it across
+# the client -> engine -> worker hop at all: the engine is a daemon with its own environment, and
+# only declared names ride the request.
+env = ["JK_WEB_JS_SKIP"]

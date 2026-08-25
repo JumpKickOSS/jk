@@ -37,6 +37,9 @@ class WorkerLaunchClasspathTest {
         Coordinate dep = Coordinate.of("org.example", "lib", "1.0");
         Path workspaceJar = tmp.resolve("target/plugins/host-worker/jk-host-worker-1.0.0.jar");
         Files.createDirectories(workspaceJar.getParent());
+        // A module output directory, not merely a path containing `target`: the compiled classes
+        // beside it are what BuildLayout.isBuildOutput anchors on.
+        Files.createDirectories(workspaceJar.getParent().resolve("classes").resolve("main"));
         Files.writeString(workspaceJar, "workspace-worker");
         put(host, MavenLayout.artifactPath(worker), "store-worker");
         put(host, MavenLayout.pomPath(worker), """

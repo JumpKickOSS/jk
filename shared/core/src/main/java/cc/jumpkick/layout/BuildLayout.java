@@ -40,6 +40,31 @@ public final class BuildLayout {
      */
     public static final String TARGET = "target";
 
+    /**
+     * True when {@code artifact} is a file jk built into a {@link #TARGET} tree.
+     *
+     * <p>Anchored on the shape, not on the name. An ancestor called {@code target} is not enough:
+     * jk's own test scratch lives at {@code target/<module>/tmp/…}, so once the forked test JVM's
+     * temp root moved inside the build output, every {@code @TempDir} acquired a {@code target}
+     * ancestor and a scratch file started reading as a workspace-built artifact. The anchor is a
+     * {@code classes/} directory beside the file — a module output directory has one and a scratch
+     * directory does not — which is a fact about the tree rather than about how a path is spelled.
+     *
+     * <p>The same class of defect as a containment test written with {@code startsWith}: a textual
+     * ancestor is not a structural one, and the two agree right up until someone puts a directory
+     * where the text did not expect it.
+     */
+    public static boolean isBuildOutput(Path artifact) {
+        if (artifact == null) return false;
+        Path dir = artifact.toAbsolutePath().normalize().getParent();
+        if (dir == null || !Files.isDirectory(dir.resolve("classes"))) return false;
+        for (Path cur = dir; cur != null; cur = cur.getParent()) {
+            Path name = cur.getFileName();
+            if (name != null && TARGET.equals(name.toString())) return true;
+        }
+        return false;
+    }
+
     private final Path workspaceRoot;
     private final Path moduleRoot;
     private final String artifact;

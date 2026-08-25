@@ -56,10 +56,41 @@ class TestEnvTest {
     }
 
     @Test
+    void the_temp_root_is_sandboxed_under_the_module_by_default(@TempDir Path tmp) throws Exception {
+        // Not the host's. A forked test JVM inherits the engine's temp dir otherwise, and then
+        // @TempDir writes where jk neither cleans nor controls the shape of the path — which is how
+        // the /var -> /private/var link on macOS got into a comparison in jk-java-compiler that
+        // Gradle's build could not reach, because Gradle has redirected this per module all along.
+        JkBuild project = project(tmp, "");
+        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+
+        Path expected = tmp.resolve("target/tmp").toAbsolutePath();
+        assertThat(Path.of(env.get("TMPDIR"))).isEqualTo(expected);
+        // All three, because a suite that forks a process hands it the environment: TMP and TEMP
+        // are what a Windows child reads, and disagreeing with TMPDIR would put its files elsewhere.
+        assertThat(Path.of(env.get("TMP"))).isEqualTo(expected);
+        assertThat(Path.of(env.get("TEMP"))).isEqualTo(expected);
+        assertThat(env.get("TMPDIR")).isNotEqualTo(System.getProperty("java.io.tmpdir"));
+    }
+
+    @Test
+    void a_declared_temp_root_overrides_the_sandbox(@TempDir Path tmp) throws Exception {
+        // A default, not a wall — same rule as JK_HOME above.
+        JkBuild project = project(tmp, """
+                [test]
+                env = [{ TMPDIR = "${target}/scratch" }]
+                """);
+        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+
+        assertThat(Path.of(env.get("TMPDIR")))
+                .isEqualTo(tmp.resolve("target/scratch").toAbsolutePath());
+    }
+
+    @Test
     void a_declared_value_overrides_the_sandbox_default(@TempDir Path tmp) throws Exception {
         JkBuild project = project(tmp, """
                 [test]
-                env = { JK_HOME = "${target}/mine", JK_HTTP_ENABLED = "false" }
+                env = [{ JK_HOME = "${target}/mine", JK_HTTP_ENABLED = "false" }]
                 """);
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
 
@@ -73,10 +104,66 @@ class TestEnvTest {
     }
 
     @Test
+    void a_bare_name_forwards_the_callers_value(@TempDir Path tmp) throws Exception {
+        // The whole point of the bare form: the module says which variable it cares about, not what
+        // the value is. HOME is used because it is the one variable a test can rely on having.
+        JkBuild project = project(tmp, "[test]\nenv = [\"HOME\"]\n");
+        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+
+        assertThat(env.get("HOME")).isEqualTo(System.getenv("HOME"));
+    }
+
+    @Test
+    void a_forwarded_name_the_caller_does_not_have_is_absent_not_empty(@TempDir Path tmp) throws Exception {
+        // A suite asking getenv(X) != null has to see what it would see outside jk. Injecting X=""
+        // would answer "set" to every such check, which is the opposite of an opt-in escape hatch —
+        // and unlike ${VAR}, an unset forward is not an error either.
+        JkBuild project = project(tmp, "[test]\nenv = [\"" + UNSET + "\"]\n");
+        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+
+        assertThat(env).doesNotContainKey(UNSET);
+    }
+
+    @Test
+    void later_entries_win_and_an_unset_forward_removes_an_earlier_value(@TempDir Path tmp) throws Exception {
+        // Order is the rule, so a manifest reads top to bottom. The second case is the subtle one:
+        // a forward of something the caller does not have must not leave the earlier value standing,
+        // or "take the caller's" would silently mean "take the caller's, or mine".
+        JkBuild project = project(
+                tmp, "[test]\nenv = [{ A = \"first\", B = \"kept\" }, { A = \"second\" }, \"" + UNSET + "\"]\n");
+        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+
+        assertThat(env.get("A")).isEqualTo("second");
+        assertThat(env.get("B")).isEqualTo("kept");
+        assertThat(env).doesNotContainKey(UNSET);
+    }
+
+    @Test
+    void a_name_that_looks_like_NAME_equals_VALUE_is_refused_with_the_table_form(@TempDir Path tmp) {
+        // The neighbouring formats (.env, `docker run -e`) spell it this way, so someone will try it.
+        // Accepting it silently would create a variable literally named "TZ=UTC".
+        assertThatThrownBy(() -> project(tmp, "[test]\nenv = [\"TZ=UTC\"]\n"))
+                .hasMessageContaining("looks like NAME=value")
+                .hasMessageContaining("{ TZ = \"UTC\" }");
+    }
+
+    @Test
+    void a_forwarded_name_may_not_be_a_reference(@TempDir Path tmp) {
+        // Enforced by Interpolation's whitelist: test.env[*] is not a slot where ${} expands.
+        assertThatThrownBy(() -> project(tmp, "[test]\nenv = [\"${FOO}\"]\n")).hasMessageContaining("not allowed here");
+    }
+
+    @Test
+    void the_old_table_shape_says_what_to_write_instead(@TempDir Path tmp) {
+        assertThatThrownBy(() -> project(tmp, "[test]\nenv = { TZ = \"UTC\" }\n"))
+                .hasMessageContaining("[test] env must be an array");
+    }
+
+    @Test
     void module_and_target_tokens_expand(@TempDir Path tmp) throws Exception {
         JkBuild project = project(tmp, """
                 [test]
-                env = { A = "${module}/fixtures", B = "${target}/scratch", C = "literal", D = "costs $5" }
+                env = [{ A = "${module}/fixtures", B = "${target}/scratch", C = "literal", D = "costs $5" }]
                 """);
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
 
@@ -92,16 +179,18 @@ class TestEnvTest {
         // TOML users will reach for `false` before `"false"`; both should mean the same thing.
         JkBuild project = project(tmp, """
                 [test]
-                env = { FLAG = false, COUNT = 3 }
+                env = [{ FLAG = false, COUNT = 3 }]
                 """);
-        assertThat(project.build().testEnv()).containsEntry("FLAG", "false").containsEntry("COUNT", "3");
+        assertThat(project.build().testEnv())
+                .containsExactly(
+                        new JkBuild.TestEnvDecl.Set("FLAG", "false"), new JkBuild.TestEnvDecl.Set("COUNT", "3"));
     }
 
     @Test
     void declared_test_env_takes_part_in_the_test_stamp_key(@TempDir Path tmp) throws Exception {
         // A changed [test] env changes what the suite sees, so it must retest rather than be skipped.
-        JkBuild before = project(tmp, "[test]\nenv = { MODE = \"a\" }\n");
-        JkBuild after = project(tmp, "[test]\nenv = { MODE = \"b\" }\n");
+        JkBuild before = project(tmp, "[test]\nenv = [{ MODE = \"a\" }]\n");
+        JkBuild after = project(tmp, "[test]\nenv = [{ MODE = \"b\" }]\n");
 
         assertThat(PlannerSupport.testStampExtras(tmp, before))
                 .isNotEqualTo(PlannerSupport.testStampExtras(tmp, after));
@@ -113,7 +202,7 @@ class TestEnvTest {
         // a non-secret env reference (${HOME}, a CI id) still keys the stamp by VALUE
         // a changed environment retests — but the literal (an absolute path) must not land in a
         // potentially shared key.
-        JkBuild project = project(tmp, "[test]\nenv = { HOME_DIR = \"${HOME}\" }\n");
+        JkBuild project = project(tmp, "[test]\nenv = [{ HOME_DIR = \"${HOME}\" }]\n");
         String home = System.getenv("HOME");
         org.junit.jupiter.api.Assumptions.assumeTrue(home != null && !home.isBlank());
 
@@ -128,7 +217,7 @@ class TestEnvTest {
         // a.env value that participates in the stamp key must be hashed, never literal.
         String secret = "jk-1274-unique-secret-token-xyz";
         Files.writeString(tmp.resolve(".env"), "TOKEN=" + secret + "\n");
-        JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${TOKEN}\" }\n");
+        JkBuild project = project(tmp, "[test]\nenv = [{ API_KEY = \"${TOKEN}\" }]\n");
 
         List<String> extras = PlannerSupport.testStampExtras(tmp, project);
         assertThat(extras).noneMatch(s -> s.contains(secret));
@@ -147,7 +236,7 @@ class TestEnvTest {
      */
     @Test
     void an_unset_reference_fails_the_key_path_exactly_as_it_fails_at_launch(@TempDir Path tmp) throws Exception {
-        JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${" + UNSET + "}\" }\n");
+        JkBuild project = project(tmp, "[test]\nenv = [{ API_KEY = \"${" + UNSET + "}\" }]\n");
         BuildLayout layout = BuildLayout.of(tmp, project);
 
         assertThatThrownBy(() -> TestEnv.forModule(project, tmp, layout))
@@ -166,7 +255,7 @@ class TestEnvTest {
      */
     @Test
     void a_bad_reference_fails_the_plan_cold_and_with_a_green_marker_present(@TempDir Path tmp) throws Exception {
-        JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${" + UNSET + "}\" }\n");
+        JkBuild project = project(tmp, "[test]\nenv = [{ API_KEY = \"${" + UNSET + "}\" }]\n");
         Path lock = tmp.resolve("jk-lock.toml");
         Path classes = Files.createDirectories(tmp.resolve("target/classes"));
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("actions"));

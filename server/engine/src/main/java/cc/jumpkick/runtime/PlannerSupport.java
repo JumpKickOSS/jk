@@ -34,6 +34,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkBuild.TestEnvDecl;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.PluginModule;
@@ -710,7 +711,7 @@ public final class PlannerSupport {
      * produce a key that disagrees with this one.
      */
     static List<String> testStampExtras(
-            Map<String, String> workerJars, TestSelection selection, Map<String, String> testEnv, Path moduleDir) {
+            Map<String, String> workerJars, TestSelection selection, List<TestEnvDecl> testEnv, Path moduleDir) {
         EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
         return testStampExtras(workerJars, selection, testEnv, SecretRedactor.from(lookup), lookup);
     }
@@ -722,7 +723,7 @@ public final class PlannerSupport {
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             TestSelection selection,
-            Map<String, String> testEnv,
+            List<TestEnvDecl> testEnv,
             SecretRedactor redactor,
             EnvLookup lookup) {
         List<String> extras = new ArrayList<>();

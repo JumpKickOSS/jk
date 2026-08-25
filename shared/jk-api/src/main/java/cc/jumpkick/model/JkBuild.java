@@ -620,11 +620,16 @@ public record JkBuild(
              */
             UnmappedPolicy unmappedPolicy,
             /**
-             * {@code [test] env} — added to every forked test JVM's environment. Test-scoped like
-             * {@code testPluginJars}, hence its home here. Values may use {@code ${target}} and
-             * {@code ${module}}; explicit tokens rather than guessing which values look like paths.
+             * {@code [test] env} — what every forked test JVM's environment gets, in the order the
+             * manifest lists it. Test-scoped like {@code testPluginJars}, hence its home here.
+             *
+             * <p>A list rather than a map because the two things a module says about the environment
+             * are different statements — {@link TestEnvDecl.Forward} names a variable it wants if the
+             * caller has one, {@link TestEnvDecl.Set} states a value outright — and because order is
+             * then a rule the manifest can express instead of one a reader has to memorise: later
+             * wins, top to bottom.
              */
-            Map<String, String> testEnv) {
+            List<TestEnvDecl> testEnv) {
 
         public static final Build EMPTY = new Build(
                 List.of(),
@@ -638,7 +643,7 @@ public record JkBuild(
                 List.of(),
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
-                Map.of());
+                List.of());
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -650,7 +655,7 @@ public record JkBuild(
             testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
-            testEnv = testEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
+            testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -711,6 +716,36 @@ public record JkBuild(
      * {@code [[kotlin-plugins]]} entry: {@code group:artifact[:version]} (omit version to match
      * the project Kotlin version); {@code id} defaults to the artifact name.
      */
+    /**
+     * One entry of {@code [test] env}.
+     *
+     * <p>Sealed and matched exhaustively: the two arms differ in what an absent value means, which
+     * is the one thing a reader of this manifest most needs to be sure of. A {@code default} arm
+     * would let a new consumer inherit whichever answer it happened to fall through to.
+     */
+    public sealed interface TestEnvDecl {
+
+        /** The variable this entry is about. */
+        String name();
+
+        /**
+         * A bare name in the array: {@code "JK_WEB_JS_SKIP"}. Take the caller's value if there is
+         * one; if there is not, the test JVM does not get the variable at all.
+         *
+         * <p>Absent, never empty. A suite asking {@code getenv("X") != null} must see what it would
+         * see outside jk, so an unset forward cannot become {@code X=""}.
+         */
+        record Forward(String name) implements TestEnvDecl {}
+
+        /**
+         * A table entry in the array: {@code { TZ = "UTC" }}. The value is what the module says it
+         * is, and may reference {@code ${target}}, {@code ${module}} or an environment variable —
+         * an unset {@code ${VAR}} here is an error, because a value stated outright and then
+         * silently emptied is how a build authenticates anonymously and calls it success.
+         */
+        record Set(String name, String value) implements TestEnvDecl {}
+    }
+
     public record KotlinPluginDecl(String id, String coordinate, List<String> options) {
         public KotlinPluginDecl {
             Objects.requireNonNull(coordinate, "coordinate");

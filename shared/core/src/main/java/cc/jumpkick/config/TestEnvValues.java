@@ -2,11 +2,12 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.TreeMap;
 import java.util.function.UnaryOperator;
 
 /**
@@ -33,6 +34,23 @@ public final class TestEnvValues {
 
     /** The module directory itself. */
     private static final String MODULE = "module";
+
+    /**
+     * What a forwarded-but-unset variable contributes to an action key. Not the empty string, which
+     * is a value a caller can genuinely have.
+     */
+    private static final String ABSENT = "\u0000absent";
+
+    /**
+     * True for {@code ${target}} / {@code ${module}} — jk's own tokens, not environment variables.
+     *
+     * <p>Asked by anything deciding what a manifest needs from the environment: these two resolve
+     * from the layout and must not be sought in a shell, or a build would demand a variable named
+     * {@code target}.
+     */
+    public static boolean isPathToken(String name) {
+        return TARGET.equals(name) || MODULE.equals(name);
+    }
 
     private TestEnvValues() {}
 
@@ -85,27 +103,62 @@ public final class TestEnvValues {
      * Mode.CacheKey} preserves those tokens deliberately and so reads neither; only {@link
      * Mode.Launch} needs them.
      *
-     * @throws JkBuildParseException if a value references an environment variable that is not set —
-     * in both modes, which is the whole point of this type
+     * <p>Order is the manifest's: later entries win, and a {@link JkBuild.TestEnvDecl.Forward} of a
+     * variable the caller does not have <em>removes</em> what an earlier entry set, so a manifest
+     * reads top to bottom with no precedence rule to memorise.
+     *
+     * @throws JkBuildParseException if a {@link JkBuild.TestEnvDecl.Set} value references an
+     * environment variable that is not set — in both modes, which is the whole point of this type
      */
-    public static Map<String, String> resolve(Map<String, String> declared, Path moduleDir, Path target, Mode mode) {
+    public static Map<String, String> resolve(
+            List<JkBuild.TestEnvDecl> declared, Path moduleDir, Path target, Mode mode) {
         Map<String, String> out = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : new TreeMap<>(declared).entrySet()) {
-            String where = "[test].env." + e.getKey();
-            String raw = e.getValue() == null ? "" : e.getValue();
-            out.put(
-                    e.getKey(),
-                    switch (mode) {
-                        case Mode.Launch launch ->
-                            Interpolation.expand(raw, where, name -> switch (name) {
-                                case TARGET -> absolute(target, TARGET);
-                                case MODULE -> absolute(moduleDir, MODULE);
-                                default -> launch.env().apply(name);
+        for (JkBuild.TestEnvDecl decl : declared) {
+            String where = "[test].env." + decl.name();
+            switch (decl) {
+                case JkBuild.TestEnvDecl.Forward forward -> {
+                    String value = forwarded(forward.name(), mode);
+                    // Absent, not empty: a suite testing getenv(X) != null has to see what it would
+                    // see outside jk. Remove, because an earlier entry may have set it and a later
+                    // forward of something the caller does not have must not resurrect that value.
+                    if (value == null) out.remove(forward.name());
+                    else out.put(forward.name(), value);
+                }
+                case JkBuild.TestEnvDecl.Set set ->
+                    out.put(
+                            set.name(),
+                            switch (mode) {
+                                case Mode.Launch launch ->
+                                    Interpolation.expand(set.value(), where, name -> switch (name) {
+                                        case TARGET -> absolute(target, TARGET);
+                                        case MODULE -> absolute(moduleDir, MODULE);
+                                        default -> launch.env().apply(name);
+                                    });
+                                case Mode.CacheKey key -> keyed(set.value(), where, key);
                             });
-                        case Mode.CacheKey key -> keyed(raw, where, key);
-                    });
+            }
         }
         return out;
+    }
+
+    /**
+     * A forwarded name in each mode. {@link Mode.Launch} wants the caller's actual value or nothing;
+     * {@link Mode.CacheKey} wants something that differs when the value differs and when it appears
+     * or disappears — hence a marker for absent rather than dropping the entry, so that toggling
+     * {@code JK_WEB_JS_SKIP} cannot replay the other setting's cached result.
+     */
+    private static String forwarded(String name, Mode mode) {
+        return switch (mode) {
+            case Mode.Launch launch -> launch.env().apply(name);
+            case Mode.CacheKey key -> {
+                String value = key.lookup().get(name);
+                if (value == null) yield ABSENT;
+                String masked = key.secrets().forCacheKey(value);
+                // Hashed, never written out: a forwarded value is by definition the machine's, and
+                // an action key may be read on another one.
+                yield masked.equals(value) ? SecretRedactor.KEY_PREFIX + Hashing.sha256Hex(value) : masked;
+            }
+        };
     }
 
     /** Path tokens preserved, environment references expanded, anything the environment answered hashed. */

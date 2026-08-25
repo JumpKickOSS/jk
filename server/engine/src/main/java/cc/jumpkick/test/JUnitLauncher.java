@@ -19,7 +19,6 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -98,9 +97,12 @@ public final class JUnitLauncher {
      * Worker JVM flags: the heap/GC tuning, the {@code jk.plugin.class} selector for the runner, and
      * any {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
-    private List<String> runnerFlags(int concurrency) {
+    private List<String> runnerFlags(int concurrency, Path tmpDir) {
         List<String> flags = new ArrayList<>(JvmOptions.workerFlags(concurrency));
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
+        // The Java half of the TMPDIR TestEnv sandboxes: @TempDir reads the property, not the
+        // environment. Passed in, not read off testEnv — with W>1 it is the worker's own subdir.
+        if (tmpDir != null) flags.add("-Djava.io.tmpdir=" + tmpDir);
         // Suite JVMs: no AOT train-on-miss (nested engines / compiler workers); still map caches.
         flags.add("-Djk.aot.train=off");
         // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
@@ -140,6 +142,9 @@ public final class JUnitLauncher {
 
     /** Set when {@link #run} starts — module root inferred from testClassesDir layout. */
     private Path inferredModuleDir;
+
+    /** Set when {@link #run} starts — the sandboxed temp root; see {@link TestTmpDir}. */
+    private Path testTmpDir;
 
     /**
      * {@code.../target/classes/test} → module root ({@code.../}). Null when layout is nonstandard.
@@ -298,6 +303,7 @@ public final class JUnitLauncher {
         env.putIfAbsent("JK_NONINTERACTIVE", "1");
         this.testEnv = Map.copyOf(env);
         this.inferredModuleDir = inferModuleDir(testClassesDir);
+        this.testTmpDir = TestTmpDir.ensure(this.testEnv.get("TMPDIR"));
         QuarkusToolingPom.ensure(this.inferredModuleDir);
 
         Path runnerJar = locateRunner(cacheRoot);
@@ -349,7 +355,7 @@ public final class JUnitLauncher {
         int exit = PluginLoader.run(
                 javaBinary,
                 classpath,
-                runnerFlags(1),
+                runnerFlags(1, testTmpDir),
                 PROTOCOL_PREFIX,
                 withTagArgs(List.of("--scan-classpath=" + testClassesDir)),
                 testEnv,
@@ -659,18 +665,9 @@ public final class JUnitLauncher {
         };
 
         try {
-            // Mill-class isolation: each worker gets its own java.io.tmpdir when W>1.
-            List<String> flags = new ArrayList<>(runnerFlags(totalWorkers));
-            Map<String, String> env = testEnv;
-            if (totalWorkers > 1) {
-                try {
-                    Path tmp = Files.createTempDirectory("jk-tw-" + workerId + "-");
-                    flags.add("-Djava.io.tmpdir=" + tmp);
-                    env = workerEnv(testEnv, workerId, tmp);
-                } catch (IOException ignored) {
-                    // best-effort isolation
-                }
-            }
+            Path tmp = TestTmpDir.forWorker(testTmpDir, workerId, totalWorkers);
+            Map<String, String> env = totalWorkers > 1 && tmp != null ? workerEnv(testEnv, workerId, tmp) : testEnv;
+            List<String> flags = new ArrayList<>(runnerFlags(totalWorkers, tmp));
             return PluginLoader.converse(
                     javaBinary,
                     classpath,
@@ -704,7 +701,7 @@ public final class JUnitLauncher {
         PluginLoader.run(
                 javaBinary,
                 classpath,
-                runnerFlags(1),
+                runnerFlags(1, testTmpDir),
                 PROTOCOL_PREFIX,
                 withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir)),
                 testEnv,

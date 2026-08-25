@@ -5,7 +5,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,41 +42,46 @@ final class GeneratedProvenance {
      * was <em>not</em> regenerated, delete the generated source and its class files (an isolating
      * processor that stopped generating it — e.g. its annotation was removed). Then persist the
      * merged provenance for the next build.
+     *
+     * <p>Every path that takes part in a comparison below goes through {@link #canonical} first.
+     * Each question asked here — was this source recompiled, was this file regenerated, is it under
+     * my own output root — is "are these two names the same file", and only a link-resolved form
+     * answers it.
      */
     void reconcile(Path sourceOutput, Path classOutput, List<Path> compiledSources, Map<Path, Set<Path>> newProv)
             throws IOException {
+        Path srcRoot = canonical(sourceOutput);
+        Path classRoot = canonical(classOutput);
         Map<Path, Set<Path>> prev = read();
-        Set<Path> recompiled = new HashSet<>();
-        for (Path p : compiledSources) recompiled.add(p.toAbsolutePath().normalize());
-        Set<Path> regenerated = normalizeAll(newProv.keySet()); // this run's generated files, normalized
+        Set<Path> recompiled = canonicalAll(compiledSources);
+        Set<Path> regenerated = canonicalAll(newProv.keySet()); // this run's generated files
 
         Map<Path, Set<Path>> merged = new LinkedHashMap<>();
         for (Map.Entry<Path, Set<Path>> e : prev.entrySet()) {
-            Path gen = e.getKey(); // normalized on write
+            Path gen = e.getKey(); // canonical on read
             Set<Path> origins = e.getValue();
             if (regenerated.contains(gen)) continue; // regenerated this run — newProv is authoritative
             boolean allRecompiled = !origins.isEmpty() && recompiled.containsAll(origins);
             if (allRecompiled) {
-                deleteOutputs(gen, sourceOutput, classOutput); // no longer generated → prune
+                deleteOutputs(gen, srcRoot, classRoot); // no longer generated → prune
             } else {
                 merged.put(gen, origins); // owned by a source that was not recompiled — keep
             }
         }
         for (Map.Entry<Path, Set<Path>> e : newProv.entrySet()) {
-            merged.put(e.getKey().toAbsolutePath().normalize(), normalizeAll(e.getValue()));
+            merged.put(canonical(e.getKey()), canonicalAll(e.getValue()));
         }
         write(merged);
     }
 
-    private static void deleteOutputs(Path gen, Path sourceOutput, Path classOutput) throws IOException {
+    /** All three arguments are already {@link #canonical}, which is what makes the containment test valid. */
+    private static void deleteOutputs(Path gen, Path srcRoot, Path classRoot) throws IOException {
         Files.deleteIfExists(gen); // the generated source/resource itself
         String name = gen.getFileName().toString();
-        if (sourceOutput == null || classOutput == null || !name.endsWith(".java")) return;
-        Path srcRoot = sourceOutput.toAbsolutePath().normalize();
-        Path genAbs = gen.toAbsolutePath().normalize();
-        if (!genAbs.startsWith(srcRoot)) return;
-        Path rel = srcRoot.relativize(genAbs);
-        Path pkgDir = classOutput.resolve(rel).getParent();
+        if (srcRoot == null || classRoot == null || !name.endsWith(".java")) return;
+        if (!gen.startsWith(srcRoot)) return; // a resource written somewhere else; not ours to map
+        Path rel = srcRoot.relativize(gen);
+        Path pkgDir = classRoot.resolve(rel).getParent();
         if (pkgDir == null || !Files.isDirectory(pkgDir)) return;
         String stem = name.substring(0, name.length() - ".java".length());
         try (var s = Files.list(pkgDir)) {
@@ -85,12 +93,54 @@ final class GeneratedProvenance {
         }
     }
 
-    private static Set<Path> normalizeAll(Set<Path> paths) {
+    /**
+     * Absolute and symlink-resolved, so that two names for one file compare equal.
+     *
+     * <p>The paths meeting here come from three sources that disagree about links, and none of them
+     * says so: javac real-paths the URIs it returns from {@code Filer} and {@code Trees}, Zinc's
+     * converter reports the path it was handed, and an output root arrives as the build wrote it.
+     * {@code toAbsolutePath().normalize()} resolves {@code ..} and nothing else, so one link
+     * anywhere in the prefix is enough to make a true containment test read false —
+     * {@code /private/var/…/gen-src/app/WidgetGen.java} is not {@code startsWith}
+     * {@code /var/…/gen-src}, and the stale class file survives the prune this class exists to
+     * perform. macOS reaches that state with no help, because {@code $TMPDIR} lives under the
+     * {@code /var} → {@code /private/var} link; a symlinked workspace, worktree or {@code $HOME}
+     * reaches it anywhere.
+     *
+     * <p>Real-pathing the deepest ancestor that exists and re-appending the rest is what lets this
+     * be applied unconditionally, to a path that is not on disk: a {@code sourceOutput} the first
+     * build has not created yet, and a generated file in the instant after it is deleted.
+     */
+    private static Path canonical(Path p) {
+        if (p == null) return null;
+        Path abs = p.toAbsolutePath().normalize();
+        Deque<Path> tail = new ArrayDeque<>();
+        for (Path probe = abs; probe != null; probe = probe.getParent()) {
+            try {
+                Path real = probe.toRealPath();
+                for (Path name : tail) real = real.resolve(name);
+                return real;
+            } catch (IOException notThere) {
+                Path name = probe.getFileName();
+                if (name == null) break; // the root itself will not resolve; nothing left to walk up to
+                tail.addFirst(name);
+            }
+        }
+        return abs;
+    }
+
+    private static Set<Path> canonicalAll(Collection<Path> paths) {
         Set<Path> out = new HashSet<>();
-        for (Path p : paths) out.add(p.toAbsolutePath().normalize());
+        for (Path p : paths) out.add(canonical(p));
         return out;
     }
 
+    /**
+     * Canonicalized on the way in rather than trusted, because the file outlives the build that
+     * wrote it: it may carry paths from a jk that did not canonicalize, from before the workspace
+     * moved, or from before a link in its prefix was repointed. The alternative — trusting the file
+     * because {@link #write} emits canonical paths — makes correctness depend on who wrote it.
+     */
     private Map<Path, Set<Path>> read() throws IOException {
         Map<Path, Set<Path>> out = new LinkedHashMap<>();
         if (!Files.isRegularFile(file)) return out;
@@ -99,8 +149,8 @@ final class GeneratedProvenance {
             String[] parts = line.split("\t");
             if (parts.length < 2) continue;
             Set<Path> origins = new HashSet<>();
-            for (int i = 1; i < parts.length; i++) origins.add(Path.of(parts[i]));
-            out.put(Path.of(parts[0]), origins);
+            for (int i = 1; i < parts.length; i++) origins.add(canonical(Path.of(parts[i])));
+            out.put(canonical(Path.of(parts[0])), origins);
         }
         return out;
     }

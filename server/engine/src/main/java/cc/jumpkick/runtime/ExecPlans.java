@@ -96,6 +96,7 @@ public final class ExecPlans {
             build = applyLockModulePin(dir, build);
 
             String workspaceRootDir = "";
+            List<JkBuild> envSources = new ArrayList<>(List.of(build));
             List<String> moduleDirs = new ArrayList<>();
             List<String> moduleNames = new ArrayList<>();
             Path wsRoot = null;
@@ -120,6 +121,7 @@ public final class ExecPlans {
                     for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
                         moduleDirs.add(e.getKey().toAbsolutePath().normalize().toString());
                         moduleNames.add(e.getValue().project().name());
+                        envSources.add(e.getValue()); // a member declares what the root does not
                     }
                 } catch (Exception ignored) {
                     for (String m : rootBuild.workspace().modules()) {
@@ -233,7 +235,7 @@ public final class ExecPlans {
                     pathDeps(build),
                     layoutOf(build, dir, BuildLayout::sourcesJar),
                     layoutOf(build, dir, BuildLayout::javadocJar),
-                    VariantApply.envRefs(build),
+                    VariantApply.envRefs(envSources),
                     moduleNames,
                     sourceCount,
                     testCount,

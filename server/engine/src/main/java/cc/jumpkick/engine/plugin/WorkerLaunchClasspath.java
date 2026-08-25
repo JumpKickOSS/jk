@@ -59,6 +59,11 @@ public final class WorkerLaunchClasspath {
     }
 
     static Path workspaceTarget(Path workerJar) {
+        // The jar has to be something jk built, not merely something sitting under a build tree.
+        // A `shared/` child proves the directory is a workspace out tree; it does not prove this
+        // file came out of one, and jk's own test scratch now lives inside that same tree — so a
+        // CAS blob or a @TempDir jar would otherwise pick up the workspace codec modules.
+        if (!BuildLayout.isBuildOutput(workerJar)) return null;
         Path cur = workerJar.toAbsolutePath().normalize().getParent();
         while (cur != null) {
             Path name = cur.getFileName();

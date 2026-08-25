@@ -201,6 +201,48 @@ class JavaIncrementalCompilerTest {
         assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
     }
 
+    @Test
+    void a_generated_file_is_pruned_when_the_output_root_is_reached_through_a_symlink(@TempDir Path dir)
+            throws Exception {
+        // The same prune, with one link between the build's idea of the output root and the real
+        // one. javac real-paths the URIs it hands back from Filer, so provenance holds
+        // <real>/gen-src/app/WidgetGen.java while the spec's sourceOutput says <link>/gen-src; a
+        // containment test that compares those textually is false and the class file outlives the
+        // source it was generated from. macOS gets here unaided — $TMPDIR is under the
+        // /var -> /private/var link, so the test above is already this test there — which is
+        // exactly why the link is explicit here: on every other platform that one is a green test
+        // of a path this defect never takes.
+        Path real = Files.createDirectories(dir.resolve("real"));
+        Path link = Files.createSymbolicLink(dir.resolve("link"), real);
+
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+
+        Path src = link.resolve("src/app/Widget.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package app; @gen.Gen public class Widget {}");
+
+        Path classOut = link.resolve("classes");
+        Path genOut = link.resolve("gen-src");
+        Path workdir = link.resolve("zinc-work");
+
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("first compile")
+                .isZero();
+        assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
+
+        Files.writeString(src, "package app; public class Widget {}");
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("second compile")
+                .isZero();
+
+        // Through the link and through the real path: one file, and it is gone either way.
+        assertThat(classOut.resolve("app/WidgetGen.class")).doesNotExist();
+        assertThat(real.resolve("classes/app/WidgetGen.class")).doesNotExist();
+        assertThat(genOut.resolve("app/WidgetGen.java")).doesNotExist();
+        assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
+    }
+
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {
         Path srcDir = outDir.resolve("_src");
         Files.createDirectories(outDir);

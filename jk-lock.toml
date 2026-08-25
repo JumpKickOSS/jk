@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "04c35cddbac222f9badab41099f2534a7fda9c80f33e0690c6570bc0b3dc062e"
+manifests-sha256 = "cacc9602c1c51a89c952b356a60f96344d1c68935b44a1da4cbf30b487031429"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [native]
@@ -1686,19 +1686,19 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.graalvm.sdk:nativeimage:jar:"
-version  = "25.2.4"
+version  = "25.3.4.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:235376a14f41d503219e8e81cc3cade7dd45565917bb5c6936768519adc07fe1"
+checksum = "sha256:a4315500775e98d16f083812bf5b8b664d84abad736da14ebbea5b38d7752b0f"
 scopes   = ["provided"]
 deps = [
-  "org.graalvm.sdk:word:jar:@25.2.4",
+  "org.graalvm.sdk:word:jar:@25.3.4.1",
 ]
 
 [[artifact]]
 name     = "org.graalvm.sdk:word:jar:"
-version  = "25.2.4"
+version  = "25.3.4.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:fd64d18afd9813346acf3c2be3a19cc553edb3c480c3683fda80fe324687bd6a"
+checksum = "sha256:fe1c3723e27907789732ac9f3d639ba6055d459529cfcfbd96156e73911ee7b7"
 scopes   = ["provided"]
 
 [[artifact]]

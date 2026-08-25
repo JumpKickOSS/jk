@@ -302,13 +302,7 @@ public final class PomRuntimeClasspath {
     }
 
     static boolean isWorkspaceLayout(Path worker) {
-        Path cur = worker.toAbsolutePath().normalize().getParent();
-        while (cur != null) {
-            Path name = cur.getFileName();
-            if (name != null && BuildLayout.TARGET.equals(name.toString())) return true;
-            cur = cur.getParent();
-        }
-        return false;
+        return BuildLayout.isBuildOutput(worker);
     }
 
     /** Store root that owns {@code artifact} ({@code …/repos/…} parent), else {@link JkDirs#store()}. */

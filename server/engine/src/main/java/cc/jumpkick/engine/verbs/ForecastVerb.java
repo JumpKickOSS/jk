@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockPaths;
@@ -63,7 +64,12 @@ public final class ForecastVerb implements HostedVerb {
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)
-                        .withCacheDir(cache);
+                        .withCacheDir(cache)
+                        // The forecast's run-tests key must equal the one the live build computes,
+                        // and [test] env is part of both. Resolving it here against the daemon's
+                        // environment and there against the caller's would make them disagree —
+                        // "tests up-to-date" for a suite whose environment actually changed.
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 SessionContext.where(session, () -> {
                     BuildService.ResolvedGraph graph;
