@@ -11,6 +11,7 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
@@ -429,16 +430,6 @@ public final class ToolInstallCommand implements CliCommand {
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        try (var walk = Files.walk(from)) {
-            for (Path src : walk.toList()) {
-                Path dst = to.resolve(from.relativize(src).toString());
-                if (Files.isDirectory(src)) {
-                    Files.createDirectories(dst);
-                } else {
-                    Files.createDirectories(dst.getParent());
-                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to);
     }
 }

@@ -8,10 +8,15 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /** Shared filesystem helpers. */
 public final class PathUtil {
@@ -59,6 +64,105 @@ public final class PathUtil {
             home = System.getProperty("user.dir", ".");
         }
         return Path.of(home).toAbsolutePath().normalize();
+    }
+
+    /**
+     * Copy the tree at {@code from} onto {@code to}.
+     *
+     * <p><strong>The</strong> tree copy. Twelve callers hand-rolled this, at three levels of
+     * sophistication, and all twelve shared the same three defects: a {@code createDirectories} per
+     * <em>file</em> rather than per directory, no byte-identity check, and the walk's attributes
+     * thrown away so {@code isDirectory}/{@code isRegularFile} re-stat what the walk already knew.
+     * The most sophisticated of them used {@code walkFileTree} and correctly created directories in
+     * {@code preVisitDirectory} — and then still called {@code createDirectories(dest.getParent())}
+     * per file, which its own {@code preVisitDirectory} had already guaranteed. When the best
+     * hand-rolled copy in a tree still has the bug, the argument for one owner is finished (JK-1032).
+     *
+     * <p><strong>A byte-identical target is left alone</strong>, and that is a correctness property
+     * before it is a saving. {@code Files.copy} is the most expensive operation jk measures — 305.2 µs
+     * on Windows against 12.8 on Linux — but the reason {@code ActionCache.restoreArtifacts} already
+     * did this is sharper: re-copying bumps the file's mtime, {@code FreshnessStamp} compares
+     * classpath entries by mtime, and so re-copying an unchanged tree invalidated every downstream
+     * stamp and forced a full KSP round on every single build. Ten of the twelve copies could do that.
+     *
+     * <p>Symbolic links are not followed and not recreated. {@code walkFileTree}'s default is
+     * no-follow, so a link arrives here as a non-regular file and is skipped — deliberately, for the
+     * reason G37 gives about deletes: a copy that follows a link writes into somebody else's tree.
+     */
+    public static void copyTree(Path from, Path to, Copy... options) throws IOException {
+        copyTree(from, to, dir -> false, options);
+    }
+
+    /**
+     * As {@link #copyTree(Path, Path, Copy...)}, skipping any directory {@code skipSubtree} accepts.
+     *
+     * <p>For the plugin-scratch convention ({@code .jk-*}), which two packagers need to keep out of a
+     * staged layout. A predicate rather than a baked-in rule: {@code :host} has no business knowing
+     * what a plugin's scratch directory is called.
+     */
+    public static void copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options)
+            throws IOException {
+        if (!Files.isDirectory(from)) return;
+        Set<Copy> opts = options.length == 0 ? Set.of() : EnumSet.copyOf(Arrays.asList(options));
+        if (opts.contains(Copy.CLEAN_TARGET)) deleteRecursivelyOrThrow(to);
+        boolean always = opts.contains(Copy.OVERWRITE_ALWAYS);
+        boolean preserve = opts.contains(Copy.PRESERVE_ATTRIBUTES);
+        Files.walkFileTree(from, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (!dir.equals(from) && skipSubtree.test(dir)) return FileVisitResult.SKIP_SUBTREE;
+                // Here, and only here: every file below has its parent by the time it is visited.
+                Files.createDirectories(to.resolve(from.relativize(dir).toString()));
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE; // links, devices, sockets
+                Path target = to.resolve(from.relativize(file).toString());
+                if (!always && identical(target, attrs)) return FileVisitResult.CONTINUE;
+                if (preserve) {
+                    Files.copy(
+                            file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /** Whether {@code target} already has the source's size and modification time. */
+    private static boolean identical(Path target, BasicFileAttributes source) {
+        try {
+            BasicFileAttributes t = Files.readAttributes(target, BasicFileAttributes.class);
+            return t.isRegularFile()
+                    && t.size() == source.size()
+                    && t.lastModifiedTime().equals(source.lastModifiedTime());
+        } catch (IOException absent) {
+            return false;
+        }
+    }
+
+    /** Options for {@link #copyTree}. The default is: keep extras, skip identical, replace differing. */
+    public enum Copy {
+        /** Delete {@code to} before copying, so the result is exactly {@code from}. */
+        CLEAN_TARGET,
+
+        /**
+         * Copy every file even when the target already matches. For a caller that needs the mtime
+         * bumped — staging that is about to be stamped, say — rather than preserved.
+         */
+        OVERWRITE_ALWAYS,
+
+        /**
+         * Carry each file's timestamps across ({@code COPY_ATTRIBUTES}).
+         *
+         * <p>For a copy whose point is that the <em>relationship</em> between two files' mtimes
+         * survives — a scratch checkout where {@code jk.toml} must still look older than
+         * {@code jk-lock.toml}, so freshness behaves as it did in the original tree.
+         */
+        PRESERVE_ATTRIBUTES
     }
 
     /**

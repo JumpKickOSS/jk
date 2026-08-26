@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -247,17 +248,7 @@ final class ResourceStep {
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        try (var walk = Files.walk(from)) {
-            for (Path source : (Iterable<Path>) walk::iterator) {
-                Path target = to.resolve(from.relativize(source).toString());
-                if (Files.isDirectory(source)) {
-                    Files.createDirectories(target);
-                } else {
-                    Files.createDirectories(target.getParent());
-                    Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to);
     }
 
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into the step scratch. */

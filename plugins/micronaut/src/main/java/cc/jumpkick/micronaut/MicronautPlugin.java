@@ -3,6 +3,7 @@ package cc.jumpkick.micronaut;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DeterministicProperties;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -263,18 +264,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        try (Stream<Path> walk = Files.walk(from)) {
-            for (Path src : (Iterable<Path>) walk::iterator) {
-                Path rel = from.relativize(src);
-                Path dst = to.resolve(rel.toString());
-                if (Files.isDirectory(src)) {
-                    Files.createDirectories(dst);
-                } else {
-                    Files.createDirectories(dst.getParent());
-                    Files.copy(src, dst);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to);
     }
 
     private static String tail(String output) {

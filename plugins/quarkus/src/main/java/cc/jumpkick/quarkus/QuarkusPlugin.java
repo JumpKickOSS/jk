@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.build.BuildContext;
@@ -295,24 +296,9 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        Files.walkFileTree(from, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                // Skip nested bootstrap/maven scratch dirs if present under the layout root.
-                String name = dir.getFileName() != null ? dir.getFileName().toString() : "";
-                if (name.startsWith(".jk-")) return FileVisitResult.SKIP_SUBTREE;
-                Files.createDirectories(to.resolve(from.relativize(dir).toString()));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Path dest = to.resolve(from.relativize(file).toString());
-                Files.createDirectories(dest.getParent());
-                Files.copy(file, dest, StandardCopyOption.REPLACE_EXISTING);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        // `.jk-*` is the plugin-scratch convention; it must not ride into a staged layout.
+        PathUtil.copyTree(from, to, dir -> dir.getFileName() != null
+                && dir.getFileName().toString().startsWith(".jk-"));
     }
 
     private static void deleteTree(Path root) throws IOException {

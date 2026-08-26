@@ -2206,6 +2206,81 @@ tasks.named("check") { dependsOn(checkRunnableOwner) }
 tasks.named("jar") { dependsOn(checkRunnableOwner) }
 
 // ---------------------------------------------------------------------------
+// Guard G42 (JK-1032): a tree copy goes through PathUtil.copyTree.
+//
+// Mirrors G37, which did this for deletes, and for the same reason: twelve callers hand-rolled a
+// tree copy and all twelve shared the same three defects — createDirectories per *file* instead of
+// per directory, no byte-identity check, and the walk's attributes discarded so isDirectory /
+// isRegularFile re-stat what the walk already knew. The most sophisticated of them created
+// directories correctly in preVisitDirectory and then still called createDirectories(dest.getParent())
+// per file.
+//
+// The identity check is a correctness property, not a saving: re-copying bumps mtime, FreshnessStamp
+// compares classpath entries by mtime, and ActionCache.restoreArtifacts' own comment records that
+// re-copying an unchanged jar forced a full KSP round on every build. Ten of the twelve could do that
+// to a class or resource tree.
+//
+// Shape: a Files.copy(...) whose enclosing method also walks a tree. That is the hand-rolled copy;
+// a single-file copy, and a flat first-wins merge over Files.list, are not tree copies and do not
+// trip it.
+// ---------------------------------------------------------------------------
+val checkTreeCopyOwner by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a hand-rolled recursive copy (use PathUtil.copyTree)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/PathUtil.java")
+    inputs.file(owner).withPropertyName("copyTreeOwner")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/tree-copy-owner.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerText = owner.asFile.readText()
+        if (!ownerText.contains("public static void copyTree(")) {
+            throw GradleException("PathUtil no longer declares copyTree(...), so guard G42 has lost the"
+                    + " owner it points callers at. Restore it or retire the guard deliberately.")
+        }
+        // Commented exemptions, each a copy that is deliberately not the owner's shape.
+        val allowed = setOf(
+                // Rewrites each path segment as it goes (leading '/' and '.' handling) and refuses to
+                // recreate symlinks; the owner copies a tree verbatim and has no segment policy.
+                "server/engine/src/main/java/cc/jumpkick/giter8/PluginTemplates.java")
+        val offenders = mutableListOf<String>()
+        var scanned = 0
+        var copies = 0
+        mainJava.forEach { f ->
+            scanned++
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (f.absolutePath == owner.asFile.absolutePath || rel in allowed) return@forEach
+            val lines = f.readText().lines()
+            lines.forEachIndexed { i, raw ->
+                if (!raw.contains("Files.copy(")) return@forEachIndexed
+                copies++
+                // The shape of a *tree* copy: the target is rebuilt from a walk-relative path. A
+                // single-file copy, an archive-entry extraction, and a flat first-wins merge over
+                // Files.list all copy without relativizing, and none of them is what this bans.
+                val window = lines.subList(maxOf(0, i - 6), i + 1).joinToString("\n")
+                if (!window.contains("relativize(")) return@forEachIndexed
+                offenders += rel + ":" + (i + 1)
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException("G42: a hand-rolled recursive copy —\n  " + offenders.joinToString("\n  ")
+                    + "\n\nUse PathUtil.copyTree(from, to): directories created once per directory,"
+                    + " attributes taken from the walk, and a byte-identical target left alone so its"
+                    + " mtime does not invalidate every downstream FreshnessStamp."
+                    + "\nA copy that is genuinely not a tree copy belongs on this guard's exemption"
+                    + " list with the reason, the way G37 lists its four.")
+        }
+        stamp.get().asFile.also { it.parentFile.mkdirs() }
+                .writeText("ok: " + scanned + " files, " + copies + " using Files.copy\n")
+    }
+}
+tasks.named("check") { dependsOn(checkTreeCopyOwner) }
+tasks.named("jar") { dependsOn(checkTreeCopyOwner) }
+
+// ---------------------------------------------------------------------------
 // Guard G16 (JK-2419): Maven Central is addressed one way, and it is `RepositorySpec`'s.
 //
 // Defect it prevents: traffic to Central that the rate-limit machinery cannot see. `repo1.maven.org`

@@ -271,18 +271,7 @@ final class AotCacheTrainer {
 
     /** Copy a tree verbatim — the staged copy is what gets trained and what ships. */
     private static void copyTree(Path from, Path to) throws IOException {
-        PathUtil.deleteRecursivelyOrThrow(to);
-        try (var walk = Files.walk(from)) {
-            for (Path p : walk.toList()) {
-                Path target = to.resolve(from.relativize(p).toString());
-                if (Files.isDirectory(p)) {
-                    Files.createDirectories(target);
-                } else {
-                    Files.createDirectories(target.getParent());
-                    Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to, PathUtil.Copy.CLEAN_TARGET, PathUtil.Copy.OVERWRITE_ALWAYS);
     }
 
     /** Lay out exactly what the image will contain, at the paths the image will use. */

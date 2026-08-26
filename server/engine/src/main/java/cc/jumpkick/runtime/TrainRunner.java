@@ -451,16 +451,6 @@ public final class TrainRunner {
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        deleteRecursively(to);
-        try (var walk = Files.walk(from)) {
-            for (Path p : walk.toList()) {
-                Path target = to.resolve(from.relativize(p).toString());
-                if (Files.isDirectory(p)) Files.createDirectories(target);
-                else {
-                    Files.createDirectories(target.getParent());
-                    Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to, PathUtil.Copy.CLEAN_TARGET, PathUtil.Copy.OVERWRITE_ALWAYS);
     }
 }
