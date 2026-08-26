@@ -11,27 +11,38 @@ import org.junit.jupiter.api.io.TempDir;
 class FormatPlansCollectTest {
 
     @Test
-    void single_walk_finds_java_and_kotlin_and_skips_build_trees(@TempDir Path tmp) throws Exception {
+    void single_walk_finds_jvm_sources_and_skips_build_trees(@TempDir Path tmp) throws Exception {
         Path src = tmp.resolve("src/main/java");
         Path kt = tmp.resolve("src/main/kotlin");
+        Path groovy = tmp.resolve("src/main/groovy");
+        Path scala = tmp.resolve("src/main/scala");
         Path target = tmp.resolve("target/classes");
         Path build = tmp.resolve("build/generated");
         Files.createDirectories(src);
         Files.createDirectories(kt);
+        Files.createDirectories(groovy);
+        Files.createDirectories(scala);
         Files.createDirectories(target);
         Files.createDirectories(build);
         Path keepJava = src.resolve("Keep.java");
         Path keepKt = kt.resolve("Keep.kt");
+        Path keepGroovy = groovy.resolve("Keep.groovy");
+        Path keepScala = scala.resolve("Keep.scala");
         Files.writeString(keepJava, "class Keep {}");
         Files.writeString(keepKt, "class Keep");
+        Files.writeString(keepGroovy, "class Keep {}");
+        Files.writeString(keepScala, "class Keep");
         // Would be expensive to descend in a real repo — must not be collected.
         Files.writeString(target.resolve("Gen.java"), "class Gen {}");
         Files.writeString(build.resolve("Gen.kt"), "class Gen");
+        Files.writeString(tmp.resolve("build.gradle"), "plugins { id 'java' }");
 
         FormatSources.CollectedSources found = FormatSources.collectSources(tmp);
         assertThat(found.javaFiles()).containsExactly(keepJava);
         assertThat(found.kotlinFiles()).containsExactly(keepKt);
-        assertThat(found.total()).isEqualTo(2);
+        assertThat(found.groovyFiles()).containsExactly(keepGroovy);
+        assertThat(found.scalaFiles()).containsExactly(keepScala);
+        assertThat(found.total()).isEqualTo(4);
     }
 
     @Test
@@ -46,19 +57,12 @@ class FormatPlansCollectTest {
 
     /**
      * The mtime/size freshness index is the outer filter — a recorded path is not sent to the
-     * worker at all next run — so what it records decides what a second run can still see.
-     *
-     * <p>{@code unparseable} must not be recorded. Recording it would hide the finding behind the
-     * index one run after it was first reported, which is the same disappearing act, one layer up,
-     * that {@code applyRewrite} was doing when it read a ParseError as "nothing to change".
+     * worker at all next run — so errors must not be recorded.
      */
     @Test
-    void an_unparseable_file_is_never_recorded_fresh() {
-        assertThat(FormatWorker.recordsFreshness("unparseable", false))
-                .as("apply mode: the rewrite pass still has not run on this file")
-                .isFalse();
-        assertThat(FormatWorker.recordsFreshness("unparseable", true)).isFalse();
+    void an_error_is_never_recorded_fresh() {
         assertThat(FormatWorker.recordsFreshness("error", false)).isFalse();
+        assertThat(FormatWorker.recordsFreshness("error", true)).isFalse();
     }
 
     /** …and the statuses that were recorded before still are. */

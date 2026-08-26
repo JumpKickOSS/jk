@@ -284,7 +284,6 @@ public final class EngineRequests {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
-            Path rewriteConfig,
             boolean offline,
             boolean verbose) {}
 

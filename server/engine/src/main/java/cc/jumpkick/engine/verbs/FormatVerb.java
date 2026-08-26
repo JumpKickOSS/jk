@@ -78,7 +78,6 @@ public final class FormatVerb implements HostedVerb {
                         styles.optimizeImports(),
                         styles.importOrder(),
                         styles.removeUnusedImports(),
-                        null,
                         false,
                         false),
                 "web");
@@ -94,7 +93,6 @@ public final class FormatVerb implements HostedVerb {
                 boolean optimizeImports = Jsonl.bool(requestLine, "optimizeImports", true);
                 boolean importOrder = Jsonl.bool(requestLine, "importOrder", true);
                 boolean removeUnusedImports = Jsonl.bool(requestLine, "removeUnusedImports", true);
-                String rewriteConfig = Jsonl.str(requestLine, "rewriteConfig");
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = FormatPlans.formatBuildPlan(
@@ -106,7 +104,6 @@ public final class FormatVerb implements HostedVerb {
                         optimizeImports,
                         importOrder,
                         removeUnusedImports,
-                        rewriteConfig != null ? Path.of(rewriteConfig) : null,
                         (path, status, message, index, total) -> host.sendQuiet(
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
                 // `result.success()` is the run's verdict on every surface — this event, the journal

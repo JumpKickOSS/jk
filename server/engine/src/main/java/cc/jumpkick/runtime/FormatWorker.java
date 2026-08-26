@@ -21,14 +21,7 @@ public final class FormatWorker {
 
     /**
      * Receives each file's result as the plugin streams it: {@code status} is {@code changed},
-     * {@code clean}, {@code skipped}, {@code unparseable} or {@code error}.
-     *
-     * <p>{@code unparseable} — OpenRewrite could not parse the file, so the import-shortening pass
-     * never ran on it — is per-file only. {@link #CHANGED}/{@link #CLEAN}/{@link #ERRORS} are the
-     * plan's published tallies and none of them claims it; the client counts it off this stream.
-     * So the three published tallies do <em>not</em> sum to {@link #TOTAL} on a tree with
-     * unparseable files: the fifth tally is counted inside {@link #runWorker} for the completeness
-     * check and deliberately stays there rather than becoming a fourth number on the wire.
+     * {@code clean}, {@code skipped}, or {@code error}.
      */
     public interface FileObserver {
         void onFile(String path, String status, String message, int index, int total);
@@ -39,12 +32,10 @@ public final class FormatWorker {
      *
      * <p>That index is the <em>outer</em> filter: a recorded path is not sent to the worker at all
      * on the next run, so recording one is a claim that the file is finished. {@code error} was
-     * always excluded. {@code unparseable} is excluded for a sharper reason — recording it would
-     * make the finding vanish on the second run, which is the exact shape of the bug the status
-     * exists to end. The worker keeps its own content stamp for those, so they stay cheap.
+     * always excluded.
      */
     static boolean recordsFreshness(String status, boolean check) {
-        if ("error".equals(status) || "unparseable".equals(status)) return false;
+        if ("error".equals(status)) return false;
         // Under --check nothing was written, so a "changed" file's bytes are still the unformatted ones.
         return !check || !"changed".equals(status);
     }
@@ -72,8 +63,7 @@ public final class FormatWorker {
      *
      * <p>Every surface that says whether a format run worked reads {@code BuildPlanResult.success()}
      * — journal and dashboard via {@code FormatVerb}, terminal wedge via {@code FormatCommand}.
-     * Before this check the step could not fail at all, so a worker that died at file 500 of 2,063 (a
-     * HotSpot SIGSEGV under a full GC, measured here — see {@link FormatSources#compileClasspath})
+     * Before this check the step could not fail at all, so a worker that died at file 500 of 2,063
      * journaled as a successful, complete format with nothing changed and no errors, while the exit
      * code the CLI returned one line later said 139. Two readers of one fact, disagreeing.
      *
@@ -95,10 +85,6 @@ public final class FormatWorker {
         AtomicInteger changed = new AtomicInteger();
         AtomicInteger clean = new AtomicInteger();
         AtomicInteger errors = new AtomicInteger();
-        // The fifth tally, and the only one the plan does not publish (JK-2477 keeps `unparseable`
-        // per-file). It is counted here because the sum has to balance: a file OpenRewrite could not
-        // parse was visited, and leaving it out would read as a file the worker never reached.
-        AtomicInteger unparseable = new AtomicInteger();
         AtomicInteger index = new AtomicInteger();
         int exit = new PluginClient("##JKFMT:")
                 .on("file", json -> {
@@ -108,8 +94,6 @@ public final class FormatWorker {
                         changed.incrementAndGet();
                     } else if ("error".equals(status)) {
                         errors.incrementAndGet();
-                    } else if ("unparseable".equals(status)) {
-                        unparseable.incrementAndGet();
                     } else {
                         clean.incrementAndGet();
                     }
@@ -126,7 +110,7 @@ public final class FormatWorker {
         ctx.put(CLEAN, preClean + clean.get());
         ctx.put(ERRORS, errors.get());
         ctx.put(WORKER_EXIT, exit);
-        int reported = preClean + changed.get() + clean.get() + errors.get() + unparseable.get();
+        int reported = preClean + changed.get() + clean.get() + errors.get();
         String incomplete = reconcile(reported, total, exit);
         if (incomplete != null) {
             ctx.error("format", incomplete);

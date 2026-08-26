@@ -202,16 +202,11 @@ class FormatWorkerCompletenessTest {
         assertThat(r.plan().get(FormatWorker.WORKER_EXIT)).contains(1);
     }
 
-    /**
-     * JK-2477's judgement, defended. An {@code unparseable} file is a visited file: it must count
-     * toward the total, and it must not fail the run. Note the three published tallies come to five,
-     * not eight — the fifth tally is plan-local, and reconciling on the published three alone would
-     * report a phantom three-file shortfall on every tree jk actually has.
-     */
+    /** {@code skipped} (unnamed class) is a visited file and must not fail the run. */
     @Test
-    void unparseable_files_are_visited_files_and_fail_nothing(@TempDir Path tmp) throws Exception {
+    void skipped_files_are_visited_files_and_fail_nothing(@TempDir Path tmp) throws Exception {
         List<Path> files = sources(tmp, 8);
-        List<String> statuses = new ArrayList<>(repeat("unparseable", 3));
+        List<String> statuses = new ArrayList<>(repeat("skipped", 3));
         statuses.addAll(repeat("clean", 5));
 
         Run r = run(0, 8, true, null, 0, statuses, files);
@@ -219,9 +214,7 @@ class FormatWorkerCompletenessTest {
         assertThat(r.result().success()).isTrue();
         assertThat(r.result().errors()).isEmpty();
         assertThat(r.plan().get(FormatWorker.CHANGED)).contains(0);
-        assertThat(r.plan().get(FormatWorker.CLEAN))
-                .as("unparseable is no longer folded into clean (JK-2477)")
-                .contains(5);
+        assertThat(r.plan().get(FormatWorker.CLEAN)).contains(8);
         assertThat(r.plan().get(FormatWorker.ERRORS)).contains(0);
     }
 

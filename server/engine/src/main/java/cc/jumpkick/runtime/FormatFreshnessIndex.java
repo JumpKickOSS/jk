@@ -66,13 +66,21 @@ public final class FormatFreshnessIndex {
         return new FormatFreshnessIndex(file, projectDir, entries);
     }
 
-    public record Split(List<Path> dirtyJava, List<Path> dirtyKotlin, int clean) {}
+    public record Split(
+            List<Path> dirtyJava, List<Path> dirtyKotlin, List<Path> dirtyGroovy, List<Path> dirtyScala, int clean) {}
 
     /** Partition sources into dirty (mtime/size mismatch or unknown) vs already-clean. */
     public Split partition(List<Path> javaFiles, List<Path> kotlinFiles) {
+        return partition(javaFiles, kotlinFiles, List.of(), List.of());
+    }
+
+    public Split partition(
+            List<Path> javaFiles, List<Path> kotlinFiles, List<Path> groovyFiles, List<Path> scalaFiles) {
         Map<String, Entry> keep = new LinkedHashMap<>();
         List<Path> dirtyJava = new ArrayList<>();
         List<Path> dirtyKotlin = new ArrayList<>();
+        List<Path> dirtyGroovy = new ArrayList<>();
+        List<Path> dirtyScala = new ArrayList<>();
         int clean = 0;
         for (Path p : javaFiles) {
             if (rememberIfClean(p, keep)) clean++;
@@ -82,9 +90,22 @@ public final class FormatFreshnessIndex {
             if (rememberIfClean(p, keep)) clean++;
             else dirtyKotlin.add(p);
         }
+        for (Path p : groovyFiles) {
+            if (rememberIfClean(p, keep)) clean++;
+            else dirtyGroovy.add(p);
+        }
+        for (Path p : scalaFiles) {
+            if (rememberIfClean(p, keep)) clean++;
+            else dirtyScala.add(p);
+        }
         entries.clear();
         entries.putAll(keep);
-        return new Split(List.copyOf(dirtyJava), List.copyOf(dirtyKotlin), clean);
+        return new Split(
+                List.copyOf(dirtyJava),
+                List.copyOf(dirtyKotlin),
+                List.copyOf(dirtyGroovy),
+                List.copyOf(dirtyScala),
+                clean);
     }
 
     private boolean rememberIfClean(Path file, Map<String, Entry> keep) {

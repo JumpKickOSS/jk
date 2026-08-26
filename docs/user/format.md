@@ -1,7 +1,7 @@
 # Format
 
-JumpKick can **format your source code**. `jk format` rewrites Java and Kotlin in place
-(or checks that they are already formatted). Import hygiene is on by default.
+JumpKick can **format your source code**. `jk format` rewrites Java, Kotlin, Groovy, and Scala
+in place (or checks that they are already formatted). Import hygiene is on by default.
 
 ```bash
 jk format                 # rewrite dirty files
@@ -22,12 +22,17 @@ The first-party **formatter** plugin runs in a forked worker (not in the engine 
 
 **Kotlin** uses **ktfmt** (Spotless). Default style is `kotlinlang`.
 
-**OpenRewrite** (optional extra pass, before Spotless):
+**Groovy** uses Spotless `removeSemicolons` (Groovy accepts both; this matches typical Groovy
+source). Gradle Groovy DSL (`*.gradle`) is not formatted.
 
-- **Optimize imports** — shorten fully-qualified class names and add import statements
-  (default on). Preferred style is short names + imports; keep an FQCN only when there is
-  a real collision. See [what it can shorten](#what-optimize-imports-can-shorten).
-- Custom recipes via `--rewrite-config` / `JK_FORMAT_REWRITE_CONFIG` (OpenRewrite YAML).
+**Scala** uses **scalafmt** (Spotless), pinned by JumpKick, with Palantir-aligned defaults
+(4-space indent, 120 columns, Scala 3 dialect).
+
+**Optimize imports** (optional extra pass, before Spotless, default on): shorten
+fully-qualified class names and add import statements. Preferred style is short names +
+imports; keep an FQCN only when there is a real collision. See
+[what it can shorten](#what-optimize-imports-can-shorten). Applies to every language `jk
+format` walks.
 
 Per-file stamp cache skips unchanged files.
 
@@ -36,11 +41,12 @@ Per-file stamp cache skips unchanged files.
 | Language | Formatter | Default style | Import hygiene |
 |----------|-----------|---------------|----------------|
 | **Java** | Spotless (Palantir / Google / AOSP) | `palantir` | Yes (order + unused + FQCN shorten) |
-| **Kotlin** | Spotless ktfmt | `kotlinlang` | Style only (ktfmt); Java import flags do not apply |
-| **Groovy** | **Not formatted** | — | `jk format` does not rewrite `.groovy` |
+| **Kotlin** | Spotless ktfmt | `kotlinlang` | FQCN shorten; ktfmt style (Java import-order / unused flags do not apply) |
+| **Groovy** | Spotless removeSemicolons | — | FQCN shorten |
+| **Scala** | Spotless scalafmt | 4-space / 120-col | FQCN shorten |
 
 Java unnamed classes are skipped silently by Palantir/Google formatters (they cannot format
-them). Mixed Java+Kotlin modules format each file with the matching pipeline.
+them). Mixed-language modules format each file with the matching pipeline.
 
 Line endings are **Unix (`LF`)** regardless of host OS.
 
@@ -56,7 +62,7 @@ Cross-language preset `--style standard` (or `[format] style = "standard"`) is
 ```bash
 jk format --java-style google
 jk format --kotlin-style meta
-jk format --style standard          # both languages
+jk format --style standard          # Java + Kotlin styles
 ```
 
 ```toml
@@ -74,13 +80,13 @@ Unknown style names fail with the allowed list.
 Per language: **CLI `--java-style` / `--kotlin-style` → CLI `--style` alias →
 `[format] java` / `kotlin` → `[format] style` alias → built-in default.**
 
-## Import hygiene (Java)
+## Import hygiene
 
-| Toggle | What it does | Default |
-|--------|----------------|---------|
-| **optimize-imports** | OpenRewrite: shorten FQCNs, add imports | on |
-| **import-order** | Spotless `importOrder` | on |
-| **remove-unused-imports** | Spotless `removeUnusedImports` | on |
+| Toggle | What it does | Default | Languages |
+|--------|----------------|---------|-----------|
+| **optimize-imports** | Shorten FQCNs and add imports | on | Java, Kotlin, Groovy, Scala |
+| **import-order** | Spotless `importOrder` | on | Java |
+| **remove-unused-imports** | Spotless `removeUnusedImports` | on | Java |
 
 ```bash
 jk format --no-optimize-imports
@@ -100,61 +106,24 @@ Environment: `JK_FORMAT_OPTIMIZE_IMPORTS`, `JK_FORMAT_IMPORT_ORDER`,
 
 ### What optimize-imports can shorten
 
-Shortening `com.example.Widget.of()` to `Widget.of()` means resolving `com.example.Widget`
-to a type, so the pass is only as good as the classpath it resolves against. `jk format`
-gives it two things:
+Shortening `com.example.Widget.of()` to `Widget.of()` uses a **type index**, not a compiler:
+project sources (package + type declarations in `.java` / `.kt` / `.groovy` / `.scala`) plus
+public JDK classes from `jrt:/`. No build is required first.
 
 | Source of types | Shortened? |
 |-----------------|------------|
-| The JDK (`java.*`, `javax.*`) | Yes — always, javac supplies these |
-| Your own modules' types | Yes, **once that module has been built** |
-| Dependency (jar) types | **No** — see below |
+| The JDK (`java.*`, `javax.*`) | Yes |
+| Your own modules' types | Yes — from source, even unbuilt |
+| Dependency (jar) types | **No** — import those by hand |
 
-Your modules' types come from each module's class output (`target/<module>/classes/{main,test}`),
-taken from `jk-lock.toml`'s module list. A module you have never compiled contributes no
-types, so its callers keep their fully-qualified names until you build it — run `jk build`
-before the first `jk format` of a fresh checkout. A project with no lockfile gets no
-classpath at all and only JDK names shorten; `jk format` never resolves or downloads
-anything itself.
-
-**Dependency jars are deliberately left off.** OpenRewrite parses each file with its own
-compiler front end, so every classpath entry is re-opened for every file. On jk's own tree
-(2,011 sources) the module outputs add 18s to a 108s run and shorten 3,293 names; adding
-the 150 dependency jars shortens 47 more and adds six minutes. A dependency's type written
-out in full stays that way — import it yourself.
-
-Optimize-imports also never rewrites Javadoc: `{@link com.example.Widget}` is left alone.
-
-**Two more things it will not shorten**, both worth knowing before you go looking for a bug:
-
-- **A static member or an annotation.** The pass rewrites a qualified name only when the name
-  itself resolves to a top-level class, so `java.lang.foreign.ValueLayout.JAVA_INT` and
-  `@org.jspecify.annotations.NullMarked` are left as written. Shorten those by hand; nothing
-  here will put them back.
-- **Any file whose Javadoc does not survive a parse/print round trip.** OpenRewrite checks that
-  it can reprint a file byte-for-byte before it will rewrite it, and its Javadoc printer mangles
-  the continuation line of a wrapped `@param`. When that check fails the file is skipped by the
-  OpenRewrite pass entirely — Spotless still formats it. On jk's own tree that is 111 of 2,088
-  files. The check is the reason a mangled reprint is never written over your source.
-
-  `jk format` reports each one as `! unparseable: <path>` and counts them in the closing
-  summary. It does **not** fail `--check` on them: nothing you can write in the file clears it,
-  so a red build there would have no fix. Silence was the older behaviour and the worse one —
-  those files were counted as already clean, which is how a tree can be reported fully
-  import-shortened while 111 files were never rewritten at all.
+A simple name that would collide with another type in the file (or an existing import)
+stays fully qualified. Comments and string literals are never rewritten, including
+`{@link com.example.Widget}`.
 
 **Precedence:** CLI flag → env var → `[format]` → default `true`.
 
 `--optimize-imports` / `--no-optimize-imports` (and the same pattern for the other two)
 are exclusive pairs.
-
-Supplying `--rewrite-config` also enables optimize-imports when neither the flag nor the
-env var said otherwise, so the OpenRewrite plan actually runs.
-
-```bash
-jk format --rewrite-config rewrite.yml
-# or: JK_FORMAT_REWRITE_CONFIG=/path/to/rewrite.yml
-```
 
 ## Check mode (CI)
 
@@ -170,15 +139,14 @@ gate before a commit. There is no required CI format job unless you add one.
 
 ## Limitations
 
-- **Groovy is not formatted.** Use an editor formatter or a `jk tool run` recipe if you
-  need Groovy style checks.
+- **Gradle Groovy DSL is not formatted.** `*.gradle` / `*.gradle.kts` stay out of `jk format`.
 - **Not a linter.** `jk format` rewrites style; it does not run Checkstyle, SpotBugs, or
   detekt. Java analysis: install Checkstyle as a tool — [Tools](tools.md) and the
   [checkstyle-recipe example](examples/checkstyle-recipe/). Kotlin analysis (detekt) is
   not a first-party plugin yet.
 - Palantir/Google **skip unnamed/simple compilation units** they cannot format.
-- **optimize-imports cannot shorten a name it cannot resolve** — unbuilt modules and
-  dependency jars; see [what it can shorten](#what-optimize-imports-can-shorten).
+- **optimize-imports cannot shorten a name that is not in the type index** — dependency
+  jars, and collisions; see [what it can shorten](#what-optimize-imports-can-shorten).
 - Format is engine-hosted: you need a reachable engine (`jk` starts one) and a `jk.toml`
   in the working directory.
 

@@ -14,15 +14,15 @@ import com.diffplug.spotless.Formatter;
 import com.diffplug.spotless.FormatterStep;
 import com.diffplug.spotless.LineEnding;
 import com.diffplug.spotless.Provisioner;
+import com.diffplug.spotless.groovy.RemoveSemicolonsStep;
 import com.diffplug.spotless.java.GoogleJavaFormatStep;
 import com.diffplug.spotless.java.ImportOrderStep;
 import com.diffplug.spotless.java.PalantirJavaFormatStep;
 import com.diffplug.spotless.java.RemoveUnusedImportsStep;
 import com.diffplug.spotless.kotlin.KtfmtStep;
+import com.diffplug.spotless.scala.ScalaFmtStep;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,66 +30,18 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.openrewrite.ExecutionContext;
-import org.openrewrite.InMemoryExecutionContext;
-import org.openrewrite.Recipe;
-import org.openrewrite.RecipeRun;
-import org.openrewrite.Result;
-import org.openrewrite.SourceFile;
-import org.openrewrite.config.CompositeRecipe;
-import org.openrewrite.config.Environment;
-import org.openrewrite.config.YamlResourceLoader;
-import org.openrewrite.internal.InMemoryLargeSourceSet;
-import org.openrewrite.java.JavaParser;
-import org.openrewrite.java.ShortenFullyQualifiedTypeReferences;
-import org.openrewrite.java.style.ImportLayoutStyle;
-import org.openrewrite.style.NamedStyles;
-import org.openrewrite.tree.ParseError;
 
 /**
- * {@code jk-formatter} plugin: optional OpenRewrite import pass, then Spotless. Host forks with a
+ * {@code jk-formatter} plugin: optional FQCN-shorten pass, then Spotless. Host forks with a
  * tab-delimited spec file; emits {@code ##JKFMT:} JSONL per file + summary.
  *
- * <p>Java Spotless pipeline (always on): {@code importOrder} → {@code removeUnusedImports} →
- * Palantir / Google / AOSP style. Matches the usual Spotless recipe; FQCN shortening is the
- * separate OpenRewrite {@code optimizeImports} pass, which resolves names against the compile
- * classpath the host sends ({@code cp} lines, compile role) and can shorten nothing without one.
- *
- * <p>Per-file status is one of {@code changed} / {@code clean} / {@code skipped} / {@code
- * unparseable} / {@code error}, in that precedence — see {@link Rewrite#UNPARSEABLE} for why the
- * fourth exists and why it sits below {@code changed}.
+ * <p>Java Spotless pipeline: {@code importOrder} → {@code removeUnusedImports} → Palantir / Google
+ * / AOSP. Kotlin is ktfmt. Groovy is semicolon removal. Scala is scalafmt. FQCN shortening is a
+ * first-party index pass (no compiler) that runs before Spotless.
  */
 public final class CodeFormatter implements Plugin {
-
-    /**
-     * What the OpenRewrite pass did to one file.
-     *
-     * <p>{@link #UNPARSEABLE} is the state that used to be invisible. OpenRewrite reports a file it
-     * cannot handle <em>in band</em>: the parser returns a {@code ParseError} — most often because
-     * its Javadoc printer cannot round-trip the continuation line of a wrapped {@code @param} and
-     * its own print-idempotence check refuses the result — so the recipe has nothing to visit and
-     * produces no edit. That is byte-for-byte what "parsed fine, nothing to shorten" looks like, so
-     * the whole rewrite pass could be skipped for a file and the run would call it already clean.
-     * On jk's own tree that was 111 of 2,088 Java files reported as needing no work.
-     */
-    enum Rewrite {
-        /** The recipe produced an edit (written back in apply mode). */
-        CHANGED,
-        /** Parsed cleanly; the recipe had nothing to change. */
-        UNCHANGED,
-        /** OpenRewrite could not parse the file, so the rewrite pass did not run at all. */
-        UNPARSEABLE
-    }
-
-    /**
-     * The {@code msg} on an {@code unparseable} result. Deliberately constant: OpenRewrite's own
-     * text is a multi-kilobyte reprint diff, and a stamp replay could not reproduce it, so a run
-     * served from cache would say something different about the same file.
-     */
-    static final String UNPARSEABLE_MSG = "OpenRewrite could not parse this file; import shortening was skipped";
 
     @Override
     public PluginManifest manifest() {
@@ -104,14 +56,11 @@ public final class CodeFormatter implements Plugin {
         }
         Spec spec = Spec.from(PluginSpec.read(Path.of(args.get(0))));
 
-        // Per-file stamp cache — skips unchanged files without running the formatter. The host
-        // computed and sent the config digest (its FormatKey); no key without it.
         FormatStampCache stampCache = spec.cacheDir != null && spec.configKey != null
                 ? new FormatStampCache(CacheTree.FORMAT_STAMPS.under(spec.cacheDir), spec.configKey)
                 : null;
 
-        // Build the OpenRewrite recipe once (null when no rewrite is requested).
-        Recipe rewriteRecipe = spec.hasRewrite() ? buildRecipe(spec) : null;
+        TypeIndex index = spec.optimizeImports ? TypeIndex.scan(spec.indexFiles) : null;
 
         Formatter javaFmt = spec.javaJars.isEmpty()
                 ? null
@@ -133,80 +82,70 @@ public final class CodeFormatter implements Plugin {
                                 ktfmtOptions(spec.kotlinMaxWidth))))
                         .build();
 
-        int changed = 0, clean = 0, errors = 0;
+        boolean anyGroovy = spec.files.stream().anyMatch(r -> r.kind == Kind.GROOVY);
+        Formatter groovyFmt = anyGroovy
+                ? Formatter.builder()
+                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
+                        .encoding(StandardCharsets.UTF_8)
+                        .steps(groovySteps())
+                        .build()
+                : null;
+
+        Formatter scalaFmt = spec.scalaJars.isEmpty()
+                ? null
+                : Formatter.builder()
+                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
+                        .encoding(StandardCharsets.UTF_8)
+                        .steps(scalaSteps(spec))
+                        .build();
+
+        int changed = 0, errors = 0;
         try {
             for (FileRef ref : spec.files) {
-                Formatter fmt = ref.kotlin ? kotlinFmt : javaFmt;
-                if (fmt == null) continue; // no formatter for this language (shouldn't happen)
+                Formatter fmt = formatterFor(ref.kind, javaFmt, kotlinFmt, groovyFmt, scalaFmt);
+                if (fmt == null) continue;
                 try {
-                    // Read once: stamp key, unnamed-class probe, and the formatter on a miss.
                     byte[] originalBytes = Files.readAllBytes(ref.file.toPath());
                     String stampKey = stampCache != null ? stampCache.keyFor(originalBytes) : null;
-
                     if (stampKey != null && stampCache.contains(stampKey)) {
-                        clean++;
                         emitFile(out, ref.file, "clean", null);
                         continue;
                     }
 
-                    // A file OpenRewrite cannot parse is settled too — Spotless is done with it and
-                    // the parser will reject it again for the same reason — so it gets a stamp of
-                    // its own kind. Skipping the work while replaying the finding is the point: a
-                    // single "settled" stamp would erase the finding on the second run.
-                    String unparseableKey = stampCache != null
-                            ? stampCache.keyFor(originalBytes, FormatStampCache.Outcome.UNPARSEABLE)
-                            : null;
-                    if (unparseableKey != null && stampCache.contains(unparseableKey)) {
-                        emitFile(out, ref.file, "unparseable", UNPARSEABLE_MSG);
-                        continue;
-                    }
-
-                    // Java 21+ unnamed classes (no type declaration) can't be parsed by
-                    // palantir/google-java-format — skip them silently (after the stamp miss).
-                    if (!ref.kotlin && isUnnamedClass(originalBytes)) {
-                        clean++;
+                    if (ref.kind == Kind.JAVA && isUnnamedClass(originalBytes)) {
                         emitFile(out, ref.file, "skipped", null);
                         if (stampKey != null) stampCache.record(stampKey);
                         continue;
                     }
 
-                    // --- OpenRewrite pass (Java only) --------------------------------
-                    Rewrite rewrite = Rewrite.UNCHANGED;
-                    if (!ref.kotlin && rewriteRecipe != null) {
-                        rewrite = applyRewrite(rewriteRecipe, ref.file, spec.apply, spec.compileClasspath);
+                    boolean shortened = false;
+                    if (index != null) {
+                        String src = new String(originalBytes, StandardCharsets.UTF_8);
+                        FqcnShortener.Result r = FqcnShortener.shorten(src, index, syntax(ref.kind));
+                        if (r.changed() && spec.apply) {
+                            Files.writeString(ref.file.toPath(), r.source(), StandardCharsets.UTF_8);
+                            shortened = true;
+                        } else if (r.changed()) {
+                            shortened = true;
+                        }
                     }
 
-                    // --- Spotless pass -----------------------------------------------
                     DirtyState state = DirtyState.of(fmt, ref.file);
                     boolean spotlessChanged = !state.isClean() && !state.didNotConverge();
 
                     if (state.didNotConverge()) {
                         errors++;
                         emitFile(out, ref.file, "error", "formatter did not converge");
-                    } else if (rewrite == Rewrite.CHANGED || spotlessChanged) {
-                        // `changed` outranks `unparseable`: --check exits non-zero on drift, and a
-                        // file that is BOTH unformatted and unparseable is still unformatted.
-                        // Demoting it would be a fresh way to pass a check that should fail. The
-                        // stamp below carries the unparseability forward, so the next run — after
-                        // an apply has settled the formatting — reports it.
+                    } else if (shortened || spotlessChanged) {
                         changed++;
                         if (spec.apply && spotlessChanged) state.writeCanonicalTo(ref.file);
                         emitFile(out, ref.file, "changed", null);
-                        // In apply mode: stamp the newly formatted content so next run
-                        // skips it. (In check mode the file wasn't written, so no stamp.)
                         if (spec.apply && stampCache != null) {
                             byte[] finalBytes = Files.readAllBytes(ref.file.toPath());
-                            String finalKey = stampCache.keyFor(finalBytes, outcomeOf(rewrite));
+                            String finalKey = stampCache.keyFor(finalBytes);
                             if (finalKey != null) stampCache.record(finalKey);
                         }
-                    } else if (rewrite == Rewrite.UNPARSEABLE) {
-                        // Spotless-clean but never rewritten. Reporting this as `clean` is the bug
-                        // this status exists to end.
-                        emitFile(out, ref.file, "unparseable", UNPARSEABLE_MSG);
-                        if (unparseableKey != null) stampCache.record(unparseableKey);
                     } else {
-                        // File is already clean — stamp current content to skip next time.
-                        clean++;
                         emitFile(out, ref.file, "clean", null);
                         if (stampKey != null) stampCache.record(stampKey);
                     }
@@ -218,125 +157,32 @@ public final class CodeFormatter implements Plugin {
         } finally {
             if (javaFmt != null) javaFmt.close();
             if (kotlinFmt != null) kotlinFmt.close();
+            if (groovyFmt != null) groovyFmt.close();
+            if (scalaFmt != null) scalaFmt.close();
         }
 
-        // In --check mode, an unformatted (changed) file is a failure; errors always are. The engine
-        // recomputes the changed/clean/error tallies from the per-file events, so `done` carries only exit.
-        //
-        // `unparseable` deliberately does NOT fail --check. It is a defect in OpenRewrite's Javadoc
-        // printer, not in the source under the cursor: no edit a contributor can make to the file
-        // clears it, so failing would be a red build with no fix. Silence was the bug; the per-file
-        // event and the summary count are the answer to it. Whether a *growing* count should fail
-        // is a per-project ratchet, and jk's own tree already has one — `checkNoFqcn` rejects any
-        // unlisted file carrying an FQCN, so a newly unparseable file that costs a shortening
-        // surfaces there, as a reviewable baseline diff.
         int exit = errors > 0 || (!spec.apply && changed > 0) ? 1 : 0;
         return exit;
     }
 
-    // -------------------------------------------------------------------------
-    // OpenRewrite helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Assemble the composite OpenRewrite recipe from flags + optional YAML config. Flag-driven
-     * built-ins come first; the config file layers additional recipes on top. Returns a single Recipe
-     * that represents all active transformations, or {@code null} if nothing is active.
-     */
-    private static Recipe buildRecipe(Spec spec) throws IOException {
-        List<Recipe> recipes = new ArrayList<>();
-        if (spec.optimizeImports) recipes.add(new ShortenFullyQualifiedTypeReferences());
-
-        if (spec.rewriteConfigFile != null) {
-            try (InputStream is = new FileInputStream(spec.rewriteConfigFile)) {
-                Environment env = Environment.builder()
-                        .load(new YamlResourceLoader(is, spec.rewriteConfigFile.toURI(), new Properties()))
-                        .build();
-                env.listRecipes().forEach(d -> recipes.add(env.activateRecipes(d.getName())));
-            }
-        }
-        if (recipes.isEmpty()) return null;
-        return recipes.size() == 1 ? recipes.get(0) : new CompositeRecipe(recipes);
+    private static Formatter formatterFor(
+            Kind kind, Formatter javaFmt, Formatter kotlinFmt, Formatter groovyFmt, Formatter scalaFmt) {
+        return switch (kind) {
+            case JAVA -> javaFmt;
+            case KOTLIN -> kotlinFmt;
+            case GROOVY -> groovyFmt;
+            case SCALA -> scalaFmt;
+        };
     }
 
-    /** The stamp kind that records {@code rewrite}: everything except a skipped pass is settled clean. */
-    private static FormatStampCache.Outcome outcomeOf(Rewrite rewrite) {
-        return rewrite == Rewrite.UNPARSEABLE ? FormatStampCache.Outcome.UNPARSEABLE : FormatStampCache.Outcome.CLEAN;
+    private static FqcnShortener.Syntax syntax(Kind kind) {
+        return switch (kind) {
+            case JAVA -> FqcnShortener.Syntax.JAVA;
+            case KOTLIN -> FqcnShortener.Syntax.KOTLIN;
+            case GROOVY -> FqcnShortener.Syntax.GROOVY;
+            case SCALA -> FqcnShortener.Syntax.SCALA;
+        };
     }
-
-    /**
-     * Import layout with the star-collapse thresholds effectively disabled. OpenRewrite's default
-     * layout folds a package to {@code .*} at five imports, so the FQCN-shorten pass silently
-     * rewrote explicit imports into wildcards once it pushed a package over the threshold
-     *. jk's style is single-type imports, always.
-     */
-    private static final List<NamedStyles> NO_STAR_IMPORTS = List.of(new NamedStyles(
-            org.openrewrite.Tree.randomId(),
-            "cc.jumpkick.format.NoStarImports",
-            "jk import layout",
-            "Never collapse imports to wildcards",
-            Set.of(),
-            List.of(ImportLayoutStyle.builder()
-                    .classCountToUseStarImport(Integer.MAX_VALUE)
-                    .nameCountToUseStarImport(Integer.MAX_VALUE)
-                    .importAllOthers()
-                    .blankLine()
-                    .importStaticAllOthers()
-                    .build())));
-
-    /**
-     * Run the recipe against a single Java file. In apply mode the file is written back if the
-     * recipe produced changes.
-     *
-     * <p>Package-private: CodeFormatterRewriteTest drives it directly, so the classpath's effect on
-     * shortening is asserted without resolving the Spotless formatter jars.
-     */
-    static Rewrite applyRewrite(Recipe recipe, File file, boolean apply, List<Path> classpath) throws IOException {
-        ExecutionContext ctx = new InMemoryExecutionContext(e -> {});
-        List<SourceFile> parsed;
-        try {
-            JavaParser.Builder<?, ?> parser = JavaParser.fromJavaVersion()
-                    .logCompilationWarningsAndErrors(false)
-                    .styles(NO_STAR_IMPORTS);
-            // Type attribution is the whole feature: ShortenFullyQualifiedTypeReferences rewrites a
-            // field access only when it resolves to a top-level class, so with no classpath every
-            // name outside java.* stays fully qualified and the pass reports success having done
-            // nothing. Left unset (not set empty) when the host sent none, so javac keeps its own
-            // default rather than being told the classpath is empty.
-            if (!classpath.isEmpty()) parser = parser.classpath(classpath);
-            parsed = parser.build()
-                    .parse(List.of(file.toPath()), file.toPath().getParent(), ctx)
-                    .toList();
-        } catch (Exception e) {
-            // The parser threw outright (unnamed class, I/O, …). Same visible outcome as the
-            // in-band ParseError below: the rewrite pass did not run on this file.
-            return Rewrite.UNPARSEABLE;
-        }
-        // OpenRewrite reports a file it could not parse *in band* — a ParseError is itself a
-        // SourceFile — so the list is non-empty, the recipe finds nothing to visit, and the
-        // changeset comes back empty. Reading that emptiness as "nothing to shorten" is exactly
-        // how a skipped pass came to be reported as an already-clean file.
-        if (parsed.isEmpty() || parsed.stream().anyMatch(sf -> sf instanceof ParseError)) {
-            return Rewrite.UNPARSEABLE;
-        }
-
-        RecipeRun run = recipe.run(new InMemoryLargeSourceSet(parsed), ctx);
-        List<Result> results = run.getChangeset().getAllResults();
-        if (results.isEmpty()) return Rewrite.UNCHANGED;
-
-        if (apply) {
-            for (Result result : results) {
-                if (result.getAfter() != null) {
-                    Files.writeString(file.toPath(), result.getAfter().printAll(), StandardCharsets.UTF_8);
-                }
-            }
-        }
-        return Rewrite.CHANGED;
-    }
-
-    // -------------------------------------------------------------------------
-    // Spotless helpers
-    // -------------------------------------------------------------------------
 
     private static void emitFile(ProtocolWriter out, File file, String status, String msg) {
         out.emit(PluginReply.file(file.getAbsolutePath(), status, msg));
@@ -351,8 +197,6 @@ public final class CodeFormatter implements Plugin {
         Provisioner styleProv = provisioner(spec.javaJars);
         var steps = new ArrayList<FormatterStep>();
         if (spec.importOrder) {
-            // Empty groups = Spotless default: static imports, then everything else
-            // (alphabetical within each block, blank line between).
             steps.add(ImportOrderStep.forJava().createFrom());
         }
         if (spec.removeUnusedImports) {
@@ -363,11 +207,34 @@ public final class CodeFormatter implements Plugin {
         return List.copyOf(steps);
     }
 
-    /**
-     * The style step: {@code palantir} → palantir-java-format (PALANTIR); {@code google}/{@code
-     * aosp} → google-java-format (GOOGLE/AOSP). The version is whatever jk resolved and put in the
-     * spec.
-     */
+    static List<FormatterStep> groovySteps() {
+        return List.of(RemoveSemicolonsStep.create());
+    }
+
+    static List<FormatterStep> scalaSteps(Spec spec) {
+        File config = scalaConfig(spec);
+        return List.of(ScalaFmtStep.create(spec.scalaVersion, provisioner(spec.scalaJars), config));
+    }
+
+    /** Palantir-aligned defaults: 4-space indent, 120 columns, Scala 3 dialect. */
+    private static File scalaConfig(Spec spec) {
+        Path dir = spec.cacheDir;
+        if (dir == null) return null;
+        try {
+            Files.createDirectories(dir);
+            Path conf = dir.resolve("jk-scalafmt.conf");
+            Files.writeString(conf, """
+                    version = "%s"
+                    runner.dialect = scala3
+                    maxColumn = 120
+                    indent.main = 4
+                    """.formatted(spec.scalaVersion), StandardCharsets.UTF_8);
+            return conf.toFile();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     private static FormatterStep styleStep(Spec spec, Provisioner prov) {
         if ("palantir".equalsIgnoreCase(spec.javaStyle)) {
             return PalantirJavaFormatStep.create(spec.javaVersion, "PALANTIR", /* formatJavadoc */ false, prov);
@@ -375,7 +242,6 @@ public final class CodeFormatter implements Plugin {
         return GoogleJavaFormatStep.create(spec.javaVersion, spec.javaStyle.toUpperCase(Locale.ROOT), prov);
     }
 
-    /** A classpath Provisioner: hands Spotless the pre-resolved jars jk passed in. */
     private static Provisioner provisioner(Set<File> jars) {
         return (withTransitives, coords) -> jars;
     }
@@ -395,57 +261,47 @@ public final class CodeFormatter implements Plugin {
         return opts;
     }
 
-    // Matches any top-level type declaration (class/interface/enum/record/@interface).
     private static final Pattern TYPE_DECL =
             Pattern.compile("\\b(class|interface|enum|record)\\s+\\w|@interface\\s+\\w");
 
     /** True if the source has no top-level type declaration (Java 21+ unnamed class). */
     static boolean isUnnamedClass(byte[] bytes) {
         String src = new String(bytes, StandardCharsets.UTF_8);
-        // Strip line and block comments before checking for type declarations.
         String stripped = src.replaceAll("//[^\n]*", "").replaceAll("(?s)/\\*.*?\\*/", " ");
         return !TYPE_DECL.matcher(stripped).find();
     }
 
-    private record FileRef(boolean kotlin, File file) {}
+    enum Kind {
+        JAVA,
+        KOTLIN,
+        GROOVY,
+        SCALA
+    }
 
-    /** Parsed spec: modes, per-language style/version/jars, rewrite flags, and the file list. */
+    private record FileRef(Kind kind, File file) {}
+
     static final class Spec {
         boolean apply = true;
         String javaStyle = "palantir";
         String javaVersion = PalantirJavaFormatStep.defaultVersion();
         Set<File> javaJars = new LinkedHashSet<>();
-        /**
-         * Classpath for {@link RemoveUnusedImportsStep} (google-java-format). Empty means reuse
-         * {@link #javaJars} (already GJF when style is google/aosp).
-         */
         Set<File> removeUnusedJars = new LinkedHashSet<>();
 
         String kotlinStyle = "kotlinlang";
         String kotlinVersion = KtfmtStep.defaultVersion();
         int kotlinMaxWidth = 0;
         Set<File> kotlinJars = new LinkedHashSet<>();
-        // OpenRewrite fields
+        String scalaVersion = ScalaFmtStep.defaultVersion();
+        Set<File> scalaJars = new LinkedHashSet<>();
         boolean optimizeImports = false;
-        // Spotless import hygiene (defaults on — host always sends explicit values)
         boolean importOrder = true;
         boolean removeUnusedImports = true;
-        File rewriteConfigFile = null;
-        /**
-         * The project's compile classpath, as {@code cp} lines with the compile role. OpenRewrite
-         * resolves type names against it; empty means only the JDK's own types can be shortened.
-         */
-        List<Path> compileClasspath = List.of();
-        // Stamp cache: null when the host didn't pass a cache-dir (no caching).
         Path cacheDir = null;
-        /** The host's FormatKey digest — the single owner of what this run is keyed by. */
         String configKey = null;
+        /** All project sources the type index should read (may be a superset of {@link #files}). */
+        List<Path> indexFiles = List.of();
 
         final List<FileRef> files = new ArrayList<>();
-
-        boolean hasRewrite() {
-            return optimizeImports || rewriteConfigFile != null;
-        }
 
         static Spec from(PluginSpec ws) {
             Spec s = new Spec();
@@ -459,15 +315,25 @@ public final class CodeFormatter implements Plugin {
             s.kotlinVersion = c.stringOpt("kotlinVersion").orElse(s.kotlinVersion);
             s.kotlinMaxWidth = (int) c.intValue("kotlinMaxWidth", 0);
             s.kotlinJars = jars(c.stringList("kotlinJars"));
+            s.scalaVersion = c.stringOpt("scalaVersion").orElse(s.scalaVersion);
+            s.scalaJars = jars(c.stringList("scalaJars"));
             s.optimizeImports = c.bool("optimizeImports", false);
-            s.compileClasspath = List.copyOf(ws.compileClasspath());
             s.importOrder = c.bool("importOrder", true);
             s.removeUnusedImports = c.bool("removeUnusedImports", true);
-            c.stringOpt("rewriteConfigFile").ifPresent(p -> s.rewriteConfigFile = new File(p));
             c.stringOpt("cacheDir").ifPresent(p -> s.cacheDir = Path.of(p));
             c.stringOpt("configKey").ifPresent(k -> s.configKey = k);
-            for (String f : c.stringList("javaFiles")) s.files.add(new FileRef(false, new File(f)));
-            for (String f : c.stringList("kotlinFiles")) s.files.add(new FileRef(true, new File(f)));
+            List<Path> index = new ArrayList<>();
+            for (String f : c.stringList("indexFiles")) {
+                if (!f.isBlank()) index.add(Path.of(f));
+            }
+            for (String f : c.stringList("javaFiles")) s.files.add(new FileRef(Kind.JAVA, new File(f)));
+            for (String f : c.stringList("kotlinFiles")) s.files.add(new FileRef(Kind.KOTLIN, new File(f)));
+            for (String f : c.stringList("groovyFiles")) s.files.add(new FileRef(Kind.GROOVY, new File(f)));
+            for (String f : c.stringList("scalaFiles")) s.files.add(new FileRef(Kind.SCALA, new File(f)));
+            if (index.isEmpty()) {
+                for (FileRef r : s.files) index.add(r.file.toPath());
+            }
+            s.indexFiles = List.copyOf(index);
             return s;
         }
 
