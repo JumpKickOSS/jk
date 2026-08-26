@@ -228,10 +228,13 @@ val testApksig by configurations.creating {
 }
 dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
 
-// networkTest gets the same wiring: the shipped-template scaffold-and-build tests fork the same
-// plugin workers, and the nightly `networkTest` run builds nothing else first — without the
-// dependsOn the jars are simply absent there and the tier skips its way green.
-listOf("integrationTest", "networkTest").forEach { tier ->
+// networkTest and slowTest get the same wiring: the shipped-template scaffold-and-build tests and
+// the framework e2e suites fork the same plugin workers, and a nightly run of either builds nothing
+// else first — without the dependsOn the jars are simply absent there and the tier skips its way
+// green. slowTest joined the list when JK-1023 moved @Tag("slow") off the gate; AndroidSpikeTest
+// does not skip, it asserts the property is non-blank, so the tier failed on a missing jar rather
+// than quietly covering nothing.
+listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
     tasks.named<Test>(tier) {
         integrationWorkerJars.forEach { (prop, cfg) ->
             dependsOn(cfg)
