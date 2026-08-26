@@ -2,9 +2,6 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -12,20 +9,20 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * What {@code jk format} operates on: the tree walk that collects formattable sources, and the
- * classpath the import-shortening pass resolves against. {@link FormatPlans} is the caller.
+ * What {@code jk format} operates on: the tree walk that collects formattable sources.
+ * {@link FormatPlans} is the caller.
  */
 final class FormatSources {
 
     private FormatSources() {}
 
-    record CollectedSources(List<Path> javaFiles, List<Path> kotlinFiles) {
+    record CollectedSources(
+            List<Path> javaFiles, List<Path> kotlinFiles, List<Path> groovyFiles, List<Path> scalaFiles) {
         int total() {
-            return javaFiles.size() + kotlinFiles.size();
+            return javaFiles.size() + kotlinFiles.size() + groovyFiles.size() + scalaFiles.size();
         }
     }
 
@@ -34,9 +31,11 @@ final class FormatSources {
      * .git/}, …) instead of descending and filtering files afterwards.
      */
     static CollectedSources collectSources(Path root) throws IOException {
-        if (!Files.isDirectory(root)) return new CollectedSources(List.of(), List.of());
+        if (!Files.isDirectory(root)) return new CollectedSources(List.of(), List.of(), List.of(), List.of());
         List<Path> java = new ArrayList<>();
         List<Path> kotlin = new ArrayList<>();
+        List<Path> groovy = new ArrayList<>();
+        List<Path> scala = new ArrayList<>();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -58,6 +57,8 @@ final class FormatSources {
                 String name = file.getFileName().toString();
                 if (name.endsWith(".java")) java.add(file);
                 else if (name.endsWith(".kt")) kotlin.add(file);
+                else if (name.endsWith(".groovy")) groovy.add(file);
+                else if (name.endsWith(".scala")) scala.add(file);
                 return FileVisitResult.CONTINUE;
             }
 
@@ -68,52 +69,9 @@ final class FormatSources {
         });
         java.sort(null);
         kotlin.sort(null);
-        return new CollectedSources(List.copyOf(java), List.copyOf(kotlin));
-    }
-
-    /**
-     * The classpath {@code optimize-imports} resolves type names against — without one OpenRewrite
-     * attributes every name to {@code Unknown}, so the pass parses every file and shortens nothing.
-     *
-     * <p>It is every workspace module's class output, taken from the lockfile's module list. That
-     * is what makes the project's <em>own</em> types nameable, and a tree's own types are what it
-     * writes fully-qualified: on jk itself, 3,798 of 4,284 fully-qualified references.
-     *
-     * <p><strong>Dependency jars are deliberately not on it,</strong> and this is the one place
-     * that says so. OpenRewrite builds a javac file manager per file, so every classpath entry is
-     * re-opened for every file parsed. Measured over jk's own 2,011 sources: these directories cost
-     * 18s on top of a 108s {@code jk format} and shorten 3,293 references; adding the lockfile's
-     * 150 dependency jars shortens 47 more (1.4%) and costs a further 6 minutes. It also runs the
-     * worker's heap hard enough to have crashed it (a HotSpot SIGSEGV unloading classes under a
-     * full GC) in two of four whole-tree runs. A dependency's type written out in full therefore
-     * stays that way, which is a stated limit in {@code docs/user/format.md}, not an accident.
-     *
-     * <p>Directories that do not exist yet are still listed: javac ignores them, and dropping them
-     * would make the entry list — and therefore {@link FormatKey#digest()} — change every time a
-     * module's tests first compile, re-formatting the tree for nothing. A module that has never
-     * been built simply contributes no types, and its callers keep their fully-qualified names
-     * until it has.
-     *
-     * <p>No lockfile means no classpath: {@code jk format} does not resolve or fetch anything, and
-     * shortening degrades to the JDK types javac supplies on its own.
-     */
-    static List<Path> compileClasspath(Path projectDir) {
-        Path lockFile = LockPaths.lockFile(projectDir);
-        if (!Files.isRegularFile(lockFile)) return List.of();
-        Lockfile lock;
-        try {
-            lock = LockfileReader.read(lockFile);
-        } catch (Exception e) {
-            return List.of();
-        }
-        Path workspaceRoot = LockPaths.lockOwnerDir(projectDir);
-        LinkedHashSet<Path> entries = new LinkedHashSet<>();
-        for (Lockfile.ModuleEntry module : lock.modules()) {
-            Path target = BuildLayout.moduleTargetDir(workspaceRoot, workspaceRoot.resolve(module.path()));
-            entries.add(target.resolve("classes").resolve("main"));
-            entries.add(target.resolve("classes").resolve("test"));
-        }
-        return List.copyOf(entries);
+        groovy.sort(null);
+        scala.sort(null);
+        return new CollectedSources(List.copyOf(java), List.copyOf(kotlin), List.copyOf(groovy), List.copyOf(scala));
     }
 
     static boolean notExcluded(Path p) {

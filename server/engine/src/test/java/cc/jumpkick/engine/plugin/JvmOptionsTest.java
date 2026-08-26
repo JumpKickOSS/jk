@@ -219,6 +219,41 @@ class JvmOptionsTest {
         assertThat(JvmOptions.absoluteFlags(plan, serial)).containsExactlyElementsOf(expected);
     }
 
+    /**
+     * A command whose fork is its only worker must not be sized like one of {@code jobs} parallel
+     * builds. The process-wide plan divides both heap and cores by the job cap, which on a 20-core
+     * host handed {@code jk format}'s single worker {@code -Xmx462m} and
+     * {@code ActiveProcessorCount=1} — a serial formatter on nineteen idle cores.
+     */
+    @Test
+    void sole_worker_flags_claim_the_whole_machine() {
+        try {
+            installTuning(PluginTuning.NONE);
+            List<String> flags = JvmOptions.soleWorkerFlags();
+            assertThat(flags)
+                    .as("must override the plan's per-worker share, so these come last on the argv")
+                    .contains("-XX:ActiveProcessorCount="
+                            + Math.max(1, Runtime.getRuntime().availableProcessors()));
+            assertThat(flags).anyMatch(f -> f.startsWith("-Xmx"));
+            assertThat(flags).anyMatch(f -> f.startsWith("-Xms"));
+        } finally {
+            SessionContext.reset();
+        }
+    }
+
+    /** The user's own memory pin is the answer; a sole fork does not get to double it. */
+    @Test
+    void sole_worker_flags_defer_to_an_explicit_heap_pin() {
+        try {
+            installTuning(new PluginTuning(null, null, null, List.of("-Xmx2g")));
+            assertThat(JvmOptions.soleWorkerFlags()).isEmpty();
+            installTuning(new PluginTuning(50.0, null, null, List.of()));
+            assertThat(JvmOptions.soleWorkerFlags()).isEmpty();
+        } finally {
+            SessionContext.reset();
+        }
+    }
+
     @Test
     void auto_heap_disabled_when_user_pins_a_heap_flag() {
         try {

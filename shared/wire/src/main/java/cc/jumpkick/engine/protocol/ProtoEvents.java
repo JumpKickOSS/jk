@@ -811,7 +811,7 @@ public final class ProtoEvents {
      * when files need formatting — a legitimate outcome, not a plan failure, so it rides here
      * rather than failing the plan). {@code total} of 0 means no sources were found. The
      * changed/clean/errors tallies deliberately do not ride this event: the CLI tallies all five
-     * summary categories (including plan-local {@code unparseable}) from the per-file
+     * summary categories from the per-file
      * {@code format-file} stream, and a second wire tally that cannot express the fifth category
      * only invites a reader to trust the number that disagrees with what the CLI prints.
      */

@@ -626,8 +626,7 @@ public final class ProtoJobs {
 
     /**
      * Format sources (see {@link EngineProtocol#FORMAT_REQUEST}). Style names and hygiene toggles arrive already
-     * resolved (flags + env + the {@code [format]} block are client-side concerns); {@code
-     * rewriteConfig} may be {@code null}.
+     * resolved (flags + env + the {@code [format]} block are client-side concerns).
      */
     public static String formatRequest(
             String dir,
@@ -638,7 +637,6 @@ public final class ProtoJobs {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
-            String rewriteConfig,
             boolean offline,
             boolean verbose) {
         return "{\"type\":\""
@@ -659,8 +657,6 @@ public final class ProtoJobs {
                 + importOrder
                 + ",\"removeUnusedImports\":"
                 + removeUnusedImports
-                + ",\"rewriteConfig\":"
-                + Jsonl.quote(rewriteConfig)
                 + ",\"offline\":"
                 + offline
                 + ",\"verbose\":"

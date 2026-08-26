@@ -229,6 +229,27 @@ public final class JvmOptions {
     }
 
     /**
+     * Heap and CPU for a fork that is the <em>only</em> worker its command runs — append after
+     * {@link #batchFlags}, whose values these deliberately override (last flag wins on HotSpot).
+     * The process-wide plan is sized for {@code jobs} concurrent JVMs, so a command that forks one
+     * worker otherwise gets a twentieth of a twenty-core host. Empty when the user pinned memory.
+     */
+    public static List<String> soleWorkerFlags() {
+        PluginTuning s = tuning();
+        if (!autoHeapEnabled(s)) return List.of();
+        HeapPlan.Plan plan = HeapPlan.compute(MemoryProbe.probe().availableBytes(), 1);
+        List<String> out = new ArrayList<>();
+        out.add("-Xms" + HeapPlan.mib(plan.xmsBytes()) + "m");
+        out.add("-Xmx" + HeapPlan.mib(plan.xmxBytes()) + "m");
+        String gc = (s.gc() != null ? s.gc() : BATCH_DEFAULT_GC).toLowerCase(Locale.ROOT);
+        if (!gc.equals("none")) {
+            out.add("-XX:SoftMaxHeapSize=" + HeapPlan.mib(plan.softMaxBytes()) + "m");
+        }
+        out.add("-XX:ActiveProcessorCount=" + Math.max(1, Runtime.getRuntime().availableProcessors()));
+        return out;
+    }
+
+    /**
      * Test-only: undo {@link #planAndApply} — clears the shared heap plan and reopens the {@link
      * PluginSlots} gate. Production code never calls this (a real process's plan is meant to live for
      * the process's whole lifetime); it exists because a test that spins up a real {@code

@@ -354,7 +354,7 @@ class EngineProtocolTest {
     @Test
     void format_request_round_trips_the_resolved_styles() {
         String json = ProtoJobs.formatRequest(
-                "/work", "/cache", true, "palantir", "kotlinlang", false, true, false, "/rw.yml", true, false);
+                "/work", "/cache", true, "palantir", "kotlinlang", false, true, false, true, false);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.FORMAT_REQUEST);
         assertThat(Jsonl.bool(json, "check", false)).isTrue();
         assertThat(Jsonl.str(json, "javaStyle")).isEqualTo("palantir");
@@ -362,7 +362,6 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "optimizeImports", true)).isFalse();
         assertThat(Jsonl.bool(json, "importOrder", false)).isTrue();
         assertThat(Jsonl.bool(json, "removeUnusedImports", true)).isFalse();
-        assertThat(Jsonl.str(json, "rewriteConfig")).isEqualTo("/rw.yml");
         assertThat(Jsonl.bool(json, "offline", false)).isTrue();
     }
 
@@ -379,9 +378,8 @@ class EngineProtocolTest {
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.intValue(finish, "formatTotal", -1)).isEqualTo(12);
         assertThat(Jsonl.intValue(finish, "formatWorkerExit", -1)).isEqualTo(1);
-        // Only the two live fields ride: the CLI tallies changed/clean/errors (and the plan-local
-        // fifth category, unparseable) from the per-file format-file stream, so a wire tally here
-        // would be a second, poorer copy of the same fact.
+        // Only the two live fields ride: the CLI tallies changed/clean/errors from the
+        // per-file format-file stream, so a wire tally here would be a second, poorer copy.
         assertThat(finish)
                 .doesNotContain("formatChanged")
                 .doesNotContain("formatClean")

@@ -111,6 +111,8 @@ class WorkerArgvOwnerTest {
                 List.of(tmp.resolve("palantir.jar")),
                 List.of(),
                 List.of(tmp.resolve("ktfmt.jar")),
+                List.of(),
+                false,
                 true,
                 true,
                 true);

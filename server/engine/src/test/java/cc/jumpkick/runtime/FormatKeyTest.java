@@ -53,8 +53,8 @@ class FormatKeyTest {
         String previous = System.getProperty(PluginJar.FORMATTER.jarProperty());
         System.setProperty(PluginJar.FORMATTER.jarProperty(), worker.toString());
         try {
-            String planned = FormatPlans.configKey(
-                    tmp.resolve("cache"), "palantir", "kotlinlang", true, true, true, null, List.of());
+            String planned =
+                    FormatPlans.configKey(tmp.resolve("cache"), "palantir", "kotlinlang", true, true, true, List.of());
 
             assertThat(planned)
                     .isEqualTo(new FormatKey(
@@ -67,7 +67,7 @@ class FormatKeyTest {
                                     true,
                                     true,
                                     FormatPlans.GOOGLE_VERSION,
-                                    null,
+                                    FormatPlans.SCALAFMT_VERSION,
                                     List.of(),
                                     worker)
                             .digest());
@@ -83,7 +83,7 @@ class FormatKeyTest {
                                     true,
                                     true,
                                     FormatPlans.GOOGLE_VERSION,
-                                    null,
+                                    FormatPlans.SCALAFMT_VERSION,
                                     List.of(),
                                     worker)
                             .digest());
@@ -99,7 +99,23 @@ class FormatKeyTest {
                                     true,
                                     true,
                                     FormatPlans.PALANTIR_VERSION,
-                                    null,
+                                    FormatPlans.SCALAFMT_VERSION,
+                                    List.of(),
+                                    worker)
+                            .digest());
+            assertThat(planned)
+                    .as("bumping scalafmt must re-format, not restamp everything clean")
+                    .isNotEqualTo(new FormatKey(
+                                    "palantir",
+                                    FormatPlans.PALANTIR_VERSION,
+                                    "kotlinlang",
+                                    FormatPlans.KTFMT_VERSION,
+                                    FormatPlans.KOTLIN_MAX_WIDTH,
+                                    true,
+                                    true,
+                                    true,
+                                    FormatPlans.GOOGLE_VERSION,
+                                    "9.9.9",
                                     List.of(),
                                     worker)
                             .digest());
@@ -127,17 +143,54 @@ class FormatKeyTest {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
                 false,
                 true,
                 true,
-                null,
-                List.of(),
+                List.of(source),
                 tmp.resolve("cache"),
                 "cafebabe",
                 tmp.resolve("out.spec"));
 
         // Read it back through the same accessor the worker's Spec.from uses.
         assertThat(PluginSpec.read(spec).config().stringOpt("configKey")).contains("cafebabe");
+    }
+
+    @Test
+    void the_spec_lists_groovy_and_scala_files(@TempDir Path tmp) throws Exception {
+        Path groovy = tmp.resolve("A.groovy");
+        Path scala = tmp.resolve("A.scala");
+        Files.writeString(groovy, "class A {}");
+        Files.writeString(scala, "class A");
+        Path spec = FormatPlans.writeSpec(
+                false,
+                "palantir",
+                "kotlinlang",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(groovy),
+                List.of(scala),
+                List.of(tmp.resolve("scalafmt.jar")),
+                true,
+                true,
+                true,
+                List.of(groovy, scala),
+                tmp.resolve("cache"),
+                "cafebabe",
+                tmp.resolve("gs.spec"));
+
+        var cfg = PluginSpec.read(spec).config();
+        assertThat(cfg.stringList("groovyFiles"))
+                .containsExactly(groovy.toAbsolutePath().toString());
+        assertThat(cfg.stringList("scalaFiles"))
+                .containsExactly(scala.toAbsolutePath().toString());
+        assertThat(cfg.stringOpt("scalaVersion")).contains(FormatPlans.SCALAFMT_VERSION);
+        assertThat(cfg.bool("optimizeImports", false)).isTrue();
     }
 
     private static String key(int kotlinMaxWidth, boolean removeUnusedImports, String gjfVersion) {
@@ -151,7 +204,7 @@ class FormatKeyTest {
                         true,
                         removeUnusedImports,
                         gjfVersion,
-                        null,
+                        FormatPlans.SCALAFMT_VERSION,
                         List.of(),
                         null)
                 .digest();

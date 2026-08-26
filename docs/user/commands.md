@@ -18,7 +18,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk run` | Run the app | [Run](run.md) |
 | `jk watch` / `jk dev` | Rebuild on change | [Run](run.md) |
 | `jk jshell` | REPL on compile classpath | [Run](run.md) |
-| `jk format` | Format Java/Kotlin | [Format](format.md) |
+| `jk format` | Format Java, Kotlin, Groovy, Scala | [Format](format.md) |
 | `jk explain` | Forecast rebuilds / ETA | [Explain](explain.md) |
 | `jk tasks` / `jk show` / `jk inspect` | Task catalog | [Explain](explain.md) |
 | `jk assemble` | Fat / minified jar | [Packaging](packaging.md) |

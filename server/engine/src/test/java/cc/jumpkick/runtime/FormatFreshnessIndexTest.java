@@ -64,7 +64,7 @@ class FormatFreshnessIndexTest {
                         true,
                         true,
                         "1.28.0",
-                        null,
+                        "3.8.1",
                         List.of(),
                         null)
                 .digest();
@@ -132,7 +132,7 @@ class FormatFreshnessIndexTest {
                         true,
                         true,
                         "1.28.0",
-                        null,
+                        "3.8.1",
                         List.of(),
                         workerJar)
                 .digest();

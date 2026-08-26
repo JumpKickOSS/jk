@@ -32,6 +32,8 @@ class FormatAotTrainerTest {
                 List.of(palantir),
                 List.of(),
                 List.of(ktfmt),
+                List.of(),
+                false,
                 true,
                 true,
                 true);

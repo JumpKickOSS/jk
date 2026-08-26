@@ -76,7 +76,6 @@ final class EngineHosted {
                         req.optimizeImports(),
                         req.importOrder(),
                         req.removeUnusedImports(),
-                        req.rewriteConfig() != null ? req.rewriteConfig().toString() : null,
                         req.offline(),
                         req.verbose()),
                 "format",
@@ -87,7 +86,7 @@ final class EngineHosted {
                         Jsonl.str(line, "message"),
                         Jsonl.intValue(line, "index", 0),
                         Jsonl.intValue(line, "total", 0)));
-        // Per-file tallies (changed/clean/errors/unparseable) do not ride the wire: the CLI counts
+        // Per-file tallies (changed/clean/errors) do not ride the wire: the CLI counts
         // them from the per-file format-file stream above.
         return new EngineRequests.FormatOutcome(
                 finish.result(),

@@ -32,13 +32,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * {@code jk format} — format Java/Kotlin sources (Spotless worker, engine-hosted). Defaults:
- * Palantir + ktfmt KOTLINLANG (4-space / 120-col); Java also runs importOrder + removeUnusedImports
- * before the style step (each toggleable); {@code --check} exits non-zero if unformatted.
+ * {@code jk format} — format Java, Kotlin, Groovy, and Scala (Spotless worker, engine-hosted).
+ * Defaults: Palantir + ktfmt KOTLINLANG (4-space / 120-col); Java also runs importOrder +
+ * removeUnusedImports before the style step (each toggleable); {@code --check} exits non-zero if
+ * unformatted.
  */
 public final class FormatCommand implements CliCommand {
 
@@ -49,7 +49,7 @@ public final class FormatCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Format Java/Kotlin source code";
+        return "Format Java, Kotlin, Groovy, and Scala source";
     }
 
     @Override
@@ -64,20 +64,13 @@ public final class FormatCommand implements CliCommand {
                 Opt.flag("Sort imports (default on).", "--import-order"),
                 Opt.flag("Skip import sorting.", "--no-import-order"),
                 Opt.flag("Remove unused imports (default on).", "--remove-unused-imports"),
-                Opt.flag("Keep unused imports.", "--no-remove-unused-imports"),
-                Opt.value("<file>", "OpenRewrite YAML config for recipes", "--rewrite-config"));
+                Opt.flag("Keep unused imports.", "--no-remove-unused-imports"));
     }
 
     /**
-     * The per-file status for a file OpenRewrite could not parse: Spotless formatted it, the
-     * import-shortening pass never ran on it, and it is neither clean nor an error.
-     */
-    private static final String UNPARSEABLE = "unparseable";
-
-    /**
      * What {@code jk format} returns when the <em>plan</em> failed — the format did not run to
-     * completion. Since JK-2474 that includes a worker that died mid-run, which the engine now
-     * catches by reconciling its per-file count against the file total.
+     * completion. A worker that died mid-run is a plan failure: the engine reconciles its per-file
+     * count against the file total.
      *
      * <p>Deliberately not {@code 1}: {@code 1} is {@code --check}'s drift code, and a script that
      * cannot tell "your files need formatting" from "the formatter died" is exactly the conflation
@@ -113,11 +106,6 @@ public final class FormatCommand implements CliCommand {
         Boolean cliImportOrder = triFlag(in, "import-order", "no-import-order", "JK_FORMAT_IMPORT_ORDER");
         Boolean cliRemoveUnused =
                 triFlag(in, "remove-unused-imports", "no-remove-unused-imports", "JK_FORMAT_REMOVE_UNUSED_IMPORTS");
-        // --rewrite-config / env var
-        Path rewriteConfig = in.value("rewrite-config")
-                .or(() -> Optional.ofNullable(System.getenv("JK_FORMAT_REWRITE_CONFIG")))
-                .map(Path::of)
-                .orElse(null);
 
         FormatStyles.Resolved styles;
         try {
@@ -139,10 +127,7 @@ public final class FormatCommand implements CliCommand {
             CommandWedge.printFail("Format", e.getMessage());
             return Exit.USAGE;
         }
-        // Supplying --rewrite-config implicitly enables optimize-imports when neither
-        // flag nor env var said otherwise (so the OpenRewrite plan actually runs).
-        boolean optimizeImports = styles.optimizeImports()
-                || (rewriteConfig != null && cliOptimize == null && envBool("JK_FORMAT_OPTIMIZE_IMPORTS") == null);
+        boolean optimizeImports = styles.optimizeImports();
 
         Path cache = JkDirs.cache();
         boolean animate =
@@ -150,7 +135,7 @@ public final class FormatCommand implements CliCommand {
 
         if (!animate) {
             // Plain path: --check, piped output, CI, --no-progress.
-            int[] counts = {0, 0, 0, 0}; // changed, clean, errors, unparseable
+            int[] counts = {0, 0, 0}; // changed, clean, errors
             HostedEvents.FileObserver observer = (path, status, msg, index, total) -> {
                 if ("changed".equals(status)) {
                     counts[0]++;
@@ -177,12 +162,6 @@ public final class FormatCommand implements CliCommand {
                 } else if ("error".equals(status)) {
                     counts[2]++;
                     CliOutput.err("  error  " + path + ": " + msg);
-                } else if (UNPARSEABLE.equals(status)) {
-                    // Not a failure and not an accomplishment: OpenRewrite could not parse the file,
-                    // so it was Spotless-formatted but never import-shortened. It used to be counted
-                    // as clean and printed as nothing at all, which is why nobody knew.
-                    counts[3]++;
-                    if (!global.outputIsJson()) CliOutput.out(unparseableLine(path, projectDir));
                 } else {
                     counts[1]++;
                 }
@@ -197,7 +176,6 @@ public final class FormatCommand implements CliCommand {
                         optimizeImports,
                         styles.importOrder(),
                         styles.removeUnusedImports(),
-                        rewriteConfig,
                         global,
                         observer,
                         chatterListener(global, line -> CliOutput.err("  [formatter] " + line)));
@@ -217,7 +195,7 @@ public final class FormatCommand implements CliCommand {
             }
             if (!global.outputIsJson()) {
                 String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
-                Summary summary = summarize(check, counts[0], counts[1], counts[2], counts[3], took);
+                Summary summary = summarize(check, counts[0], counts[1], counts[2], took);
                 if (summary.failed()) {
                     CommandWedge.printFail("Format", summary.body());
                 } else {
@@ -234,7 +212,7 @@ public final class FormatCommand implements CliCommand {
             cm.addTaskLabeled("", "fmt", subtitle);
             cm.stepRunning("", "fmt", "Formatting files…");
 
-            int[] counts = {0, 0, 0, 0}; // changed, clean, errors, unparseable
+            int[] counts = {0, 0, 0}; // changed, clean, errors
             HostedEvents.FileObserver observer = (path, status, msg, index, total) -> {
                 // Advance bar on every file so the scan is visually smooth.
                 cm.progress(index, total);
@@ -244,9 +222,6 @@ public final class FormatCommand implements CliCommand {
                 } else if ("error".equals(status)) {
                     counts[2]++;
                     cm.writeAbove(Theme.colorize("  error", Theme.active().error()) + "  " + path + ": " + msg);
-                } else if (UNPARSEABLE.equals(status)) {
-                    counts[3]++;
-                    cm.writeAbove(unparseableLine(path, projectDir));
                 } else {
                     counts[1]++;
                 }
@@ -261,7 +236,6 @@ public final class FormatCommand implements CliCommand {
                         optimizeImports,
                         styles.importOrder(),
                         styles.removeUnusedImports(),
-                        rewriteConfig,
                         global,
                         observer,
                         chatterListener(global, line -> cm.writeAbove("  [formatter] " + line)));
@@ -290,10 +264,7 @@ public final class FormatCommand implements CliCommand {
             } else if (counts[0] == 0) {
                 // Nothing needed formatting.
                 cm.finishBuildPlanSuccess(
-                        Theme.colorize("Already formatted", Theme.active().success())
-                                + unparseableTail(counts[3])
-                                + " "
-                                + took);
+                        Theme.colorize("Already formatted", Theme.active().success()) + " " + took);
             } else {
                 // N formatted, M already clean.
                 String formatted = Theme.colorize("Formatted", Theme.active().success())
@@ -302,7 +273,7 @@ public final class FormatCommand implements CliCommand {
                         + " file"
                         + (counts[0] == 1 ? "" : "s");
                 String clean = counts[1] > 0 ? ", " + counts[1] + " already clean" : "";
-                cm.finishBuildPlanSuccess(formatted + clean + unparseableTail(counts[3]) + " " + took);
+                cm.finishBuildPlanSuccess(formatted + clean + " " + took);
             }
             return o.workerExit();
         }
@@ -321,7 +292,6 @@ public final class FormatCommand implements CliCommand {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
-            Path rewriteConfig,
             GlobalOptions global,
             HostedEvents.FileObserver observer,
             BuildPlanListener listener)
@@ -339,7 +309,6 @@ public final class FormatCommand implements CliCommand {
                         optimizeImports,
                         importOrder,
                         removeUnusedImports,
-                        rewriteConfig,
                         session.offline(),
                         global.verbose),
                 steps -> listener,
@@ -377,50 +346,24 @@ public final class FormatCommand implements CliCommand {
      * failure and names the command that fixes it — a green wedge there sends a contributor who
      * ran it locally to a red CI job with no idea why. Without {@code --check},
      * reformatting files is work done, not a problem.
-     *
-     * <p>{@code unparseable} rides along in every branch and changes none of their verdicts. It is
-     * a count of files OpenRewrite could not parse, so Spotless formatted them but the
-     * import-shortening pass never ran; no edit to the file clears it, so failing the command on it
-     * would be a red build with no fix. It is in the wedge because the alternative — what this
-     * command did until JK-2477 — was to count them as already clean and say nothing.
      */
-    static Summary summarize(boolean check, int changed, int clean, int errors, int unparseable, String took) {
-        String skipped = unparseableTail(unparseable);
+    static Summary summarize(boolean check, int changed, int clean, int errors, String took) {
         if (errors > 0) {
-            return new Summary(errors + " error" + (errors == 1 ? "" : "s") + skipped + " " + took, true);
+            return new Summary(errors + " error" + (errors == 1 ? "" : "s") + " " + took, true);
         }
         if (changed == 0) {
-            return new Summary("Already formatted" + skipped + " " + took, false);
+            return new Summary("Already formatted " + took, false);
         }
         if (check) {
             return new Summary(
                     changed + " file" + (changed == 1 ? "" : "s") + " unformatted, " + clean + " already clean"
-                            + skipped + " — run `jk format` " + took,
+                            + " — run `jk format` " + took,
                     true);
         }
         return new Summary(
                 "Formatted " + changed + " file" + (changed == 1 ? "" : "s")
-                        + (clean > 0 ? ", " + clean + " already clean" : "") + skipped + " " + took,
+                        + (clean > 0 ? ", " + clean + " already clean" : "") + " " + took,
                 false);
-    }
-
-    /** The summary's unparseable clause, or nothing at all when there are none. */
-    static String unparseableTail(int unparseable) {
-        return unparseable == 0 ? "" : ", " + unparseable + " not import-shortened (OpenRewrite cannot parse them)";
-    }
-
-    /**
-     * One {@code unparseable} finding: {@code ! unparseable: path/to/File.java}.
-     *
-     * <p>The shape is load-bearing, not decorative. It is what makes the set derivable rather than
-     * curated — {@code fqcn-baseline.txt}'s {@code ## unreachable-by-the-formatter} section is
-     * regenerated by filtering these lines (see that file's header), so the {@code unparseable: }
-     * marker and the plain repo-relative path after it are the interface.
-     */
-    static String unparseableLine(String absPath, Path projectDir) {
-        return Theme.colorize(Glyphs.cross(), Theme.active().warning())
-                + " unparseable: "
-                + PathDisplay.styled(Path.of(absPath), projectDir);
     }
 
     /** Format a single completion line: {@code ✓ path/to/File.java}. */

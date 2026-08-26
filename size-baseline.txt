@@ -358,7 +358,7 @@
 # `EngineProtocol.BUILD_CANCEL` and the whole SIGINT design in `TerminalSignals` names it. That is
 # a live receiver with no in-tree sender, which is a question about the cancel protocol and not a
 # line to reclaim, so it was left alone deliberately.
-1036  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
+1032  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
 
 # Named debt, found BY the change that extended checkFileSizeCaps over test sources (JK-2444). The
 # dashboard's event-folding tests are 97 `node --test` cases against one module graph: they open by

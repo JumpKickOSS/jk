@@ -4,8 +4,6 @@ description = "JumpKick's source code formatter plugin"
 [dependencies]
 jk-plugin-sdk.workspace = true
 spotless-lib = "latest"
-openrewrite-java = "latest"
-openrewrite-java21 = "latest"
 slf4j-api = "latest"
 slf4j-nop = "latest"
 
