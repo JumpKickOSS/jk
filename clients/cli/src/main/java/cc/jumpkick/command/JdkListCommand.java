@@ -14,8 +14,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.ActiveJavac;
-import cc.jumpkick.jdk.DefaultGraalPolicy;
-import cc.jumpkick.jdk.DefaultJdkPolicy;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
@@ -23,7 +21,6 @@ import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
-import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
@@ -156,16 +153,6 @@ public final class JdkListCommand implements CliCommand {
         }
         if (graalHome == null) {
             graalHome = gd.graalId().flatMap(id -> findHome(registry, id)).orElse(null);
-        }
-        // When inventory pointers are unset, badges follow the same de-facto policies
-        // the shell hook / resolution use.
-        if (defaultHome == null) {
-            defaultHome = DefaultJdkPolicy.choose(installed, JdkLts.OFFLINE_LATEST_LTS)
-                    .map(JdkHit::home)
-                    .orElse(null);
-        }
-        if (graalHome == null) {
-            graalHome = DefaultGraalPolicy.choose(installed).map(JdkHit::home).orElse(null);
         }
         // Catalog (feed / cache) is always consulted so lagging point releases can
         // be marked outdated!. --all additionally surfaces available download rows.

@@ -227,9 +227,11 @@ public final class IdeOps {
 
     /**
      * Resolve a module's stable SDK handle as {@code {stableName, sdkName, languageLevel, javaHome,
-     * version}}. Prefers the module's locked JDK identifier; falls back to the declared {@code
-     * project.jdk} level and the default vendor (Temurin). When the JDK is installed, ensures the
-     * {@link StableJdkPointer} and queues a {@code name|home|version} SDK entry (once per SDK).
+     * version}}. The module's declared {@code project.jdk} level wins; the workspace lock's
+     * {@code [jdk]} pin supplies the level only when the module declares none, and its vendor and
+     * exact version only when it agrees with the level in force. Falls back to level 21 and the
+     * default vendor (Temurin). When the JDK is installed, ensures the {@link StableJdkPointer} and
+     * queues a {@code name|home|version} SDK entry (once per SDK).
      */
     private static String[] sdkRefFor(
             Path moduleDir,
@@ -239,29 +241,35 @@ public final class IdeOps {
             List<String> sdkEntries,
             Set<String> seen)
             throws IOException {
-        int level = module.project().jdkMajor() > 0
+        int declared = module.project().jdkMajor() > 0
                 ? module.project().jdkMajor()
                 : module.project().javaRelease();
+        int level = declared;
         Lockfile.JdkPin lockJdk = readLockJdk(moduleDir);
-        if (lockJdk != null) {
-            Integer m = JdkKeywords.leadingMajor(lockJdk.version());
-            if (m != null) level = m;
-        }
+        Integer pinMajor = lockJdk == null ? null : JdkKeywords.leadingMajor(lockJdk.version());
+        // The lock governing a member is the WORKSPACE lock, one table for every module. It names
+        // the toolchain jk resolved for the build, so it fills in a level the module never declared
+        // and never overrides one it did — otherwise a workspace-wide pin flattens every module to
+        // the same level and per-module levels become unexpressible.
+        if (pinMajor != null && declared <= 0) level = pinMajor;
         if (level <= 0) level = 21;
 
+        // Only a pin that agrees with this module's level describes this module's JDK; a module off
+        // the pinned level resolves its own, or IntelliJ gets the pinned home under the wrong name.
+        boolean pinFits = pinMajor != null && pinMajor == level;
         Optional<JdkHit> hit = Optional.empty();
-        if (lockJdk != null) {
+        if (pinFits) {
             hit = LockPinMatch.choose(registry.listHits(), lockJdk.vendor(), lockJdk.version());
         }
         if (hit.isEmpty()) hit = registry.findHitBySpec(String.valueOf(level));
 
         String vendor;
-        String version = lockJdk == null ? null : lockJdk.version();
+        String version = pinFits ? lockJdk.version() : null;
         if (hit.isPresent()) {
             JdkVendor v = hit.get().vendor();
             vendor = v.jbPrefix().orElse(v.vendor().toLowerCase(Locale.ROOT));
             if (version == null) version = hit.get().version();
-        } else if (lockJdk != null && !lockJdk.vendor().isBlank()) {
+        } else if (pinFits && !lockJdk.vendor().isBlank()) {
             vendor = lockJdk.vendor();
         } else {
             vendor = "temurin";

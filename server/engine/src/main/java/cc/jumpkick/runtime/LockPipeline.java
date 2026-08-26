@@ -269,7 +269,8 @@ public final class LockPipeline {
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
         lock = withToolPins(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
-        lock = ToolchainLockStamp.apply(lock, javaHome, jdkRegistry);
+        lock = ToolchainLockStamp.apply(
+                lock, javaHome, jdkRegistry, pathPrep.project().project().jdkMajor());
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);
             System.err.println("jk: " + ResolveProfile.report());

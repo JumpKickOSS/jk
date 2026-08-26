@@ -20,7 +20,7 @@ class ToolchainLockStampTest {
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry);
+        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, 25);
         assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("temurin", "25.0.4"));
         assertThat(stamped.graal()).isNull();
     }
@@ -32,7 +32,7 @@ class ToolchainLockStampTest {
         fakeJdk(jdks.resolve("graalce-25.0.4"), "25.0.4", "GraalVM Community", "GRAALVM_VERSION=\"25.0.4\"\n");
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), java, registry);
+        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), java, registry, 25);
         assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("temurin", "25.0.4"));
         assertThat(stamped.graal()).isEqualTo(new Lockfile.GraalPin("graalvm-ce", "25.0.4"));
     }
@@ -47,9 +47,32 @@ class ToolchainLockStampTest {
                 "IMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\nGRAALVM_VERSION=\"25.0.4\"\n");
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), graal, registry);
+        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), graal, registry, 25);
         assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("graalvm", "25.0.4"));
         assertThat(stamped.graal()).isEqualTo(new Lockfile.GraalPin("graalvm", "25.0.4"));
+    }
+
+    @Test
+    void no_jdk_table_when_the_selected_home_is_not_the_declared_major(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        // The host has only 25; the project asked for 17. Stamping 25 here is what would let the
+        // pin read as satisfied and leave 17 unprovisioned, so no table is written at all.
+        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, 17);
+        assertThat(stamped.jdk()).isNull();
+    }
+
+    @Test
+    void no_jdk_table_when_the_project_declares_no_jdk(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        // Nothing declared: the ambient JVM is not a pin the project chose.
+        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, 0);
+        assertThat(stamped.jdk()).isNull();
     }
 
     private static Path fakeJdk(Path home, String version, String implementor, String extra) throws IOException {

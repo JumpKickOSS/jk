@@ -178,8 +178,11 @@ class VscodeCommandTest {
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
-                jdk = "temurin-25.0.3"
                 manifests-sha256 = "%s"
+
+                [jdk]
+                vendor  = "temurin"
+                version = "25.0.3"
 
                 [[artifact]]
                 name = "org.example:myprocessor"
