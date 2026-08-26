@@ -24,6 +24,7 @@ public final class JkConfigLoader {
     private static final String ENV_VERBOSE = "JK_VERBOSE";
     private static final String ENV_NO_COLOR = "NO_COLOR";
     private static final String ENV_NO_ANSI = "JK_NO_ANSI";
+    private static final String ENV_FORCE_ANSI = "JK_FORCE_ANSI";
     private static final String ENV_NO_OSC = "JK_NO_OSC";
     private static final String ENV_NOTIFY = "JK_NOTIFY";
     private static final String ENV_BUILD_OUTPUT = "JK_BUILD_OUTPUT";
@@ -61,6 +62,7 @@ public final class JkConfigLoader {
                 "config.directory",
                 "config.force",
                 "config.no-ansi",
+                "config.force-ansi",
                 "config.no-osc",
                 "config.notify",
                 "config.build-output");
@@ -76,6 +78,7 @@ public final class JkConfigLoader {
                         .orElse(null),
                 scanBool(scan, "config.force"),
                 scanBool(scan, "config.no-ansi"),
+                scanBool(scan, "config.force-ansi"),
                 scanBool(scan, "config.no-osc"),
                 JkConfig.NotifyChoice.parse(scan.get("config.notify")).orElse(null),
                 scanBool(scan, "config.build-output"));
@@ -108,6 +111,7 @@ public final class JkConfigLoader {
                 null, // directory isn't env-var-driven
                 envBool(env, ENV_FORCE),
                 envBool(env, ENV_NO_ANSI),
+                envBool(env, ENV_FORCE_ANSI),
                 envBool(env, ENV_NO_OSC),
                 EnvValues.string(env, ENV_NOTIFY)
                         .flatMap(JkConfig.NotifyChoice::parse)

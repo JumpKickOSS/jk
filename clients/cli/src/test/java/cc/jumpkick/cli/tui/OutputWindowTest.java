@@ -221,7 +221,7 @@ class OutputWindowTest {
     @Test
     void plan_opens_peek_when_config_build_output_true() {
         CliOutput.beginCommand(false);
-        var prev = SessionContext.current();
+        var prev = SessionContext.installed();
         try {
             SessionContext.installConfig(JkConfig.empty().withBuildOutput(true));
             var buf = new ByteArrayOutputStream();
@@ -238,7 +238,7 @@ class OutputWindowTest {
     @Test
     void plan_keeps_peek_closed_by_default() {
         CliOutput.beginCommand(false);
-        var prev = SessionContext.current();
+        var prev = SessionContext.installed();
         try {
             SessionContext.installConfig(JkConfig.empty());
             var buf = new ByteArrayOutputStream();

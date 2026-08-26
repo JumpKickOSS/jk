@@ -24,6 +24,9 @@ lombok = "latest"
 # `kind = "tests"` reaches jk-host's test classes — where its `[test] extra-src`
 # fixtures compile. Direct edge only, and never in a main jar.
 jk-host = { workspace = true, kind = "tests" }
+# Same shape for jk-core: its testFixtures hold SessionBoundary, the process-static session
+# boundary this suite is bounded by (JK-1010). Test classpath only, never in a main jar.
+jk-core = { workspace = true, kind = "tests" }
 jk-engine.workspace = true
 assertj-core = "latest"
 junit-jupiter = "latest"

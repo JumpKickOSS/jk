@@ -3,12 +3,9 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.config.JkConfig;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import java.time.Duration;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -67,7 +64,7 @@ class ConsoleSpecTest {
 
     @Test
     void took_plain_prefixes_dash_separator() throws Exception {
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             assertThat(ConsoleSpec.took(Duration.ofMillis(547))).isEqualTo("- took 547ms");
             assertThat(ConsoleSpec.took(Duration.ofMillis(1200))).isEqualTo("- took 1.2s");
             // Callers keep a single space before took → "Already formatted - took 547ms"
@@ -85,16 +82,6 @@ class ConsoleSpecTest {
             assertThat(took).contains("took 100ms");
             assertThat(took).doesNotStartWith("- ");
             assertThat(took).contains("\u001B["); // styled
-        }
-    }
-
-    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
-        Session original = SessionContext.current();
-        try {
-            return SessionContext.where(original.withConfig(noAnsi), body::get);
-        } finally {
-            SessionContext.install(original);
         }
     }
 }

@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.MockMavenServer;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.repo.LibraryRegistrySync;
@@ -80,7 +79,6 @@ class LockCommandLibraryRegistryTest {
     @AfterEach
     void stop() {
         registryServer.stop(0);
-        SessionContext.reset();
         LockfileReader.clearCache();
     }
 

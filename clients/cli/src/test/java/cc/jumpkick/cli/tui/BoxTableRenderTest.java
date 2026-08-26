@@ -4,14 +4,11 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.config.JkConfig;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Width;
 import java.util.List;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /** the shared list-command table renderer. */
@@ -73,7 +70,7 @@ class BoxTableRenderTest {
     void plain_mode_ellipsis_cells_stay_aligned() throws Exception {
         // PlainAscii expands … → ... at the print boundary; render must account for the
         // expanded width up front so rows with truncated cells keep the rails aligned.
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             List<String> out = Table.render(
                     "Build history",
                     List.of("Id", "Project"),
@@ -113,7 +110,7 @@ class BoxTableRenderTest {
     void no_ansi_output_is_pure_ascii_for_history_tasks_library_glyphs() throws Exception {
         // ⊛ (history cancelled), — (Tasks/Library-search titles + n/a durations), … (truncation)
         // must all be rewritten before the "ASCII-only" plain output leaves the renderer.
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             List<String> out = Table.render(
                     "Tasks — g:n (path)",
                     List.of("", "Id", "Took"),
@@ -125,16 +122,6 @@ class BoxTableRenderTest {
             assertUniformWidth(out);
             return null;
         });
-    }
-
-    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
-        Session original = SessionContext.current();
-        try {
-            return SessionContext.where(original.withConfig(noAnsi), body::get);
-        } finally {
-            SessionContext.install(original);
-        }
     }
 
     @Test

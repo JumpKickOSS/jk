@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.java-conventions")
+    `java-test-fixtures`
 }
 
 description = "jk core foundations: TOML config parser, lockfile, layout, library catalog, deny " +
@@ -16,6 +17,13 @@ dependencies {
     api(project(":host"))
     api(libs.tomlj)
     testImplementation(testFixtures(project(":host")))
+    // testFixtures: the shared session boundary the CLI and publisher suites autodetect.
+    // Test-only by construction — :core is unpublished, and this is never a production config.
+    testFixturesApi(libs.junit.jupiter)
+    // The boundary is a platform TestExecutionListener, not a Jupiter extension: listener
+    // discovery needs no per-task autodetection switch, so it reaches the unit tier too.
+    testFixturesApi(libs.junit.platform.launcher)
+    testFixturesApi(libs.junit.platform.engine)
 }
 
 // Built-in plugin manifests + scaffolds are engine-only (JK-2149). :core tests still

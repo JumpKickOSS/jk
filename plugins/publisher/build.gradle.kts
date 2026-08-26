@@ -22,4 +22,5 @@ dependencies {
 
     // GpgTestFixture moved here from supply-chain-testkit (which is deleted)
     testImplementation(libs.bouncycastle.bcpg)
+    testImplementation(testFixtures(project(":core")))
 }

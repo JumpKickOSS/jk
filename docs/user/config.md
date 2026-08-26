@@ -12,6 +12,7 @@ quiet = false
 verbose = false
 no-progress = false
 no-ansi = false         # ASCII-only; implies no-progress
+force-ansi = false      # emit ANSI even under TERM=dumb / CI
 no-osc = false
 notify = "auto"         # auto | always | never
 build-output = false    # live-plan process-output peek (Ctrl-O)
@@ -24,6 +25,7 @@ force = false
 | `color` | `--color` | `JK_COLOR`, `NO_COLOR` |
 | `no-progress` | `--no-progress` | `JK_NO_PROGRESS` |
 | `no-ansi` | `--no-ansi` | `JK_NO_ANSI` |
+| `force-ansi` | — | `JK_FORCE_ANSI` |
 | `no-osc` | `--no-osc` | `JK_NO_OSC` |
 | `notify` | `--notify` / `--no-notify` | `JK_NOTIFY` |
 | `build-output` | — | `JK_BUILD_OUTPUT` |
@@ -32,6 +34,11 @@ force = false
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
 elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never.
 `--no-progress` and `--no-osc` also suppress notifications.
+
+**`force-ansi`:** ANSI is otherwise suppressed by `TERM=dumb` or a truthy `CI`, whichever the
+host sets. `force-ansi` outranks both, so output can be pinned to ANSI where the environment
+would strip it. `no-ansi` still wins when both are set — turning ANSI off is the safer
+direction to honor.
 
 Under `--no-ansi`, chrome lines start with `jk: ` so they stay distinct from compiler/test
 output. Agents should use [machine output](machine-output.md), not scrape prose.

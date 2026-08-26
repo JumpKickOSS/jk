@@ -43,7 +43,7 @@ class GlobalOptionsOverlayTest {
 
     @Test
     void bundled_and_abbreviated_redo_reach_the_session_overlay() throws Exception {
-        Session original = SessionContext.current();
+        Session original = SessionContext.installed();
         try {
             GlobalOptions bundled = GlobalOptions.from(parse("-rq"));
             assertThat(bundled.rebuild).isTrue();
@@ -62,7 +62,7 @@ class GlobalOptionsOverlayTest {
 
     @Test
     void abbreviated_offline_reaches_the_session_overlay() throws Exception {
-        Session original = SessionContext.current();
+        Session original = SessionContext.installed();
         try {
             GlobalOptions g = GlobalOptions.from(parse("--offl"));
             assertThat(g.offline).isTrue();

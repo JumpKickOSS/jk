@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -13,18 +12,12 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
 class AssemblyCommandTest {
-
-    @AfterEach
-    void resetSession() {
-        SessionContext.reset();
-    }
 
     private static final String TOML = """
             group = "t"

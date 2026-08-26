@@ -163,6 +163,7 @@ class ConfigShapeTest {
                 .withDirectory(Path.of("/tmp/jk-dir-a"))
                 .withForce(false)
                 .withNoAnsi(false)
+                .withForceAnsi(false)
                 .withNoOsc(false)
                 .withNotifyPolicy(JkConfig.NotifyChoice.NEVER)
                 .withBuildOutput(false);
@@ -179,6 +180,7 @@ class ConfigShapeTest {
                 new Wither("withDirectory", new Object[] {Path.of("/tmp/jk-dir-b")}, List.of("directory")),
                 new Wither("withForce", new Object[] {true}, List.of("force")),
                 new Wither("withNoAnsi", new Object[] {true}, List.of("noAnsi")),
+                new Wither("withForceAnsi", new Object[] {true}, List.of("forceAnsi")),
                 new Wither("withNoOsc", new Object[] {true}, List.of("noOsc")),
                 new Wither("withNotifyPolicy", new Object[] {JkConfig.NotifyChoice.ALWAYS}, List.of("notifyPolicy")),
                 new Wither("withBuildOutput", new Object[] {true}, List.of("buildOutput")));

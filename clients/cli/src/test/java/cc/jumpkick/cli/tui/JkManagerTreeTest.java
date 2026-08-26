@@ -387,11 +387,58 @@ class JkManagerTreeTest {
 
     @Test
     void paint_on_column_shrink_wipes_reflowed_physical_rows_before_repaint() {
-        // Shrink reflows long painted lines onto extra physical rows. cursorUp(logical) then
-        // undershoots and the next header stacks under the orphan. Wipe must cursor-up by the
-        // reflow estimate (≥ logical) and erase before painting the narrower region.
+        // Rewrapping terminal: shrink reflows long painted lines onto extra physical rows.
+        // cursorUp(logical) undershoots and the next header stacks under the orphan, so the wipe
+        // climbs the reflow estimate (>= logical) and erases before painting the narrower region.
+        Shrink s = shrinkFrame(true);
+        int expectedUp = Math.max(
+                TerminalReflow.physicalRows(s.painted(), 120, 50), s.painted().size());
+
+        assertThat(s.raw()).contains(Ansi.cursorUp(expectedUp));
+        assertThat(s.raw()).contains("\r" + Ansi.ERASE_DISPLAY_TO_END);
+        // Only one Build header in the post-shrink frame (not a stacked orphan + new paint).
+        assertThat(TestAnsi.strip(s.raw())
+                        .lines()
+                        .filter(l -> l.contains("Build"))
+                        .count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void paint_on_column_shrink_climbs_only_logical_rows_on_a_clipping_terminal() {
+        // xterm, the linux console and screen keep exactly one physical row per logical line.
+        // Climbing the reflow estimate there overshoots into completed output above the region,
+        // which ERASE_DISPLAY_TO_END would then destroy — so the climb stays logical.
+        Shrink s = shrinkFrame(false);
+        int physical = TerminalReflow.physicalRows(s.painted(), 120, 50);
+
+        assertThat(s.raw()).contains(Ansi.cursorUp(s.painted().size()));
+        if (physical > s.painted().size()) {
+            assertThat(s.raw())
+                    .describedAs("a clipping terminal must not get the reflow climb")
+                    .doesNotContain(Ansi.cursorUp(physical));
+        }
+        assertThat(s.raw()).contains("\r" + Ansi.ERASE_DISPLAY_TO_END);
+        assertThat(TestAnsi.strip(s.raw())
+                        .lines()
+                        .filter(l -> l.contains("Build"))
+                        .count())
+                .isEqualTo(1);
+    }
+
+    /** The post-shrink frame, plus the lines that had been painted at the wider size. */
+    private record Shrink(String raw, List<String> painted) {}
+
+    /**
+     * One 120-to-50 column shrink, with both process-wide answers the wipe consults pinned: the
+     * terminal size and whether the terminal rewraps. {@code reflows()} memoizes a read of ambient
+     * env — {@code TERM_PROGRAM}, {@code VTE_VERSION} and friends, which the test tier does not pin
+     * — so a test that leaves it alone asserts whatever the developer's terminal happens to do.
+     */
+    private static Shrink shrinkFrame(boolean rewrapping) {
         var savedProbe = Size.probe;
         try {
+            TerminalReflow.force(rewrapping);
             Size.probe = () -> new Size.Window(24, 120);
             Size.reset();
 
@@ -405,27 +452,19 @@ class JkManagerTreeTest {
             cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "[5/8] Inlining methods...");
             cm.tick();
 
-            List<String> painted = cm.lastLines;
+            List<String> painted = List.copyOf(cm.lastLines);
             assertThat(painted).isNotEmpty();
-            int expectedUp = Math.max(TerminalReflow.physicalRows(painted, 120, 50), painted.size());
 
             Size.probe = () -> new Size.Window(24, 50);
             Size.reset();
             buf.reset();
             cm.tick();
-
             assertThat(cm.width()).isEqualTo(50);
-            String raw = buf.toString(StandardCharsets.UTF_8);
-            // Wipe path: cursor-up by physical reflow rows, then erase-display-to-end, then paint.
-            assertThat(raw).contains(Ansi.cursorUp(expectedUp));
-            assertThat(raw).contains("\r" + Ansi.ERASE_DISPLAY_TO_END);
-            // Only one Build header in the post-shrink frame (not a stacked orphan + new paint).
-            String visible = TestAnsi.strip(raw);
-            long buildHeaders = visible.lines().filter(l -> l.contains("Build")).count();
-            assertThat(buildHeaders).isEqualTo(1);
+            return new Shrink(buf.toString(StandardCharsets.UTF_8), painted);
         } finally {
             Size.probe = savedProbe;
             Size.reset();
+            TerminalReflow.reset();
         }
     }
 }

@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.MockMavenServer;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -40,7 +39,6 @@ class LockCommandTest {
 
     @AfterEach
     void reset() {
-        SessionContext.reset();
         LockfileReader.clearCache();
     }
 

@@ -6,7 +6,6 @@ import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.testing.SysProps;
 import java.io.ByteArrayOutputStream;
@@ -45,7 +44,6 @@ class OutdatedCommandTest {
     @AfterEach
     void reset() {
         System.setOut(originalOut);
-        SessionContext.reset();
         LockfileReader.clearCache();
     }
 

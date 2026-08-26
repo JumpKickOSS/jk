@@ -259,6 +259,7 @@ public final class Jk {
                 directory,
                 force,
                 noAnsi,
+                null, // force-ansi: config/env only
                 noOsc,
                 notify,
                 null); // build-output: config/env only

@@ -40,6 +40,7 @@ dependencies {
     // `SysProps`, `LoopbackHttp`. A separate source set of :host, so `checkCliRuntimeClasspath`
     // below still sees a runtime classpath with no test code and no JUnit on it (JK-2443).
     testImplementation(testFixtures(project(":host")))
+    testImplementation(testFixtures(project(":core")))
 }
 
 // The IntelliJ plugin is a standalone Gradle build no gate compiles (see checkIdeClientWiring),

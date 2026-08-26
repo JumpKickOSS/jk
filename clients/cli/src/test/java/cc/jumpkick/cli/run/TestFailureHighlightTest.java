@@ -352,7 +352,7 @@ class TestFailureHighlightTest {
                 "@@src-end",
                 "Test Failure end");
         JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
-        Session original = SessionContext.current();
+        Session original = SessionContext.installed();
         List<String> painted;
         try {
             painted = SessionContext.where(original.withConfig(noAnsi), () -> TestFailureHighlight.paintLines(raw));

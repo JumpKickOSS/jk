@@ -332,14 +332,22 @@ public final class Spinner implements AutoCloseable {
         return buildPulseStyles(n, PULSE_CHIP_BRIGHT, dim);
     }
 
-    private record PulseKey(int n, Rgb bright, Rgb dim, Theme theme) {}
+    /**
+     * {@code color} is part of the key because {@link Theme#bright(Rgb)} bakes the colour decision
+     * into every {@link Style} it returns — a colourless {@code Style} has an empty SGR body. The
+     * {@code theme} field does not capture that: {@link Theme#active()} is one instance in both
+     * modes and re-derives the decision on each call, so without {@code color} the first caller's
+     * mode is served to every later one, and a plain-mode render silently strips a later ANSI one.
+     */
+    private record PulseKey(int n, Rgb bright, Rgb dim, Theme theme, boolean color) {}
 
     /** A handful of (frame-count, color-pair) combos exist; live renders ask every frame. */
     private static final ConcurrentHashMap<PulseKey, Style[]> PULSE_CACHE = new ConcurrentHashMap<>();
 
     /** Pulse styles: {@code bright} at the ends of the cycle, {@code dim} at the midpoint. */
     static Style[] buildPulseStyles(int n, Rgb bright, Rgb dim) {
-        return PULSE_CACHE.computeIfAbsent(new PulseKey(n, bright, dim, Theme.active()), k -> {
+        PulseKey key = new PulseKey(n, bright, dim, Theme.active(), GlobalConfig.colorEnabled());
+        return PULSE_CACHE.computeIfAbsent(key, k -> {
             Gradient gradient = new Gradient(k.bright(), k.dim());
             Style[] a = new Style[k.n()];
             for (int i = 0; i < k.n(); i++) {

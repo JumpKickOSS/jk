@@ -75,6 +75,16 @@ public final class SessionContext {
         ScopedValue.where(SCOPED, s).run(body);
     }
 
+    /**
+     * The process-static fallback itself, ignoring any {@link ScopedValue} binding on the calling
+     * thread. Test support: {@link #current()} prefers the binding, so snapshotting it and writing
+     * it back with {@link #install} publishes one thread's session to every other. Snapshot this
+     * when the static's own prior value is what has to be restored.
+     */
+    public static Session installed() {
+        return current;
+    }
+
     /** Reset the process-static fallback to defaults. Primarily for tests that share a JVM. */
     public static void reset() {
         current = Session.defaults();

@@ -39,6 +39,12 @@ public record JkConfig(
          */
         @With @Nullable Boolean noAnsi,
         /**
+         * Emit ANSI even where the environment would suppress it ({@code TERM=dumb}, {@code CI}).
+         * {@code config.force-ansi} / {@code JK_FORCE_ANSI}. {@code noAnsi} still wins when both
+         * are set: turning ANSI off is the safer direction to honor.
+         */
+        @With @Nullable Boolean forceAnsi,
+        /**
          * Disable OSC capabilities (window title, taskbar progress, desktop notifications).
          * {@code --no-osc} / {@code config.no-osc} / {@code JK_NO_OSC}.
          */
@@ -94,7 +100,7 @@ public record JkConfig(
 
     /** Empty config — every setting unset. Used as the seed before layers merge. */
     public static JkConfig empty() {
-        return new JkConfig(null, null, null, null, null, null, null, null, null, null, null, null);
+        return new JkConfig(null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -112,6 +118,7 @@ public record JkConfig(
                 set(over.directory, directory),
                 set(over.force, force),
                 set(over.noAnsi, noAnsi),
+                set(over.forceAnsi, forceAnsi),
                 set(over.noOsc, noOsc),
                 set(over.notifyPolicy, notifyPolicy),
                 set(over.buildOutput, buildOutput));
@@ -150,6 +157,14 @@ public record JkConfig(
     /** True when {@code --no-ansi} was set — all ANSI sequences suppressed, ASCII only. */
     public boolean noAnsiOr(boolean fallback) {
         return noAnsi != null ? noAnsi : fallback;
+    }
+
+    /**
+     * True when ANSI was forced on — outranks the {@code TERM=dumb}/{@code CI} suppressors, so a
+     * test (or a user in CI) can pin the mode instead of inheriting it.
+     */
+    public boolean forceAnsiOr(boolean fallback) {
+        return forceAnsi != null ? forceAnsi : fallback;
     }
 
     /** True when {@code --no-osc} was set — no window title, taskbar progress, or notifications. */

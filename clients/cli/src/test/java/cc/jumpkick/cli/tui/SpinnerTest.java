@@ -4,52 +4,71 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
-import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 class SpinnerTest {
 
     @Test
-    void step_uses_pulse_circle_glyph() {
-        var buf = new ByteArrayOutputStream();
-        var s = new Spinner(stream(buf), "Working");
-        s.step();
-        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        // ANSI: ● Working; plain / CI: * Working
-        if (Theme.active().isAnsi()) {
-            assertThat(visible).contains(Spinner.PULSE_GLYPH + " Working");
-        } else {
-            assertThat(visible).contains(Glyphs.PULSE_PLAIN + " Working");
-        }
+    void step_uses_pulse_circle_glyph_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            var buf = new ByteArrayOutputStream();
+            var s = new Spinner(stream(buf), "Working");
+            s.step();
+            assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains(Spinner.PULSE_GLYPH + " Working");
+            return null;
+        });
     }
 
     @Test
-    void step_cycles_pulse_frames_without_changing_glyph() {
+    void step_uses_the_ascii_pulse_glyph_in_plain() throws Exception {
+        NoAnsi.forced(() -> {
+            var buf = new ByteArrayOutputStream();
+            var s = new Spinner(stream(buf), "Working");
+            s.step();
+            assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains(Glyphs.PULSE_PLAIN + " Working");
+            return null;
+        });
+    }
+
+    @Test
+    void step_cycles_pulse_frames_without_changing_glyph_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            String raw = pulseFrames();
+            // Same solid circle every frame; only ANSI FG changes.
+            assertThat(countOccurrences(raw, Spinner.PULSE_GLYPH)).isEqualTo(Spinner.PULSE_FRAMES);
+            assertThat(TestAnsi.strip(raw)).doesNotContain("·");
+            return null;
+        });
+    }
+
+    @Test
+    void step_paints_one_static_frame_in_plain() throws Exception {
+        NoAnsi.forced(() -> {
+            // Plain: single static frame, no multi-frame thrash.
+            assertThat(countOccurrences(TestAnsi.strip(pulseFrames()), Glyphs.PULSE_PLAIN))
+                    .isEqualTo(1);
+            return null;
+        });
+    }
+
+    /** One spinner driven through a full pulse cycle; the caller pins the mode. */
+    private static String pulseFrames() {
         var buf = new ByteArrayOutputStream();
         var s = new Spinner(stream(buf), "Working");
         for (int i = 0; i < Spinner.PULSE_FRAMES; i++) {
             s.step();
         }
-        String raw = buf.toString(StandardCharsets.UTF_8);
-        if (!Theme.active().isAnsi()) {
-            // Plain: single static frame, no multi-frame thrash.
-            assertThat(countOccurrences(TestAnsi.strip(raw), Glyphs.PULSE_PLAIN))
-                    .isEqualTo(1);
-            return;
-        }
-        // Same solid circle every frame; only ANSI FG changes.
-        assertThat(countOccurrences(raw, Spinner.PULSE_GLYPH)).isEqualTo(Spinner.PULSE_FRAMES);
-        assertThat(TestAnsi.strip(raw)).doesNotContain("·");
+        return buf.toString(StandardCharsets.UTF_8);
     }
 
     @Test
@@ -65,29 +84,44 @@ class SpinnerTest {
     }
 
     @Test
-    void shrinking_message_pads_only_the_removed_tail() {
-        if (!Theme.active().isAnsi()) {
-            // Plain mode does not pad tails (static single frame).
-            return;
-        }
-        String longMsg = "downloading temurin-25.tar.gz";
-        String shortMsg = "done";
-        int expectedShrink = longMsg.length() - shortMsg.length();
+    void shrinking_message_pads_only_the_removed_tail_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            String longMsg = "downloading temurin-25.tar.gz";
+            String shortMsg = "done";
+            int expectedShrink = longMsg.length() - shortMsg.length();
 
-        var buf = new ByteArrayOutputStream();
-        var s = new Spinner(stream(buf), longMsg);
-        s.step();
-        s.update(shortMsg);
-        buf.reset();
-        s.step();
-        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        int idx = visible.indexOf(shortMsg);
-        assertThat(idx).isGreaterThanOrEqualTo(0);
-        long spaces = visible.substring(idx + shortMsg.length())
-                .chars()
-                .takeWhile(c -> c == ' ')
-                .count();
-        assertThat(spaces).isEqualTo(expectedShrink);
+            var buf = new ByteArrayOutputStream();
+            var s = new Spinner(stream(buf), longMsg);
+            s.step();
+            s.update(shortMsg);
+            buf.reset();
+            s.step();
+            String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+            int idx = visible.indexOf(shortMsg);
+            assertThat(idx).isGreaterThanOrEqualTo(0);
+            long spaces = visible.substring(idx + shortMsg.length())
+                    .chars()
+                    .takeWhile(c -> c == ' ')
+                    .count();
+            assertThat(spaces).isEqualTo(expectedShrink);
+            return null;
+        });
+    }
+
+    @Test
+    void shrinking_message_pads_nothing_in_plain() throws Exception {
+        NoAnsi.forced(() -> {
+            // Plain mode repaints a static line rather than overwriting in place, so there is no
+            // tail to pad — the assertion the ANSI case makes must not silently hold here too.
+            var buf = new ByteArrayOutputStream();
+            var s = new Spinner(stream(buf), "downloading temurin-25.tar.gz");
+            s.step();
+            s.update("done");
+            buf.reset();
+            s.step();
+            assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("  ");
+            return null;
+        });
     }
 
     @Test
@@ -133,104 +167,153 @@ class SpinnerTest {
     }
 
     @Test
-    void close_clears_line_and_restores_cursor() {
+    void close_clears_line_and_restores_cursor_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            String out = closeFrame();
+            assertThat(out).contains("\r\033[K"); // clear current line
+            assertThat(out).contains("\033[?25h"); // show cursor
+            return null;
+        });
+    }
+
+    @Test
+    void close_emits_a_newline_and_no_cursor_control_in_plain() throws Exception {
+        NoAnsi.forced(() -> {
+            String out = closeFrame();
+            assertThat(out).contains("\n");
+            assertThat(out).doesNotContain("\033[K");
+            assertThat(out).doesNotContain("\033[?25h");
+            return null;
+        });
+    }
+
+    /** Output of one close after a step; the caller pins the mode. */
+    private static String closeFrame() {
         var buf = new ByteArrayOutputStream();
         var s = new Spinner(stream(buf), "Working");
         s.step();
         buf.reset();
         s.close();
-        String out = buf.toString(StandardCharsets.UTF_8);
-        if (!Theme.active().isAnsi()) {
-            // Plain: newline only (no cursor hide / clear sequence).
-            assertThat(out).contains("\n");
-            return;
-        }
-        assertThat(out).contains("\r\033[K"); // clear current line
-        assertThat(out).contains("\033[?25h"); // show cursor
+        return buf.toString(StandardCharsets.UTF_8);
     }
 
     @Test
-    void show_emits_osc94_indeterminate_indicator() {
+    void show_emits_osc94_indeterminate_indicator_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            String out = showFrame();
+            assertThat(out).contains("\033]9;4;3\007"); // indeterminate
+            assertThat(out).contains("\033]9;4;0\007"); // cleared on close
+            assertThat(out.indexOf("\033]9;4;3\007")).isLessThan(out.indexOf("\033]9;4;0\007"));
+            return null;
+        });
+    }
+
+    @Test
+    void show_emits_no_osc94_indicator_in_plain() throws Exception {
+        NoAnsi.forced(() -> {
+            assertThat(showFrame()).doesNotContain("\033]9;4;3\007");
+            return null;
+        });
+    }
+
+    /** Output of one show/close cycle; the caller pins the mode. */
+    private static String showFrame() {
         var buf = new ByteArrayOutputStream();
         try (var s = Spinner.show(stream(buf), "Working")) {
             Thread.yield();
         }
-        String out = buf.toString(StandardCharsets.UTF_8);
-        if (!Theme.active().isAnsi()) {
-            assertThat(out).doesNotContain("\033]9;4;3\007");
-            return;
-        }
-        assertThat(out).contains("\033]9;4;3\007"); // indeterminate
-        assertThat(out).contains("\033]9;4;0\007"); // cleared on close
-        assertThat(out.indexOf("\033]9;4;3\007")).isLessThan(out.indexOf("\033]9;4;0\007"));
+        return buf.toString(StandardCharsets.UTF_8);
     }
 
     @Test
-    void each_step_reasserts_osc94_indeterminate() {
+    void each_step_reasserts_osc94_indeterminate_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            assertThat(countOccurrences(threeSteps(), "\033]9;4;3\007")).isEqualTo(3);
+            return null;
+        });
+    }
+
+    @Test
+    void no_step_asserts_osc94_in_plain() throws Exception {
+        NoAnsi.forced(() -> {
+            assertThat(countOccurrences(threeSteps(), "\033]9;4;3\007")).isZero();
+            return null;
+        });
+    }
+
+    /** Output of three steps; the caller pins the mode. */
+    private static String threeSteps() {
         var buf = new ByteArrayOutputStream();
         var s = new Spinner(stream(buf), "Working");
         s.step();
         s.step();
         s.step();
-        String out = buf.toString(StandardCharsets.UTF_8);
-        if (!Theme.active().isAnsi()) {
-            assertThat(countOccurrences(out, "\033]9;4;3\007")).isZero();
-            return;
-        }
-        long count = countOccurrences(out, "\033]9;4;3\007");
-        assertThat(count).isEqualTo(3);
+        return buf.toString(StandardCharsets.UTF_8);
     }
 
     @Test
-    void close_clear_precedes_show_cursor() {
-        var buf = new ByteArrayOutputStream();
-        var s = new Spinner(stream(buf), "Working");
-        s.step();
-        buf.reset();
-        s.close();
-        String out = buf.toString(StandardCharsets.UTF_8);
-        if (!Theme.active().isAnsi()) {
-            return;
-        }
-        assertThat(out.indexOf("\033]9;4;0\007")).isLessThan(out.indexOf("\033[?25h"));
+    void close_clear_precedes_show_cursor_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            String out = closeFrame();
+            assertThat(out.indexOf("\033]9;4;0\007")).isLessThan(out.indexOf("\033[?25h"));
+            return null;
+        });
     }
 
     @Test
-    void wedge_frame_uses_pulse_glyph_and_command_on_chip() {
-        var colors = Spinner.buildChipPulseStyles(
-                Spinner.PULSE_FRAMES, Theme.active().planBadgeColor());
-        String visible =
-                TestAnsi.strip(Spinner.renderWedgeFrame(0, "Status", "Analyzing status...", NerdFontCaps.NONE, colors));
-        assertThat(visible).contains(Spinner.PULSE_GLYPH);
-        assertThat(visible).contains("Status");
-        assertThat(visible).contains("Analyzing status...");
-        // Settled menu glyph must not appear while analyzing.
-        assertThat(visible).doesNotContain(Glyphs.MENU);
+    void wedge_frame_uses_pulse_glyph_and_command_on_chip() throws Exception {
+        // Pinned ANSI: the glyph assertion is mode-dependent even though nothing here branches —
+        // in plain mode Theme.colorize routes through PlainAscii, which rewrites the circle to '*'.
+        NoAnsi.forcedAnsi(() -> {
+            var colors = Spinner.buildChipPulseStyles(
+                    Spinner.PULSE_FRAMES, Theme.active().planBadgeColor());
+            String visible = TestAnsi.strip(
+                    Spinner.renderWedgeFrame(0, "Status", "Analyzing status...", NerdFontCaps.NONE, colors));
+            assertThat(visible).contains(Spinner.PULSE_GLYPH);
+            assertThat(visible).contains("Status");
+            assertThat(visible).contains("Analyzing status...");
+            // Settled menu glyph must not appear while analyzing.
+            assertThat(visible).doesNotContain(Glyphs.MENU);
+            return null;
+        });
     }
 
     @Test
-    void wedge_step_paints_chip_then_clears_on_close() {
-        var buf = new ByteArrayOutputStream();
-        var s = Spinner.wedge(stream(buf), "Status", "Analyzing status...");
-        s.step();
-        String painted = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        assertThat(painted).contains("Status");
-        assertThat(painted).contains("Analyzing status...");
-        if (Theme.active().isAnsi()) {
+    void wedge_step_paints_chip_then_clears_on_close_in_ansi() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            var buf = new ByteArrayOutputStream();
+            var s = Spinner.wedge(stream(buf), "Status", "Analyzing status...");
+            s.step();
+            String painted = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+            assertThat(painted).contains("Status");
+            assertThat(painted).contains("Analyzing status...");
             assertThat(painted).contains(Spinner.PULSE_GLYPH);
-        } else {
+
+            buf.reset();
+            s.close();
+            String closed = buf.toString(StandardCharsets.UTF_8);
+            assertThat(closed).contains("\r\033[K"); // clear current line on close
+            assertThat(closed).contains("\033[?25h"); // show cursor
+            return null;
+        });
+    }
+
+    @Test
+    void wedge_step_paints_plain_working_and_done_lines_in_plain() throws Exception {
+        NoAnsi.forced(() -> {
+            var buf = new ByteArrayOutputStream();
+            var s = Spinner.wedge(stream(buf), "Status", "Analyzing status...");
+            s.step();
             // Plain multi-line working frame.
-            assertThat(painted.trim()).isEqualTo("jk: * Status > Analyzing status... - working...");
-        }
-        buf.reset();
-        s.close();
-        String closed = buf.toString(StandardCharsets.UTF_8);
-        if (!Theme.active().isAnsi()) {
-            assertThat(TestAnsi.strip(closed).trim()).isEqualTo("jk: * Status > Analyzing status... - done.");
-            return;
-        }
-        assertThat(closed).contains("\r\033[K"); // clear current line on close
-        assertThat(closed).contains("\033[?25h"); // show cursor
+            assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8)).trim())
+                    .isEqualTo("jk: * Status > Analyzing status... - working...");
+
+            buf.reset();
+            s.close();
+            assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8)).trim())
+                    .isEqualTo("jk: * Status > Analyzing status... - done.");
+            return null;
+        });
     }
 
     @Test
@@ -244,7 +327,7 @@ class SpinnerTest {
 
     @Test
     void plain_heartbeat_only_after_60s() throws Exception {
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             var buf = new ByteArrayOutputStream();
             var clock = new AtomicLong(1_000L);
             var s = Spinner.wedge(stream(buf), "Format", "Examining");
@@ -268,6 +351,26 @@ class SpinnerTest {
         });
     }
 
+    @Test
+    void the_pin_decides_the_glyph_even_with_the_static_left_in_plain() throws Exception {
+        // The mechanism, stated the way JK-1003 stated its stamp boundary: poison the process
+        // static in the plain direction, then assert the pinned scope still renders ANSI. If the
+        // pin ever stopped out-ranking the static, every paired case above would quietly assert
+        // whatever the last test to write the global happened to leave behind.
+        SessionContext.installConfig(JkConfig.empty().withNoAnsi(true));
+
+        var plainBuf = new ByteArrayOutputStream();
+        new Spinner(stream(plainBuf), "Working").step();
+        assertThat(TestAnsi.strip(plainBuf.toString(StandardCharsets.UTF_8))).contains(Glyphs.PULSE_PLAIN + " Working");
+
+        NoAnsi.forcedAnsi(() -> {
+            var buf = new ByteArrayOutputStream();
+            new Spinner(stream(buf), "Working").step();
+            assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains(Spinner.PULSE_GLYPH + " Working");
+            return null;
+        });
+    }
+
     private static PrintStream stream(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
     }
@@ -280,15 +383,5 @@ class SpinnerTest {
             idx += needle.length();
         }
         return count;
-    }
-
-    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
-        Session original = SessionContext.current();
-        try {
-            return SessionContext.where(original.withConfig(noAnsi), body::get);
-        } finally {
-            SessionContext.install(original);
-        }
     }
 }

@@ -63,6 +63,10 @@ public final class GlobalConfig {
     /** Injectable overload of {@link #ansiSuppressed()} — tests pin the trigger matrix here. */
     static boolean ansiSuppressed(JkConfig config, Function<String, String> env) {
         if (config.noAnsiOr(false)) return true;
+        // Forced ANSI outranks the environment suppressors: without it the mode cannot be pinned
+        // in the ANSI direction at all, so an assertion about ANSI output passes or fails on
+        // whatever TERM/CI the host happens to set.
+        if (config.forceAnsiOr(false)) return false;
         if ("dumb".equals(env.apply("TERM"))) return true;
         return EnvValues.bool(env, "CI").orElse(false);
     }

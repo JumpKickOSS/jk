@@ -3,7 +3,6 @@ package cc.jumpkick.plugin.publish;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -20,7 +19,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,13 +39,6 @@ import org.junit.jupiter.api.io.TempDir;
  * which an exit-code assertion cannot.
  */
 class PublisherOfflineTest {
-
-    @AfterEach
-    void clearSession() {
-        // Publisher.run installs the spec's policy on this JVM's session; in production the worker
-        // JVM then exits. In a shared test JVM it would leak into whatever runs next.
-        SessionContext.reset();
-    }
 
     @Test
     void an_offline_publish_never_reaches_the_repository(@TempDir Path dir) throws Exception {

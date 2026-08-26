@@ -30,7 +30,6 @@ class WireStreamTest {
     @AfterEach
     void reset() {
         EngineClient.ActiveJobs.forgetAll();
-        SessionContext.reset();
     }
 
     private static BufferedReader stream(String... lines) {
