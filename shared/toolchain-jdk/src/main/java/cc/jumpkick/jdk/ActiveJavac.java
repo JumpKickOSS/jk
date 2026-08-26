@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,7 +43,9 @@ public final class ActiveJavac {
             if (dir.isBlank()) continue;
             Path candidate = Path.of(dir).resolve(exe);
             if (!Files.isRegularFile(candidate)) continue;
-            if (!WINDOWS && !Files.isExecutable(candidate)) continue;
+            // PathUtil.isRunnable already answers this per platform: an access check off Windows,
+            // an extension test on it, instead of the 64x security-descriptor read (JK-1030).
+            if (!PathUtil.isRunnable(candidate)) continue;
             try {
                 Path real = candidate.toRealPath(); // follow symlinks (SDKMAN et al.)
                 Path bin = real.getParent(); // <home>/bin

@@ -211,8 +211,10 @@ public final class CompileSupport {
         if (!Files.exists(root)) return List.of();
         List<Path> result = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(extension))
+            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
+            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            stream.filter(p -> p.getFileName().toString().endsWith(extension))
+                    .filter(Files::isRegularFile)
                     .forEach(result::add);
         }
         return result;

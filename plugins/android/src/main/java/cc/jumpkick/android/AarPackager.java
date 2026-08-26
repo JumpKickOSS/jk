@@ -38,7 +38,7 @@ final class AarPackager {
         writeClassesJar(io.classesDir(), classesJar);
 
         io.label(aarName);
-        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(aar))) {
+        try (ZipOutputStream zip = new ZipOutputStream(DeterministicZip.archiveStream(aar))) {
             ZIP.writeEntry(zip, "AndroidManifest.xml", manifest);
             ZIP.writeEntry(zip, "classes.jar", classesJar);
             if (resStep != null) {
@@ -61,7 +61,7 @@ final class AarPackager {
      */
     static void writeClassesJar(Path classesDir, Path jar) throws IOException {
         List<Path> files = ResourceStep.filesUnder(classesDir, "");
-        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+        try (ZipOutputStream zip = new ZipOutputStream(DeterministicZip.archiveStream(jar))) {
             for (Path file : files) {
                 String rel = classesDir.relativize(file).toString().replace('\\', '/');
                 String name = file.getFileName().toString();

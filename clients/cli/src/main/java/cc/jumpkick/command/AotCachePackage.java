@@ -435,7 +435,7 @@ final class AotCachePackage {
                 }
                 manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH, cp.toString());
             }
-            try (var jarOut = new JarOutputStream(Files.newOutputStream(to))) {
+            try (var jarOut = new JarOutputStream(DeterministicZip.archiveStream(to))) {
                 ZIP.writeManifest(jarOut, manifest);
                 JarEntry entry;
                 while ((entry = jarIn.getNextJarEntry()) != null) {

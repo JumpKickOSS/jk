@@ -63,7 +63,7 @@ final class ApkPackager {
      * (STORED — apksig's output engine page-aligns uncompressed {@code .so} entries).
      */
     private static void assemble(PackageIo io, Path resPackage, Path dexDir, Path unsigned) throws IOException {
-        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(unsigned));
+        try (ZipOutputStream zip = new ZipOutputStream(DeterministicZip.archiveStream(unsigned));
                 ZipFile in = new ZipFile(resPackage.toFile())) {
             Enumeration<? extends ZipEntry> entries = in.entries();
             while (entries.hasMoreElements()) {

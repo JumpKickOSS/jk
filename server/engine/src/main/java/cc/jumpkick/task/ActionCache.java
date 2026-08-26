@@ -192,6 +192,11 @@ public final class ActionCache {
      * and asking costs a security-descriptor read plus an access check per output file.
      */
     private static boolean executableBit(Path file) {
+        // Deliberately Files.isExecutable and not PathUtil.isRunnable (JK-1030): the question here is
+        // "is there a bit worth recording for restore", not "can this host run it". isRunnable answers
+        // true for a .exe on Windows, and recording that would promise a bit the restore cannot set —
+        // File.setExecutable does nothing there. The !isWindows() guard already skips the 64x call on
+        // the platform where it costs, which is the whole reason the ban has an exception here.
         return !Os.isWindows() && Files.isExecutable(file);
     }
 

@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -185,7 +186,7 @@ public final class JshellCommand implements CliCommand {
             }
         }
         for (Path c : candidates) {
-            if (c != null && Files.isExecutable(c)) return c;
+            if (c != null && PathUtil.isRunnable(c)) return c;
             // On some systems isExecutable is false for scripts; isRegularFile is enough.
             if (c != null && Files.isRegularFile(c)) return c;
         }

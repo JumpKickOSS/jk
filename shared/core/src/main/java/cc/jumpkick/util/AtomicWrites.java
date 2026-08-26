@@ -25,16 +25,26 @@ public final class AtomicWrites {
 
     private AtomicWrites() {}
 
-    /** Write {@code bytes} to {@code target} atomically. */
+    /**
+     * Write {@code bytes} to {@code target} atomically.
+     *
+     * <p>The cleanup is on the failure path, not in a {@code finally}: a successful
+     * {@link #moveInto} has already consumed {@code tmp}, so a {@code finally} unlink was an
+     * unlink of a path that could not exist — one wasted metadata call on every success, at
+     * fifty call sites and once per CAS blob (JK-1029). On NTFS that op is ~11&nbsp;µs against
+     * Linux's ~1.5.
+     */
     public static void replace(Path target, byte[] bytes) throws IOException {
         Path parent = target.getParent();
         if (parent != null) Files.createDirectories(parent);
         Path tmp = Files.createTempFile(parent, "." + target.getFileName() + "-", ".tmp");
+        boolean moved = false;
         try {
             Files.write(tmp, bytes);
             moveInto(tmp, target);
+            moved = true;
         } finally {
-            Files.deleteIfExists(tmp);
+            if (!moved) Files.deleteIfExists(tmp);
         }
     }
 

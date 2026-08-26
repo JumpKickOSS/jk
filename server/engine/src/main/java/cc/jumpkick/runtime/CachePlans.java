@@ -440,8 +440,10 @@ public final class CachePlans {
 
     private static List<Path> tempFiles(Path dir) throws IOException {
         try (var stream = Files.walk(dir)) {
-            return stream.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().startsWith(".put-"))
+            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
+            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            return stream.filter(p -> p.getFileName().toString().startsWith(".put-"))
+                    .filter(Files::isRegularFile)
                     .toList();
         }
     }

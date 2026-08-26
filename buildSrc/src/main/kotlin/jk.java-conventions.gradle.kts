@@ -2005,6 +2005,207 @@ tasks.named("check") { dependsOn(checkToolchainEnvFromRequest) }
 tasks.named("jar") { dependsOn(checkToolchainEnvFromRequest) }
 
 // ---------------------------------------------------------------------------
+// Guard G43 (JK-1029): an archive's byte sink comes from DeterministicZip.
+//
+// Defect it prevents: a 512-byte write buffer on every jar jk produces. ZipOutputStream inherits
+// DeflaterOutputStream's 512-byte buffer, so a 9 MB jar became ~18,000 write(2) calls where 64 KB
+// gives ~143. On NTFS each traverses the full filter stack, and an AV minifilter hooking writes
+// rather than closes sees every one. DeterministicZip already owned entry writing — timestamps,
+// order, compression — but not stream construction, so all twelve writers re-decided buffering
+// independently and all twelve decided wrong. Exactly one BufferedOutputStream existed in the whole
+// product, and it was the Windows console wrapper.
+//
+// Two arms, both keyed on shape rather than on a file list:
+//   A. `new (Zip|Jar)OutputStream(Files.newOutputStream(...))` — unbuffered, on one line.
+//   B. a file that builds an archive AND opens a file stream must name DeterministicZip's sink, so
+//      the two-statement spelling (`OutputStream out = Files.newOutputStream(p); ... new
+//      JarOutputStream(out)`) cannot slip past arm A.
+// A file that writes an archive to memory (a ByteArrayOutputStream) trips neither, which is why
+// arm B keys on Files.newOutputStream being present rather than on the archive alone.
+// ---------------------------------------------------------------------------
+val checkArchiveStreamOwner by tasks.registering {
+    group = "verification"
+    description = "Fail the build on an archive stream that bypasses DeterministicZip (use archiveStream/newArchive)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/DeterministicZip.java")
+    inputs.file(owner).withPropertyName("deterministicZipOwner")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/archive-stream-owner.ok")
+    outputs.file(stamp)
+    doLast {
+        // Self-fail: the owner must still offer the sink this guard points callers at.
+        val ownerText = owner.asFile.readText()
+        if (!ownerText.contains("public static OutputStream archiveStream(")) {
+            throw GradleException("DeterministicZip no longer declares archiveStream(...), so guard G43"
+                    + " has lost the owner it points callers at. Restore it or retire the guard"
+                    + " deliberately.")
+        }
+
+        val ctor = Regex("""new\s+(Zip|Jar)OutputStream\s*\(""")
+        val unbuffered = Regex("""new\s+(Zip|Jar)OutputStream\s*\(\s*Files\.newOutputStream""")
+        val offenders = mutableListOf<String>()
+        var scanned = 0
+        var archives = 0
+        mainJava.forEach { f ->
+            scanned++
+            if (f.absolutePath == owner.asFile.absolutePath) return@forEach
+            val text = f.readText()
+            if (!ctor.containsMatchIn(text)) return@forEach
+            archives++
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+
+            // Arm A — the one-line unbuffered spelling.
+            text.lines().forEachIndexed { i, raw ->
+                val line = raw.trim()
+                if (line.startsWith("//") || line.startsWith("*")) return@forEachIndexed
+                if (unbuffered.containsMatchIn(line)) offenders += "$rel:${i + 1}  $line"
+            }
+
+            // Arm B — an archive written to a file must take its sink from the owner.
+            if (text.contains("Files.newOutputStream") && !text.contains("DeterministicZip.archiveStream")
+                    && !text.contains("DeterministicZip.newArchive")) {
+                offenders += "$rel  builds an archive over Files.newOutputStream without DeterministicZip's sink"
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException("G43: unbuffered archive stream —\n  " + offenders.joinToString("\n  ")
+                    + "\n\nZipOutputStream buffers at 512 bytes. Take the sink from the one owner:"
+                    + " new JarOutputStream(DeterministicZip.archiveStream(path)), or"
+                    + " DeterministicZip.newArchive(path) when a ZipOutputStream will do.")
+        }
+        stamp.get().asFile.also { it.parentFile.mkdirs() }
+                .writeText("ok: " + scanned + " files, " + archives + " building archives\n")
+    }
+}
+tasks.named("check") { dependsOn(checkArchiveStreamOwner) }
+tasks.named("jar") { dependsOn(checkArchiveStreamOwner) }
+
+// ---------------------------------------------------------------------------
+// Guard G39 (JK-1030): cheapest rejection first in a walk's filter chain.
+//
+// Defect it prevents: paying a stat for every entry a free string test was about to discard. The
+// walk already read each entry's attributes, and `Files::isRegularFile` re-resolves the path from
+// scratch (10.3 us on NTFS against 1.0 on ext4). `BaseJre.findJava` stat'ed every file in a
+// ~20,000-file unpacked JRE before a `getFileName().equals("java")` rejected almost all of them —
+// ~206 ms of Windows stat time to find one file. `ImageBuilder` gated an in-memory Set lookup
+// behind a syscall.
+//
+// The rule was already written down four times -- CasPrewriter ("cheapest rejections first"),
+// JarPackager, AssemblyPackager, ClasspathFingerprint -- and obeyed by exactly one plugin of
+// fifteen. That is why it needs a guard and not a fifth comment.
+//
+// Measured against 24 violating sites when it landed; zero after JK-1030.
+// ---------------------------------------------------------------------------
+val checkCheapestRejectionFirst by tasks.registering {
+    group = "verification"
+    description = "Fail the build on an isRegularFile filter that precedes a free name-only predicate"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/cheapest-rejection-first.ok")
+    outputs.file(stamp)
+    doLast {
+        val nameOnly = Regex("""getFileName|endsWith\(|startsWith\(|\.equals\(""")
+        val offenders = mutableListOf<String>()
+        var scanned = 0
+        var chains = 0
+        mainJava.forEach { f ->
+            scanned++
+            val lines = f.readText().lines()
+            lines.forEachIndexed { i, raw ->
+                if (!raw.trimEnd().endsWith(".filter(Files::isRegularFile)")) return@forEachIndexed
+                chains++
+                // The next line that is neither blank nor a comment.
+                var j = i + 1
+                while (j < lines.size && (lines[j].isBlank() || lines[j].trim().startsWith("//"))) j++
+                if (j >= lines.size) return@forEachIndexed
+                val next = lines[j].trim()
+                if (!next.startsWith(".filter(")) return@forEachIndexed
+                // A predicate that touches the filesystem is legitimately ordered after the stat.
+                if (next.contains("Files.")) return@forEachIndexed
+                if (!nameOnly.containsMatchIn(next)) return@forEachIndexed
+                offenders += f.relativeTo(treeRoot).invariantSeparatorsPath + ":" + (i + 1) + "  " + next
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException("G39: a stat runs before a free name test —\n  "
+                    + offenders.joinToString("\n  ")
+                    + "\n\nPut the string predicate first. The walk already paid for the entry;"
+                    + " Files::isRegularFile re-resolves the path for a fresh stat, so ordering it"
+                    + " first spends a syscall on every entry the name test was going to reject.")
+        }
+        stamp.get().asFile.also { it.parentFile.mkdirs() }
+                .writeText("ok: " + scanned + " files, " + chains + " isRegularFile filters\n")
+    }
+}
+tasks.named("check") { dependsOn(checkCheapestRejectionFirst) }
+tasks.named("jar") { dependsOn(checkCheapestRejectionFirst) }
+
+// ---------------------------------------------------------------------------
+// Guard G40 (JK-1030): executability is asked through PathUtil.isRunnable.
+//
+// Defect it prevents: the single most expensive filesystem predicate jk uses. Files.isExecutable
+// measures 33.4 us on Windows against 0.52 on Linux -- 64x -- because the JDK implements EXECUTE
+// access there as a security-descriptor read plus an AccessCheck. Windows has no executable bit;
+// what decides whether a file runs is its extension, so the check answers an expensive question
+// nobody asked. Thirteen sites paid it, two inside directory listings, and AotCacheTrainer probed
+// four spellings per PATH entry for three tools -- ~20 ms of pure access checks per call.
+//
+// One exemption, and it is the interesting one: ActionCache.executableBit deliberately keeps
+// Files.isExecutable because it asks a different question -- "is there a bit worth recording for
+// restore" -- and isRunnable answering true for a .exe would promise a bit File.setExecutable
+// cannot set on Windows. It is already guarded by !Os.isWindows(), so it never pays the 64x call
+// on the platform where it costs. Keyed on that guard rather than on the file name.
+// ---------------------------------------------------------------------------
+val checkRunnableOwner by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a Files.isExecutable outside PathUtil.isRunnable"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/PathUtil.java")
+    inputs.file(owner).withPropertyName("runnableOwner")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/runnable-owner.ok")
+    outputs.file(stamp)
+    doLast {
+        if (!owner.asFile.readText().contains("public static boolean isRunnable(")) {
+            throw GradleException("PathUtil no longer declares isRunnable(Path), so guard G40 has lost"
+                    + " the owner it points callers at. Restore it or retire the guard deliberately.")
+        }
+        val offenders = mutableListOf<String>()
+        var scanned = 0
+        var exempted = 0
+        mainJava.forEach { f ->
+            scanned++
+            if (f.absolutePath == owner.asFile.absolutePath) return@forEach
+            f.readText().lines().forEachIndexed { i, raw ->
+                val line = raw.trim()
+                if (line.startsWith("//") || line.startsWith("*")) return@forEachIndexed
+                if (!line.contains("Files.isExecutable(")) return@forEachIndexed
+                // Exempt by shape: already skipped on the platform where the call is 64x, because
+                // the caller wants the POSIX bit itself rather than "can this host run it".
+                if (line.contains("!Os.isWindows()") || line.contains("!WINDOWS")) { exempted++; return@forEachIndexed }
+                offenders += f.relativeTo(treeRoot).invariantSeparatorsPath + ":" + (i + 1) + "  " + line
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException("G40: Files.isExecutable outside its owner —\n  "
+                    + offenders.joinToString("\n  ")
+                    + "\n\nUse PathUtil.isRunnable(path): an access check off Windows, an extension"
+                    + " test on it. Keep Files.isExecutable only when you want the POSIX bit itself,"
+                    + " and then guard it with !Os.isWindows() as ActionCache.executableBit does.")
+        }
+        stamp.get().asFile.also { it.parentFile.mkdirs() }
+                .writeText("ok: " + scanned + " files, " + exempted + " shape-exempt\n")
+    }
+}
+tasks.named("check") { dependsOn(checkRunnableOwner) }
+tasks.named("jar") { dependsOn(checkRunnableOwner) }
+
+// ---------------------------------------------------------------------------
 // Guard G16 (JK-2419): Maven Central is addressed one way, and it is `RepositorySpec`'s.
 //
 // Defect it prevents: traffic to Central that the rate-limit machinery cannot see. `repo1.maven.org`

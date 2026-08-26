@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.host.PathUtil;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
@@ -496,11 +497,16 @@ public final class PlannerNative {
     /** The executable native-image left in {@code sources} (the args name it, jk does not). */
     static Path frameworkBinary(Path sources) throws IOException {
         try (var list = Files.list(sources)) {
-            return list.filter(Files::isRegularFile)
-                    .filter(p -> Files.isExecutable(p))
-                    .filter(p -> !p.getFileName().toString().endsWith(".jar"))
+            // Cheapest rejection first, most expensive last. The name tests are free; isRegularFile
+            // re-resolves the path for a stat (10.3 us on NTFS); isExecutable is the worst operation
+            // in the tree at 64x Linux, because Windows answers it with a security-descriptor read
+            // plus an AccessCheck. Ordering it last means a directory listing of jars and .args files
+            // never pays for it (JK-1030).
+            return list.filter(p -> !p.getFileName().toString().endsWith(".jar"))
                     .filter(p -> !p.getFileName().toString().endsWith(".args"))
                     .filter(p -> !p.getFileName().toString().endsWith(".json"))
+                    .filter(Files::isRegularFile)
+                    .filter(PathUtil::isRunnable)
                     .findFirst()
                     .orElse(null);
         }

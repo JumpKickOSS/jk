@@ -16,6 +16,7 @@ import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -577,7 +578,7 @@ public final class ExecPlans {
 
         if (!dev) {
             Path nativeBin = layout.nativeBinary();
-            if (Files.isRegularFile(nativeBin) && Files.isExecutable(nativeBin)) {
+            if (Files.isRegularFile(nativeBin) && PathUtil.isRunnable(nativeBin)) {
                 return runAck(
                         "run",
                         List.of(nativeBin.toAbsolutePath().toString()),

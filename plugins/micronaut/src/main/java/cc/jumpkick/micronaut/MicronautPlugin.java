@@ -236,8 +236,10 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     static List<Path> jarsIn(Path dir) throws IOException {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> s = Files.walk(dir)) {
-            s.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(".jar"))
+            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
+            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            s.filter(p -> p.getFileName().toString().endsWith(".jar"))
+                    .filter(Files::isRegularFile)
                     .forEach(out::add);
         }
         // Files.walk order is directory-iteration order — it varies by filesystem and by the

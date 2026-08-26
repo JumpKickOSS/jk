@@ -31,7 +31,7 @@ public final class JarPackager {
         Files.createDirectories(request.outputJar().getParent());
         Manifest manifest = buildManifest(request);
 
-        try (OutputStream out = Files.newOutputStream(request.outputJar());
+        try (OutputStream out = DeterministicZip.archiveStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
             DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
             zip.writeManifest(jos, manifest);

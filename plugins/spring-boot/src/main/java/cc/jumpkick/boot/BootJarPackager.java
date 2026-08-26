@@ -52,7 +52,7 @@ public final class BootJarPackager {
         DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
         Set<String> dirsWritten = new HashSet<>();
 
-        try (OutputStream out = Files.newOutputStream(request.outputJar());
+        try (OutputStream out = DeterministicZip.archiveStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
             zip.writeManifest(jos, manifest);
             dirsWritten.add("META-INF/");

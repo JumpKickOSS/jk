@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -126,7 +127,7 @@ final class AndroidDeps {
                 Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        if (!out.toFile().setExecutable(true) && !Files.isExecutable(out)) {
+        if (!out.toFile().setExecutable(true) && !PathUtil.isRunnable(out)) {
             throw new IOException("cannot mark " + out + " executable");
         }
         return out;

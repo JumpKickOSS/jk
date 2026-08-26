@@ -30,7 +30,7 @@ final class AppJar {
         Manifest man = new Manifest();
         man.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         DeterministicZip zip = DeterministicZip.PINNED;
-        try (OutputStream fos = Files.newOutputStream(jar);
+        try (OutputStream fos = DeterministicZip.archiveStream(jar);
                 JarOutputStream jos = new JarOutputStream(fos)) {
             zip.writeManifest(jos, man);
             if (!Files.isDirectory(dir)) return;

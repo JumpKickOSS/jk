@@ -261,7 +261,7 @@ final class AotCacheTrainer {
         if (!BaseJre.hostCanExecute(plan.config().platforms())) return null;
         try {
             Path java = BaseJre.javaBinary(base, cacheRoot, auth);
-            return java != null && Files.isExecutable(java) ? java : null;
+            return java != null && PathUtil.isRunnable(java) ? java : null;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             log.accept("could not read " + base + "'s JVM (" + e.getMessage() + ") — training in a container");
@@ -414,14 +414,14 @@ final class AotCacheTrainer {
         boolean windows = Os.isWindows();
         for (String dir : SearchPath.entries(path)) {
             Path base = Path.of(dir, exe);
-            if (Files.isExecutable(base)) return true;
+            if (PathUtil.isRunnable(base)) return true;
             // Windows PATHEXT: docker.exe / docker.cmd / docker.bat (chocolatey shims and corp
             // wrappers ship .bat), not a bare "docker" file — same launcher set as
             // JkLayoutPaths.isRunnableClient.
             if (windows
-                    && (Files.isExecutable(Path.of(dir, exe + ".exe"))
-                            || Files.isExecutable(Path.of(dir, exe + ".cmd"))
-                            || Files.isExecutable(Path.of(dir, exe + ".bat")))) {
+                    && (PathUtil.isRunnable(Path.of(dir, exe + ".exe"))
+                            || PathUtil.isRunnable(Path.of(dir, exe + ".cmd"))
+                            || PathUtil.isRunnable(Path.of(dir, exe + ".bat")))) {
                 return true;
             }
         }

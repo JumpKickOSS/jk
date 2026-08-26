@@ -173,4 +173,42 @@ class AtomicWritesTest {
             return e;
         }
     }
+
+    /**
+     * The temp sibling is cleaned up when the write fails, and does not outlive one that succeeds.
+     *
+     * <p>The cleanup used to sit in a {@code finally}, so every success paid an unlink of a path that
+     * could not exist — {@link AtomicWrites#moveInto} had already consumed it. One wasted metadata
+     * call across fifty call sites and once per CAS blob, ~11 µs each on NTFS (JK-1029). Moving it to
+     * the failure path is only safe if the failure path still cleans up.
+     */
+    @Test
+    void a_failed_move_still_removes_the_temp(@TempDir Path dir) throws IOException {
+        // A non-empty directory cannot be replaced by a file move, so moveInto throws after the temp
+        // has been written — the window the finally used to cover.
+        Path target = dir.resolve("occupied");
+        Files.createDirectory(target);
+        Files.createFile(target.resolve("child"));
+
+        assertThatIOException().isThrownBy(() -> AtomicWrites.replace(target, "payload"));
+
+        assertThat(names(dir)).containsExactly("occupied");
+    }
+
+    @Test
+    void repeated_writes_leave_no_temps_behind(@TempDir Path dir) throws IOException {
+        Path target = dir.resolve("counter");
+        for (int i = 0; i < 25; i++) {
+            AtomicWrites.replace(target, "n = " + i);
+        }
+
+        assertThat(Files.readString(target)).isEqualTo("n = 24");
+        assertThat(names(dir)).containsExactly("counter");
+    }
+
+    private static List<String> names(Path dir) throws IOException {
+        try (var children = Files.list(dir)) {
+            return children.map(p -> p.getFileName().toString()).sorted().toList();
+        }
+    }
 }

@@ -65,11 +65,14 @@ public final class ScalaToolResolver {
             // Copy through a unique temp + atomic move so a torn/partial copy is never observed by a
             // concurrent build, and --force re-copies unconditionally (JK-2290).
             Path tmp = Files.createTempFile(libDir, "." + named.getFileName() + ".", ".part");
+            // Failure path only — moveInto consumed tmp on success (JK-1029).
+            boolean moved = false;
             try {
                 Files.copy(hit.get().fetched().cachePath(), tmp, StandardCopyOption.REPLACE_EXISTING);
                 AtomicWrites.moveInto(tmp, named);
+                moved = true;
             } finally {
-                Files.deleteIfExists(tmp);
+                if (!moved) Files.deleteIfExists(tmp);
             }
             jars.add(named);
             shas.add(hit.get().fetched().sha256());
