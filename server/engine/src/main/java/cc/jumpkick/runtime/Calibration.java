@@ -11,6 +11,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -837,8 +838,7 @@ public final class Calibration {
 
     private static double safeLoadAverage() {
         try {
-            return java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-                    .getSystemLoadAverage();
+            return ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
         } catch (Exception e) {
             return -1;
         }

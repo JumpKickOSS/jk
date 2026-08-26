@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -109,7 +110,7 @@ public final class CacheRetention {
                 case DELEGATED -> {
                     // Both delegated tiers are one pass over one Policy; run it on ACTIONS only.
                     if (tier != CacheTree.ACTIONS) continue;
-                    var policy = ActionCachePrune.Policy.of(cc.jumpkick.config.JkCacheConfig.resolve());
+                    var policy = ActionCachePrune.Policy.of(JkCacheConfig.resolve());
                     var report = ActionCachePrune.run(cacheRoot, cacheCas, policy, alreadyFreedShas, dryRun);
                     files += (int) report.totalDeletedFiles();
                     bytes += report.totalFreedBytes();

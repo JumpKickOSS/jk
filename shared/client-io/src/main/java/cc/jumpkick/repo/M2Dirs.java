@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.util.MinimalXml;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -49,10 +50,9 @@ public final class M2Dirs {
         Path settings = settingsXml();
         if (settings == null || !Files.isRegularFile(settings)) return null;
         try {
-            cc.jumpkick.util.MinimalXml.Element doc = cc.jumpkick.util.MinimalXml.parse(Files.readString(settings));
-            String raw = doc.element("localRepository")
-                    .map(cc.jumpkick.util.MinimalXml.Element::text)
-                    .orElse(null);
+            MinimalXml.Element doc = MinimalXml.parse(Files.readString(settings));
+            String raw =
+                    doc.element("localRepository").map(MinimalXml.Element::text).orElse(null);
             if (raw == null || raw.isBlank()) return null;
             String trimmed = raw.strip();
             if (trimmed.contains("${") || trimmed.indexOf('<') >= 0) {

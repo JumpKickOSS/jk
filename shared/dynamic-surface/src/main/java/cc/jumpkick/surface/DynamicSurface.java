@@ -3,6 +3,7 @@ package cc.jumpkick.surface;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -131,7 +132,7 @@ public record DynamicSurface(List<Entry> entries) {
             // Set.copyOf would discard the ordering.
             members = members == null
                     ? Set.of()
-                    : java.util.Collections.unmodifiableSet(new LinkedHashSet<>(new TreeSet<>(members)));
+                    : Collections.unmodifiableSet(new LinkedHashSet<>(new TreeSet<>(members)));
             origin = origin == null ? "" : origin;
         }
 
@@ -178,7 +179,7 @@ public record DynamicSurface(List<Entry> entries) {
      */
     private static List<Entry> collapse(Collection<Entry> input) {
         List<Entry> sorted = new ArrayList<>(input);
-        java.util.Collections.sort(sorted);
+        Collections.sort(sorted);
         List<Entry> merged = new ArrayList<>(sorted.size());
         for (Entry candidate : sorted) {
             int last = merged.size() - 1;

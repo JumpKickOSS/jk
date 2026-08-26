@@ -3,6 +3,10 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
@@ -46,7 +50,7 @@ class AndroidWorkspaceTest {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeWorkspace(root);
         acceptLicenses();
@@ -147,18 +151,17 @@ class AndroidWorkspaceTest {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         BuildPlan plan = BuildPlanner.fullPlan(in);
         return plan.run();
     }
 
     private static void acceptLicenses() throws Exception {
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-28")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
     }

@@ -5,6 +5,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Client → server request builders for artifact-producing verbs. Session attachment
@@ -926,7 +927,7 @@ public final class ProtoJobs {
             boolean force,
             boolean verbose,
             List<String> extraArgs,
-            java.util.Map<String, String> graalHomes) {
+            Map<String, String> graalHomes) {
         return nativeRequest(
                 dir, cache, jdksDir, mainClass, skipTests, offline, force, verbose, extraArgs, graalHomes, List.of());
     }
@@ -946,7 +947,7 @@ public final class ProtoJobs {
             boolean force,
             boolean verbose,
             List<String> extraArgs,
-            java.util.Map<String, String> graalHomes,
+            Map<String, String> graalHomes,
             List<String> moduleDirs) {
         return "{\"type\":\""
                 + EngineProtocol.NATIVE_REQUEST

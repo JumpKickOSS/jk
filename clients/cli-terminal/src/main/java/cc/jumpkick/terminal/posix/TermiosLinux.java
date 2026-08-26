@@ -3,6 +3,7 @@ package cc.jumpkick.terminal.posix;
 
 import cc.jumpkick.terminal.InputMode;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 /**
  * glibc LP64 {@code struct termios}: c_iflag/oflag/cflag/lflag, c_line, c_cc[32], speeds.
@@ -43,15 +44,15 @@ public final class TermiosLinux {
     private TermiosLinux() {}
 
     public static int iflag(MemorySegment t) {
-        return t.get(java.lang.foreign.ValueLayout.JAVA_INT, IFLAG);
+        return t.get(ValueLayout.JAVA_INT, IFLAG);
     }
 
     public static int lflag(MemorySegment t) {
-        return t.get(java.lang.foreign.ValueLayout.JAVA_INT, LFLAG);
+        return t.get(ValueLayout.JAVA_INT, LFLAG);
     }
 
     public static int cc(MemorySegment t, int index) {
-        return Byte.toUnsignedInt(t.get(java.lang.foreign.ValueLayout.JAVA_BYTE, CC + index));
+        return Byte.toUnsignedInt(t.get(ValueLayout.JAVA_BYTE, CC + index));
     }
 
     public static void apply(MemorySegment t, InputMode mode) {
@@ -65,12 +66,12 @@ public final class TermiosLinux {
         } else {
             l |= ISIG;
         }
-        t.set(java.lang.foreign.ValueLayout.JAVA_INT, LFLAG, l);
+        t.set(ValueLayout.JAVA_INT, LFLAG, l);
         int i = iflag(t);
         i &= ~(IXON | IXOFF | ICRNL | INLCR);
-        t.set(java.lang.foreign.ValueLayout.JAVA_INT, IFLAG, i);
-        t.set(java.lang.foreign.ValueLayout.JAVA_BYTE, CC + VMIN, (byte) 1);
-        t.set(java.lang.foreign.ValueLayout.JAVA_BYTE, CC + VTIME, (byte) 0);
+        t.set(ValueLayout.JAVA_INT, IFLAG, i);
+        t.set(ValueLayout.JAVA_BYTE, CC + VMIN, (byte) 1);
+        t.set(ValueLayout.JAVA_BYTE, CC + VTIME, (byte) 0);
     }
 
     public static boolean ixonOff(MemorySegment t) {

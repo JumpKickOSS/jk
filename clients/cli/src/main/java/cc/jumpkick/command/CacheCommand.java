@@ -3,29 +3,46 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.Progress;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongSupplier;
 
 /**
  * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: every
@@ -138,7 +155,7 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-    static CacheUsageStats cacheUsageFromAck(cc.jumpkick.engine.protocol.CacheInventoryAck ack) {
+    static CacheUsageStats cacheUsageFromAck(CacheInventoryAck ack) {
         return new CacheUsageStats(
                 statFromAck(ack, "classFiles"),
                 statFromAck(ack, "testResults"),
@@ -153,7 +170,7 @@ public final class CacheCommand extends GroupCommand {
                 new Stats(ack.totalFiles(), ack.totalBytes()));
     }
 
-    static StoreUsageStats storeUsageFromAck(cc.jumpkick.engine.protocol.CacheInventoryAck ack) {
+    static StoreUsageStats storeUsageFromAck(CacheInventoryAck ack) {
         return new StoreUsageStats(
                 statFromAck(ack, "jars"),
                 statFromAck(ack, "executables"),
@@ -162,7 +179,7 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "maven-local"));
     }
 
-    private static Stats statFromAck(cc.jumpkick.engine.protocol.CacheInventoryAck ack, String name) {
+    private static Stats statFromAck(CacheInventoryAck ack, String name) {
         for (String row : ack.stats()) {
             String[] f = row.split("\\|", -1);
             if (f.length >= 3 && name.equals(f[0])) {
@@ -209,7 +226,7 @@ public final class CacheCommand extends GroupCommand {
      * correctly ({@code 1 day ago} vs {@code 3 days ago}).
      */
     static String lastPrunedLabel(Path root) {
-        var stamp = cc.jumpkick.task.CachePruneScheduler.read(root);
+        var stamp = CachePruneScheduler.read(root);
         if (stamp.isEmpty()) return "never";
         long ageMs = System.currentTimeMillis() - stamp.get().millis();
         long days = ageMs / (24L * 60 * 60 * 1000);
@@ -285,7 +302,7 @@ public final class CacheCommand extends GroupCommand {
      */
     static int runNuke(Path root, boolean dryRun, GlobalOptions global, boolean skipConfirm, boolean localOnly)
             throws IOException {
-        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         if (!Files.isDirectory(root)) {
             CommandWedge.printOk("Cache", "Nothing to nuke — cache directory does not exist.");
             return 0;
@@ -307,7 +324,7 @@ public final class CacheCommand extends GroupCommand {
         }
         if (!skipConfirm && !CacheNukeCommand.confirmNuke(root, stats)) {
             CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, "Cache", nerdFont, "Nuke aborted."));
+            CliOutput.out(JkWedge.chipLine(Glyphs.CROSS, "Cache", nerdFont, "Nuke aborted."));
             return 1;
         }
         // Prefer engine idle-boundary wipe; fall back to in-process delete only when no engine
@@ -323,12 +340,12 @@ public final class CacheCommand extends GroupCommand {
                         r -> "Failed to nuke cache.",
                         true);
                 BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-                var planResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest("purge", root, false, false, null),
+                var planResult = EngineClient.runCacheMaintenance(
+                        EnginePaths.current(),
+                        new EngineRequests.CacheMaintRequest("purge", root, false, false, null),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
-                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1]);
+                        new EngineRequests.CacheMaintSummary[1]);
                 if (planResult.success()) {
                     // The engine emptied the tier at its idle boundary; the root and the
                     // .prune.lock it held there are ours to take now that the pass has finished.
@@ -369,7 +386,7 @@ public final class CacheCommand extends GroupCommand {
      * released, which is {@code CacheMaintenanceVerb}'s call to make, not this one's.
      */
     static void removeCacheRoot(Path root) throws IOException {
-        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(root);
+        PathUtil.deleteRecursivelyOrThrow(root);
     }
 
     // --- subcommands defined here to access private helpers ----------------------
@@ -387,7 +404,7 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
+            return List.of(CommonOpts.cacheDir());
         }
 
         /** A bare path for shell substitution — {@code du -sh "$(jk cache dir)"}. */
@@ -398,8 +415,8 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) {
-            CliOutput.out(String.valueOf(resolveCacheRoot(
-                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null))));
+            CliOutput.out(String.valueOf(
+                    resolveCacheRoot(in.value("cache-dir").map(CliPaths::abs).orElse(null))));
             return 0;
         }
     }
@@ -430,23 +447,23 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
+            return List.of(CommonOpts.cacheDir());
         }
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path root = resolveCacheRoot(
-                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null));
+            Path root =
+                    resolveCacheRoot(in.value("cache-dir").map(CliPaths::abs).orElse(null));
             Path actions = CacheTree.ACTIONS.under(root);
             Path cacheCas = CacheTree.CACHE_CAS.under(root);
             if (!Files.isDirectory(root) && !Files.isDirectory(actions) && !Files.isDirectory(cacheCas)) {
-                CliOutput.out("Cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
+                CliOutput.out("Cache: " + PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
-            cc.jumpkick.engine.protocol.CacheInventoryAck ack;
+            CacheInventoryAck ack;
             try {
-                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
-                        cc.jumpkick.engine.EnginePaths.current(), "usage", root, null, List.of(), List.of(), false);
+                ack = EngineClient.cacheInventory(
+                        EnginePaths.current(), "usage", root, null, List.of(), List.of(), false);
             } catch (IOException e) {
                 CommandWedge.printFail("Cache", String.valueOf(e.getMessage()));
                 return 1;
@@ -456,7 +473,7 @@ public final class CacheCommand extends GroupCommand {
                 return 1;
             }
             CacheUsageStats s = cacheUsageFromAck(ack);
-            var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
+            var cfg = JkCacheConfig.resolve();
             String lastCleaned = lastPrunedLabel(root);
             CommandWedge.envelopeStart();
             for (String line : renderCacheUsageTable(s, cfg, lastCleaned)) {
@@ -467,8 +484,7 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /** Project-scoped clear UI for {@code jk clean --force}. */
-    static ConsoleSpec clearSpec(
-            boolean dryRun, java.util.function.LongSupplier files, java.util.function.LongSupplier bytes) {
+    static ConsoleSpec clearSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {
         return new ConsoleSpec(
                 "Cache",
                 r -> {
@@ -507,15 +523,12 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(
-                    cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(CommonOpts.cacheDir(), Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path cacheDir =
-                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+            Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
             boolean dryRun = in.isSet("dry-run");
             GlobalOptions global = GlobalOptions.from(in);
 
@@ -531,31 +544,29 @@ public final class CacheCommand extends GroupCommand {
         /** The engine-hosted foreground path: send the request, explain any wait, render the stream. */
         private static int runHosted(Path root, boolean defaultCacheDir, boolean dryRun, GlobalOptions global) {
             // Settled from the terminal plan-finish before the console listener renders the line.
-            var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
+            var summary = new EngineRequests.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
                     () -> summary[0] != null ? summary[0].bytes() : 0L);
             BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-            cc.jumpkick.run.BuildPlanResult result;
+            BuildPlanResult result;
             try {
-                result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
-                                "prune", root, dryRun, defaultCacheDir, null),
+                result = EngineClient.runCacheMaintenance(
+                        EnginePaths.current(),
+                        new EngineRequests.CacheMaintRequest("prune", root, dryRun, defaultCacheDir, null),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
                 CommandWedge.printFail("Cache", e.getMessage());
-                return cc.jumpkick.model.command.Exit.SOFTWARE;
+                return Exit.SOFTWARE;
             }
             return result.success() ? 0 : 1;
         }
 
         /** The Cache chip spec; counts are read lazily, at result-line render time. */
-        static ConsoleSpec cleanSpec(
-                boolean dryRun, java.util.function.LongSupplier files, java.util.function.LongSupplier bytes) {
+        static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {
             return new ConsoleSpec(
                     "Cache",
                     r -> {
@@ -595,15 +606,12 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(
-                    cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(CommonOpts.cacheDir(), Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path cacheDir =
-                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+            Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
             boolean dryRun = in.isSet("dry-run");
             GlobalOptions global = GlobalOptions.from(in);
             return CacheCommand.runNuke(resolveCacheRoot(cacheDir), dryRun, global, false);
@@ -633,8 +641,7 @@ public final class CacheCommand extends GroupCommand {
             CliOutput.out("  The directory itself goes, not only its contents.");
             CliOutput.out(
                     "  Artifact store (deps under JK_STORE_DIR) is kept. Rebuildable — the next build re-runs work.");
-            return cc.jumpkick.cli.tui.Confirm.of(bang + " Nuke the cache tier?", false)
-                    .ask();
+            return Confirm.of(bang + " Nuke the cache tier?", false).ask();
         }
     }
 
@@ -667,7 +674,7 @@ public final class CacheCommand extends GroupCommand {
         }
 
         @Override
-        public List<cc.jumpkick.model.command.Param> parameters() {
+        public List<Param> parameters() {
             return target.parameters();
         }
 
@@ -687,8 +694,7 @@ public final class CacheCommand extends GroupCommand {
      * cache {@code max-cache-size-gb}; a separate line for the separately-budgeted Zinc analysis
      * state; last-cleaned footer.
      */
-    static List<String> renderCacheUsageTable(
-            CacheUsageStats s, cc.jumpkick.config.JkCacheConfig cfg, String lastCleaned) {
+    static List<String> renderCacheUsageTable(CacheUsageStats s, JkCacheConfig cfg, String lastCleaned) {
         String stampSize = s.stamps().bytes <= 0 ? "--" : fmtSize(s.stamps().bytes);
         String[][] rows = {
             {"Class Files", fmtCount(s.classFiles().files), fmtSize(s.classFiles().bytes)},

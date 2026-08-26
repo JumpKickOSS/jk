@@ -2,10 +2,14 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.ParallelTestsOpts;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DurationText;
@@ -20,6 +24,8 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.cli.tui.Tree;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ModuleGraphAck;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -37,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/stage). Prefer
@@ -66,17 +73,17 @@ public final class ExplainCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new ArrayList<Opt>();
         opts.add(Opt.flag("Build the plan instead of printing it", "--run"));
-        opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
+        opts.addAll(ParallelTestsOpts.options());
         // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
         // means feeding the same inputs to the shared estimate (and, with --run, to build).
         // Module concurrency: global -j/--jobs.
         opts.add(Opt.value("<name>", "Forecast with a build profile", "--profile"));
         opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
-        opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
+        opts.add(CommonOpts.skipTests());
         // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
         opts.add(CommonOpts.jdksDir());
-        opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
-        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
+        opts.add(CommonOpts.cacheDir());
+        opts.addAll(CommonOpts.moduleSelection());
         opts.add(Opt.value("<fmt>", "Emit module DAG as dot or mermaid", "--graph"));
         opts.add(Opt.value("<file>", "Write --graph output to this file", "--graph-out"));
         return opts;
@@ -102,7 +109,7 @@ public final class ExplainCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
-        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         Path startDir = global.workingDir();
         var proj = ProjectContext.require(startDir, "explain").orElse(null);
         if (proj == null) return Exit.CONFIG;
@@ -139,7 +146,7 @@ public final class ExplainCommand implements CliCommand {
         // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`
         // (-w 0 = auto, -j from jobsEffective, parallel-tests default on). The estimate must
         // match the live countdown bit-for-bit — docs/perf/progress-contract.md.
-        boolean parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
+        boolean parallelTests = ParallelTestsOpts.enabled(in);
         int jobs = global.jobsEffective();
         boolean serial = jobs == 1;
         // 0 = auto within-module test JVMs — same as BuildCommand when -w is omitted.
@@ -202,9 +209,9 @@ public final class ExplainCommand implements CliCommand {
                 prep.update(needsCalibrate ? "Calibrating host…" : "Calculating build plan…");
             }
             // Forecast via engine: graph + per-step plan + schedule-aware ETA.
-            plan = cc.jumpkick.cli.engine.EngineClient.explain(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.ExplainRequest(
+            plan = EngineClient.explain(
+                    EnginePaths.current(),
+                    new EngineRequests.ExplainRequest(
                             startDir,
                             cache,
                             workers,
@@ -413,8 +420,7 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /** {@code "N source(s) changed"} from {@code JavaCompile}, digit-guarded. */
-    private static final java.util.regex.Pattern CHANGED_SOURCES =
-            java.util.regex.Pattern.compile("(?<!\\d)(\\d+) sources? changed");
+    private static final Pattern CHANGED_SOURCES = Pattern.compile("(?<!\\d)(\\d+) sources? changed");
 
     /**
      * Changed-source count summed over the module's non-cached compile steps, or {@code -1} when
@@ -674,10 +680,9 @@ public final class ExplainCommand implements CliCommand {
     private static int emitModuleGraph(
             Path startDir, String format, String modulesSpec, String affectedSince, String outputPath)
             throws Exception {
-        cc.jumpkick.engine.protocol.ModuleGraphAck ack;
+        ModuleGraphAck ack;
         try {
-            ack = cc.jumpkick.cli.engine.EngineClient.moduleGraph(
-                    cc.jumpkick.engine.EnginePaths.current(), startDir, format, modulesSpec, affectedSince);
+            ack = EngineClient.moduleGraph(EnginePaths.current(), startDir, format, modulesSpec, affectedSince);
         } catch (Exception e) {
             CommandWedge.printFail("Explain", String.valueOf(e.getMessage()));
             return Exit.CONFIG;

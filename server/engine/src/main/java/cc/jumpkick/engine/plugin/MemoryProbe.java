@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.host.Os;
+import com.sun.management.OperatingSystemMXBean;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -194,8 +195,8 @@ public final class MemoryProbe {
                 long purgeable = pages(info, PURGEABLE_COUNT_OFFSET);
                 long available = (free + inactive + speculative + purgeable) * pageSize;
 
-                long total = ((com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
-                        .getTotalMemorySize();
+                long total =
+                        ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean()).getTotalMemorySize();
                 return available > 0 ? new Memory(total, available) : null;
             }
         } catch (Throwable t) {
@@ -212,7 +213,7 @@ public final class MemoryProbe {
     /** {@code com.sun.management} OS bean fallback (Windows, or the Mach call unavailable). */
     private static Memory fromBean() {
         try {
-            var os = (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+            var os = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
             long total = os.getTotalMemorySize();
             long free = os.getFreeMemorySize();
             return new Memory(total, free > 0 ? free : total);

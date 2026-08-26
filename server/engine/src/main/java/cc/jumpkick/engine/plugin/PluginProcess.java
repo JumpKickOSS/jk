@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -50,7 +51,7 @@ public final class PluginProcess {
     public static int run(
             List<String> command, String prefix, Consumer<String> onProtocol, Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(command, java.util.Map.of(), prefix, onProtocol, onPassthrough);
+        return run(command, Map.of(), prefix, onProtocol, onPassthrough);
     }
 
     /**
@@ -59,7 +60,7 @@ public final class PluginProcess {
      */
     public static int run(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             String prefix,
             Consumer<String> onProtocol,
             Consumer<String> onPassthrough)
@@ -76,7 +77,7 @@ public final class PluginProcess {
      */
     public static int run(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             Consumer<String> onProtocol,
@@ -110,7 +111,7 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(command, java.util.Map.of(), prefix, onProtocol, onPassthrough);
+        return converse(command, Map.of(), prefix, onProtocol, onPassthrough);
     }
 
     /**
@@ -119,7 +120,7 @@ public final class PluginProcess {
      */
     public static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             Consumer<String> onPassthrough)
@@ -133,7 +134,7 @@ public final class PluginProcess {
      */
     public static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -144,7 +145,7 @@ public final class PluginProcess {
 
     private static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -180,7 +181,7 @@ public final class PluginProcess {
      */
     public static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,

@@ -12,6 +12,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.terminal.Styled;
 import cc.jumpkick.terminal.StyledBuilder;
 import cc.jumpkick.terminal.TerminalSession;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,7 @@ final class JdkUninstallWizard {
             byId.put(choiceIdFor(hit), hit);
         }
 
-        List<Choice> choices = new java.util.ArrayList<>();
+        List<Choice> choices = new ArrayList<>();
         for (JdkHit hit : installed) {
             String id = choiceIdFor(hit);
             String identifier = JdkRegistry.identifierFor(hit.home());

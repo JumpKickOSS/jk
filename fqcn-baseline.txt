@@ -93,58 +93,13 @@
 # has no reference left and simply drops out — which is how this section shrinks by itself as
 # OpenRewrite's printer improves, instead of ossifying into an exemption nobody revisits.
 
-   7  clients/cli/src/main/java/cc/jumpkick/cli/EnsureFreshLock.java
-    2  clients/cli/src/main/java/cc/jumpkick/cli/PathDisplay.java
-    1  clients/cli/src/main/java/cc/jumpkick/cli/args/ArgParser.java
-    5  clients/cli/src/main/java/cc/jumpkick/cli/run/TestFailureHighlight.java
-    8  clients/cli/src/main/java/cc/jumpkick/cli/tui/Spinner.java
-    7  clients/cli/src/main/java/cc/jumpkick/command/AddCommand.java
-   37  clients/cli/src/main/java/cc/jumpkick/command/CacheCommand.java
-   11  clients/cli/src/main/java/cc/jumpkick/command/EngineStatusCommand.java
-   14  clients/cli/src/main/java/cc/jumpkick/command/ExplainCommand.java
-   28  clients/cli/src/main/java/cc/jumpkick/command/JdkInstallCommand.java
-    1  clients/cli/src/main/java/cc/jumpkick/command/JdkUninstallWizard.java
-   10  clients/cli/src/main/java/cc/jumpkick/command/JkEnv.java
-    3  clients/cli/src/main/java/cc/jumpkick/command/NewJdkCandidate.java
-    3  clients/cli/src/main/java/cc/jumpkick/command/RemoveCommand.java
-   11  clients/cli/src/main/java/cc/jumpkick/command/WatchCommand.java
-    2  clients/cli/src/test/java/cc/jumpkick/command/Giter8Catalog.java
-   16  plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/AotCacheTrainer.java
-    5  plugins/minified/src/main/java/cc/jumpkick/minified/ByNameIndex.java
-    3  plugins/spring-boot/src/main/java/cc/jumpkick/boot/BootJarPackager.java
-    2  server/engine/src/main/java/cc/jumpkick/engine/EngineMaintenance.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/StoreFeedRefresh.java
-   16  server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java
-   16  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildAccumulator.java
-    2  server/engine/src/main/java/cc/jumpkick/engine/plugin/MemoryProbe.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/CacheMaintenanceLocks.java
-    6  server/engine/src/main/java/cc/jumpkick/runtime/BuildEta.java
-   21  server/engine/src/main/java/cc/jumpkick/runtime/BuildLogicSupport.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/BuildService.java
-   25  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
-    3  server/engine/src/main/java/cc/jumpkick/runtime/NativeEffort.java
    33  server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java
-   37  server/engine/src/main/java/cc/jumpkick/runtime/TestSupport.java
-   10  server/engine/src/main/java/cc/jumpkick/runtime/TrainRunner.java
-    1  server/engine/src/main/java/cc/jumpkick/task/CacheRetention.java
-    7  server/engine/src/test/java/cc/jumpkick/runtime/AndroidReleaseTest.java
-    5  server/engine/src/test/java/cc/jumpkick/runtime/AndroidWorkspaceTest.java
-   12  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java
-    3  server/io/src/main/java/cc/jumpkick/repo/s3/SigV4Signer.java
-    3  server/resolver/src/main/java/cc/jumpkick/resolver/pubgrub/PubGrubSolver.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java
-    3  shared/client-io/src/main/java/cc/jumpkick/repo/M2Dirs.java
-    9  shared/core/src/main/java/cc/jumpkick/builds/ProjectBuilds.java
     5  shared/core/src/main/java/cc/jumpkick/config/ManifestProject.java
-    1  shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginDescriptors.java
-    2  shared/dynamic-surface/src/main/java/cc/jumpkick/surface/DynamicSurface.java
-    6  shared/jk-api/src/main/java/cc/jumpkick/run/BuildPlan.java
     3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java
     2  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/In.java
     2  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/InvocationPhase.java
-    8  shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkRegistry.java
-    2  shared/toolchain-jdk/src/main/java/cc/jumpkick/tool/NativeImageDriver.java
-    6  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
 
 
 ## outside-the-recipe
@@ -166,10 +121,8 @@
 # decline to shorten that type anywhere in the file. Fixing the link fixes the shortening.
 
     1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java
-    7  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/posix/TermiosLinux.java
     1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/posix/package-info.java
     1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/windows/package-info.java
-    1  clients/cli-terminal/src/test/java/cc/jumpkick/terminal/KeysTest.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/engine/package-info.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
@@ -178,23 +131,18 @@
     1  plugins/formatter/src/main/java/cc/jumpkick/format/CodeFormatter.java
     2  plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java
     8  plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java
-    3  plugins/quarkus/src/main/java/cc/jumpkick/quarkus/QuarkusAugmentMain.java
     3  plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java
-    2  server/engine/src/main/java/cc/jumpkick/engine/EngineVitals.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/TerminalSignals.java
     1  server/engine/src/main/java/cc/jumpkick/engine/http/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/engine/jobs/JobBody.java
     1  server/engine/src/main/java/cc/jumpkick/engine/jobs/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/engine/journal/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/engine/listen/package-info.java
-   9  server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java
+   1  server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/LockVerb.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/NativeVerb.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/giter8/Giter8Render.java
     1  server/engine/src/main/java/cc/jumpkick/giter8/package-info.java
-    8  server/engine/src/main/java/cc/jumpkick/runtime/BuildMetrics.java
-    1  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
     5  server/engine/src/test/java/cc/jumpkick/engine/http/McpHandlerTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/jobs/JobEnvelopeTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/plugin/JvmOptionsTest.java
@@ -205,7 +153,6 @@
     1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java
     2  server/engine/src/test/java/cc/jumpkick/runtime/ExplainBuildEtaParityTest.java
-    3  server/engine/src/test/java/cc/jumpkick/runtime/HiltTransformTest.java
     3  server/engine/src/test/java/cc/jumpkick/runtime/NativePlansTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/PinnedWorkerJarTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
@@ -214,7 +161,6 @@
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/MavenPackageSourceExclusionTest.java
-    1  server/resolver/src/test/java/cc/jumpkick/resolver/NiaWarmLockTimingTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/PlatformBomVersionsTest.java
     1  shared/client-io/src/test/java/cc/jumpkick/http/HostCooldownTest.java
     3  shared/client-io/src/test/java/cc/jumpkick/repo/RepoArtifactStoreTest.java
@@ -242,4 +188,3 @@
     2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkCatalogClientTest.java
     2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkRegistryTest.java
     1  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkResolverTest.java
-    2  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java

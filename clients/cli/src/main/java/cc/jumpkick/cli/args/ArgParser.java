@@ -8,6 +8,7 @@ import cc.jumpkick.model.command.Param;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Recursive-descent parser of argv against a {@link Command}'s {@link Opt}s/{@link Param}s (long
@@ -173,7 +174,7 @@ public final class ArgParser {
             }
         }
         if (opt.split() != null && !opt.split().isEmpty()) {
-            for (String part : value.split(java.util.regex.Pattern.quote(opt.split()), -1)) {
+            for (String part : value.split(Pattern.quote(opt.split()), -1)) {
                 out.addValue(opt.canonicalName(), part);
             }
         } else if (opt.repeatable()) {

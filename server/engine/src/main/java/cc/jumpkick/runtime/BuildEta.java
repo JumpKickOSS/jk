@@ -6,15 +6,19 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.test.TestWorkers;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
 
 /**
@@ -182,7 +186,7 @@ public final class BuildEta {
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
         // Same jobs budget the live runner uses for -w auto (not raw availableProcessors alone).
-        int jobsBudget = Math.max(1, cc.jumpkick.test.TestWorkers.effectiveJobs());
+        int jobsBudget = Math.max(1, TestWorkers.effectiveJobs());
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
         for (TaskForecast.Module m : plan.modules()) {
             if (!distrust && !m.dirty()) continue;
@@ -219,7 +223,7 @@ public final class BuildEta {
                         mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, true);
                 PlannerTails.appendDeclaredTails(builder, inputs);
-                for (cc.jumpkick.run.Task s : builder.build().steps()) running.add(s.name());
+                for (Task s : builder.build().steps()) running.add(s.name());
             }
             if (running.isEmpty()) {
                 // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.
@@ -227,7 +231,7 @@ public final class BuildEta {
                 costs.add(EffortWeights.costOf(mdir, prereqs, w, 0));
                 continue;
             }
-            Map<String, Integer> counts = new java.util.HashMap<>();
+            Map<String, Integer> counts = new HashMap<>();
             if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
             if (m.sourceCount() > 0) {
                 counts.put(TaskNames.COMPILE_JAVA, m.sourceCount());
@@ -235,7 +239,7 @@ public final class BuildEta {
             }
             int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             // workers: 0 = auto (same as bare jk build -w omit)
-            int testW = cc.jumpkick.test.TestWorkers.resolve(workers, classGuess, jobsBudget);
+            int testW = TestWorkers.resolve(workers, classGuess, jobsBudget);
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
             if (cascadeRecheck > 0) {
@@ -291,8 +295,7 @@ public final class BuildEta {
      * ("10 sources changed"), see . Text form from {@code JavaCompile}:
      * {@code "1 source changed"} / {@code "<n> sources changed"}.
      */
-    private static final java.util.regex.Pattern ZERO_SOURCES =
-            java.util.regex.Pattern.compile("(?<!\\d)0 sources? changed");
+    private static final Pattern ZERO_SOURCES = Pattern.compile("(?<!\\d)0 sources? changed");
 
     /**
      * True when the module has real local compile content (sources/options/classpath) — not

@@ -9,15 +9,20 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ManifestImage;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.MainClassScanner;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
@@ -28,13 +33,24 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ClasspathFingerprint;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
+import java.util.function.UnaryOperator;
 
 /**
  * {@code jk image} plan: full build plus OCI tail (Jib plugin or docker/podman Dockerfile
@@ -109,10 +125,10 @@ public final class ImagePlans {
             String tag,
             String tarballArg,
             String dockerExecutableArg,
-            java.util.function.UnaryOperator<BuildPlanner.Inputs> decorate) {
+            UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
-        boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
+        Path lockFile = LockPaths.lockFile(projectDir);
+        boolean compact = ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 projectDir,
@@ -128,7 +144,7 @@ public final class ImagePlans {
                 verbose,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         if (decorate != null) inputs = decorate.apply(inputs);
 
@@ -491,10 +507,9 @@ public final class ImagePlans {
     /** Run a subprocess, streaming each output line via {@code ctx.output()}. */
     private static void runSubprocess(TaskContext ctx, List<String> cmd, Path cwd)
             throws IOException, InterruptedException {
-        Process p = cc.jumpkick.engine.JobWorkers.start(
-                new ProcessBuilder(cmd).directory(cwd.toFile()).redirectErrorStream(true));
-        try (var reader =
-                new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+        Process p =
+                JobWorkers.start(new ProcessBuilder(cmd).directory(cwd.toFile()).redirectErrorStream(true));
+        try (var reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 ctx.output(line);
@@ -519,7 +534,7 @@ public final class ImagePlans {
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                         .redirectError(ProcessBuilder.Redirect.DISCARD)
                         .start();
-                if (p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0) {
+                if (p.waitFor(2, TimeUnit.SECONDS) && p.exitValue() == 0) {
                     return candidate;
                 }
             } catch (Exception ignored) {
@@ -568,9 +583,9 @@ public final class ImagePlans {
         sb.append("user=").append(c.user()).append(';');
         sb.append("registry=").append(c.registry()).append(';');
         sb.append("tag=").append(c.tag()).append(';');
-        sb.append("ports=").append(new java.util.TreeSet<>(c.ports())).append(';');
-        sb.append("env=").append(new java.util.TreeMap<>(c.env())).append(';');
-        sb.append("labels=").append(new java.util.TreeMap<>(c.labels())).append(';');
+        sb.append("ports=").append(new TreeSet<>(c.ports())).append(';');
+        sb.append("env=").append(new TreeMap<>(c.env())).append(';');
+        sb.append("labels=").append(new TreeMap<>(c.labels())).append(';');
         sb.append("platforms=").append(new ArrayList<>(c.platforms())).append(';');
         // aot-cache changes the shipped layers (trained app tree + app.aot) and dockerFile
         // switches the build path entirely — both are part of what the tarball is a function of.
@@ -602,7 +617,7 @@ public final class ImagePlans {
         // packager uses for its entry attribute) — [application].main stays optional.
         if (PluginBuild.shape(project, projectDir).map(sh -> sh.mainScan()).orElse(false)) {
             try {
-                return cc.jumpkick.layout.MainClassScanner.scanUnique(
+                return MainClassScanner.scanUnique(
                         BuildLayout.of(projectDir, project).classesDir());
             } catch (IOException ignored) {
                 // fall through to the workspace scan / null
@@ -614,7 +629,7 @@ public final class ImagePlans {
             var modules = WorkspaceLoader.loadModules(projectDir, project);
             List<String> mains = modules.values().stream()
                     .map(JkBuild::mainClass)
-                    .filter(java.util.Objects::nonNull)
+                    .filter(Objects::nonNull)
                     .distinct()
                     .toList();
             if (mains.size() == 1) return mains.get(0);
@@ -635,7 +650,7 @@ public final class ImagePlans {
      */
     private static void splitBootDependencyJars(Path projectDir, Path cache, List<Path> releases, List<Path> snapshots)
             throws IOException {
-        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return;
         Lockfile lock = LockfileReader.read(lockPath);
         ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
@@ -653,10 +668,10 @@ public final class ImagePlans {
      * Colliding names are qualified with the group; a residual collision fails the build.
      */
     private static Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
-        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return Map.of();
         Cas cas = JkStores.cas(cache);
-        Map<Path, Lockfile.Artifact> rows = new java.util.LinkedHashMap<>();
+        Map<Path, Lockfile.Artifact> rows = new LinkedHashMap<>();
         for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
             if (pkg.checksum() == null) continue;
             String hex = pkg.checksumHex();
@@ -667,16 +682,16 @@ public final class ImagePlans {
 
     /** Pure naming half of {@link #casJarNames}. Package-visible for tests. */
     static Map<Path, String> jarNames(Map<Path, Lockfile.Artifact> rows) throws IOException {
-        Map<Path, String> names = new java.util.LinkedHashMap<>();
-        Map<String, java.util.Set<Path>> byName = new java.util.LinkedHashMap<>();
+        Map<Path, String> names = new LinkedHashMap<>();
+        Map<String, Set<Path>> byName = new LinkedHashMap<>();
         for (var row : rows.entrySet()) {
             String base = coordinateJarName(row.getValue());
             names.put(row.getKey(), base);
-            byName.computeIfAbsent(base, k -> new java.util.LinkedHashSet<>()).add(row.getKey());
+            byName.computeIfAbsent(base, k -> new LinkedHashSet<>()).add(row.getKey());
         }
         for (var e : byName.entrySet()) {
             if (e.getValue().size() < 2) continue;
-            java.util.Set<String> qualified = new java.util.HashSet<>();
+            Set<String> qualified = new HashSet<>();
             for (Path jar : e.getValue()) {
                 String withGroup = rows.get(jar).moduleGroup() + "-" + e.getKey();
                 if (!qualified.add(withGroup)) {
@@ -691,8 +706,8 @@ public final class ImagePlans {
 
     private static String coordinateJarName(Lockfile.Artifact pkg) {
         String classifier = "";
-        if (cc.jumpkick.model.PackageId.isMavenPackageKey(pkg.name())) {
-            String c = cc.jumpkick.model.PackageId.parse(pkg.name()).classifier();
+        if (PackageId.isMavenPackageKey(pkg.name())) {
+            String c = PackageId.parse(pkg.name()).classifier();
             if (c != null) classifier = c;
         }
         return pkg.moduleArtifact() + "-" + pkg.version() + (classifier.isEmpty() ? "" : "-" + classifier) + ".jar";
@@ -704,7 +719,7 @@ public final class ImagePlans {
     }
 
     private static List<Path> loadDependencyJars(Path projectDir, Path cache) throws IOException {
-        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return List.of();
         Lockfile lock = LockfileReader.read(lockPath);
         List<Path> result = new ArrayList<>();

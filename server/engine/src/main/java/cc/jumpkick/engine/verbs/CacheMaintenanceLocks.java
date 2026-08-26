@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.task.CachePruneScheduler;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
@@ -109,6 +110,6 @@ public final class CacheMaintenanceLocks {
      *     measure them — a wipe or a store-tier sweep. The scheduler reads that as "no pressure".
      */
     public static void stampLastPruned(Path cache, long nowMillis, long finalActionBytes) {
-        cc.jumpkick.task.CachePruneScheduler.write(cache, nowMillis, finalActionBytes);
+        CachePruneScheduler.write(cache, nowMillis, finalActionBytes);
     }
 }

@@ -14,6 +14,9 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeModel;
+import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.InvokeInstruction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -124,9 +127,9 @@ class HiltTransformTest {
         return ClassFile.of().parse(Files.readAllBytes(classFile)).methods().stream()
                 .filter(m -> m.methodName().equalsString("onReceive"))
                 .flatMap(m -> m.code().stream())
-                .flatMap(java.lang.classfile.CodeModel::elementStream)
-                .anyMatch(el -> el instanceof java.lang.classfile.instruction.InvokeInstruction inv
-                        && inv.opcode() == java.lang.classfile.Opcode.INVOKESPECIAL
+                .flatMap(CodeModel::elementStream)
+                .anyMatch(el -> el instanceof InvokeInstruction inv
+                        && inv.opcode() == Opcode.INVOKESPECIAL
                         && inv.owner().asInternalName().equals(owner)
                         && inv.name().equalsString("onReceive"));
     }

@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /**
  * Single-line animated spinner for indeterminate CLI work. A solid circle glyph ({@value
@@ -63,7 +69,7 @@ public final class Spinner implements AutoCloseable {
     static final int PULSE_FRAMES = 25;
 
     /** Interval between pulse frames (2.0s per full breath at 25 frames). */
-    static final long FRAME_MS = cc.jumpkick.runtime.WorkspaceProgressTracker.TTY_FRAME_MS;
+    static final long FRAME_MS = WorkspaceProgressTracker.TTY_FRAME_MS;
 
     /**
      * Glyph for animator frame {@code i} (wraps). Same glyph for {@link #FILL_HOLD} consecutive
@@ -121,7 +127,7 @@ public final class Spinner implements AutoCloseable {
     private Thread animator;
     private boolean plainStarted;
     private long plainLastBeatMs;
-    private java.util.function.LongSupplier clock = System::currentTimeMillis;
+    private LongSupplier clock = System::currentTimeMillis;
 
     public static Spinner show(PrintStream out, String message) {
         CommandWedge.envelopeStart(out); // open spinner is often first chrome for the command
@@ -131,7 +137,7 @@ public final class Spinner implements AutoCloseable {
     }
 
     /** Test seam: wall clock for plain heartbeat cadence. */
-    void clockForTests(java.util.function.LongSupplier clock) {
+    void clockForTests(LongSupplier clock) {
         if (clock != null) this.clock = clock;
     }
 
@@ -163,12 +169,11 @@ public final class Spinner implements AutoCloseable {
         this.out = PlainAscii.wrap(out);
         this.message = message == null ? "" : message;
         this.wedgeCommand = wedge ? (wedgeCommand == null ? "" : wedgeCommand) : null;
-        this.nerdFont = wedge ? cc.jumpkick.config.GlobalConfig.nerdFont() : NerdFontCaps.NONE;
+        this.nerdFont = wedge ? GlobalConfig.nerdFont() : NerdFontCaps.NONE;
         // Script mode is no-progress: cursor-control ANSI/OSC and heartbeat lines must never
         // enter a stream a program is parsing (JK-2330's rule, applied at the primitive so no
         // call site can route around it the way Spinner.show(CliOutput.stdout()) did).
-        this.silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false)
-                || cc.jumpkick.cli.CliOutput.scriptMode();
+        this.silent = SessionContext.current().config().noProgressOr(false) || CliOutput.scriptMode();
         if (wedge) {
             // Glyph FG breathes white↔chip blue; BG applied per frame in step().
             this.frameColors = buildChipPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
@@ -330,8 +335,7 @@ public final class Spinner implements AutoCloseable {
     private record PulseKey(int n, Rgb bright, Rgb dim, Theme theme) {}
 
     /** A handful of (frame-count, color-pair) combos exist; live renders ask every frame. */
-    private static final java.util.concurrent.ConcurrentHashMap<PulseKey, Style[]> PULSE_CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<PulseKey, Style[]> PULSE_CACHE = new ConcurrentHashMap<>();
 
     /** Pulse styles: {@code bright} at the ends of the cycle, {@code dim} at the midpoint. */
     static Style[] buildPulseStyles(int n, Rgb bright, Rgb dim) {

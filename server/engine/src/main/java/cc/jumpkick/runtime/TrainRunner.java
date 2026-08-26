@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.TrainConfig;
+import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
@@ -9,6 +12,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.surface.DynamicSurface;
@@ -24,7 +28,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.jar.JarFile;
 
 /**
  * Runs {@code jk train}: observe one or more profiles under the Graal tracing agent, merge into a
@@ -306,11 +312,11 @@ public final class TrainRunner {
         }
         String mainClass = project.mainClass();
         if (cache != null && mainClass != null && Files.isRegularFile(lockFile)) {
-            var resolver = new cc.jumpkick.compile.ClasspathResolver(cc.jumpkick.cache.JkStores.cas(cache));
-            var lock = cc.jumpkick.lock.LockfileReader.read(lockFile);
+            var resolver = new ClasspathResolver(JkStores.cas(cache));
+            var lock = LockfileReader.read(lockFile);
             List<Path> cp = new ArrayList<>();
             cp.add(mainJar);
-            for (var entry : resolver.entriesFor(lock, cc.jumpkick.compile.ClasspathResolver.RUNTIME)) {
+            for (var entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
                 if (Files.exists(entry.jar())) cp.add(entry.jar());
             }
             int deps = cp.size() - 1;
@@ -330,7 +336,7 @@ public final class TrainRunner {
 
     /** Boot launcher layout, or any jar whose manifest names its own {@code Class-Path}. */
     private static boolean isSelfContained(Path jar) {
-        try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jar.toFile())) {
+        try (JarFile jf = new JarFile(jar.toFile())) {
             if (jf.getEntry("BOOT-INF/") != null) return true;
             var manifest = jf.getManifest();
             if (manifest == null) return false;
@@ -367,7 +373,7 @@ public final class TrainRunner {
         create.addAll(launch);
         ProcessBuilder pb2 =
                 new ProcessBuilder(create).redirectErrorStream(true).directory(moduleDir.toFile());
-        Process p = cc.jumpkick.engine.JobWorkers.start(pb2);
+        Process p = JobWorkers.start(pb2);
         // Drain the pipe: a chatty assembler fills the 64K buffer, stalls, gets force-killed at
         // the timeout, and is then misreported as "did not produce a cache".
         StringBuilder createOut = new StringBuilder();
@@ -394,10 +400,9 @@ public final class TrainRunner {
 
     private static Output runUntilSettled(ProcessBuilder pb, Consumer<String> log)
             throws IOException, InterruptedException {
-        Process process = cc.jumpkick.engine.JobWorkers.start(pb);
+        Process process = JobWorkers.start(pb);
         StringBuilder out = new StringBuilder();
-        java.util.concurrent.atomic.AtomicLong lastOutput =
-                new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+        AtomicLong lastOutput = new AtomicLong(System.nanoTime());
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {

@@ -3,7 +3,10 @@ package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.util.List;
 
 /**
@@ -146,7 +149,7 @@ public final class ProtoEvents {
             double progressPercent) {
         String prog = Double.isNaN(progressPercent)
                 ? progressPercent(numerator, denominator)
-                : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progressPercent);
+                : WorkspaceProgressTracker.progressToken(progressPercent);
         return "{\"schema\":1,\"type\":\""
                 + EngineProtocol.WORKSPACE_PROGRESS
                 + "\",\"dir\":"
@@ -255,8 +258,7 @@ public final class ProtoEvents {
      * JSON token {@code null} when {@code denominator <= 0}.
      */
     static String progressPercent(long numerator, long denominator) {
-        return cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(
-                cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(numerator, denominator));
+        return WorkspaceProgressTracker.progressToken(WorkspaceProgressTracker.percentOf(numerator, denominator));
     }
 
     public static String progress(
@@ -468,8 +470,7 @@ public final class ProtoEvents {
     }
 
     /** Full test-failure error line including optional source snippet. */
-    public static String errorLine(
-            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+    public static String errorLine(String dir, String step, String code, String message, TestFailureInfo failure) {
         if (failure == null) return errorLine(dir, step, code, message, "", "");
         return diagnosticLike(
                 EngineProtocol.ERROR_LINE,
@@ -522,8 +523,7 @@ public final class ProtoEvents {
                 stack);
     }
 
-    public static String planDiagnostic(
-            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+    public static String planDiagnostic(String dir, String step, String code, String message, TestFailureInfo failure) {
         if (failure == null) return planDiagnostic(dir, step, code, message, "", "");
         return diagnosticLike(
                 EngineProtocol.BUILDPLAN_DIAGNOSTIC,
@@ -957,7 +957,7 @@ public final class ProtoEvents {
             long millis,
             boolean didWork,
             boolean cancelled,
-            cc.jumpkick.runtime.ModuleOutcome.Image image) {
+            ModuleOutcome.Image image) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\"type\":\"")
                 .append(EngineProtocol.MODULE_FINISH)

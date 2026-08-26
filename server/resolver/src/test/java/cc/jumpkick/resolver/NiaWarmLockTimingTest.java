@@ -19,6 +19,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.testing.SysProps;
+import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,8 +63,7 @@ class NiaWarmLockTimingTest {
         // Wall-clock budgets are only meaningful on an uncontended machine; a full parallel
         // suite run (~16 workers sharing CPU, disk, and network) blows them by 5x+ without any
         // resolver regression. Sample the load before the passes start.
-        double startLoad = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-                .getSystemLoadAverage();
+        double startLoad = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
         boolean quietMachine =
                 startLoad >= 0 && startLoad < Runtime.getRuntime().availableProcessors() * 0.5;
 

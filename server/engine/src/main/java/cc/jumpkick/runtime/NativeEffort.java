@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
@@ -12,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Prices {@code native-image} wall time for ETA and bar weights.
@@ -72,8 +74,7 @@ public final class NativeEffort {
 
     private static final long MIB = 1024L * 1024L;
 
-    private static final java.util.concurrent.ConcurrentHashMap<String, Long> LAST_INPUT_BYTES =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> LAST_INPUT_BYTES = new ConcurrentHashMap<>();
 
     private NativeEffort() {}
 
@@ -137,7 +138,7 @@ public final class NativeEffort {
             else if (Files.isDirectory(layout.classesDir())) app = directorySize(layout.classesDir(), 0);
 
             long deps = 0;
-            Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+            Path lock = LockPaths.lockFile(moduleDir);
             Path cache = JkDirs.cache();
             if (Files.isRegularFile(lock)) {
                 try {

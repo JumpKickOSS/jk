@@ -5,13 +5,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 
 /**
  * Named DAG of {@link Task}s for one invocation: readiness-level scheduling, progress, diagnostics,
@@ -397,7 +401,7 @@ public final class BuildPlan {
         String msg = t.getMessage();
         String type = t.getClass().getSimpleName();
         if (msg == null || msg.isBlank()) return type;
-        String lower = msg.toLowerCase(java.util.Locale.ROOT);
+        String lower = msg.toLowerCase(Locale.ROOT);
         if (lower.equals("closed") || lower.equals("stream closed") || lower.equals("broken pipe")) {
             return msg + " (" + type + ")";
         }
@@ -414,7 +418,7 @@ public final class BuildPlan {
 
     // --- Fanout helpers ------------------------------------------------
 
-    void emit(java.util.function.Consumer<BuildPlanListener> action) {
+    void emit(Consumer<BuildPlanListener> action) {
         for (BuildPlanListener l : listeners) {
             try {
                 action.accept(l);
@@ -457,9 +461,9 @@ public final class BuildPlan {
      * state steps produced — resolved lockfile, JDK outcome, etc. — into their summary output
      * without needing a separate holder object.
      */
-    public <T> java.util.Optional<T> get(BuildPlanKey<T> key) {
+    public <T> Optional<T> get(BuildPlanKey<T> key) {
         Object raw = state.get(key.name());
-        if (raw == null) return java.util.Optional.empty();
+        if (raw == null) return Optional.empty();
         if (!key.type().isInstance(raw)) {
             throw new ClassCastException("plan state '"
                     + key.name()
@@ -468,7 +472,7 @@ public final class BuildPlan {
                     + " not "
                     + key.type().getName());
         }
-        return java.util.Optional.of(key.type().cast(raw));
+        return Optional.of(key.type().cast(raw));
     }
 
     // --- DAG validation + topo sort -----------------------------------
@@ -609,7 +613,7 @@ public final class BuildPlan {
          * Append every task from {@code more} whose name is not already present — ordered-set
          * semantics.
          */
-        public Builder addAllTasks(java.util.Collection<Task> more) {
+        public Builder addAllTasks(Collection<Task> more) {
             Set<String> existing = new HashSet<>();
             for (Task p : steps) existing.add(p.name());
             for (Task p : more) {

@@ -7,6 +7,7 @@ import cc.jumpkick.host.DeterministicZip;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -113,7 +114,7 @@ public final class BootJarPackager {
     private static byte[] buildInfoProperties(Map<String, String> info) {
         Map<String, String> prefixed = new LinkedHashMap<>();
         info.forEach((k, v) -> prefixed.put("build." + k, v));
-        return DeterministicProperties.render(prefixed).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return DeterministicProperties.render(prefixed).getBytes(StandardCharsets.UTF_8);
     }
 
     /** {@code classpath.idx}: one {@code - "BOOT-INF/lib/…jar"} line per nested jar, in order. */
@@ -122,7 +123,7 @@ public final class BootJarPackager {
         for (Lib lib : libs) {
             sb.append("- \"").append(LIB_PREFIX).append(lib.fileName()).append("\"\n");
         }
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /**
@@ -149,7 +150,7 @@ public final class BootJarPackager {
         sb.append("  - \"").append(CLASSPATH_IDX).append("\"\n");
         sb.append("  - \"").append(LAYERS_IDX).append("\"\n");
         sb.append("  - \"META-INF/\"\n");
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /**

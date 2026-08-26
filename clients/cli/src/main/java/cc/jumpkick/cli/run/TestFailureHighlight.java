@@ -5,11 +5,14 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
+import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -329,7 +332,7 @@ public final class TestFailureHighlight {
         if (raw == null) return false;
         String t = raw.stripLeading();
         if (t.startsWith("[") && t.contains("]")) return true;
-        String lower = t.toLowerCase(java.util.Locale.ROOT);
+        String lower = t.toLowerCase(Locale.ROOT);
         return lower.startsWith("expected")
                 || lower.startsWith("but was")
                 || lower.startsWith("expecting")
@@ -356,7 +359,7 @@ public final class TestFailureHighlight {
         // Clamp to the terminal: one over-long source line otherwise pads EVERY row past the
         // width, wrapping continuation rows without the rail and spilling the band.
         // Tabs expand first — the pad math is column-based, and a raw '\t' misaligns the band end.
-        int budget = Math.max(40, cc.jumpkick.terminal.Size.columns() - ROW_OVERHEAD);
+        int budget = Math.max(40, Size.columns() - ROW_OVERHEAD);
         List<SrcRow> rows = new ArrayList<>();
         int maxCode = 0;
         for (int i = 1; i < markers.size(); i++) {
@@ -416,7 +419,7 @@ public final class TestFailureHighlight {
             String note) {
         if (displayPath == null) displayPath = "";
         Theme t = Theme.active();
-        int budget = Math.max(40, cc.jumpkick.terminal.Size.columns() - ROW_OVERHEAD);
+        int budget = Math.max(40, Size.columns() - ROW_OVERHEAD);
         int n = fileLines == null ? 0 : fileLines.size();
         int err = Math.max(1, errorLine);
         // A lone snippet (file unread) still wears the real diagnostic line number.
@@ -568,7 +571,7 @@ public final class TestFailureHighlight {
 
     /** Visible terminal columns of {@code code} (wcwidth-based, ANSI-free source text). */
     private static int columns(String code) {
-        return cc.jumpkick.cli.tui.RenderContext.visibleWidth(code);
+        return RenderContext.visibleWidth(code);
     }
 
     /** Longest prefix of {@code code} spending at most {@code maxCols} columns, whole code points. */
@@ -953,7 +956,7 @@ public final class TestFailureHighlight {
 
     private static SyntaxHighlight.Language languageOf(String lang) {
         if (lang == null) return SyntaxHighlight.Language.JAVA;
-        return switch (lang.toLowerCase(java.util.Locale.ROOT)) {
+        return switch (lang.toLowerCase(Locale.ROOT)) {
             case "kotlin", "kt" -> SyntaxHighlight.Language.KOTLIN;
             case "groovy" -> SyntaxHighlight.Language.GROOVY;
             default -> SyntaxHighlight.Language.JAVA;

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.engine.http.HttpLive;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
@@ -9,6 +12,8 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -45,7 +50,7 @@ public final class BuildAccumulator {
      * This run's byte accounting. Opened as the ambient ledger on the runner thread, so every
      * session the request builds meters into it (see {@link cc.jumpkick.task.IoLedger}).
      */
-    private final cc.jumpkick.task.IoLedger io = new cc.jumpkick.task.IoLedger();
+    private final IoLedger io = new IoLedger();
 
     // Plain lists under their own monitor (snapshot to iterate): CopyOnWriteArrayList copied the
     // whole backing array per append — O(n²) array churn for a build with many modules or
@@ -121,7 +126,7 @@ public final class BuildAccumulator {
         this.kind = kind;
         this.dir = dir;
         this.coord = coord;
-        this.projectId = cc.jumpkick.runtime.ProjectIds.idOf(dir);
+        this.projectId = ProjectIds.idOf(dir);
         this.trigger = trigger;
         this.timeline = timeline;
         this.rebuild = rebuild;
@@ -142,7 +147,7 @@ public final class BuildAccumulator {
         return journalId;
     }
 
-    public cc.jumpkick.task.IoLedger io() {
+    public IoLedger io() {
         return io;
     }
 
@@ -391,12 +396,12 @@ public final class BuildAccumulator {
      * rows exist, top-level tasks are the single-plan chain (including {@code RUN}).
      */
     public MidFlight midFlight() {
-        List<cc.jumpkick.engine.http.HttpLive.Module> moduleList = new ArrayList<>();
+        List<HttpLive.Module> moduleList = new ArrayList<>();
         Set<String> covered = new HashSet<>();
         for (ModuleOutcome o : moduleSnapshot()) {
             String mdir = o.dir() == null ? "" : o.dir().toString();
             covered.add(mdir);
-            moduleList.add(new cc.jumpkick.engine.http.HttpLive.Module(
+            moduleList.add(new HttpLive.Module(
                     mdir,
                     o.coord(),
                     /* finished */ true,
@@ -408,23 +413,22 @@ public final class BuildAccumulator {
         for (String d : stepsByDir.keySet()) {
             if (covered.contains(d)) continue;
             if (d.isEmpty()) continue; // single-plan top-level bucket
-            moduleList.add(new cc.jumpkick.engine.http.HttpLive.Module(
+            moduleList.add(new HttpLive.Module(
                     d, null, /* finished */ false, false, 0L, /* didWork n/a */ true, liveTasks(stepsFor(d))));
         }
-        List<cc.jumpkick.engine.http.HttpLive.Task> top = moduleList.isEmpty() ? liveTasks(stepsFor("")) : List.of();
+        List<HttpLive.Task> top = moduleList.isEmpty() ? liveTasks(stepsFor("")) : List.of();
         return new MidFlight(moduleList, top);
     }
 
-    private static List<cc.jumpkick.engine.http.HttpLive.Task> liveTasks(List<BuildRecord.Task> steps) {
-        List<cc.jumpkick.engine.http.HttpLive.Task> out = new ArrayList<>(steps.size());
+    private static List<HttpLive.Task> liveTasks(List<BuildRecord.Task> steps) {
+        List<HttpLive.Task> out = new ArrayList<>(steps.size());
         for (BuildRecord.Task s : steps) {
-            out.add(new cc.jumpkick.engine.http.HttpLive.Task(s.name(), s.stage(), s.status(), s.millis()));
+            out.add(new HttpLive.Task(s.name(), s.stage(), s.status(), s.millis()));
         }
         return out;
     }
 
-    public record MidFlight(
-            List<cc.jumpkick.engine.http.HttpLive.Module> modules, List<cc.jumpkick.engine.http.HttpLive.Task> tasks) {
+    public record MidFlight(List<HttpLive.Module> modules, List<HttpLive.Task> tasks) {
         public MidFlight {
             modules = modules == null ? List.of() : List.copyOf(modules);
             tasks = tasks == null ? List.of() : List.copyOf(tasks);
@@ -655,7 +659,7 @@ public final class BuildAccumulator {
                         benefit.savedMillis(),
                         benefit.coveredSkips(),
                         benefit.totalSkips());
-        cc.jumpkick.task.IoLedger.Totals bytes = io.totals();
+        IoLedger.Totals bytes = io.totals();
         BuildRecord.Io ioRow = bytes.isEmpty()
                 ? null
                 : new BuildRecord.Io(bytes.remoteUp(), bytes.remoteDown(), bytes.localUp(), bytes.localDown());
@@ -697,10 +701,10 @@ public final class BuildAccumulator {
             if (dir != null && !dir.isBlank()) {
                 root = Path.of(dir);
             } else {
-                root = cc.jumpkick.config.SessionContext.current().workingDir();
+                root = SessionContext.current().workingDir();
             }
             if (root == null) return text;
-            return cc.jumpkick.config.BuildEnv.secretsFor(root).redact(text);
+            return BuildEnv.secretsFor(root).redact(text);
         } catch (RuntimeException e) {
             return text;
         }

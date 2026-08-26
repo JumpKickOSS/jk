@@ -3,12 +3,15 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
@@ -239,12 +242,12 @@ public final class AddCommand implements CliCommand {
         Path target = cwd.resolve(raw).normalize();
         Path targetToml = target.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(targetToml)) {
-            CommandWedge.printFail("Add", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(target));
+            CommandWedge.printFail("Add", "no jk.toml in " + PathDisplay.styledRaw(target));
             return Exit.CONFIG;
         }
         var module = ProjectInfos.orNull(target);
         if (module == null) {
-            CommandWedge.printFail("Add", "could not read " + cc.jumpkick.cli.PathDisplay.styledRaw(targetToml));
+            CommandWedge.printFail("Add", "could not read " + PathDisplay.styledRaw(targetToml));
             return 1;
         }
         String group = module.group();
@@ -273,7 +276,7 @@ public final class AddCommand implements CliCommand {
 
         // 2. Register membership in the enclosing workspace root (cwd itself
         //    when cwd is the root).
-        Path root = cc.jumpkick.config.WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
+        Path root = WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
         Path rootToml = root.resolve(ManifestPaths.MANIFEST);
         try {
             if (!target.startsWith(root)) {
@@ -295,7 +298,7 @@ public final class AddCommand implements CliCommand {
                             + rel
                             + "' in "
                             + (alreadyWorkspace ? "workspace " : "new workspace ")
-                            + cc.jumpkick.cli.PathDisplay.styledRaw(root));
+                            + PathDisplay.styledRaw(root));
                 }
             }
         } catch (RuntimeException e) {
@@ -429,19 +432,14 @@ public final class AddCommand implements CliCommand {
                     throw new IllegalArgumentException("empty version after '@' in: " + coord);
                 }
                 String library = nonBlank(libraryFlag, libraryKey);
-                var catalog = cc.jumpkick.library.LibraryCatalog.forProject(
+                var catalog = LibraryCatalog.forProject(
                         Path.of(".").toAbsolutePath().normalize(), CliOutput.stderr()::println);
                 var catalogHit = catalog.lookup(libraryKey);
                 String group = nonBlank(
-                        groupFlag,
-                        catalogHit
-                                .map(cc.jumpkick.library.LibraryCatalog.Module::group)
-                                .orElse(null));
+                        groupFlag, catalogHit.map(LibraryCatalog.Module::group).orElse(null));
                 String name = nonBlank(
                         nameFlag,
-                        catalogHit
-                                .map(cc.jumpkick.library.LibraryCatalog.Module::artifact)
-                                .orElse(library));
+                        catalogHit.map(LibraryCatalog.Module::artifact).orElse(library));
                 if (group == null || group.isBlank()) {
                     StringBuilder msg = new StringBuilder("bare name `")
                             .append(libraryKey)

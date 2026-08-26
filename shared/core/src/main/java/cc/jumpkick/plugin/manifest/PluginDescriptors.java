@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.model.JkVersion;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -568,7 +569,7 @@ public final class PluginDescriptors {
                     "plugin " + id + ": unsupported jk-compat \"" + spec + "\" (only \">=x.y\" is supported)");
         }
         String floor = spec.substring(2).trim();
-        String running = cc.jumpkick.model.JkVersion.VERSION;
+        String running = JkVersion.VERSION;
         if (compareNumericCore(running, floor) < 0) {
             throw new IllegalArgumentException("plugin " + id + " requires jk " + floor + " or newer but this jk is "
                     + running + " — upgrade with `jk self update`");

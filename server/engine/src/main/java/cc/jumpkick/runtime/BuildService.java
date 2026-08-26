@@ -512,7 +512,7 @@ public final class BuildService {
     public static boolean isProductiveStep(String name) {
         if (name == null || name.isEmpty()) return false;
         return name.startsWith("compile")
-                || name.equals(cc.jumpkick.run.TaskNames.RUN_TESTS)
+                || name.equals(TaskNames.RUN_TESTS)
                 || name.startsWith("package")
                 || name.startsWith("native")
                 || name.startsWith(TaskNames.WRITE_IMAGE)

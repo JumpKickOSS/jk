@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import cc.jumpkick.resolve.ResolveProfile;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -171,7 +172,7 @@ public class PubGrubSolver {
      */
     public Map<String, String> solve(String rootPkg, String rootVersion, List<Term> rootDeps)
             throws IOException, InterruptedException {
-        long solveT0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
+        long solveT0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         this.rootPkg = rootPkg;
         this.decisionCount = 0;
         this.stepCount = 0;
@@ -196,8 +197,8 @@ public class PubGrubSolver {
             propagate(next);
             next = makeDecision();
         }
-        if (cc.jumpkick.resolve.ResolveProfile.on()) {
-            cc.jumpkick.resolve.ResolveProfile.solve(System.nanoTime() - solveT0);
+        if (ResolveProfile.on()) {
+            ResolveProfile.solve(System.nanoTime() - solveT0);
         }
         return solution.decisions();
     }

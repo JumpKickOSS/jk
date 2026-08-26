@@ -7,6 +7,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -263,7 +264,7 @@ public final class NativeImageDriver {
      * Forward stdout to {@code sink} line-by-line, parsing {@code [N/M]} step headers and firing the
      * listener when found. stderr uses the simpler {@link #forwardStream} (no parsing needed).
      */
-    private static Thread forwardStdout(java.io.InputStream in, ProgressListener listener, Consumer<String> sink) {
+    private static Thread forwardStdout(InputStream in, ProgressListener listener, Consumer<String> sink) {
         Thread t = new Thread(
                 () -> {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
@@ -286,7 +287,7 @@ public final class NativeImageDriver {
         return t;
     }
 
-    private static Thread forwardStream(java.io.InputStream in, Consumer<String> sink) {
+    private static Thread forwardStream(InputStream in, Consumer<String> sink) {
         Thread t = new Thread(
                 () -> {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {

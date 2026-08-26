@@ -7,16 +7,25 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Trains a JVM AOT cache (JEP 514) for an image by running the application inside the image's own
@@ -58,7 +67,7 @@ final class AotCacheTrainer {
      * from a fixed directory matches wherever the tree ends up.
      */
     /** {@code stagedFiles} = staging-relative paths present BEFORE the record run. */
-    record Result(Path stagingRoot, List<String> runArgs, Path cache, java.util.Set<String> stagedFiles) {}
+    record Result(Path stagingRoot, List<String> runArgs, Path cache, Set<String> stagedFiles) {}
 
     private static final long TRAIN_TIMEOUT_SECONDS = 300;
 
@@ -145,13 +154,13 @@ final class AotCacheTrainer {
         // Snapshot what was staged before any training process runs: whatever the app writes
         // during record/assemble (logs, embedded-DB files) is not application content and must
         // not become image bytes.
-        java.util.Set<String> stagedFiles = snapshotRelative(staging);
+        Set<String> stagedFiles = snapshotRelative(staging);
 
         // A container has to be addressable to be stopped; the local path signals the process
         // directly. Each run gets its own name so the training and verifying containers cannot
         // collide.
         String runtime = localJre == null ? containerRuntime(plan.config().dockerExecutable()) : null;
-        java.util.function.Function<String, List<String>> prefixFor = name -> {
+        Function<String, List<String>> prefixFor = name -> {
             if (localJre != null) return new ArrayList<>(List.of(localJre.toString()));
             List<String> cmd = new ArrayList<>(containerPrefix(runtime, staging, base, name));
             cmd.add("java");
@@ -162,9 +171,9 @@ final class AotCacheTrainer {
                         ? "training the AOT cache with " + base + "'s JVM, on this host"
                         : "training the AOT cache in " + base);
 
-        String trainName = "jk-aot-train-" + java.util.UUID.randomUUID();
-        String assembleName = "jk-aot-create-" + java.util.UUID.randomUUID();
-        String verifyName = "jk-aot-verify-" + java.util.UUID.randomUUID();
+        String trainName = "jk-aot-train-" + UUID.randomUUID();
+        String assembleName = "jk-aot-create-" + UUID.randomUUID();
+        String verifyName = "jk-aot-verify-" + UUID.randomUUID();
         List<String> prefix = prefixFor.apply(trainName);
 
         // Two steps, deliberately. The one-step -XX:AOTCacheOutput assembles the cache from a child
@@ -217,8 +226,8 @@ final class AotCacheTrainer {
         return new Result(staging, runArgs, cache, stagedFiles);
     }
 
-    private static java.util.Set<String> snapshotRelative(Path root) throws IOException {
-        java.util.Set<String> out = new java.util.TreeSet<>();
+    private static Set<String> snapshotRelative(Path root) throws IOException {
+        Set<String> out = new TreeSet<>();
         try (var walk = Files.walk(root)) {
             for (Path f : walk.toList()) {
                 if (Files.isRegularFile(f)) {
@@ -270,7 +279,7 @@ final class AotCacheTrainer {
                     Files.createDirectories(target);
                 } else {
                     Files.createDirectories(target.getParent());
-                    Files.copy(p, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
         }
@@ -307,7 +316,7 @@ final class AotCacheTrainer {
         entries.add("classpath/" + plan.mainJar().getFileName());
         List<String> libs = new ArrayList<>();
         for (Path jar : allDependencyJars(plan)) libs.add("libs/" + plan.nameOf(jar));
-        java.util.Collections.sort(libs);
+        Collections.sort(libs);
         entries.addAll(libs);
         return String.join(":", entries);
     }
@@ -353,7 +362,7 @@ final class AotCacheTrainer {
             Process p = new ProcessBuilder(runtime, "info", "--format", "{{.SecurityOptions}}")
                     .redirectErrorStream(true)
                     .start();
-            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             p.waitFor(5, TimeUnit.SECONDS);
             return !out.contains("rootless");
         } catch (IOException e) {
@@ -442,8 +451,7 @@ final class AotCacheTrainer {
         if (cwd != null) pb.directory(cwd.toFile());
         Process process = pb.start();
         StringBuilder out = new StringBuilder();
-        java.util.concurrent.atomic.AtomicLong lastOutput =
-                new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+        AtomicLong lastOutput = new AtomicLong(System.nanoTime());
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {
@@ -515,6 +523,6 @@ final class AotCacheTrainer {
     private static String tail(String text) {
         String[] lines = text.split("\n");
         int from = Math.max(0, lines.length - 20);
-        return String.join("\n", java.util.Arrays.copyOfRange(lines, from, lines.length));
+        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
     }
 }
