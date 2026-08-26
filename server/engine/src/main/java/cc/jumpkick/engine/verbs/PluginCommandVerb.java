@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
@@ -46,14 +47,19 @@ public final class PluginCommandVerb implements HostedVerb {
         try {
             PluginCommandReport report;
             try {
-                report = PluginCommands.run(
-                        Path.of(Jsonl.str(requestLine, "dir")),
-                        Path.of(Jsonl.str(requestLine, "cache")),
-                        Jsonl.str(requestLine, "command"),
-                        Jsonl.strArray(requestLine, "args"),
-                        ProtoSession.variantOf(requestLine),
-                        ProtoSession.clientEnvOf(requestLine));
-            } catch (RuntimeException e) {
+                // Under the request's session — see ExecPlanVerb (JK-1040). A plugin command that
+                // forks a JVM must fork the one the caller selected, not the daemon's.
+                Session session = host.resolveSession(requestLine, cancelToken, false);
+                report = SessionContext.where(
+                        session,
+                        () -> PluginCommands.run(
+                                Path.of(Jsonl.str(requestLine, "dir")),
+                                Path.of(Jsonl.str(requestLine, "cache")),
+                                Jsonl.str(requestLine, "command"),
+                                Jsonl.strArray(requestLine, "args"),
+                                ProtoSession.variantOf(requestLine),
+                                ProtoSession.clientEnvOf(requestLine)));
+            } catch (Exception e) {
                 report = PluginCommandReport.error(Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());

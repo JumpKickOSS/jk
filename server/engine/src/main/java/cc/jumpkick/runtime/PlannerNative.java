@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
@@ -533,12 +534,13 @@ public final class PlannerNative {
                 && cc.jumpkick.tool.NativeImageDriver.resolve(graalHome).isPresent()) {
             return graalHome;
         }
-        // The request's environment, not the daemon's — see JK-1021.
+        // The request's GRAALVM_HOME, carried as a typed field rather than sampled from this
+        // process's environment — the engine is a daemon (JK-1039).
         var buildEnv = BuildEnv.forModule(projectDir);
-        String env = buildEnv.apply("GRAALVM_HOME");
-        if (env != null && !env.isBlank()) {
-            Path fromEnv = Path.of(env);
-            if (cc.jumpkick.tool.NativeImageDriver.resolve(fromEnv, buildEnv).isPresent()) return fromEnv;
+        Path fromRequest = SessionContext.current().graalHome();
+        if (fromRequest != null
+                && cc.jumpkick.tool.NativeImageDriver.resolve(fromRequest, buildEnv).isPresent()) {
+            return fromRequest;
         }
         try {
             return cc.jumpkick.jdk.JdkResolver.forProject(projectDir, jdksDir)

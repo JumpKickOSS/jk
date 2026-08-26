@@ -3,6 +3,7 @@ package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.jsonl.Jsonl;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -284,10 +285,13 @@ public final class ProtoSession {
      * arities and only some callers reach the widest, so threading it there would have added two
      * arguments to every one of them. Nothing selected → the line rides unchanged.
      */
-    public static String withToolchain(String request, String jdk, String graal) {
+    public static String withToolchain(String request, String jdk, String graal, String graalHome) {
         StringBuilder b = new StringBuilder();
         if (jdk != null && !jdk.isBlank()) b.append(",\"jdk\":").append(Jsonl.quote(jdk));
         if (graal != null && !graal.isBlank()) b.append(",\"graal\":").append(Jsonl.quote(graal));
+        if (graalHome != null && !graalHome.isBlank()) {
+            b.append(",\"graalHome\":").append(Jsonl.quote(graalHome));
+        }
         if (b.isEmpty()) return request;
         return Jsonl.append(request, b.substring(1));
     }
@@ -332,6 +336,18 @@ public final class ProtoSession {
     public static String graalSpecOf(String request) {
         String v = Jsonl.str(request, "graal");
         return v == null || v.isBlank() ? null : v;
+    }
+
+    /**
+     * Decode side of {@link #withToolchain}: the caller's {@code GRAALVM_HOME}, or {@code null}.
+     *
+     * <p>A home path rather than a spec, so it cannot ride the {@code graal} field. It has to come
+     * from the request for the same reason the specs do: a {@code System.getenv} inside a resident
+     * engine answers from the shell that started the daemon (JK-1039).
+     */
+    public static Path graalHomeOf(String request) {
+        String v = Jsonl.str(request, "graalHome");
+        return v == null || v.isBlank() ? null : Path.of(v);
     }
 
     /** Decode side of {@link #withSession}: the selection, or {@code ""}. */

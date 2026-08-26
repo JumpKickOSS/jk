@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
@@ -45,12 +46,18 @@ public final class ProjectInfoVerb implements HostedVerb {
         try {
             ProjectInfo info;
             try {
-                info = ExecPlans.projectInfo(
-                        Path.of(Jsonl.str(requestLine, "dir")),
-                        Jsonl.str(requestLine, "modules"),
-                        Jsonl.str(requestLine, "affectedSince"),
-                        Jsonl.bool(requestLine, "counts", false));
-            } catch (RuntimeException e) {
+                // Under the request's session — see ExecPlanVerb (JK-1040). projectInfo resolves this
+                // project's layout, lock freshness and test tags, and every one of those reads the
+                // ambient session; without this they read the daemon's.
+                Session session = host.resolveSession(requestLine, cancelToken, false);
+                info = SessionContext.where(
+                        session,
+                        () -> ExecPlans.projectInfo(
+                                Path.of(Jsonl.str(requestLine, "dir")),
+                                Jsonl.str(requestLine, "modules"),
+                                Jsonl.str(requestLine, "affectedSince"),
+                                Jsonl.bool(requestLine, "counts", false)));
+            } catch (Exception e) {
                 info = ProjectInfo.error(Errors.text(e));
             }
             host.sendQuiet(writer, info.encode());
