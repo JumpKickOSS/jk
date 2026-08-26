@@ -127,11 +127,33 @@ public final class EnvLookup {
         return fromFiles.keySet();
     }
 
+    /**
+     * The enclosing workspace root for {@code moduleDir}, memoized for the process.
+     *
+     * <p>The {@code .env} parse behind {@link #readCached} was memoized; the walk that finds the
+     * workspace root was not — and this class's own javadoc says the lookup resolves "for every
+     * output line that leaves the engine". {@code WorkspaceLocator.findRoot} is an ancestor walk with
+     * a {@code jk.toml} scan per level, so redaction was paying it per line (JK-1033).
+     *
+     * <p>Keyed by module directory and never invalidated: a module does not change which workspace
+     * encloses it while a build runs, and the answer is a path rather than a file's contents. A
+     * {@code jk watch} iteration that adds a workspace root above an existing module is the one case
+     * this would miss, and that already requires a re-plan for other reasons.
+     */
     private static Optional<Path> workspaceRoot(Path moduleDir) {
-        try {
-            return WorkspaceLocator.findRoot(moduleDir);
-        } catch (Exception e) {
-            return Optional.empty();
-        }
+        return ROOT_MEMO.computeIfAbsent(moduleDir.toAbsolutePath().normalize(), dir -> {
+            try {
+                return WorkspaceLocator.findRoot(dir);
+            } catch (Exception e) {
+                return Optional.empty();
+            }
+        });
+    }
+
+    private static final ConcurrentHashMap<Path, Optional<Path>> ROOT_MEMO = new ConcurrentHashMap<>();
+
+    /** Test seam: drop the memoized workspace roots. */
+    public static void clearRootCache() {
+        ROOT_MEMO.clear();
     }
 }

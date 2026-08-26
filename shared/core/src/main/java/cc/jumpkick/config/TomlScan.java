@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.AccessLevel;
@@ -30,6 +31,26 @@ public final class TomlScan {
     private final Set<String> sections;
 
     private static final Pattern QUOTED = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
+
+    /**
+     * The lines of each scanned file, stamped on {@code (size, mtime)}.
+     *
+     * <p>Memoized here rather than at each caller because there are twenty-eight of them and only one
+     * had a memo. Seven ask the <em>same</em> file the <em>same</em> question ({@code
+     * workspace.modules}); {@code JkM2Config.resolve} is reached on per-artifact paths, so a
+     * 500-artifact sync re-read {@code ~/.config/jk/config.toml} over a thousand times. Caching the
+     * lines rather than the scan result means every key-set shares one read — the scan itself is a
+     * line walk with an early exit, and never was the cost (JK-1033).
+     *
+     * <p>A file touched within {@link #SETTLE_MS} bypasses the memo entirely. Size+mtime cannot see a
+     * same-length edit inside one coarse mtime tick, and a config file being edited is exactly the
+     * case where that matters; the extra read costs one file for a couple of seconds. Same rule, same
+     * constant, as {@code JkBuildParser}'s manifest stamp.
+     */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> LINES = StampedMemo.create();
+
+    /** Distrust {@code (size, mtime)} for a file modified within this window. */
+    private static final long SETTLE_MS = 2_000;
 
     /**
      * Scan {@code file} for {@code keys}, each spelled {@code "section.key"} (or just
@@ -52,17 +73,72 @@ public final class TomlScan {
         return scan(file, true, keys);
     }
 
+    /**
+     * {@code file}'s lines, from the memo when its stamp still matches. Empty for an absent or
+     * unreadable file — every lookup then reads as absent, exactly as the tolerant full readers do.
+     */
+    private static List<String> lines(Path file) {
+        SCANS.incrementAndGet();
+        Path key = file.toAbsolutePath().normalize();
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
+        if (stamp == null) return List.of();
+        if (System.currentTimeMillis() - stamp.modified().toMillis() < SETTLE_MS) return read(key);
+        List<String> hit = LINES.get(key, stamp, () -> read(key));
+        return hit == null ? List.of() : hit;
+    }
+
+    private static final AtomicLong SCANS = new AtomicLong();
+
+    private static final AtomicLong READS = new AtomicLong();
+
+    /** Test seam: scans requested since the last {@link #clearCache()}. */
+    public static long scans() {
+        return SCANS.get();
+    }
+
+    /**
+     * Test seam: scans that had to read the file.
+     *
+     * <p>The ratio is the property: a memo that returns the right values while re-reading the file
+     * every time passes every correctness test there is.
+     */
+    public static long reads() {
+        return READS.get();
+    }
+
+    private static List<String> read(Path file) {
+        READS.incrementAndGet();
+        try {
+            return Files.readAllLines(file, StandardCharsets.UTF_8);
+        } catch (IOException unreadable) {
+            return List.of();
+        }
+    }
+
+    /** Drop {@code file}'s cached lines, for a writer that has just rewritten it. */
+    public static void forget(Path file) {
+        LINES.forget(file.toAbsolutePath().normalize());
+    }
+
+    /** Test seam: drop every cached file. */
+    public static void clearCache() {
+        LINES.clear();
+        SCANS.set(0);
+        READS.set(0);
+    }
+
     private static TomlScan scan(Path file, boolean stopAtArrayTable, String... keys) {
         Map<String, String> values = new HashMap<>();
         Map<String, List<String>> arrays = new HashMap<>();
         Set<String> sections = new HashSet<>();
         Set<String> wanted = Set.of(keys);
-        if (!Files.isRegularFile(file)) return new TomlScan(values, arrays, sections);
-        try {
+        List<String> body = lines(file);
+        if (body.isEmpty()) return new TomlScan(values, arrays, sections);
+        {
             String section = "";
             boolean inArrayTable = false;
             String arrayKey = null; // a wanted key whose `[ … ]` array spans lines
-            for (String raw : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            for (String raw : body) {
                 String line = raw.strip();
                 if (line.isEmpty() || line.startsWith("#")) continue;
                 if (arrayKey != null) {
@@ -104,8 +180,6 @@ public final class TomlScan {
                 values.put(qualified, scalar(rest));
                 if (values.size() == wanted.size()) break; // all found — stop reading
             }
-        } catch (IOException ignored) {
-            // unreadable file — every lookup reads as absent, like the tolerant full readers
         }
         return new TomlScan(values, arrays, sections);
     }

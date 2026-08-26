@@ -100,7 +100,10 @@ public final class StampedMemo<K, S, V> {
         public static @Nullable FileStamp of(@Nullable Path file) {
             if (file == null) return null;
             try {
-                if (!Files.exists(file)) return null;
+                // No exists() first: readAttributes throws NoSuchFileException for an absent file and
+                // the catch below already answers null, so the guard was a second syscall answering a
+                // question this one answers — 21.4 us instead of 11.1 on NTFS, on every jk.toml parse
+                // (JK-1033). PathUtil.deleteTree shows the same shape.
                 BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
                 return new FileStamp(attrs.size(), attrs.lastModifiedTime());
             } catch (IOException e) {

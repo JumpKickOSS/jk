@@ -342,8 +342,10 @@ public final class JdkInventory {
     private synchronized Snapshot snapshot() {
         ensureMigrated();
         try {
-            if (!Files.isRegularFile(file)) return Snapshot.empty();
+            // One readAttributes, not isRegularFile-then-readAttributes: it answers presence, size and
+            // mtime together, and this runs on every shell prompt via `jk hook-env` (JK-1033).
             var attrs = Files.readAttributes(file, BasicFileAttributes.class);
+            if (!attrs.isRegularFile()) return Snapshot.empty();
             if (cachedSnapshot != null
                     && attrs.size() == cachedSize
                     && attrs.lastModifiedTime().equals(cachedModified)) {
