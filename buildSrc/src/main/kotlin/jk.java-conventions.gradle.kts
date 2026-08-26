@@ -368,9 +368,10 @@ tasks.named("jar") { dependsOn(checkNoHandBuiltJavaBinary) }
 //   3. Every listed file claims the exception band, so every entry carries the invariant comment.
 // A shrink passes and prints the tightened line to paste back — the ratchet never blocks progress.
 //
-// The count is `wc -l` (newline characters), the number the scoreboard and commit messages cite.
-// Scope is production sources of Gradle modules that apply this plugin: `src/main/java`,
-// `src/main/kotlin`, and `src/main/resources/**/*.{js,mjs}` (that last one is `clients/web`).
+// The count is code lines (CodeLines.count): comments, blanks, and package/import lines do not
+// count. A trailing comment on a statement still counts that line. String contents count. Scope
+// includes test sources (JK-2444): `src/main/java`, `src/main/kotlin`, `src/test/java`,
+// `src/test/kotlin`, `src/testFixtures/java`, and `src/{main,test}/**/*.{js,mjs}`.
 // ---------------------------------------------------------------------------
 val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 1200)
 
@@ -511,14 +512,14 @@ val checkFileSizeCaps by tasks.registering {
         sources.files.sorted().forEach { f ->
             val hard = caps[f.extension.lowercase()] ?: return@forEach
             val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
-            val lines = f.readText().count { it == '\n' }
+            val lines = CodeLines.count(f.readText(), f.extension)
             present.add(rel)
             val listedAt = listed[rel]
             when {
                 listedAt == null && lines > hard ->
-                        overCap.add("  $rel: $lines lines, hard cap $hard")
+                        overCap.add("  $rel: $lines code lines, hard cap $hard")
                 listedAt != null && lines > listedAt ->
-                        grew.add("  $rel: $lines lines, baseline $listedAt (+${lines - listedAt})")
+                        grew.add("  $rel: $lines code lines, baseline $listedAt (+${lines - listedAt})")
                 listedAt != null && lines < listedAt ->
                         loose.add("  %5d  %s   (was %d)".format(lines, rel, listedAt))
             }
@@ -608,48 +609,8 @@ val fqcnPattern = Regex("""(?<![\w.$])(?:[a-z][a-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]
  * guards keep them, because the thing they are hunting for (`"##JKT:"`, `"true"`, `"%02x"`) *is* a
  * literal — they need the javadoc that merely mentions it gone, and nothing more.
  */
-fun blankNonCode(src: String, blankStrings: Boolean = true): String {
-    val out = StringBuilder(src.length)
-    var i = 0
-    var line = false
-    var block = false
-    var text = false
-    var str = false
-    var chr = false
-    // A literal's own characters: kept verbatim, or blanked to the same width.
-    fun lit(s: String) = out.append(if (blankStrings) " ".repeat(s.length) else s)
-    while (i < src.length) {
-        val c = src[i]
-        val two = if (i + 2 <= src.length) src.substring(i, i + 2) else ""
-        val three = if (i + 3 <= src.length) src.substring(i, i + 3) else ""
-        val escape = if (i + 2 <= src.length) src.substring(i, i + 2) else "$c "
-        when {
-            line -> if (c == '\n') { line = false; out.append(c) } else out.append(' ')
-            block -> if (two == "*/") { block = false; out.append("  "); i += 2; continue }
-                    else out.append(if (c == '\n') '\n' else ' ')
-            text -> if (three == "\"\"\"") { text = false; lit(three); i += 3; continue }
-                    else if (c == '\n') out.append('\n') else lit(c.toString())
-            str -> {
-                if (c == '\\') { lit(escape); i += 2; continue }
-                if (c == '"') str = false
-                lit(c.toString())
-            }
-            chr -> {
-                if (c == '\\') { lit(escape); i += 2; continue }
-                if (c == '\'') chr = false
-                lit(c.toString())
-            }
-            two == "//" -> { line = true; out.append("  "); i += 2; continue }
-            two == "/*" -> { block = true; out.append("  "); i += 2; continue }
-            three == "\"\"\"" -> { text = true; lit(three); i += 3; continue }
-            c == '"' -> { str = true; lit("\""); i += 1; continue }
-            c == '\'' -> { chr = true; lit("'"); i += 1; continue }
-            else -> out.append(c)
-        }
-        i++
-    }
-    return out.toString()
-}
+fun blankNonCode(src: String, blankStrings: Boolean = true): String =
+        CodeLines.blankNonCode(src, blankStrings)
 
 /** Package-qualified references in a Java source, excluding its own `import`/`package` lines. */
 fun countFqcns(src: String): Int =

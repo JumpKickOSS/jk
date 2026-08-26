@@ -11,6 +11,7 @@ import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -462,7 +463,7 @@ public final class TaskForecaster {
                             scalaSetup));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, out);
                     Path actions = CacheTree.ACTIONS.under(cache);
-                    Path stateDir = actions.resolve("incremental-java").resolve(taskId);
+                    Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);
                     long tc = Perf.start();
                     var pred = JavaCompile.predict(
                             taskId,
@@ -607,7 +608,7 @@ public final class TaskForecaster {
                     CompileRequest req = builder.build();
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
                     Path actions = CacheTree.ACTIONS.under(cache);
-                    Path stateDir = actions.resolve("incremental-java").resolve(taskId);
+                    Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);
                     long tt = Perf.start();
                     var pred = JavaCompile.predict(
                             taskId,

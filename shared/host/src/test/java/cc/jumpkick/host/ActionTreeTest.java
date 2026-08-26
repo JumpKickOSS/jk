@@ -45,7 +45,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Comments and imports are stripped before matching, so a javadoc {@code {@code "tasks"}} is not
  * a hit. Measured when written: 5 entry names, 2 arms, <strong>1,236</strong> production sources
- * scanned, one pending exemption.
+ * scanned.
  */
 class ActionTreeTest {
 
@@ -57,18 +57,6 @@ class ActionTreeTest {
 
     /** Names with no other meaning anywhere in jk, so arm 2 can ban them outright. */
     private static final Set<String> NO_HOMONYM = Set.of("synced", "incremental-java", "incremental-kotlin");
-
-    /**
-     * A site that still types a name, and why it is not fixed. Each entry has to stay
-     * <em>necessary</em>: the test fails when an exempted site stops matching, so the fix deletes
-     * its line here in the same change rather than leaving a stale exemption behind.
-     */
-    private static final Map<String, String> PENDING = Map.of(
-            "server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java",
-            "PENDING: 2 x \"incremental-java\". The file is 1,136 lines — above the 800-line hard cap"
-                    + " and pinned at exactly that number in size-baseline.txt, so the one import"
-                    + " this fix needs would fail checkFileSizeCaps. Fold it into the peel ticket"
-                    + " that takes the file under the cap, then delete this line.");
 
     @Test
     void the_action_index_names_its_own_directories() {
@@ -102,8 +90,6 @@ class ActionTreeTest {
 
         List<Path> scanned = new ArrayList<>();
         Map<String, String> hits = new LinkedHashMap<>();
-        Map<String, Boolean> pendingSeen = new LinkedHashMap<>();
-        PENDING.keySet().forEach(k -> pendingSeen.put(k, false));
 
         for (Path file : productionSources(root)) {
             if (file.equals(owner)) continue;
@@ -117,19 +103,12 @@ class ActionTreeTest {
                 if (pathShaped || bare) found.add(name);
             }
             if (found.isEmpty()) continue;
-            if (PENDING.containsKey(rel)) {
-                pendingSeen.put(rel, true);
-                continue;
-            }
             hits.put(rel, String.join(", ", found));
         }
 
         assertThat(scanned)
                 .as("the tree walk found almost nothing, so a green result here means nothing")
                 .hasSizeGreaterThan(SOURCES_WHEN_WRITTEN);
-        assertThat(pendingSeen)
-                .as("a PENDING entry that no longer matches is a stale exemption; delete its line")
-                .doesNotContainValue(false);
         assertThat(hits)
                 .as("an action-index directory is named once, in cc.jumpkick.host.ActionTree "
                         + "(JK-2508). Use ActionTree.<ENTRY>.under(CacheTree.ACTIONS.under(cacheRoot)); "

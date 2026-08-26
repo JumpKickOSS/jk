@@ -403,6 +403,13 @@ it disagrees with the guard, so the two cannot drift.
 | JavaScript | `.js` `.mjs` | 600 | 1,200 | 1,600 with the same comment |
 | CSS | `.css` | — | — | exempt |
 
+The count is **code lines**, not `wc -l`. Comments (including Javadoc), blank
+lines, and `package` / `import` lines do not count. A statement with a trailing
+comment still counts. String and text-block contents count — a fixture is
+data. The cap is on behaviour in one file, not on the envelope `jk format`
+writes or the comments a type needs. An import the formatter adds cannot grow
+a file past the cap.
+
 JS gets the wider band, but **not for the reason this document used to
 give.** The old rationale said `clients/web` has no bundler, so a split
 costs a `<script>` tag and a load-order invariant no compiler checks.
@@ -1126,18 +1133,18 @@ where each file actually sits today:
 
 | File | Before | Floor | Today | Cap | How |
 |---|---|---|---|---|---|
-| `EngineServer` | 3,418¹ | 1,064 | 1,231 | 1,231 | elect/accept/drain/close + composition root |
-| `JobEnvelope` | — | 683 | 738 | 800 | one submit path |
-| `HttpEngineServer` | 1,592 | 768 | 839 | 839 | router / history / project / live |
-| `EngineClient` | 2,616 | 942 | 1,010 | 1,010 | spawn, wire, hosted verbs |
-| `EngineProtocol` | 3,379 | 464 | 519 | 800 | discriminators; builders in `Proto*` families |
-| `BuildService` | 1,618 | 507 | 528 | 800 | lock-guard / execute / fold |
-| `BuildPlanner` | 5,348 | 1,191 | 1,255 | 1,255 | `Planner*` step clusters; facade `coreBuilder` |
-| `JkBuildParser` | 2,238 | 391 | 416 | 800 | `Manifest*` table parsers |
-| `JkManager` | 2,204² | 1,178 | 1,548 | 1,548 | facade: live region + Ctrl-C handoff — **REGRESSED** |
-| `JkManagerView` | — | — | 1,193 | 1,193 | paint |
-| `JkManagerColor` | — | — | 680 | 800 | token colour |
-| `NewCommand` | 1,403 | 1,164 | 1,121 | 1,121 | wizard |
+| `EngineServer` | 3,418¹ | 1,064 | 587 | 800 | elect/accept/drain/close + composition root |
+| `JobEnvelope` | — | 683 | 500 | 800 | one submit path |
+| `HttpEngineServer` | 1,592 | 768 | 558 | 800 | router / history / project / live |
+| `EngineClient` | 2,616 | 942 | 573 | 800 | spawn, wire, hosted verbs |
+| `EngineProtocol` | 3,379 | 464 | 142 | 800 | discriminators; builders in `Proto*` families |
+| `BuildService` | 1,618 | 507 | 281 | 800 | lock-guard / execute / fold |
+| `BuildPlanner` | 5,348 | 1,191 | 512 | 800 | `Planner*` step clusters; facade `coreBuilder` |
+| `JkBuildParser` | 2,238 | 391 | 328 | 800 | `Manifest*` table parsers |
+| `JkManager` | 2,204² | 1,178 | 719 | 800 | facade: live region + Ctrl-C handoff |
+| `JkManagerView` | — | — | 455 | 800 | paint |
+| `JkManagerColor` | — | — | 380 | 800 | token colour |
+| `NewCommand` | 1,403 | 1,164 | 546 | 800 | wizard |
 
 ¹ EngineServer entered this batch at 3,418 lines; the earlier JK-1875..1922 charter had already
 taken it from its 7,073-line peak.
@@ -1155,14 +1162,16 @@ exactly what let that happen unnoticed.
 
 So the **Cap** column is not aspirational: it is the file's
 `size-baseline.txt` entry (or its language hard cap when unlisted), and a
-commit that pushes a file past it fails the build. The column is kept
-current by the ratchet itself — `checkFileSizeCaps` prints the tightened
-line whenever a listed file shrinks, and the same commit that pastes that
-number into `size-baseline.txt` updates **Today** here. Re-baselining
-upward requires deleting the invariant comment that justified the old
-number and writing one that justifies the new one.
+commit that pushes a file past it fails the build. **Today** and **Cap**
+are code lines (comments, blanks, and `package` / `import` lines excluded);
+**Before** and **Floor** are the historical physical counts from the peel.
+The column is kept current by the ratchet itself — `checkFileSizeCaps`
+prints the tightened line whenever a listed file shrinks, and the same
+commit that pastes that number into `size-baseline.txt` updates **Today**
+here. Re-baselining upward requires deleting the invariant comment that
+justified the old number and writing one that justifies the new one.
 
-The rows still over the 1,200 band are named debt with peel tickets
+The rows still over the exception band are named debt with peel tickets
 (JK-2433–2440), not a moved band.
 
 ---
