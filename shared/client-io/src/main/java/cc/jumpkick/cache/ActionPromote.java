@@ -2,6 +2,7 @@
 package cc.jumpkick.cache;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Linking;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

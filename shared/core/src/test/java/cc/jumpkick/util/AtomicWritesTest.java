@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.testing.RepoRoot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIOException;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
@@ -210,5 +211,51 @@ class AtomicWritesTest {
         try (var children = Files.list(dir)) {
             return children.map(p -> p.getFileName().toString()).sorted().toList();
         }
+    }
+
+    /**
+     * The durable variant exists, works, and is <em>not</em> what {@link AtomicWrites#replace} does.
+     *
+     * <p>The second half is the part worth guarding. Roughly thirty-five of the fifty call sites write
+     * reconstructible, fail-open data, and {@code replace} already costs 372.7 µs on Windows — so a
+     * well-meaning change that made every write durable would cost far more than the durability it
+     * bought. There is no portable way to observe an fsync from a test, so this pins the surface
+     * instead: two distinct methods, and the cheap one does not delegate to the expensive one
+     * (JK-1037).
+     */
+    @Test
+    void the_durable_variant_is_separate_from_the_default(@TempDir Path dir) throws IOException {
+        Path target = dir.resolve("lock.toml");
+
+        AtomicWrites.replaceDurably(target, "durable");
+        assertThat(Files.readString(target)).isEqualTo("durable");
+        assertThat(names(dir)).containsExactly("lock.toml");
+
+        AtomicWrites.replaceDurably(target, "again-and-longer");
+        assertThat(Files.readString(target)).isEqualTo("again-and-longer");
+
+        // The cheap path must remain the cheap path: if replace ever delegated to replaceDurably,
+        // every advisory write in the tree would start paying for durability nobody consumes.
+        String source = Files.readString(RepoRoot.dir(AtomicWritesTest.class, "shared/core")
+                .resolve("src/main/java/cc/jumpkick/util/AtomicWrites.java"));
+        int replaceBody = source.indexOf("public static void replace(Path target, byte[] bytes)");
+        // Bound at this method's own closing brace: replaceDurably sits between the two replace
+        // overloads, so slicing to the next one would read its javadoc and always match.
+        int endOfBody = source.indexOf("\n    }", replaceBody);
+        assertThat(source.substring(replaceBody, endOfBody))
+                .as("replace(Path, byte[]) must not route through the durable variant")
+                .doesNotContain("replaceDurably")
+                .doesNotContain("force(");
+    }
+
+    @Test
+    void a_failed_durable_move_still_removes_the_temp(@TempDir Path dir) throws IOException {
+        Path target = dir.resolve("occupied");
+        Files.createDirectory(target);
+        Files.createFile(target.resolve("child"));
+
+        assertThatIOException().isThrownBy(() -> AtomicWrites.replaceDurably(target, "payload"));
+
+        assertThat(names(dir)).containsExactly("occupied");
     }
 }

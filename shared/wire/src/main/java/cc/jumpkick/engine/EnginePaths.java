@@ -175,7 +175,9 @@ public final class EnginePaths {
     /** Atomically point the endpoint at {@code socket} (a sibling of the engine dir). */
     public static void writeEndpoint(Paths paths, Path socket) throws IOException {
         Path ep = endpoint(paths);
-        AtomicWrites.replace(ep, socket.getFileName().toString());
+        // Durable: a torn endpoint pointer strands every client that reads it, and nothing
+        // reconstructs it without a respawn (JK-1037).
+        AtomicWrites.replaceDurably(ep, socket.getFileName().toString());
     }
 
     /**
