@@ -158,13 +158,28 @@ class LockfileRoundTripTest {
 
     @Test
     void kotlin_version_round_trips() {
-        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", "temurin-25.0.3").withKotlin("2.3.21");
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", new Lockfile.JdkPin("temurin", "25.0.3"))
+                .withKotlin("2.3.21");
         String rendered = LockfileWriter.render(original);
         assertThat(rendered).contains("kotlin = \"2.3.21\"");
 
         Lockfile parsed = LockfileReader.parse(rendered);
         assertThat(parsed.kotlin()).isEqualTo("2.3.21");
-        assertThat(parsed.jdk()).isEqualTo("temurin-25.0.3");
+        assertThat(parsed.jdk()).isEqualTo(new Lockfile.JdkPin("temurin", "25.0.3"));
+    }
+
+    @Test
+    void jdk_and_graal_pins_round_trip() {
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", new Lockfile.JdkPin("temurin", "25.0.4.1"))
+                .withGraal(new Lockfile.GraalPin("graalvm-ce", "25.0.4"));
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered)
+                .contains("[jdk]\nvendor  = \"temurin\"\nversion = \"25.0.4.1\"\n")
+                .contains("[graal]\nvendor  = \"graalvm-ce\"\nversion = \"25.0.4\"\n")
+                .doesNotContain("jdk = ");
+        Lockfile parsed = LockfileReader.parse(rendered);
+        assertThat(parsed.jdk()).isEqualTo(original.jdk());
+        assertThat(parsed.graal()).isEqualTo(original.graal());
     }
 
     @Test
@@ -188,13 +203,12 @@ class LockfileRoundTripTest {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
                 .withModules(List.of(
                         new Lockfile.ModuleEntry(
-                                ".", "com.example", "root", "1.2.3", "temurin-25", 25, null, null, "Root", null, null),
+                                ".", "com.example", "root", "1.2.3", 25, null, null, "Root", null, null),
                         new Lockfile.ModuleEntry(
                                 "lib",
                                 "com.example",
                                 "lib",
                                 "1.2.3",
-                                "temurin-25",
                                 25,
                                 "2.4.0",
                                 null,
@@ -209,7 +223,7 @@ class LockfileRoundTripTest {
                 .contains("path    = \".\"")
                 .contains("path    = \"lib\"")
                 .contains("version = \"1.2.3\"")
-                .contains("jdk     = \"temurin-25\"")
+                .doesNotContain("jdk     =")
                 .contains("java    = 25")
                 .contains("kotlin  = \"2.4.0\"")
                 .contains("sources = \"publish\"")
@@ -226,19 +240,7 @@ class LockfileRoundTripTest {
     void module_scala_pin_round_trips() {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
                 .withModules(List.of(new Lockfile.ModuleEntry(
-                        ".",
-                        "com.example",
-                        "app",
-                        "1.0.0",
-                        "temurin-25",
-                        25,
-                        null,
-                        null,
-                        "3",
-                        null,
-                        null,
-                        null,
-                        null)));
+                        ".", "com.example", "app", "1.0.0", 25, null, null, "3", null, null, null, null)));
         String rendered = LockfileWriter.render(original);
         assertThat(rendered).contains("scala   = \"3\"");
         assertThat(LockfileReader.parse(rendered).modules().getFirst().scala()).isEqualTo("3");

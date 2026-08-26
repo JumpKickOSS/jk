@@ -7,16 +7,21 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
+import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.jdk.JdkSelector;
+import cc.jumpkick.jdk.LockPinMatch;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ToolchainPins;
 import cc.jumpkick.tool.NativeImageDriver;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -77,7 +82,26 @@ public final class GraalResolver {
             return install(effective, registry, /*announce*/ "graal = \"" + effective + "\"");
         }
 
-        // 2. The `jk jdk graal` default-graal pointer, if one is set and usable.
+        // 2. Lock [graal] pin — ahead of the inventory pointer and de-facto policy,
+        //    mirroring the JDK side's lock tier. Major-or-better among installed wins;
+        //    an unsatisfied pin is a floor the native build must not sink below, so it
+        //    installs the pinned spec rather than falling through to an older Graal.
+        Lockfile.GraalPin lockGraal = ToolchainPins.scan(projectDir).graal();
+        if (lockGraal != null) {
+            Optional<JdkHit> locked =
+                    LockPinMatch.chooseGraal(registry.listHits(), lockGraal.vendor(), lockGraal.version());
+            if (locked.isPresent()
+                    && NativeImageDriver.resolve(locked.get().home()).isPresent()) {
+                return locked.get().home();
+            }
+            String spec = LockPinMatch.installSpec(lockGraal.vendor(), lockGraal.version());
+            return install(
+                    spec,
+                    registry, /*announce*/
+                    "[graal] " + lockGraal.vendor() + " " + lockGraal.version() + " (lock)");
+        }
+
+        // 3. The `jk jdk graal` default-graal pointer, if one is set and usable.
         try {
             JdkInventory gd = JdkInventory.current();
             Optional<Path> gh = gd.graalHome();
@@ -93,10 +117,17 @@ public final class GraalResolver {
                 }
             }
         } catch (IOException ignored) {
-            // no usable default-graal — fall through to the ambient search
+            // no usable default-graal — fall through to de-facto / ambient search
         }
 
-        // 3. No pin/default — current native-image search (project JDK → $GRAALVM_HOME → PATH).
+        // 4. De-facto preferred installed Graal (same policy as the shell hook).
+        Optional<JdkHit> defacto = DefaultGraalPolicy.choose(registry.listHits());
+        if (defacto.isPresent()
+                && NativeImageDriver.resolve(defacto.get().home()).isPresent()) {
+            return defacto.get().home();
+        }
+
+        // 5. Ambient native-image search (project JDK → $GRAALVM_HOME → PATH).
         // projectJavaHome may be null (jk runs as a native image with no java.home,
         // and the project pins no JDK); NativeImageDriver.resolve tolerates null and
         // still checks $GRAALVM_HOME and PATH.
@@ -115,7 +146,7 @@ public final class GraalResolver {
         Optional<Path> binary = NativeImageDriver.resolve(projectJavaHome);
         if (binary.isPresent()) return graalHomeOf(binary.get(), projectJavaHome);
 
-        // 3. Missing — offer Oracle GraalVM (prompt / --yes / non-TTY fail).
+        // 6. Missing — offer Oracle GraalVM (prompt / --yes / non-TTY fail).
         return offerOracleGraalVm(projectJavaHome, registry);
     }
 

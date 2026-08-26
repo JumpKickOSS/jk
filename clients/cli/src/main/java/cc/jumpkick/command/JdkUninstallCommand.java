@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
@@ -20,9 +21,7 @@ import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkToolUninstaller;
-import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -43,7 +42,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -462,15 +460,7 @@ public final class JdkUninstallCommand implements CliCommand {
         boolean graalRemoved = victims.stream()
                 .anyMatch(v -> JdkRegistry.identifierFor(v.home()).equals(graalDefault.get()));
         if (!graalRemoved) return;
-        Optional<JdkHit> next = registry.listHits().stream()
-                .filter(h -> h.vendor() == JdkVendor.ORACLE_GRAALVM || h.vendor() == JdkVendor.GRAALVM_CE)
-                .min(Comparator.comparingInt((JdkHit h) -> {
-                            int i = JdkVendor.GRAAL_PREFERENCE.indexOf(h.vendor());
-                            return i >= 0 ? i : Integer.MAX_VALUE;
-                        })
-                        .thenComparing(
-                                h -> h.version() == null ? "" : JdkSelector.versionKey(h.version()),
-                                Comparator.reverseOrder()));
+        Optional<JdkHit> next = DefaultGraalPolicy.choose(registry.listHits());
         if (next.isEmpty()) {
             defaults.clearGraal();
             CliOutput.out(Theme.colorize(

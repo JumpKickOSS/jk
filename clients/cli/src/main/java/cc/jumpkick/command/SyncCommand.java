@@ -14,6 +14,9 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -94,7 +97,7 @@ public final class SyncCommand implements CliCommand {
                     jdksDir,
                     info == null ? null : info.jdk(),
                     info == null ? 0 : info.javaRelease(),
-                    info == null ? null : info.lockJdk(),
+                    lockJdkPin(dir),
                     m -> CommandWedge.printFail("Sync", m),
                     true);
         } catch (Exception e) {
@@ -148,5 +151,21 @@ public final class SyncCommand implements CliCommand {
                 },
                 r -> "Failed to sync dependencies.",
                 true);
+    }
+
+    /**
+     * Workspace lock {@code [jdk]} pin, or null when there is no lock / no pin. A lock that exists
+     * but fails to parse propagates: the pin is a floor sync must enforce (docs/user/lockfile.md),
+     * so a corrupt lock has to fail the command, not silently drop the pin. Only an unreadable
+     * file degrades to null — the freshen step just rewrote the lock, so IO here is transient.
+     */
+    private static Lockfile.JdkPin lockJdkPin(Path dir) {
+        Path lf = LockPaths.lockFile(dir);
+        if (!Files.isRegularFile(lf)) return null;
+        try {
+            return LockfileReader.read(lf).jdk();
+        } catch (IOException e) {
+            return null;
+        }
     }
 }

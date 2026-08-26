@@ -1853,7 +1853,6 @@ tasks.named("jar") { dependsOn(checkNoBareTierName) }
  * empties and the arm is a pure ban.
  */
 val pathSeparatorRatchet = mapOf(
-        "clients/cli/src/main/java/cc/jumpkick/command/JkEnv.java" to 1,
         "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java" to 1)
 
 val checkSingleHostSurface by tasks.registering {

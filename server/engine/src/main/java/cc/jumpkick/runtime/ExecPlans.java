@@ -51,7 +51,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -180,8 +179,8 @@ public final class ExecPlans {
             String lockJdk = "";
             if (hasLock) {
                 try {
-                    String id = LockfileReader.read(lockFile).jdk();
-                    if (id != null) lockJdk = id;
+                    var pin = LockfileReader.read(lockFile).jdk();
+                    if (pin != null) lockJdk = pin.vendor() + "-" + pin.version();
                 } catch (IOException ignored) {
                     // unreadable lock — summarized as jdk-unknown, not an error
                 }
@@ -289,11 +288,9 @@ public final class ExecPlans {
             var p = build.project();
             String group = blankOrSentinel(p.group()) ? pin.group() : p.group();
             String version = blankOrSentinel(p.version()) ? pin.version() : p.version();
-            String jdk = blankOrSentinel(p.jdk()) && pin.jdk() != null ? pin.jdk() : p.jdk();
             int javaRelease = p.java() > 0 ? p.java() : (pin.java() != null ? pin.java() : 0);
             if (group.equals(p.group())
                     && version.equals(p.version())
-                    && Objects.equals(jdk, p.jdk())
                     && javaRelease == p.java()
                     && !p.inheritsFromWorkspace()) {
                 return build;
@@ -302,7 +299,7 @@ public final class ExecPlans {
                     group,
                     p.name(),
                     version,
-                    jdk,
+                    p.jdk(),
                     javaRelease,
                     p.kotlin(),
                     p.groovy(),

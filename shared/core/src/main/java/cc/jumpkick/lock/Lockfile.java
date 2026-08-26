@@ -11,15 +11,16 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code jdk},
- * {@code kotlin}, {@code scala}, plugins, SDK, modules, toolchain, {@code manifests-sha256}) may be
- * null/empty for older lockfiles. Additive only — schema stays at 1 until 1.0.
+ * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code [jdk]},
+ * {@code [graal]}, {@code kotlin}, {@code scala}, plugins, SDK, modules, {@code manifests-sha256})
+ * may be null/empty for older lockfiles. Additive only — schema stays at 1 until 1.0.
  */
 public record Lockfile(
         int version,
         String generatedBy,
         String resolutionAlgorithm,
-        String jdk,
+        JdkPin jdk,
+        GraalPin graal,
         String kotlin,
         String scala,
         List<Artifact> artifacts,
@@ -34,6 +35,22 @@ public record Lockfile(
         String projectId,
         /** Resolved {@code [native] metadata-repository} pin; null when no module declares one. */
         NativeMetadata nativeMetadata) {
+
+    /** Locked Java JDK: vendor short id + full version from the install's release file. */
+    public record JdkPin(String vendor, String version) {
+        public JdkPin {
+            Objects.requireNonNull(vendor, "vendor");
+            Objects.requireNonNull(version, "version");
+        }
+    }
+
+    /** Locked GraalVM: vendor short id + full version; omit the table when Graal was not in play. */
+    public record GraalPin(String vendor, String version) {
+        public GraalPin {
+            Objects.requireNonNull(vendor, "vendor");
+            Objects.requireNonNull(version, "version");
+        }
+    }
 
     /**
      * The GraalVM reachability-metadata repository release a native build reads, resolved from
@@ -68,7 +85,6 @@ public record Lockfile(
             String group,
             String name,
             String version,
-            String jdk,
             Integer java,
             String kotlin,
             String groovy,
@@ -90,14 +106,13 @@ public record Lockfile(
                 String group,
                 String name,
                 String version,
-                String jdk,
                 Integer java,
                 String kotlin,
                 String groovy,
                 String description,
                 String sources,
                 Boolean m2integration) {
-            this(path, group, name, version, jdk, java, kotlin, groovy, description, sources, m2integration, null);
+            this(path, group, name, version, java, kotlin, groovy, description, sources, m2integration, null);
         }
 
         /** Unset Scala pin. */
@@ -106,7 +121,6 @@ public record Lockfile(
                 String group,
                 String name,
                 String version,
-                String jdk,
                 Integer java,
                 String kotlin,
                 String groovy,
@@ -119,7 +133,6 @@ public record Lockfile(
                     group,
                     name,
                     version,
-                    jdk,
                     java,
                     kotlin,
                     groovy,
@@ -145,12 +158,12 @@ public record Lockfile(
         modules = modules == null ? List.of() : List.copyOf(modules);
     }
 
-    /** Unset Scala compiler pin. */
+    /** Unset Scala / Graal pins. */
     public Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            String jdk,
+            JdkPin jdk,
             String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
@@ -164,6 +177,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                null,
                 kotlin,
                 null,
                 artifacts,
@@ -181,7 +195,7 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            String jdk,
+            JdkPin jdk,
             String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
@@ -206,7 +220,7 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            String jdk,
+            JdkPin jdk,
             String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
@@ -232,7 +246,7 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            String jdk,
+            JdkPin jdk,
             String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
@@ -261,6 +275,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -280,6 +295,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -299,6 +315,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -322,6 +339,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 newArtifacts,
@@ -341,6 +359,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -353,12 +372,52 @@ public record Lockfile(
                 pin);
     }
 
+    /** This lock with a resolved JDK pin. */
+    public Lockfile withJdk(JdkPin pin) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                pin,
+                graal,
+                kotlin,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                nativeMetadata);
+    }
+
+    /** This lock with a resolved GraalVM pin (null clears it). */
+    public Lockfile withGraal(GraalPin pin) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                pin,
+                kotlin,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                nativeMetadata);
+    }
+
     /** Constructor without SDK entries. */
     public Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            String jdk,
+            JdkPin jdk,
             String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins) {
@@ -370,14 +429,14 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            String jdk,
+            JdkPin jdk,
             String kotlin,
             List<Artifact> artifacts) {
         this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, List.of());
     }
 
     /** Constructor that stamps a JDK but no Kotlin version. */
-    public Lockfile(int version, String generatedBy, String resolutionAlgorithm, String jdk, List<Artifact> artifacts) {
+    public Lockfile(int version, String generatedBy, String resolutionAlgorithm, JdkPin jdk, List<Artifact> artifacts) {
         this(version, generatedBy, resolutionAlgorithm, jdk, null, artifacts, List.of());
     }
 
@@ -393,6 +452,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlinVersion,
                 scala,
                 artifacts,
@@ -412,6 +472,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scalaVersion,
                 artifacts,
@@ -431,6 +492,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -450,6 +512,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -469,6 +532,7 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -486,17 +550,20 @@ public record Lockfile(
     }
 
     /** Empty artifact set with a resolved JDK pinned for the project. */
-    public static Lockfile empty(String jkVersion, String jdk) {
+    public static Lockfile empty(String jkVersion, JdkPin jdk) {
         return new Lockfile(
                 CURRENT_VERSION,
                 "jk " + jkVersion,
                 RESOLUTION_ALGORITHM,
                 jdk,
                 null,
+                null,
+                null,
                 List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
                 null,
                 null,
                 null);

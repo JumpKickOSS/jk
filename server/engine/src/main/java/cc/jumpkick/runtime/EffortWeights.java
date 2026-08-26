@@ -829,7 +829,7 @@ public final class EffortWeights {
                     dir,
                     SessionContext.current().jdkSpec(),
                     System.getenv("JK_JDK"),
-                    lock != null ? lock.jdk() : null,
+                    lock == null ? null : lock.jdk(),
                     project.project() != null ? project.project().jdk() : null,
                     project.project() != null ? project.project().javaRelease() : 0,
                     System::getenv);

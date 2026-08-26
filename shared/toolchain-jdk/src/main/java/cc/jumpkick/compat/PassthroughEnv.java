@@ -41,8 +41,8 @@ public final class PassthroughEnv {
     /**
      * Mutate {@code env} in place: drop {@link #STRIPPED}, and when {@code javaHome} is non-null set
      * {@code JAVA_HOME} and prepend its {@code bin} to {@code PATH}. Pass {@code null} when the
-     * caller has already put the JDK on {@code PATH} itself — {@code jk shell} layers {@code PATH} on
-     * {@code __JK_ORIG_PATH}, so a second prepend here would double it.
+     * caller has already put the JDK on {@code PATH} itself — {@code jk shell} already swapped the
+     * toolchain bin onto PATH, so a second prepend here would double it.
      */
     public static void apply(Map<String, String> env, Path javaHome) {
         for (String name : STRIPPED) {

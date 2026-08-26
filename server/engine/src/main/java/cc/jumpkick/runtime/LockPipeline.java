@@ -11,6 +11,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.ToolchainLockStamp;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
@@ -67,7 +69,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@link #manifestsSha()} — captured <em>before</em> resolving, so a manifest edited
  *       mid-resolution leaves a lock that reads as stale rather than stamping itself fresh.
  *   <li>{@link #resolve} — offline gate, git/path materialization, solve, git provenance stamp,
- *       Kotlin/Scala compiler pins, the {@code [native]} reachability-metadata pin.
+ *       Kotlin/Scala compiler pins, the {@code [native]} reachability-metadata pin, and
+ *       {@code [jdk]} / {@code [graal]} toolchain pins.
  *   <li>{@link #pinPlugins} — {@code [[plugin]]} rows and the {@code jk-min} floor.
  *   <li>{@link #pinSdk} — {@code [[sdk]]} rows.
  *   <li>{@link #write} — {@code [[module]]} identity stamp, then the file.
@@ -240,7 +243,10 @@ public final class LockPipeline {
                 : Map.of();
         // Git- and path-source deps: materialize each into a local file:// repo and rewrite them to
         // exact coordinate pins before the solver runs (git-source-deps.md).
-        Path javaHome = JavaHomes.resolveJavaHome(lockDir);
+        // One probe-chain registry serves both the JDK walk here and the toolchain
+        // stamp below — no second filesystem scan per lock.
+        JdkRegistry jdkRegistry = new JdkRegistry();
+        Path javaHome = JavaHomes.resolveJavaHome(lockDir, jdkRegistry);
         GitSourceResolution.Prepared prep =
                 GitSourceResolution.prepare(effective, baseRepos, cas, javaHome, jkVersion, lockedShas);
         PathSourceResolution.Prepared pathPrep =
@@ -263,6 +269,7 @@ public final class LockPipeline {
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
         lock = withToolPins(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
+        lock = ToolchainLockStamp.apply(lock, javaHome, jdkRegistry);
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);
             System.err.println("jk: " + ResolveProfile.report());

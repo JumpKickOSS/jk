@@ -45,4 +45,26 @@ class SearchPathTest {
         assertThat(SearchPath.prepend("/jdk/bin", null)).isEqualTo("/jdk/bin");
         assertThat(SearchPath.prepend("/jdk/bin", "")).isEqualTo("/jdk/bin");
     }
+
+    @Test
+    void remove_drops_every_occurrence_and_keeps_neighbors() {
+        String path = "/jdk/bin" + SEP + "/home/u/.nvm/bin" + SEP + "/usr/bin" + SEP + "/jdk/bin";
+        assertThat(SearchPath.remove("/jdk/bin", path)).isEqualTo("/home/u/.nvm/bin" + SEP + "/usr/bin");
+    }
+
+    @Test
+    void remove_of_missing_entry_is_identity() {
+        assertThat(SearchPath.remove("/jdk/bin", "/usr/bin" + SEP + "/bin")).isEqualTo("/usr/bin" + SEP + "/bin");
+    }
+
+    @Test
+    void remove_null_or_blank_entry_is_noop() {
+        assertThat(SearchPath.remove(null, "/usr/bin")).isEqualTo("/usr/bin");
+        assertThat(SearchPath.remove("", "/usr/bin")).isEqualTo("/usr/bin");
+    }
+
+    @Test
+    void remove_last_entry_yields_empty_not_blank() {
+        assertThat(SearchPath.remove("/jdk/bin", "/jdk/bin")).isEmpty();
+    }
 }

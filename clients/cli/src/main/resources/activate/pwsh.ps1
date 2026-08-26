@@ -3,10 +3,6 @@
 $env:__JK_EXE = '__JK_EXE__'
 $env:__JK_SHELL = 'pwsh'
 
-if (-not (Test-Path -Path Env:/__JK_ORIG_PATH)) {
-    $env:__JK_ORIG_PATH = $env:PATH
-}
-
 function global:_jk_hook {
     if ($env:__JK_SHELL -eq 'pwsh') {
         $output = & $env:__JK_EXE hook-env -s pwsh | Out-String

@@ -8,6 +8,7 @@ import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -57,14 +58,20 @@ public final class ShellCommand implements CliCommand {
         }
         Path jdksDir = CommonOpts.jdksDirValue(in);
         Path dir = new GlobalOptions().workingDir();
-        var origPath = System.getenv().getOrDefault("PATH", "");
+        String livePath = System.getenv().getOrDefault("PATH", "");
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
-        var target = new JkEnv(registry, origPath).resolve(dir);
+        var target = new JkEnv(
+                        registry,
+                        livePath,
+                        JdkInventory.current(),
+                        System.getenv(JkEnv.JAVA_HOME),
+                        System.getenv(JkEnv.GRAALVM_HOME))
+                .resolve(dir);
         if (!target.isActive()) {
             CommandWedge.printFail(
                     "Shell",
                     "no pinned JDK for " + PathDisplay.styledRaw(dir)
-                            + " (run `jk new` to scaffold, or stamp `jdk = \"<id>\"` in jk-lock.toml)");
+                            + " (run `jk new` to scaffold, or stamp `[jdk]` in jk-lock.toml)");
             return Exit.CONFIG;
         }
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");
@@ -73,8 +80,8 @@ public final class ShellCommand implements CliCommand {
         var env = pb.environment();
         target.vars().forEach(env::put);
         // Strip the vars through which the surrounding shell could out-vote the pin we just applied
-        // (JDK_HOME above all — see PassthroughEnv). Null javaHome: JkEnv already layered PATH on
-        // __JK_ORIG_PATH, so prepending <jdk>/bin again here would double it.
+        // (JDK_HOME above all — see PassthroughEnv). Null javaHome: JkEnv already swapped the JDK
+        // bin onto PATH, so prepending <jdk>/bin again here would double it.
         PassthroughEnv.apply(env, null);
 
         var javaHome = target.vars().get(JkEnv.JAVA_HOME);

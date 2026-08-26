@@ -89,7 +89,6 @@ public final class LockfileModules {
                 p.group(),
                 p.name(),
                 p.version(),
-                p.jdk(),
                 p.java() > 0 ? p.java() : null,
                 selectorRaw(p.kotlin()),
                 selectorRaw(p.groovy()),

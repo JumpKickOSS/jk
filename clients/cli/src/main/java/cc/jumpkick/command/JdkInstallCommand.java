@@ -2,15 +2,25 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Interactivity;
+import cc.jumpkick.cli.tui.JdkDownloadBar;
+import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.Wizard;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
@@ -20,6 +30,8 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkService;
+import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -38,6 +50,8 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -59,8 +73,8 @@ public final class JdkInstallCommand implements CliCommand {
     }
 
     @Override
-    public java.util.List<String> aliases() {
-        return java.util.List.of("add");
+    public List<String> aliases() {
+        return List.of("add");
     }
 
     @Override
@@ -69,8 +83,8 @@ public final class JdkInstallCommand implements CliCommand {
     }
 
     @Override
-    public java.util.List<Opt> options() {
-        return java.util.List.of(
+    public List<Opt> options() {
+        return List.of(
                 Opt.flag("Mark this JDK as the system-wide default", "-d", "--make-default"),
                 Opt.flag("In the interactive wizard, list every vendor from the JetBrains feed.", "--show-all")
                         .hide(),
@@ -82,8 +96,8 @@ public final class JdkInstallCommand implements CliCommand {
     }
 
     @Override
-    public java.util.List<Param> parameters() {
-        return java.util.List.of(Param.of(
+    public List<Param> parameters() {
+        return List.of(Param.of(
                 "spec",
                 Arity.ZERO_OR_ONE,
                 "The vendor/version of JDK you'd like to install\n"
@@ -114,11 +128,10 @@ public final class JdkInstallCommand implements CliCommand {
         this.showAll = in.isSet("show-all");
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile =
-                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheFile = in.value("cache-file").map(CliPaths::abs).orElse(null);
 
         if (!HostPlatform.supported()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "host " + Os.name()
                             + "/"
@@ -141,7 +154,7 @@ public final class JdkInstallCommand implements CliCommand {
         // Pre-plan sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();
         if (!haveSpec && !isInteractiveTerminalSession()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "stdin is not a TTY — pass `lts` / `latest` "
                             + "or a <spec> (e.g. `jk jdk install temurin-21`) or run interactively.");
@@ -161,14 +174,10 @@ public final class JdkInstallCommand implements CliCommand {
                     // ephemeralCachePath() below, which the engine has no way to share with this
                     // process.
                     if (!global.offline && (feedUrl == null || cacheFile != null)) {
-                        cc.jumpkick.cli.engine.EngineClient.freshenCatalogIfRunning(
-                                cc.jumpkick.engine.EnginePaths.current(),
-                                "jdks",
-                                feedUrl != null ? feedUrl.toString() : null,
-                                cacheFile);
+                        EngineClient.freshenCatalogIfRunning(
+                                EnginePaths.current(), "jdks", feedUrl != null ? feedUrl.toString() : null, cacheFile);
                     }
-                    boolean refresh =
-                            cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+                    boolean refresh = SessionContext.current().config().forceOr(false);
                     try {
                         ctx.put(CATALOG, service.fetchCatalog(feedUrl, cacheFile, refresh, ctx::output));
                     } catch (Exception e) {
@@ -217,7 +226,7 @@ public final class JdkInstallCommand implements CliCommand {
                     ctx.put(ENTRY, entry);
                     ctx.put(WANT_DEFAULT, wantDefault);
                     if (global != null && global.verbose) {
-                        cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        CommandWedge.printFail(
                                 "JDK",
                                 "resolved spec='" + effective
                                         + "' to "
@@ -248,8 +257,7 @@ public final class JdkInstallCommand implements CliCommand {
                 .ticks(1)
                 .execute(ctx -> {
                     JdkCatalog.Entry entry = ctx.require(ENTRY);
-                    boolean refresh =
-                            cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+                    boolean refresh = SessionContext.current().config().forceOr(false);
                     ctx.label("install " + JdkService.displayLabel(entry));
                     // try-with-resources guarantees the download bar / spinner is
                     // wiped even when the install throws mid-download (matches the
@@ -318,31 +326,43 @@ public final class JdkInstallCommand implements CliCommand {
         // fresh Confirm would fail with "Stream Closed". The post-plan offer is
         // for the non-interactive spec path (e.g. `jk jdk install 25`), which
         // never opened a terminal and never asked about the default.
+        // Wizard already settled the java-default question; still adopt Graal (0→1 auto or
+        // Confirm when peers exist). Spec path asks both. Non-TTY still auto-adopts sole installs.
         boolean wizardRan = Boolean.TRUE.equals(plan.get(WIZARD_RAN).orElse(false));
-        if (!wizardRan && Confirm.isInteractiveTerminal()) {
-            boolean wantedDefault = Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
-            plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wantedDefault));
-        }
+        boolean wantedDefault = Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
+        plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wizardRan || wantedDefault));
         return 0;
     }
 
     /**
-     * Prompt to make {@code jdk} the default JDK and/or default GraalVM when it's ≥ the current ones.
+     * Adopt {@code jdk} as the default JDK and/or default GraalVM. Sole install of a category
+     * (0→1) is persisted without asking; when peers exist, Confirm on a TTY (skipped for java when
+     * the wizard / {@code --make-default} already decided).
      */
     private void offerDefaults(InstalledJdk jdk, boolean alreadyMadeDefault) {
         int newMajor = JdkListCommand.parseMajor(jdk.identifier());
-        if (newMajor == 0 || !Confirm.isInteractiveTerminal()) return;
-        // One session for all prompts in this call.
-        TerminalSession terminal = Terminals.controlling();
-        terminal.drain(java.time.Duration.ofMillis(40));
+        if (newMajor == 0) return;
         try {
-            JdkInventory defaults = JdkInventory.of(jdksDir != null ? jdksDir : JkDirs.jdks());
+            Path root = jdksDir != null ? jdksDir : JkDirs.jdks();
+            JdkRegistry registry = new JdkRegistry(root);
+            JdkInventory defaults = JdkInventory.of(root);
+            var hits = registry.listHits();
+            long otherJdks = hits.stream()
+                    .filter(h -> !LockPinMatch.sameHome(h.home(), jdk.home()))
+                    .count();
+            long otherGraals = hits.stream()
+                    .filter(DefaultGraalPolicy::isGraal)
+                    .filter(h -> !LockPinMatch.sameHome(h.home(), jdk.home()))
+                    .count();
+
             if (!alreadyMadeDefault) {
                 Integer cur =
                         defaults.defaultId().map(JdkListCommand::parseMajor).orElse(null);
-                if (cur == null || newMajor >= cur) {
-                    if (Confirm.of("Make " + jdk.identifier() + " the default JDK?", true)
-                            .ask(terminal)) {
+                if (otherJdks == 0) {
+                    defaults.setDefault(jdk);
+                } else if (cur == null || newMajor >= cur) {
+                    if (Confirm.isInteractiveTerminal()
+                            && confirmDefault("Make " + jdk.identifier() + " the default JDK?", true)) {
                         defaults.setDefault(jdk);
                     }
                 }
@@ -350,9 +370,11 @@ public final class JdkInstallCommand implements CliCommand {
             if (isGraalHome(jdk.home())) {
                 Integer curGraal =
                         defaults.graalId().map(JdkListCommand::parseMajor).orElse(null);
-                if (curGraal == null || newMajor >= curGraal) {
-                    if (Confirm.of("Make it the default GraalVM (jk native / GRAALVM_HOME)?", true)
-                            .ask(terminal)) {
+                if (otherGraals == 0) {
+                    defaults.setGraal(jdk);
+                } else if (curGraal == null || newMajor >= curGraal) {
+                    if (Confirm.isInteractiveTerminal()
+                            && confirmDefault("Make it the default GraalVM (jk native / GRAALVM_HOME)?", true)) {
                         defaults.setGraal(jdk);
                     }
                 }
@@ -362,10 +384,16 @@ public final class JdkInstallCommand implements CliCommand {
         }
     }
 
+    private static boolean confirmDefault(String prompt, boolean defaultYes) {
+        TerminalSession terminal = Terminals.controlling();
+        terminal.drain(Duration.ofMillis(40));
+        return Confirm.of(prompt, defaultYes).ask(terminal);
+    }
+
     private static boolean isGraalHome(Path home) {
         try {
-            cc.jumpkick.jdk.JdkVendor v = cc.jumpkick.jdk.JdkVendor.fromRelease(home);
-            return v == cc.jumpkick.jdk.JdkVendor.ORACLE_GRAALVM || v == cc.jumpkick.jdk.JdkVendor.GRAALVM_CE;
+            JdkVendor v = JdkVendor.fromRelease(home);
+            return v == JdkVendor.ORACLE_GRAALVM || v == JdkVendor.GRAALVM_CE;
         } catch (RuntimeException e) {
             return false;
         }
@@ -388,7 +416,7 @@ public final class JdkInstallCommand implements CliCommand {
         if (resolved == null) {
             // A keyword resolved to nothing: lts/stable with no LTS major, or
             // `native` with no Oracle GraalVM, for this host.
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "could not resolve `" + raw.trim() + "` against the JetBrains feed for " + os + "/" + arch + ".");
         }
@@ -404,11 +432,11 @@ public final class JdkInstallCommand implements CliCommand {
      */
     private static String doneLine(String label, Path home, String command) {
         Theme t = Theme.active();
-        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         String msg = Theme.colorize(label, t.focused())
                 + Theme.colorize(" " + command + " ", t.normalGray())
                 + Theme.colorize(tildeCollapse(home), t.path());
-        return cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdFont, msg);
+        return JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdFont, msg);
     }
 
     /** Render an absolute path with {@code $HOME} collapsed to {@code ~}. */
@@ -442,7 +470,7 @@ public final class JdkInstallCommand implements CliCommand {
     }
 
     private static boolean isInteractiveTerminalSession() {
-        return cc.jumpkick.cli.tui.Interactivity.canPrompt();
+        return Interactivity.canPrompt();
     }
 
     /**
@@ -454,7 +482,7 @@ public final class JdkInstallCommand implements CliCommand {
     private static final class InstallView implements JdkInstallListener, AutoCloseable {
 
         private final String label;
-        private cc.jumpkick.cli.tui.JdkDownloadBar bar;
+        private JdkDownloadBar bar;
 
         InstallView(JdkCatalog.Entry entry) {
             this.label = JdkService.displayLabel(entry);
@@ -463,13 +491,13 @@ public final class JdkInstallCommand implements CliCommand {
         @Override
         public void onAlreadyInstalled(InstalledJdk jdk) {
             // No download bar on this path — open the envelope for the settle chip.
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+            CommandWedge.envelopeStart();
             CliOutput.out(doneLine(label, jdk.home(), "is already installed at"));
         }
 
         @Override
         public void onDownloadStart(String displayName, long totalBytes) {
-            bar = cc.jumpkick.cli.tui.JdkDownloadBar.show(CliOutput.stdout(), displayName);
+            bar = JdkDownloadBar.show(CliOutput.stdout(), displayName);
         }
 
         @Override
@@ -480,7 +508,7 @@ public final class JdkInstallCommand implements CliCommand {
         @Override
         public void onExtractStart(String displayName) {
             if (bar != null) bar.finish();
-            bar = cc.jumpkick.cli.tui.JdkDownloadBar.showInstalling(CliOutput.stdout(), displayName);
+            bar = JdkDownloadBar.showInstalling(CliOutput.stdout(), displayName);
         }
 
         @Override
@@ -491,7 +519,7 @@ public final class JdkInstallCommand implements CliCommand {
             }
             // Print after the spinner is wiped so the done line takes its place.
             // envelopeStart is a no-op when the download bar already opened it.
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+            CommandWedge.envelopeStart();
             CliOutput.out(doneLine(label, jdk.home(), "has been installed to"));
         }
 

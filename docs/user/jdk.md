@@ -25,10 +25,15 @@ those trees (defaults + SHA-256 fingerprints) lives in **`$JK_STATE_DIR/jk-jdks.
 (`~/.local/state/jk/jk-jdks.toml` on Linux), not next to the installs — the jdks directory is
 shared with IntelliJ. `jk jdk verify` (alias `jk jdks verify`) recomputes fingerprints including
 the `.jk-owned` marker. There is no on-disk “current” JDK pointer: `JAVA_HOME` / `GRAALVM_HOME`
-are whatever the [shell hook](install.md#shell-integration) last exported.
+are whatever the [shell hook](install.md#shell-integration) last exported. When inventory
+defaults are unset, the hook still activates a de-facto JDK (`DefaultJdkPolicy`) and, if any
+GraalVM is installed, a de-facto Graal (`DefaultGraalPolicy` — preferred newest Oracle GraalVM,
+then GraalVM CE). A project `jk-lock.toml` `[jdk]` / `[graal]` pin overrides those defaults when
+satisfiable (same major or newer).
 
 **GraalVM** for [native-image](native.md): `jk jdk` can provision a Graal-capable
-distribution when native work needs it.
+distribution when native work needs it. The first installed Graal becomes the native default
+without a prompt; `jk jdk graal` sets it explicitly when several exist.
 
 Shell PATH / `JAVA_HOME` hooks: `jk activate` — [Install](install.md#shell-integration).
 

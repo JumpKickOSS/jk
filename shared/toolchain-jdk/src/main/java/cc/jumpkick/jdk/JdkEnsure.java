@@ -76,7 +76,7 @@ public final class JdkEnsure {
                 jdksDirOverride,
                 (build != null && build.project() != null) ? build.project().jdk() : null,
                 (build != null && build.project() != null) ? build.project().javaRelease() : 0,
-                lock != null ? lock.jdk() : null,
+                lock == null ? null : lock.jdk(),
                 warn,
                 allowInstall,
                 progress);
@@ -85,14 +85,14 @@ public final class JdkEnsure {
     /**
      * Scalar variant for thin-client callers holding an engine {@code ProjectInfo} rather than a
      * parsed model — {@code JdkEnsure} only ever read three values off the model: the project's
-     * {@code jdk} spec, its {@code java} release floor, and the lock's pinned install id.
+     * {@code jdk} spec, its {@code java} release floor, and the lock {@code [jdk]} pin.
      */
     public static Outcome ensure(
             Path projectDir,
             Path jdksDirOverride,
             String projectJdkSpec,
             int javaRelease,
-            String lockJdkId,
+            Lockfile.JdkPin lockJdk,
             Consumer<String> warn,
             boolean allowInstall)
             throws IOException, InterruptedException {
@@ -101,14 +101,14 @@ public final class JdkEnsure {
                 jdksDirOverride,
                 projectJdkSpec,
                 javaRelease,
-                lockJdkId,
+                lockJdk,
                 warn,
                 allowInstall,
                 JdkInstallListener.NO_OP);
     }
 
     /**
-     * As {@link #ensure(Path, Path, String, int, String, java.util.function.Consumer, boolean)}
+     * As {@link #ensure(Path, Path, String, int, Lockfile.JdkPin, java.util.function.Consumer, boolean)}
      * with a progress sink for a missing-JDK install (TUI {@code downloading}/{@code installing}
      * labels). Already-on-disk resolution does not call {@code progress}.
      */
@@ -117,7 +117,7 @@ public final class JdkEnsure {
             Path jdksDirOverride,
             String projectJdkSpec,
             int javaRelease,
-            String lockJdkId,
+            Lockfile.JdkPin lockJdk,
             Consumer<String> warn,
             boolean allowInstall,
             JdkInstallListener progress)
@@ -132,7 +132,7 @@ public final class JdkEnsure {
                 projectDir,
                 SessionContext.current().jdkSpec(),
                 System.getenv("JK_JDK"),
-                (lockJdkId == null || lockJdkId.isEmpty()) ? null : lockJdkId,
+                lockJdk,
                 (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,
                 javaRelease,
                 System::getenv);

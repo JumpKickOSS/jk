@@ -90,9 +90,6 @@ public final class LockfileWriter {
         out.append("resolution-algorithm = ")
                 .append(quote(lockfile.resolutionAlgorithm()))
                 .append('\n');
-        if (lockfile.jdk() != null) {
-            out.append("jdk = ").append(quote(lockfile.jdk())).append('\n');
-        }
         if (lockfile.kotlin() != null) {
             out.append("kotlin = ").append(quote(lockfile.kotlin())).append('\n');
         }
@@ -110,8 +107,20 @@ public final class LockfileWriter {
         if (lockfile.projectId() != null && !lockfile.projectId().isBlank()) {
             out.append("project-id = ").append(quote(lockfile.projectId())).append('\n');
         }
-        // Last of the top-level scalars: opening [native] here would swallow any key written after
-        // it into that table. The [[artifact]] rows below close it again.
+        // Tables after top-level scalars: opening one would swallow any key written after it.
+        // The [[artifact]] rows below close whatever table is open.
+        Lockfile.JdkPin jdk = lockfile.jdk();
+        if (jdk != null) {
+            out.append("\n[jdk]\n");
+            out.append("vendor  = ").append(quote(jdk.vendor())).append('\n');
+            out.append("version = ").append(quote(jdk.version())).append('\n');
+        }
+        Lockfile.GraalPin graal = lockfile.graal();
+        if (graal != null) {
+            out.append("\n[graal]\n");
+            out.append("vendor  = ").append(quote(graal.vendor())).append('\n');
+            out.append("version = ").append(quote(graal.version())).append('\n');
+        }
         Lockfile.NativeMetadata pin = lockfile.nativeMetadata();
         if (pin != null) {
             out.append("\n[native]\n");
@@ -200,9 +209,6 @@ public final class LockfileWriter {
             out.append("group   = ").append(quote(m.group())).append('\n');
             out.append("name    = ").append(quote(m.name())).append('\n');
             out.append("version = ").append(quote(m.version())).append('\n');
-            if (m.jdk() != null && !m.jdk().isBlank()) {
-                out.append("jdk     = ").append(quote(m.jdk())).append('\n');
-            }
             if (m.java() != null && m.java() > 0) {
                 out.append("java    = ").append(m.java()).append('\n');
             }

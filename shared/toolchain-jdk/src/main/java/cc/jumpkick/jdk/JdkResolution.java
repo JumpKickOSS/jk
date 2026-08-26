@@ -2,9 +2,12 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.discovery.ToolHealth;
+import cc.jumpkick.lock.Lockfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -35,7 +38,7 @@ public final class JdkResolution {
             Path projectDir,
             String switchSpec,
             String envSpec,
-            String lockJdkId,
+            Lockfile.JdkPin lockJdk,
             String projectJdkSpec,
             int projectJavaRelease,
             Function<String, String> env) {
@@ -85,11 +88,14 @@ public final class JdkResolution {
             boolean canInstall,
             boolean envFallback) {
         Resolved r;
-        if ((r = named(req.switchSpec(), Tier.SWITCH, reg, canInstall)) != null) return r;
-        if ((r = named(req.envSpec(), Tier.JK_ENV, reg, canInstall)) != null) return r;
+        if ((r = named(req.switchSpec(), Tier.SWITCH, reg, canInstall, null)) != null) return r;
+        if ((r = named(req.envSpec(), Tier.JK_ENV, reg, canInstall, null)) != null) return r;
         if ((r = jdkVersionFile(req.projectDir(), reg, canInstall)) != null) return r;
-        if ((r = lockfile(req.lockJdkId(), reg, canInstall)) != null) return r;
-        if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall)) != null) return r;
+        if ((r = lockfile(req.lockJdk(), reg, canInstall)) != null) return r;
+        // Hook: an unsatisfied lock is a floor, not a skip. Later tiers may only
+        // export a JDK that still meets it; otherwise NONE (do not activate 21 for a 25 lock).
+        String lockFloor = !canInstall && req.lockJdk() != null ? req.lockJdk().version() : null;
+        if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, lockFloor)) != null) return r;
 
         // project.java floor: only when nothing is explicitly pinned and the
         // requested language level is newer than the latest LTS — then we need a
@@ -97,28 +103,34 @@ public final class JdkResolution {
         if ((req.projectJdkSpec() == null || req.projectJdkSpec().isBlank())
                 && latestLtsMajor > 0
                 && req.projectJavaRelease() > latestLtsMajor) {
-            if ((r = named(">=" + req.projectJavaRelease(), Tier.JAVA_RELEASE_FLOOR, reg, canInstall)) != null) {
+            if ((r = named(">=" + req.projectJavaRelease(), Tier.JAVA_RELEASE_FLOOR, reg, canInstall, lockFloor))
+                    != null) {
                 return r;
             }
         }
+
+        List<JdkHit> hits = reg.listHits();
+        List<JdkHit> pool = lockFloor == null ? hits : meetingFloor(hits, lockFloor);
 
         // default: the exact recorded home wins (unambiguous when two installs
         // share a vendor-major identifier), then the recorded identifier, then
         // the de-facto policy.
         Optional<Path> defHome = defaults.defaultHome();
-        if (defHome.isPresent() && hasBin(defHome.get())) {
+        if (defHome.isPresent() && hasBin(defHome.get()) && inPool(defHome.get(), pool)) {
             return Resolved.found(installed(defHome.get()), Tier.DEFAULT, null);
         }
         Optional<String> defId = defaults.defaultId();
         if (defId.isPresent()) {
             try {
                 Optional<InstalledJdk> d = reg.find(defId.get());
-                if (d.isPresent()) return Resolved.found(d.get(), Tier.DEFAULT, defId.get());
+                if (d.isPresent() && inPool(d.get().home(), pool)) {
+                    return Resolved.found(d.get(), Tier.DEFAULT, defId.get());
+                }
             } catch (IOException ignored) {
                 // unreadable registry — fall through to the de-facto policy
             }
         }
-        Optional<JdkHit> defacto = DefaultJdkPolicy.choose(reg.listHits(), latestLtsMajor);
+        Optional<JdkHit> defacto = DefaultJdkPolicy.choose(pool, latestLtsMajor);
         if (defacto.isPresent()) {
             return Resolved.found(installed(defacto.get().home()), Tier.DEFAULT, null);
         }
@@ -142,10 +154,15 @@ public final class JdkResolution {
     }
 
     /** A named-spec tier: resolve on disk; else (build) signal install, else (hook) continue. */
-    private static Resolved named(String spec, Tier tier, JdkRegistry reg, boolean canInstall) {
+    private static Resolved named(String spec, Tier tier, JdkRegistry reg, boolean canInstall, String lockFloor) {
         if (spec == null || spec.isBlank()) return null;
         Optional<InstalledJdk> hit = reg.findBySpec(spec);
-        if (hit.isPresent()) return Resolved.found(hit.get(), tier, spec);
+        if (hit.isPresent()) {
+            if (lockFloor != null && !inPool(hit.get().home(), meetingFloor(reg.listHits(), lockFloor))) {
+                return null;
+            }
+            return Resolved.found(hit.get(), tier, spec);
+        }
         return canInstall ? Resolved.install(tier, spec) : null;
     }
 
@@ -164,18 +181,36 @@ public final class JdkResolution {
         } catch (IllegalArgumentException e) {
             return null; // malformed .jdk-version → skip this tier
         }
-        return named(spec, Tier.JDK_VERSION_FILE, reg, canInstall);
+        return named(spec, Tier.JDK_VERSION_FILE, reg, canInstall, null);
     }
 
-    private static Resolved lockfile(String lockId, JdkRegistry reg, boolean canInstall) {
-        if (lockId == null || lockId.isBlank()) return null;
-        try {
-            Optional<InstalledJdk> hit = reg.find(lockId);
-            if (hit.isPresent()) return Resolved.found(hit.get(), Tier.LOCKFILE, lockId);
-        } catch (IOException ignored) {
-            // unreadable — treat as uninstalled
+    /**
+     * Lock {@code [jdk]} pin: major-or-better among installed hits. Build: unsatisfied → would
+     * install. Hook: unsatisfied → fall through with a major floor.
+     */
+    private static Resolved lockfile(Lockfile.JdkPin pin, JdkRegistry reg, boolean canInstall) {
+        if (pin == null) return null;
+        Optional<JdkHit> hit = LockPinMatch.choose(reg.listHits(), pin.vendor(), pin.version());
+        if (hit.isPresent()) {
+            return Resolved.found(
+                    installed(hit.get().home()), Tier.LOCKFILE, LockPinMatch.installSpec(pin.vendor(), pin.version()));
         }
-        return canInstall ? Resolved.install(Tier.LOCKFILE, lockId) : null;
+        if (canInstall) {
+            return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(pin.vendor(), pin.version()));
+        }
+        return null;
+    }
+
+    private static List<JdkHit> meetingFloor(List<JdkHit> hits, String lockedVersion) {
+        List<JdkHit> out = new ArrayList<>();
+        for (JdkHit h : hits) {
+            if (LockPinMatch.meetsFloor(h.version(), lockedVersion)) out.add(h);
+        }
+        return out;
+    }
+
+    private static boolean inPool(Path home, List<JdkHit> pool) {
+        return LockPinMatch.hitFor(home, pool).isPresent();
     }
 
     private static Resolved envHome(String home, Tier tier) {

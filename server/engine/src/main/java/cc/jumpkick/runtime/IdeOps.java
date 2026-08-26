@@ -13,9 +13,10 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -241,23 +242,27 @@ public final class IdeOps {
         int level = module.project().jdkMajor() > 0
                 ? module.project().jdkMajor()
                 : module.project().javaRelease();
-        String lockJdk = readLockJdk(moduleDir);
-        JdkSelector.FlexibleQuery q = JdkSelector.parseFlexible(lockJdk == null ? "" : lockJdk);
-        if (q.major().isPresent()) level = q.major().get();
+        Lockfile.JdkPin lockJdk = readLockJdk(moduleDir);
+        if (lockJdk != null) {
+            Integer m = JdkKeywords.leadingMajor(lockJdk.version());
+            if (m != null) level = m;
+        }
         if (level <= 0) level = 21;
 
         Optional<JdkHit> hit = Optional.empty();
-        if (lockJdk != null && !lockJdk.isBlank()) hit = registry.findHitBySpec(lockJdk);
+        if (lockJdk != null) {
+            hit = LockPinMatch.choose(registry.listHits(), lockJdk.vendor(), lockJdk.version());
+        }
         if (hit.isEmpty()) hit = registry.findHitBySpec(String.valueOf(level));
 
         String vendor;
-        String version = q.exactVersion().orElse(null);
+        String version = lockJdk == null ? null : lockJdk.version();
         if (hit.isPresent()) {
             JdkVendor v = hit.get().vendor();
             vendor = v.jbPrefix().orElse(v.vendor().toLowerCase(Locale.ROOT));
             if (version == null) version = hit.get().version();
-        } else if (!q.hints().isEmpty()) {
-            vendor = q.hints().get(0);
+        } else if (lockJdk != null && !lockJdk.vendor().isBlank()) {
+            vendor = lockJdk.vendor();
         } else {
             vendor = "temurin";
         }
@@ -302,8 +307,8 @@ public final class IdeOps {
         return sdkRefFor(wsRoot, root, registry, pointer, sdkEntries, seen);
     }
 
-    /** The resolved JDK identifier stamped in a module's {@code jk-lock.toml}, or null. */
-    private static String readLockJdk(Path moduleDir) {
+    /** The resolved JDK pin stamped in the workspace {@code jk-lock.toml}, or null. */
+    private static Lockfile.JdkPin readLockJdk(Path moduleDir) {
         Path lf = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lf)) return null;
         try {

@@ -14,6 +14,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.ActiveJavac;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
+import cc.jumpkick.jdk.DefaultJdkPolicy;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
@@ -21,9 +23,11 @@ import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -153,6 +157,16 @@ public final class JdkListCommand implements CliCommand {
         if (graalHome == null) {
             graalHome = gd.graalId().flatMap(id -> findHome(registry, id)).orElse(null);
         }
+        // When inventory pointers are unset, badges follow the same de-facto policies
+        // the shell hook / resolution use.
+        if (defaultHome == null) {
+            defaultHome = DefaultJdkPolicy.choose(installed, JdkLts.OFFLINE_LATEST_LTS)
+                    .map(JdkHit::home)
+                    .orElse(null);
+        }
+        if (graalHome == null) {
+            graalHome = DefaultGraalPolicy.choose(installed).map(JdkHit::home).orElse(null);
+        }
         // Catalog (feed / cache) is always consulted so lagging point releases can
         // be marked outdated!. --all additionally surfaces available download rows.
         JdkCatalog catalog = fetchCatalogOrNull();
@@ -233,9 +247,9 @@ public final class JdkListCommand implements CliCommand {
                     ? e.vendor() + " " + e.product()
                     : (j.vendor() != JdkVendor.UNKNOWN ? j.vendor().displayName() : "");
             int major = e != null ? e.majorVersion() : parseMajor(id);
-            boolean isActive = sameHome(currentHome, j.home());
-            boolean isDefault = sameHome(defaultHome, j.home());
-            boolean isNative = sameHome(graalHome, j.home());
+            boolean isActive = LockPinMatch.sameHome(currentHome, j.home());
+            boolean isDefault = LockPinMatch.sameHome(defaultHome, j.home());
+            boolean isNative = LockPinMatch.sameHome(graalHome, j.home());
             Optional<JdkCatalog.Entry> latest = e != null
                     ? Optional.ofNullable(latestPerTuple.get(familyKey(e)))
                     : latestPointRelease(catalog, id, os, arch);
@@ -275,8 +289,8 @@ public final class JdkListCommand implements CliCommand {
                 String id =
                         IntellijJdkDir.installDirOf(hit.home()).getFileName().toString();
                 String vendor = hit.vendor() != JdkVendor.UNKNOWN ? hit.vendor().displayName() : "";
-                boolean d = sameHome(defaultHome, hit.home());
-                boolean n = sameHome(graalHome, hit.home());
+                boolean d = LockPinMatch.sameHome(defaultHome, hit.home());
+                boolean n = LockPinMatch.sameHome(graalHome, hit.home());
                 Optional<JdkCatalog.Entry> latest = latestPointRelease(catalog, id, os, arch);
                 String installedVersion =
                         hit.version() != null && !hit.version().isBlank() ? hit.version() : id;
@@ -393,19 +407,6 @@ public final class JdkListCommand implements CliCommand {
             return registry.find(id).map(InstalledJdk::home);
         } catch (IOException e) {
             return Optional.empty();
-        }
-    }
-
-    private static boolean sameHome(Path currentHome, Path hitHome) {
-        if (currentHome == null || hitHome == null) return false;
-        return canonical(currentHome).equals(canonical(hitHome));
-    }
-
-    private static Path canonical(Path p) {
-        try {
-            return p.toRealPath();
-        } catch (IOException e) {
-            return p.toAbsolutePath().normalize();
         }
     }
 

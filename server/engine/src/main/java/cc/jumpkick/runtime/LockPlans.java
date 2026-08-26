@@ -415,6 +415,7 @@ public final class LockPlans {
                 newLock.generatedBy(),
                 newLock.resolutionAlgorithm(),
                 newLock.jdk(),
+                newLock.graal(),
                 newLock.kotlin(),
                 scalaPin,
                 spliced,

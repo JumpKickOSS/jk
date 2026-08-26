@@ -22,6 +22,14 @@ public final class JavaHomes {
     private JavaHomes() {}
 
     public static Path resolveJavaHome(Path projectDir) {
+        return resolveJavaHome(projectDir, new JdkRegistry());
+    }
+
+    /**
+     * As {@link #resolveJavaHome(Path)} with a caller-owned registry, so one probe scan serves
+     * both this walk and whatever the caller does next with the same registry.
+     */
+    public static Path resolveJavaHome(Path projectDir, JdkRegistry registry) {
         try {
             Lockfile lock = readLockSoft(projectDir);
             JkBuild build = readBuildSoft(projectDir);
@@ -29,14 +37,14 @@ public final class JavaHomes {
                     projectDir,
                     SessionContext.current().jdkSpec(),
                     System.getenv("JK_JDK"),
-                    lock != null ? lock.jdk() : null,
+                    lock == null ? null : lock.jdk(),
                     (build != null && build.project() != null) ? build.project().jdk() : null,
                     (build != null && build.project() != null) ? build.project().javaRelease() : 0,
                     System::getenv);
             // Non-installing walk of the canonical order — JdkEnsure already
             // installed any pin during sync, so this just locates it. Falls back
             // to the running JVM when nothing resolves.
-            JdkResolution.Resolved r = JdkResolution.resolveForHook(req, new JdkRegistry(), JdkInventory.current());
+            JdkResolution.Resolved r = JdkResolution.resolveForHook(req, registry, JdkInventory.current());
             if (r.jdk().isPresent()) return r.jdk().get().home();
         } catch (RuntimeException ignored) {
             // fall through to the running JVM
@@ -62,8 +70,7 @@ public final class JavaHomes {
             String jdk = scan.get("jdk");
             String java = scan.get("java");
             if (isBlank(jdk) || isBlank(java)) {
-                // A workspace member auto-inherits jdk/java from its root; the parser this scan
-                // replaced applied that via WorkspaceResolve (JK-2156). Mirror it per key —
+                // A workspace member auto-inherits jdk/java from its root. Mirror it per key —
                 // same bootstrap pattern as ProjectIdentity.coordOf's group inheritance.
                 var root = WorkspaceScan.findRoot(projectDir);
                 if (root.isPresent()) {

@@ -36,33 +36,83 @@ class HookEnvTest {
         assertThat(s).contains("export JAVA_HOME=/opt/jdk-25");
         assertThat(s).contains("export PATH=/opt/jdk-25/bin:/usr/bin");
         assertThat(s).contains("export __JK_DIFF=");
+        // PATH is not frozen into the diff — only homes are.
+        var next = JkDiff.parse(extractEnvAssignment(s, "__JK_DIFF"));
+        assertThat(next.keys()).containsExactly("JAVA_HOME");
+        assertThat(next.wasUnset("JAVA_HOME")).isTrue();
     }
 
     @Test
-    void leaving_a_project_restores_originals() {
+    void leaving_strips_toolchain_bins_and_preserves_neighbors() {
         var sh = new BashShell();
-        // Prior diff: jk previously set JAVA_HOME (was unset before) and PATH (was /usr/bin).
-        var prior = new JkDiff(orderedMap("JAVA_HOME", JkDiff.UNSET_SENTINEL, "PATH", "/usr/bin"));
+        // Prior diff: jk previously set JAVA_HOME (was unset before). PATH is not tracked.
+        var prior = new JkDiff(orderedMap("JAVA_HOME", JkDiff.UNSET_SENTINEL));
         var out = new StringBuilder();
-        // Target.empty() = no project here.
-        HookEnvCommand.emit(sh, JkEnv.Target.empty(), prior, k -> null, out);
+        JkDiff.EnvSnapshot snap = k -> switch (k) {
+            case "JAVA_HOME" -> "/opt/jdk-25";
+            case "PATH" -> "/opt/jdk-25/bin:/home/u/.nvm/bin:/usr/bin";
+            default -> null;
+        };
+        HookEnvCommand.emit(sh, JkEnv.Target.empty(), prior, snap, out);
 
         var s = out.toString();
-        // JAVA_HOME was unset before jk activated → unset it now.
         assertThat(s).contains("unset JAVA_HOME");
-        // PATH had a value before → restore it.
-        assertThat(s).contains("export PATH=/usr/bin");
-        // __JK_DIFF should be unset since we no longer track anything.
+        // Surgical strip — nvm stays; frozen /usr/bin-only restore must not happen.
+        assertThat(s).contains("export PATH=/home/u/.nvm/bin:/usr/bin");
+        assertThat(s).doesNotContain("export PATH=/usr/bin\n");
         assertThat(s).contains("unset __JK_DIFF");
+    }
+
+    @Test
+    void user_owned_java_bin_survives_activation_and_returns_on_leave() {
+        var sh = new BashShell();
+        // User's own JAVA_HOME with its bin on PATH — jk never owned either.
+        JkDiff.EnvSnapshot before = k -> switch (k) {
+            case "JAVA_HOME" -> "/home/u/sdk/java";
+            case "PATH" -> "/home/u/sdk/java/bin:/usr/bin";
+            default -> null;
+        };
+        var target = new JkEnv.Target(Optional.of(Path.of("/proj")), Map.of("JAVA_HOME", "/opt/jdk-25"));
+        var activate = new StringBuilder();
+        HookEnvCommand.emit(sh, target, JkDiff.empty(), before, activate);
+        // Activation prepends jk's bin ahead of the user's — it does not strip it.
+        assertThat(activate.toString()).contains("export PATH=/opt/jdk-25/bin:/home/u/sdk/java/bin:/usr/bin");
+
+        // Leaving: jk's bin goes, the user's bin and JAVA_HOME are back untouched.
+        var prior = JkDiff.parse(extractEnvAssignment(activate.toString(), "__JK_DIFF"));
+        JkDiff.EnvSnapshot inside = k -> switch (k) {
+            case "JAVA_HOME" -> "/opt/jdk-25";
+            case "PATH" -> "/opt/jdk-25/bin:/home/u/sdk/java/bin:/usr/bin";
+            default -> null;
+        };
+        var leave = new StringBuilder();
+        HookEnvCommand.emit(sh, JkEnv.Target.empty(), prior, inside, leave);
+        assertThat(leave.toString()).contains("export JAVA_HOME=/home/u/sdk/java");
+        assertThat(leave.toString()).contains("export PATH=/home/u/sdk/java/bin:/usr/bin");
+    }
+
+    @Test
+    void jdk_only_project_leaves_user_owned_graal_bin_alone() {
+        var sh = new BashShell();
+        // Project pins only a JDK; GRAALVM_HOME belongs to the user and is not managed.
+        var prior = new JkDiff(Map.of("JAVA_HOME", JkDiff.UNSET_SENTINEL));
+        var target = new JkEnv.Target(Optional.of(Path.of("/proj")), Map.of("JAVA_HOME", "/opt/jdk-25"));
+        JkDiff.EnvSnapshot snap = k -> switch (k) {
+            case "JAVA_HOME" -> "/opt/jdk-25";
+            case "GRAALVM_HOME" -> "/opt/graal";
+            case "PATH" -> "/opt/jdk-25/bin:/opt/graal/bin:/usr/bin";
+            default -> null;
+        };
+        var out = new StringBuilder();
+        HookEnvCommand.emit(sh, target, prior, snap, out);
+        assertThat(out.toString()).contains("export PATH=/opt/jdk-25/bin:/opt/graal/bin:/usr/bin");
     }
 
     @Test
     void switching_between_projects_keeps_pre_activation_values_in_diff() {
         var sh = new BashShell();
         // Already in project A: jk previously set JAVA_HOME (was /sys/jdk).
-        var prior = new JkDiff(Map.of(
-                "JAVA_HOME", "/sys/jdk",
-                "PATH", "/usr/bin"));
+        var prior = new JkDiff(Map.of("JAVA_HOME", "/sys/jdk"));
         // Now entering project B: new target.
         var target = new JkEnv.Target(
                 Optional.of(Path.of("/b")),
@@ -73,19 +123,35 @@ class HookEnvTest {
         // Live env has project A's values right now — should NOT overwrite our diff.
         JkDiff.EnvSnapshot snap = k -> switch (k) {
             case "JAVA_HOME" -> "/proj-a/jdk";
-            case "PATH" -> "/proj-a/jdk/bin:/usr/bin";
+            case "PATH" -> "/proj-a/jdk/bin:/home/u/.nvm/bin:/usr/bin";
             default -> null;
         };
         HookEnvCommand.emit(sh, target, prior, snap, out);
 
         var s = out.toString();
         assertThat(s).contains("export JAVA_HOME=/opt/jdk-25");
-        // The encoded diff should still carry /sys/jdk so a future cd-out restores correctly.
-        // We can't easily decode the base64 in this test without duplicating logic, but
-        // we can re-parse it via the JkDiff API.
+        // Live PATH neighbors survive the JDK bin swap.
+        assertThat(s).contains("export PATH=/opt/jdk-25/bin:/home/u/.nvm/bin:/usr/bin");
         var encoded = extractEnvAssignment(s, "__JK_DIFF");
         var next = JkDiff.parse(encoded);
         assertThat(next.previousValue("JAVA_HOME")).isEqualTo("/sys/jdk");
+        assertThat(next.keys()).doesNotContain("PATH");
+    }
+
+    @Test
+    void prompt_rewrite_does_not_clobber_path_entries_added_after_activation() {
+        var sh = new BashShell();
+        var prior = new JkDiff(Map.of("JAVA_HOME", JkDiff.UNSET_SENTINEL));
+        var target = new JkEnv.Target(Optional.of(Path.of("/proj")), Map.of("JAVA_HOME", "/opt/jdk-25"));
+        // User installed nvm after jk activate; live PATH already has the jk JDK bin + nvm.
+        JkDiff.EnvSnapshot snap = k -> switch (k) {
+            case "JAVA_HOME" -> "/opt/jdk-25";
+            case "PATH" -> "/opt/jdk-25/bin:/home/u/.nvm/versions/node/v24/bin:/usr/bin";
+            default -> null;
+        };
+        var out = new StringBuilder();
+        HookEnvCommand.emit(sh, target, prior, snap, out);
+        assertThat(out.toString()).contains("export PATH=/opt/jdk-25/bin:/home/u/.nvm/versions/node/v24/bin:/usr/bin");
     }
 
     @Test

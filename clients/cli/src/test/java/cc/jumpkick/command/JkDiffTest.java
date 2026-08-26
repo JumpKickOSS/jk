@@ -54,9 +54,9 @@ class JkDiffTest {
     }
 
     @Test
-    void next_captures_pre_jk_values_from_snapshot() {
-        // No prior diff. Target adds JAVA_HOME + PATH. Snapshot has both with
-        // pre-existing values — those should be recorded as the "previous".
+    void next_captures_pre_jk_values_from_snapshot_but_skips_path() {
+        // No prior diff. Target adds JAVA_HOME + PATH. PATH is surgically swapped and must
+        // not be frozen into the diff even when present on the target.
         var prior = JkDiff.empty();
         var target = new JkEnv.Target(
                 Optional.of(Path.of("/project")),
@@ -70,7 +70,7 @@ class JkDiffTest {
         };
         var next = prior.next(target, snapshot);
         assertThat(next.previousValue("JAVA_HOME")).isEqualTo("/usr/lib/jvm/system");
-        assertThat(next.previousValue("PATH")).isEqualTo("/usr/bin");
+        assertThat(next.keys()).doesNotContain("PATH");
         assertThat(next.wasUnset("JAVA_HOME")).isFalse();
     }
 

@@ -5,13 +5,12 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.JdkSelector;
-import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -19,7 +18,6 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -63,7 +61,7 @@ public final class JdkGraalCommand implements CliCommand {
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 
         List<JdkHit> graals =
-                registry.listHits().stream().filter(JdkGraalCommand::isGraal).toList();
+                registry.listHits().stream().filter(DefaultGraalPolicy::isGraal).toList();
         if (graals.isEmpty()) {
             CommandWedge.printFail(
                     "JDK",
@@ -74,11 +72,11 @@ public final class JdkGraalCommand implements CliCommand {
 
         JdkHit chosen;
         if (spec == null || spec.isBlank()) {
-            chosen = graals.stream().sorted(byGraalPreference()).findFirst().orElseThrow();
+            chosen = DefaultGraalPolicy.choose(graals).orElseThrow();
         } else {
             Optional<JdkHit> match = JdkKeywords.isKeyword(spec)
                     ? JdkKeywords.bestInstalledMatch(spec, graals)
-                    : registry.findHitBySpec(spec).filter(JdkGraalCommand::isGraal);
+                    : registry.findHitBySpec(spec).filter(DefaultGraalPolicy::isGraal);
             if (match.isEmpty()) {
                 CommandWedge.printFail("JDK", "no installed GraalVM matches `" + spec + "` (try `jk jdk list`).");
                 return 1;
@@ -98,22 +96,8 @@ public final class JdkGraalCommand implements CliCommand {
         return 0;
     }
 
-    static boolean isGraal(JdkHit h) {
-        return h.vendor() == JdkVendor.ORACLE_GRAALVM || h.vendor() == JdkVendor.GRAALVM_CE;
-    }
-
-    /** Oracle GraalVM before GraalVM CE; newer version first within a flavour. */
-    private static Comparator<JdkHit> byGraalPreference() {
-        return Comparator.comparingInt((JdkHit h) -> {
-                    int i = JdkVendor.GRAAL_PREFERENCE.indexOf(h.vendor());
-                    return i >= 0 ? i : Integer.MAX_VALUE;
-                })
-                .thenComparing(
-                        h -> h.version() == null ? "" : JdkSelector.versionKey(h.version()), Comparator.reverseOrder());
-    }
-
     private static String display(JdkHit hit) {
-        Integer major = JdkDefaultCommand.majorOf(hit.version());
+        Integer major = JdkKeywords.leadingMajor(hit.version());
         String name = hit.vendor().displayName();
         return major != null ? name + " " + major : name + " " + hit.version();
     }

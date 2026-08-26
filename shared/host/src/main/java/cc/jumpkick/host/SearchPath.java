@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -52,5 +53,20 @@ public final class SearchPath {
     public static String prepend(String binDir, String existing) {
         if (existing == null || existing.isEmpty()) return binDir;
         return binDir + SEPARATOR + existing;
+    }
+
+    /**
+     * Drop every occurrence of {@code entry} from {@code path}, blanks preserved. A {@code null} or
+     * blank {@code entry} is a no-op. When every entry is removed the result is {@code ""} (unset
+     * search path), never a single blank entry.
+     */
+    public static String remove(String entry, String path) {
+        if (entry == null || entry.isEmpty()) return path == null ? "" : path;
+        var kept = new ArrayList<String>();
+        for (String e : entries(path)) {
+            if (!e.equals(entry)) kept.add(e);
+        }
+        if (kept.isEmpty()) return "";
+        return String.join(SEPARATOR, kept);
     }
 }
