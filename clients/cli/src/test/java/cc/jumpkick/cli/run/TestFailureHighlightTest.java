@@ -3,12 +3,10 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.RenderContext;
-import cc.jumpkick.config.JkConfig;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Width;
@@ -351,14 +349,7 @@ class TestFailureHighlightTest {
                 "@@src 2*|" + longLine,
                 "@@src-end",
                 "Test Failure end");
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(true);
-        Session original = SessionContext.installed();
-        List<String> painted;
-        try {
-            painted = SessionContext.where(original.withConfig(noAnsi), () -> TestFailureHighlight.paintLines(raw));
-        } finally {
-            SessionContext.install(original);
-        }
+        List<String> painted = NoAnsi.forced(() -> TestFailureHighlight.paintLines(raw));
         String all = String.join("\n", painted);
         assertThat(all.chars().allMatch(c -> c < 128))
                 .as("plain mode output must be pure ASCII, got: %s", all)

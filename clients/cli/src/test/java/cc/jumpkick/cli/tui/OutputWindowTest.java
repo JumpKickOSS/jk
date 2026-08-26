@@ -221,33 +221,23 @@ class OutputWindowTest {
     @Test
     void plan_opens_peek_when_config_build_output_true() {
         CliOutput.beginCommand(false);
-        var prev = SessionContext.installed();
-        try {
-            SessionContext.installConfig(JkConfig.empty().withBuildOutput(true));
-            var buf = new ByteArrayOutputStream();
-            var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
-            assertThat(cm.outputWindow().visible()).isTrue();
-            List<String> lines = cm.renderBuildPlanLines(80, 0);
-            assertThat(TestAnsi.strip(lines.get(0))).contains("output");
-            cm.close();
-        } finally {
-            SessionContext.install(prev);
-        }
+        SessionContext.installConfig(JkConfig.empty().withBuildOutput(true));
+        var buf = new ByteArrayOutputStream();
+        var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        assertThat(cm.outputWindow().visible()).isTrue();
+        List<String> lines = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(lines.get(0))).contains("output");
+        cm.close();
     }
 
     @Test
     void plan_keeps_peek_closed_by_default() {
         CliOutput.beginCommand(false);
-        var prev = SessionContext.installed();
-        try {
-            SessionContext.installConfig(JkConfig.empty());
-            var buf = new ByteArrayOutputStream();
-            var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
-            assertThat(cm.outputWindow().visible()).isFalse();
-            cm.close();
-        } finally {
-            SessionContext.install(prev);
-        }
+        SessionContext.installConfig(JkConfig.empty());
+        var buf = new ByteArrayOutputStream();
+        var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        assertThat(cm.outputWindow().visible()).isFalse();
+        cm.close();
     }
 
     @Test
