@@ -2281,6 +2281,81 @@ tasks.named("check") { dependsOn(checkTreeCopyOwner) }
 tasks.named("jar") { dependsOn(checkTreeCopyOwner) }
 
 // ---------------------------------------------------------------------------
+// Guard G45 (JK-1031): blind tree walks only shrink.
+//
+// The tree asked 1,194 metadata predicates (exists / isRegularFile / isDirectory) against 17
+// readAttributes -- seventy narrow questions for every time it asked once for the whole answer --
+// and had 5 attribute-carrying walks against 233 blind ones. On Windows a raw walk is *cheaper*
+// than on Linux, because FindNextFileW returns each entry's attributes with the entry; the cost is
+// discarding them and re-resolving the path to ask again, at 10.3 us against 1.0 on ext4.
+// JK-1002 named `walk(...).filter(Files::isRegularFile)`, fixed it in seven hot walkers, and it had
+// regrown to 72 sites -- because the fix was a call-site edit and never became an owner.
+//
+// A ratchet, not a ban, and deliberately so. Two hundred and twenty sites remain and each needs its
+// own read: some walks want directories, some want a depth limit, some want ordering. The ticket's
+// own guidance applies -- ship the ratchet and make the rule monotonic today rather than leave an
+// unwinnable ban unwritten. Delete entries from walk-baseline.txt as sites migrate.
+//
+// Owner: PathUtil.forEachRegularFile.
+// ---------------------------------------------------------------------------
+val checkBlindWalkRatchet by tasks.registering {
+    group = "verification"
+    description = "Fail the build when a module gains a blind Files.walk (use PathUtil.forEachRegularFile)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val baseline = rootProject.layout.projectDirectory.file("walk-baseline.txt")
+    inputs.file(baseline).withPropertyName("walkBaseline")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/PathUtil.java")
+    inputs.file(owner).withPropertyName("walkOwner")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath
+    val stamp = layout.buildDirectory.file("guards/blind-walk-ratchet.ok")
+    outputs.file(stamp)
+    doLast {
+        if (!owner.asFile.readText().contains("public static void forEachRegularFile(")) {
+            throw GradleException("PathUtil no longer declares forEachRegularFile(...), so guard G45"
+                    + " has lost the owner it points callers at. Restore it or retire the guard"
+                    + " deliberately.")
+        }
+        val allowed = baseline.asFile.readLines()
+                .filter { it.isNotBlank() && !it.startsWith("#") }
+                .associate { line ->
+                    val parts = line.trim().split(" ")
+                    parts[0] to parts[1].toInt()
+                }
+        if (allowed.isEmpty()) {
+            throw GradleException("walk-baseline.txt lists no modules, so guard G45 would pass over"
+                    + " anything. Restore the baseline or retire the guard deliberately.")
+        }
+        val pattern = Regex("""Files\.(walk|walkFileTree|newDirectoryStream|list)\(""")
+        var found = 0
+        mainJava.forEach { f -> found += pattern.findAll(f.readText()).count() }
+        val budget = allowed[here] ?: 0
+        if (found > budget) {
+            throw GradleException("G45: " + here + " has " + found + " blind tree walks, baseline "
+                    + budget + " (+" + (found - budget) + ")."
+                    + "\n\nUse PathUtil.forEachRegularFile(root, (file, attrs) -> …): the walk already"
+                    + " read each entry's attributes, and re-resolving the path to ask again is the"
+                    + " dominant cost of walking a large tree."
+                    + "\nIf a walk genuinely cannot use it (it needs directories, a depth limit, or"
+                    + " ordering), raise this module's line in walk-baseline.txt in the same change and"
+                    + " say which site and why.")
+        }
+        if (found < budget) {
+            throw GradleException("G45: " + here + " is down to " + found + " blind tree walks from a"
+                    + " baseline of " + budget + " — lower the line in walk-baseline.txt so the ratchet"
+                    + " tightens. A baseline that lags the tree is the same defect as a registry that"
+                    + " lags the code.")
+        }
+        stamp.get().asFile.also { it.parentFile.mkdirs() }
+                .writeText("ok: " + found + " blind walks, at baseline\n")
+    }
+}
+tasks.named("check") { dependsOn(checkBlindWalkRatchet) }
+tasks.named("jar") { dependsOn(checkBlindWalkRatchet) }
+
+// ---------------------------------------------------------------------------
 // Guard G16 (JK-2419): Maven Central is addressed one way, and it is `RepositorySpec`'s.
 //
 // Defect it prevents: traffic to Central that the rate-limit machinery cannot see. `repo1.maven.org`

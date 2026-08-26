@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -64,6 +65,64 @@ public final class PathUtil {
             home = System.getProperty("user.dir", ".");
         }
         return Path.of(home).toAbsolutePath().normalize();
+    }
+
+    /**
+     * Visit every regular file under {@code root}, with the attributes the walk already read.
+     *
+     * <p><strong>The</strong> tree walk. The tree asked <b>1,194</b> metadata predicates
+     * ({@code exists} / {@code isRegularFile} / {@code isDirectory}) against <b>17</b>
+     * {@code readAttributes} — seventy narrow questions for every time it asked once for the whole
+     * answer — and had <b>5</b> attribute-carrying walks against <b>233</b> blind ones. On Windows a
+     * raw walk is actually <em>cheaper</em> than on Linux, because {@code FindNextFileW} returns each
+     * entry's attributes with the entry; what costs is throwing them away and re-resolving the path
+     * to ask again, at 10.3&nbsp;µs a time against 1.0 on ext4 (JK-1031).
+     *
+     * <p>{@code walkFileTree} hands {@code visitFile} those attributes for free. So a caller that
+     * needs size, mtime, or regular-file-ness gets them without a syscall, and
+     * {@code walk(…).filter(Files::isRegularFile)} — which JK-1002 named, fixed in seven hot walkers,
+     * and which had regrown to 72 sites — stops being the obvious spelling.
+     *
+     * <p>Symlinks are not followed. {@code walkFileTree}'s default is no-follow, so a link arrives as a
+     * non-regular file and is skipped, for the reason G37 gives about deletes.
+     */
+    public static void forEachRegularFile(Path root, FileVisit visit) throws IOException {
+        if (!Files.isDirectory(root)) return;
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (attrs.isRegularFile()) visit.accept(file, attrs);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                // A file that vanished mid-walk, or one this process cannot stat, is not a reason to
+                // abandon the tree — the callers this replaces all used Files.walk, which skips.
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /** What {@link #forEachRegularFile} hands each file: the path, and the attributes already read. */
+    @FunctionalInterface
+    public interface FileVisit {
+        void accept(Path file, BasicFileAttributes attrs) throws IOException;
+    }
+
+    /**
+     * {@code path}'s attributes, or empty when it does not exist or cannot be read.
+     *
+     * <p>Replaces the {@code exists}-then-{@code isRegularFile}-then-{@code size}-then-mtime chains:
+     * one {@code readAttributes} answers all four, and a missing file is a value rather than an
+     * exception. On Windows each predicate it replaces re-resolves the path from scratch.
+     */
+    public static Optional<BasicFileAttributes> stat(Path path) {
+        try {
+            return Optional.of(Files.readAttributes(path, BasicFileAttributes.class));
+        } catch (IOException absent) {
+            return Optional.empty();
+        }
     }
 
     /**

@@ -487,6 +487,9 @@ public final class BuildPlanner {
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed
         // once, lazily, when the first weight supplier fires during plan-start
         // estimation — so the prediction (stamps/lock/CAS) is read off disk once.
+        final AtomicReference<List<Path>> javaMainSrcRef = new AtomicReference<>();
+        final AtomicReference<List<Path>> kotlinMainSrcRef = new AtomicReference<>();
+        final AtomicReference<List<Path>> groovyMainSrcRef = new AtomicReference<>();
         final AtomicReference<EffortWeights.Plan> planRef = new AtomicReference<>();
         final Supplier<EffortWeights.Plan> plan = () -> {
             EffortWeights.Plan p = planRef.get();
@@ -494,7 +497,16 @@ public final class BuildPlanner {
                 planRef.compareAndSet(
                         null,
                         EffortWeights.predict(
-                                in, cas, compact, mixedWithJava, kotlinModule, groovyModule, forceRebuild));
+                                in,
+                                cas,
+                                compact,
+                                mixedWithJava,
+                                kotlinModule,
+                                groovyModule,
+                                forceRebuild,
+                                // The caches below, not fresh walks: prediction and the plan that
+                                // follows it read the same source lists (JK-1031).
+                                new EffortWeights.SourceRefs(javaMainSrcRef, kotlinMainSrcRef, groovyMainSrcRef)));
                 p = planRef.get();
             }
             return p;
@@ -506,9 +518,6 @@ public final class BuildPlanner {
         // instead of walking the same directories again. Using AtomicReference
         // with lazy init: whichever side fires first populates the cache; the
         // other side finds the value already set.
-        final AtomicReference<List<Path>> javaMainSrcRef = new AtomicReference<>();
-        final AtomicReference<List<Path>> kotlinMainSrcRef = new AtomicReference<>();
-        final AtomicReference<List<Path>> groovyMainSrcRef = new AtomicReference<>();
         // Build-logic anchors (BEFORE_COMPILE / AFTER_COMPILE / AFTER_RESOURCES / BEFORE_PACKAGE)
         // each call BuildLogicSupport.run() independently; a module registering tasks at more
         // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
