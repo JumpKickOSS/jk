@@ -346,9 +346,7 @@ class FqcnShortenerScopeTest {
         var r = FqcnShortener.shorten(before, indexOf(tmp, "Bar.java", FOO_BAR));
 
         assertThat(r.changed()).isTrue();
-        assertThat(r.source())
-                .as("the template's contents must be untouched")
-                .contains("import a.b.C;\n\"\"\"");
+        assertThat(r.source()).as("the template's contents must be untouched").contains("import a.b.C;\n\"\"\"");
         assertThat(javac(tmp.resolve("out"), files("cc/jumpkick/foo/Bar.java", FOO_BAR, "demo/Uses.java", r.source())))
                 .as("after: " + r.source())
                 .isEmpty();
@@ -487,7 +485,8 @@ class FqcnShortenerScopeTest {
                 /** See {@link cc.jumpkick.foo.Bar}. */
                 public class Uses {}
                 """;
-        assertThat(FqcnShortener.shorten(before, indexOf(tmp, "Bar.java", FOO_BAR)).changed())
+        assertThat(FqcnShortener.shorten(before, indexOf(tmp, "Bar.java", FOO_BAR))
+                        .changed())
                 .isFalse();
     }
 }

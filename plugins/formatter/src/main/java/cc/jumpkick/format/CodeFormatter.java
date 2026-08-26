@@ -85,14 +85,16 @@ public final class CodeFormatter implements Plugin {
             } finally {
                 pool.shutdown();
             }
-            for (Future<FileResult> future : pending) {
+            for (int i = 0; i < pending.size(); i++) {
                 FileResult result;
                 try {
-                    result = future.get();
+                    result = pending.get(i).get();
                 } catch (ExecutionException e) {
+                    // pending is index-aligned with spec.files, so the crashed task's file is
+                    // knowable — name it, or reconcile blames the wrong "never visited" file.
                     Throwable cause = e.getCause() == null ? e : e.getCause();
                     errors++;
-                    emitFile(out, new File("<unknown>"), "error", String.valueOf(cause.getMessage()));
+                    emitFile(out, spec.files.get(i).file(), "error", String.valueOf(cause.getMessage()));
                     continue;
                 }
                 switch (result.status()) {

@@ -9,8 +9,7 @@ import java.util.Map;
 
 /**
  * Client → server request builders for artifact-producing verbs. Session attachment
- * ({@link ProtoSession#withSession}) is separate; this file is the request bodies
- * (scoreboard 800–1,200).
+ * ({@link ProtoSession#withSession}) is separate; this file is the request bodies (scoreboard 800–1,200).
  */
 public final class ProtoJobs {
 

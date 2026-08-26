@@ -52,7 +52,9 @@ class TypeIndexTopLevelTest {
                 }
                 """);
 
-        assertThat(index.contains("a.b.Outer")).as("the one real top-level type").isTrue();
+        assertThat(index.contains("a.b.Outer"))
+                .as("the one real top-level type")
+                .isTrue();
         assertThat(index.contains("a.b.Inner")).isFalse();
         assertThat(index.contains("a.b.Callback")).isFalse();
         assertThat(index.contains("a.b.Mode")).isFalse();
@@ -123,8 +125,7 @@ class TypeIndexTopLevelTest {
                 .as("cc.jumpkick.other.Bar does not exist; Other.Bar does")
                 .isFalse();
 
-        var r = FqcnShortener.shorten(
-                """
+        var r = FqcnShortener.shorten("""
                 package demo;
 
                 public class Uses {
@@ -132,8 +133,7 @@ class TypeIndexTopLevelTest {
                         return cc.jumpkick.foo.Bar.hi();
                     }
                 }
-                """,
-                index);
+                """, index);
         assertThat(r.changed()).isTrue();
         assertThat(r.source()).contains("import cc.jumpkick.foo.Bar;").contains("return Bar.hi();");
     }
@@ -149,7 +149,8 @@ class TypeIndexTopLevelTest {
         if (!Files.isDirectory(root)) return; // not running from the module dir; nothing to check
         List<Path> sources;
         try (Stream<Path> s = Files.walk(root)) {
-            sources = s.filter(p -> p.getFileName().toString().endsWith(".java")).toList();
+            sources =
+                    s.filter(p -> p.getFileName().toString().endsWith(".java")).toList();
         }
         if (sources.isEmpty()) return;
         TypeIndex index = TypeIndex.scan(sources, false);

@@ -38,8 +38,7 @@ class FqcnShortenerLanguageScopeTest {
                         return cc.jumpkick.foo.Bar.hi();
                     }
                 }
-                """))
-                .isTrue();
+                """)).isTrue();
     }
 
     /**
@@ -62,8 +61,7 @@ class FqcnShortenerLanguageScopeTest {
     /** Likewise a Groovy slashy string, which the blanker does not recognise at all. */
     @Test
     void the_blanker_still_mis_lexes_a_groovy_slashy_string() {
-        assertThat(JavaText.blankNonCode("def p = ~/cc.jumpkick.foo.Bar/\n"))
-                .contains("cc.jumpkick.foo.Bar");
+        assertThat(JavaText.blankNonCode("def p = ~/cc.jumpkick.foo.Bar/\n")).contains("cc.jumpkick.foo.Bar");
     }
 
     /** A Kotlin alias binds a different simple name than the type's own, which this pass cannot model. */

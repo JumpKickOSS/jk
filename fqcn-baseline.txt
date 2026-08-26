@@ -93,6 +93,8 @@
 # has no reference left and simply drops out — which is how this section shrinks by itself as
 # OpenRewrite's printer improves, instead of ossifying into an exemption nobody revisits.
 
+    5  clients/cli/src/main/java/cc/jumpkick/cli/run/TestFailureHighlight.java
+   16  server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java
    33  server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java
