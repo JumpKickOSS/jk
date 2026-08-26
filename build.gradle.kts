@@ -3,6 +3,10 @@
 // Root project. Conventions live in buildSrc/ and are applied per module.
 // Library/plugin pins live in gradle/libs.versions.toml.
 
+// JK-1018: report which test tiers actually executed, and read their counts from TEST-*.xml.
+// A gate that prints BUILD SUCCESSFUL for a cache read is not evidence about the current tree.
+apply<GateReportPlugin>()
+
 tasks.wrapper {
     gradleVersion = "9.5.1"
     distributionType = Wrapper.DistributionType.BIN
