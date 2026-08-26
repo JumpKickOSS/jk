@@ -6,6 +6,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkVendor;
 import java.nio.file.Path;
 
@@ -86,9 +87,7 @@ public final class JdkRender {
 
     /** Leading digit sequence of a JDK version string (e.g. "25" from "25.0.3"). */
     private static String majorStr(String version) {
-        if (version == null || version.isEmpty()) return "";
-        int end = 0;
-        while (end < version.length() && Character.isDigit(version.charAt(end))) end++;
-        return version.substring(0, end);
+        Integer m = JdkKeywords.leadingMajor(version);
+        return m == null ? "" : String.valueOf(m);
     }
 }

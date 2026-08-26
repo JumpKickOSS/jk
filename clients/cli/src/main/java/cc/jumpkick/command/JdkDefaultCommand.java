@@ -94,14 +94,15 @@ public final class JdkDefaultCommand implements CliCommand {
         List<JdkHit> hits = registry.listHits();
         List<JdkHit> ltsHits = new ArrayList<>();
         for (JdkHit hit : hits) {
-            Integer m = majorOf(hit.version());
+            Integer m = JdkKeywords.leadingMajor(hit.version());
             if (m != null && JdkLts.isLtsMajor(m)) ltsHits.add(hit);
         }
         if (ltsHits.isEmpty()) {
             err.println("jk jdk default --lts: no LTS JDK installed (try `jk jdk install --lts`).");
             return false;
         }
-        ltsHits.sort(Comparator.comparingInt((JdkHit h) -> majorOf(h.version()) == null ? 0 : majorOf(h.version()))
+        ltsHits.sort(Comparator.comparingInt((JdkHit h) ->
+                        JdkKeywords.leadingMajor(h.version()) == null ? 0 : JdkKeywords.leadingMajor(h.version()))
                 .reversed()
                 .thenComparing(h -> h.vendor() == JdkVendor.TEMURIN ? 0 : 1)
                 .thenComparing((JdkHit h) -> h.version() == null ? "" : h.version(), Comparator.reverseOrder()));
@@ -119,21 +120,9 @@ public final class JdkDefaultCommand implements CliCommand {
     }
 
     private static String renderDisplayName(JdkHit hit) {
-        Integer major = majorOf(hit.version());
+        Integer major = JdkKeywords.leadingMajor(hit.version());
         if (hit.vendor() == JdkVendor.UNKNOWN) return major != null ? "JDK " + major : "JDK " + hit.version();
         String name = hit.vendor().displayName();
         return major != null ? name + " " + major : name + " " + hit.version();
-    }
-
-    static Integer majorOf(String version) {
-        if (version == null || version.isEmpty()) return null;
-        int end = 0;
-        while (end < version.length() && Character.isDigit(version.charAt(end))) end++;
-        if (end == 0) return null;
-        try {
-            return Integer.parseInt(version.substring(0, end));
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 }

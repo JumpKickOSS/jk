@@ -171,6 +171,8 @@ public final class JdkInstaller {
     }
 
     private void recordInventory(InstalledJdk installed) {
+        // The new install invalidates the registry's memoized probe scan.
+        registry.refresh();
         try {
             JdkInventory.of(registry.jdksRoot()).record(installed, true);
         } catch (IOException ignored) {
