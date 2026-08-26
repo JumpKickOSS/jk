@@ -15,12 +15,14 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -33,6 +35,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Persistent action cache: {@code action_key → CAS outputs} plus a project-qualified {@code task
@@ -68,6 +71,52 @@ public final class ActionCache {
      */
     public Cas cas() {
         return cas;
+    }
+
+    /**
+     * Resolve every blob in {@code outputs} once, with its size.
+     *
+     * <p>The presence check, {@link #meter} and the copy each used to call {@link #resolveBlob}
+     * independently, and {@code hasBlob} then re-stat'ed the path {@code resolveBlob} had just
+     * stat'ed — six metadata calls per blob where two serve. On a 10,000-file restore that is tens of
+     * thousands of stats before a byte moves, a third of them only to feed a dashboard byte counter
+     * (JK-1036).
+     *
+     * <p>Empty when any blob is missing: a restore cannot proceed without all of them, so the caller
+     * treats that exactly as the old per-sha presence loop did.
+     */
+    private Optional<Map<String, Blob>> resolveAll(Map<String, String> outputs) {
+        Map<String, Blob> blobs = new HashMap<>();
+        for (String sha : outputs.values()) {
+            if (blobs.containsKey(sha)) continue;
+            Blob b = blob(sha);
+            if (b == null) return Optional.empty();
+            blobs.put(sha, b);
+        }
+        return Optional.of(blobs);
+    }
+
+    /** A resolved blob: where it is, and how big, from one {@code readAttributes}. */
+    private record Blob(Path path, long size) {}
+
+    /**
+     * {@code sha}'s blob in the cache CAS, else the store CAS (promoted Class-C), else {@code null}.
+     * One {@code readAttributes} per candidate — it answers existence, regular-file-ness and size
+     * together, where the three predicates it replaces each re-resolved the path.
+     */
+    private @Nullable Blob blob(String sha) {
+        Blob hit = statBlob(cas.pathFor(sha));
+        if (hit != null) return hit;
+        return storeCas == null ? null : statBlob(storeCas.pathFor(sha));
+    }
+
+    private static @Nullable Blob statBlob(Path p) {
+        try {
+            BasicFileAttributes a = Files.readAttributes(p, BasicFileAttributes.class);
+            return a.isRegularFile() ? new Blob(p, a.size()) : null;
+        } catch (IOException absent) {
+            return null;
+        }
     }
 
     /** Resolve a blob path: cache CAS first, then store CAS (promoted Class-C). */
@@ -169,9 +218,19 @@ public final class ActionCache {
                     // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
                     // plugin-sdk copyTree convention) is never an action output.
                     if (hasJkScratchSegment(outputDir.relativize(file))) continue;
-                    // Hash once, then COPY into the CAS (never link — see Cas.putFile).
-                    String hex = Hashing.sha256Hex(file);
+                    // Through the memo, not Hashing directly: on a warm rebuild this answers from
+                    // the map and the output is never read at all, where the old direct hash read
+                    // every one of them (6,733 class files in this checkout). putFile's own exists()
+                    // then skips the copy for a blob already present, so a warm store costs one stat
+                    // per output (JK-1035).
+                    String hex = FileHashMemo.contentHash(file);
                     cas.putFile(file, hex);
+                    // Seed the memo with the digest we just established. Without this every
+                    // downstream ClasspathFingerprint re-hashed the whole tree from cold, because
+                    // contentHash refuses to record a file written inside its settle window — which
+                    // is exactly what rememberContent exists to bypass, and it was only ever called
+                    // on the restore paths.
+                    FileHashMemo.rememberContent(file, hex);
                     String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
                     outputs.put(relPath, hex);
                     if (executableBit(file)) executables.add(relPath);
@@ -318,42 +377,53 @@ public final class ActionCache {
      * it), so the caller falls through to a real run instead of building on wrong bytes.
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
-        for (String sha : record.outputs().values()) {
-            if (!hasBlob(sha)) return false;
-        }
+        Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
+        if (resolved.isEmpty()) return false;
+        Map<String, Blob> blobs = resolved.get();
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the
         // classes tree but are NOT part of the cached compiled output — they're
         // written by a *later* step (write-stamp) of the previous build. Preserve
         // them across the clear+restore so a compile cache-hit/incremental restore
         // doesn't wipe the stamp a later step relies on. (The test result is a CAS
         // marker now, not a file here — see TestStamp.)
-        Map<String, byte[]> stamps = new LinkedHashMap<>();
+        // Prune rather than wipe, the rule restoreArtifacts already uses. Deleting the tree
+        // guarantees every byte-identical check below misses and re-copies with a fresh mtime — and
+        // FreshnessStamp compares classpath entries by mtime, so a full re-copy of an unchanged
+        // classes tree invalidated every downstream stamp on every cache hit. The stamps this used to
+        // read out and write back are simply *owned* now, so they survive without being rewritten
+        // (JK-1036).
+        Set<Path> owned = new HashSet<>();
+        for (String rel : record.outputs().keySet()) {
+            owned.add(outputDir.resolve(rel).normalize());
+        }
         for (String f : BuildStamps.ALL) {
-            Path sp = outputDir.resolve(f);
-            if (Files.isRegularFile(sp)) stamps.put(f, Files.readAllBytes(sp));
+            owned.add(outputDir.resolve(f).normalize());
         }
         if (Files.exists(outputDir)) {
-            deleteRecursively(outputDir);
+            pruneUnowned(outputDir, owned);
         }
         Files.createDirectories(outputDir);
-        for (Map.Entry<String, byte[]> e : stamps.entrySet()) {
-            Files.write(outputDir.resolve(e.getKey()), e.getValue());
-        }
-        meter(record.outputs(), false); // cache hit: these bytes come back out of the cache
+        meter(blobs, record.outputs()); // cache hit: these bytes come back out of the cache
         for (Map.Entry<String, String> entry : record.outputs().entrySet()) {
             Path target = outputDir.resolve(entry.getKey());
             // COPY, never link: compilers rewrite restored class files IN PLACE on the next
             // build, and a hard link would let that rewrite mutate the CAS blob (see
             // Cas.putFile). Costs O(bytes) instead of O(entries) — correctness wins.
             Files.createDirectories(target.getParent());
-            // Digest while copying: the memo seed below asserts these exact bytes, so a
-            // truncated/corrupt blob must surface as a miss here — not as green tests over
-            // wrong classes downstream.
-            if (!copyVerified(resolveBlob(entry.getValue()), target, entry.getValue())) {
-                dropCorruptBlob(entry.getValue());
-                deleteRecursively(outputDir);
-                Files.createDirectories(outputDir);
-                return false;
+            // Leave a byte-identical target alone — the mtime it keeps is what stops the KSP/Kotlin
+            // thrash described above. Digest while copying otherwise: the memo seed below asserts
+            // these exact bytes, so a truncated/corrupt blob must surface as a miss here, not as
+            // green tests over wrong classes downstream.
+            if (!identicalTo(target, entry.getValue())) {
+                Files.deleteIfExists(target);
+                if (!copyVerified(blobs.get(entry.getValue()).path(), target, entry.getValue())) {
+                    dropCorruptBlob(entry.getValue());
+                    // The contract is an empty outputDir on failure, so a partial restore is wiped
+                    // rather than pruned.
+                    deleteRecursively(outputDir);
+                    Files.createDirectories(outputDir);
+                    return false;
+                }
             }
             // CAS blobs carry no mode; the record does. Same reason as restoreArtifacts.
             if (record.executables().contains(entry.getKey())) {
@@ -502,7 +572,10 @@ public final class ActionCache {
         Path blob = resolveBlob(sha);
         if (!Files.isRegularFile(blob)) return false;
         if (Files.size(target) != Files.size(blob)) return false;
-        return sha.equals(Hashing.sha256Hex(target));
+        // The memo, not a full re-read: restoreArtifacts seeds this very file via rememberContent,
+        // so the check that exists to avoid churning mtime costs a map lookup rather than re-reading
+        // a fat jar on every warm build (JK-1036).
+        return sha.equals(FileHashMemo.contentHash(target));
     }
 
     /**
@@ -521,8 +594,10 @@ public final class ActionCache {
         Set<String> executables = new TreeSet<>();
         for (Path a : artifacts) {
             if (!Files.isRegularFile(a)) continue;
-            String hex = Hashing.sha256Hex(a);
+            // Memo, and seed it — see store() (JK-1035).
+            String hex = FileHashMemo.contentHash(a);
             cas.putFile(a, hex); // never link a mutable target/ artifact into the CAS
+            FileHashMemo.rememberContent(a, hex);
 
             String rel = baseDir.relativize(a).toString().replace(File.separatorChar, '/');
             outputs.put(rel, hex);
@@ -550,6 +625,21 @@ public final class ActionCache {
         IoLedger io = SessionContext.current().io();
         if (intoCache) io.localUp(bytes);
         else io.localDown(bytes);
+    }
+
+    /**
+     * Metering from sizes already in hand — a restore has resolved every blob before it copies, and
+     * asking the filesystem again for a number it just read is a third of that path's stats
+     * (JK-1036).
+     */
+    private static void meter(Map<String, Blob> blobs, Map<String, String> outputs) {
+        if (outputs.isEmpty()) return;
+        long bytes = 0;
+        for (String sha : outputs.values()) {
+            Blob b = blobs.get(sha);
+            if (b != null) bytes += b.size();
+        }
+        SessionContext.current().io().localDown(bytes);
     }
 
     /** True for a 64-char lowercase-or-uppercase hex string — the shape {@link Cas} keys blobs by. */
