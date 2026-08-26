@@ -17,13 +17,19 @@ import java.util.Optional;
  * provisioned — the build succeeds on the wrong JDK in silence. A project that declares no
  * {@code jdk} gets no table, which is what leaves resolution free to pick.
  *
- * <p>{@code [graal]} is written when the Java home is itself a GraalVM, or any Graal is installed.
+ * <p>{@code [graal]} is written when the Java home is itself a GraalVM — that is a real answer to a
+ * real question — or when the project declared Graal ({@code [native].graal}, or any
+ * {@code [native]} that turns native-image on) and one is installed. It is <em>not</em> written
+ * merely because the machine happens to have a GraalVM: an ambient SDKMAN install stamped into a
+ * shared lock becomes a constraint every other consumer of that lock must satisfy, and nobody wrote
+ * it down. Observed on jk's own repo, where `jk lock` added a graalvm-ce pin no manifest asked for.
  */
 public final class ToolchainLockStamp {
 
     private ToolchainLockStamp() {}
 
-    public static Lockfile apply(Lockfile lock, Path javaHome, JdkRegistry registry, int declaredJdkMajor) {
+    public static Lockfile apply(
+            Lockfile lock, Path javaHome, JdkRegistry registry, int declaredJdkMajor, boolean graalDeclared) {
         if (lock == null) return null;
         List<JdkHit> hits = registry.listHits();
         Optional<JdkHit> javaHit = LockPinMatch.hitFor(javaHome, hits);
@@ -36,11 +42,16 @@ public final class ToolchainLockStamp {
         if (javaHit.isPresent() && DefaultGraalPolicy.isGraal(javaHit.get())) {
             return lock.withGraal(LockPinMatch.graalPin(javaHit.get()));
         }
-        Optional<JdkHit> graal = DefaultGraalPolicy.choose(hits);
-        if (graal.isPresent()
-                && graal.get().version() != null
-                && !graal.get().version().isBlank()) {
-            return lock.withGraal(LockPinMatch.graalPin(graal.get()));
+        // Only when the project asked for Graal. Presence on the machine is not a declaration: an
+        // ambient SDKMAN install would otherwise be stamped into a shared lock and then demanded
+        // from every other consumer of it, which is the same over-reach the [jdk] gate above fixes.
+        if (graalDeclared) {
+            Optional<JdkHit> graal = DefaultGraalPolicy.choose(hits);
+            if (graal.isPresent()
+                    && graal.get().version() != null
+                    && !graal.get().version().isBlank()) {
+                return lock.withGraal(LockPinMatch.graalPin(graal.get()));
+            }
         }
         return lock;
     }
