@@ -102,8 +102,20 @@ public final class FormatPlans {
                     ctx.put(allKotlinFilesKey, all.kotlinFiles());
                     ctx.put(allGroovyFilesKey, all.groovyFiles());
                     ctx.put(allScalaFilesKey, all.scalaFiles());
-                    String configKey =
-                            configKey(cache, javaStyle, kotlinStyle, optimizeImports, importOrder, removeUnusedImports);
+                    // The index's file set is a key input, so it is assembled here — before the
+                    // freshness partition, from every source, not just the dirty ones.
+                    List<Path> allSources = new ArrayList<>(all.javaFiles());
+                    allSources.addAll(all.kotlinFiles());
+                    allSources.addAll(all.groovyFiles());
+                    allSources.addAll(all.scalaFiles());
+                    String configKey = configKey(
+                            cache,
+                            javaStyle,
+                            kotlinStyle,
+                            optimizeImports,
+                            importOrder,
+                            removeUnusedImports,
+                            allSources);
                     ctx.put(configKeyKey, configKey == null ? "" : configKey);
                     FormatFreshnessIndex index = configKey == null
                             ? FormatFreshnessIndex.disabled(projectDir)
@@ -300,6 +312,9 @@ public final class FormatPlans {
                                         importOrder,
                                         removeUnusedImports)));
                         if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
+                        // The run's only fork, so it gets the machine rather than the build-shaped
+                        // 1/jobs share the process-wide plan hands every worker.
+                        extra.addAll(JvmOptions.soleWorkerFlags());
                         FormatWorker.runWorker(
                                 ctx,
                                 PluginLaunch.javaCommand(workerJar, extra, spec),
@@ -581,7 +596,8 @@ public final class FormatPlans {
             String kotlinStyle,
             boolean optimizeImports,
             boolean importOrder,
-            boolean removeUnusedImports) {
+            boolean removeUnusedImports,
+            List<Path> indexFiles) {
         try {
             return new FormatKey(
                             javaStyle,
@@ -594,6 +610,7 @@ public final class FormatPlans {
                             removeUnusedImports,
                             GOOGLE_VERSION,
                             SCALAFMT_VERSION,
+                            indexFiles,
                             PluginJar.FORMATTER.locate(JkStores.cas(cache)))
                     .digest();
         } catch (Exception e) {

@@ -55,7 +55,18 @@ class FormatFreshnessIndexTest {
 
         String palantir = key(null);
         String google = new FormatKey(
-                        "google", "1.28.0", "kotlinlang", "0.61", 120, true, true, true, "1.28.0", "3.8.1", null)
+                        "google",
+                        "1.28.0",
+                        "kotlinlang",
+                        "0.61",
+                        120,
+                        true,
+                        true,
+                        true,
+                        "1.28.0",
+                        "3.8.1",
+                        List.of(),
+                        null)
                 .digest();
         assertThat(palantir).isNotEqualTo(google);
 
@@ -112,7 +123,18 @@ class FormatFreshnessIndexTest {
     /** jk's shipped formatter configuration, with only the worker jar varying. */
     private static String key(Path workerJar) {
         return new FormatKey(
-                        "palantir", "2.80.0", "kotlinlang", "0.61", 120, true, true, true, "1.28.0", "3.8.1", workerJar)
+                        "palantir",
+                        "2.80.0",
+                        "kotlinlang",
+                        "0.61",
+                        120,
+                        true,
+                        true,
+                        true,
+                        "1.28.0",
+                        "3.8.1",
+                        List.of(),
+                        workerJar)
                 .digest();
     }
 }

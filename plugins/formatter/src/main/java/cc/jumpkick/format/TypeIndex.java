@@ -89,11 +89,33 @@ final class TypeIndex {
         if (pkg.isEmpty()) return;
         String blanked = JavaText.blankNonCode(src);
         Matcher m = JavaText.TYPE_DECL.matcher(blanked);
+        // Only a declaration at brace depth 0 is a top-level type, and only a top-level type is
+        // named {@code package.Simple}. Indexing every match invented an FQCN for each nested,
+        // inner, local and member enum/interface declaration — on this tree's shared/core alone,
+        // 112 phantom names against 135 real ones. A phantom is not just dead weight: it fabricates
+        // a collision that suppresses a legitimate shortening, and it is enough on its own to emit
+        // an import of a type that does not exist under the name imported.
+        int cursor = 0;
+        int depth = 0;
         while (m.find()) {
+            depth += braceDelta(blanked, cursor, m.start());
+            cursor = m.start();
+            if (depth != 0) continue;
             String simple = m.group(1) != null ? m.group(1) : m.group(2);
             if (simple == null) continue;
             add(pkg + "." + simple, known, bySimple);
         }
+    }
+
+    /** Net {@code { }} nesting change over {@code [from, to)} of an already-blanked source. */
+    private static int braceDelta(String blanked, int from, int to) {
+        int delta = 0;
+        for (int i = from; i < to; i++) {
+            char c = blanked.charAt(i);
+            if (c == '{') delta++;
+            else if (c == '}') delta--;
+        }
+        return delta;
     }
 
     private static void add(String fqcn, Set<String> known, Map<String, List<String>> bySimple) {

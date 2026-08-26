@@ -53,7 +53,8 @@ class FormatKeyTest {
         String previous = System.getProperty(PluginJar.FORMATTER.jarProperty());
         System.setProperty(PluginJar.FORMATTER.jarProperty(), worker.toString());
         try {
-            String planned = FormatPlans.configKey(tmp.resolve("cache"), "palantir", "kotlinlang", true, true, true);
+            String planned =
+                    FormatPlans.configKey(tmp.resolve("cache"), "palantir", "kotlinlang", true, true, true, List.of());
 
             assertThat(planned)
                     .isEqualTo(new FormatKey(
@@ -67,6 +68,7 @@ class FormatKeyTest {
                                     true,
                                     FormatPlans.GOOGLE_VERSION,
                                     FormatPlans.SCALAFMT_VERSION,
+                                    List.of(),
                                     worker)
                             .digest());
             assertThat(planned)
@@ -82,6 +84,7 @@ class FormatKeyTest {
                                     true,
                                     FormatPlans.GOOGLE_VERSION,
                                     FormatPlans.SCALAFMT_VERSION,
+                                    List.of(),
                                     worker)
                             .digest());
             assertThat(planned)
@@ -97,6 +100,7 @@ class FormatKeyTest {
                                     true,
                                     FormatPlans.PALANTIR_VERSION,
                                     FormatPlans.SCALAFMT_VERSION,
+                                    List.of(),
                                     worker)
                             .digest());
             assertThat(planned)
@@ -112,6 +116,7 @@ class FormatKeyTest {
                                     true,
                                     FormatPlans.GOOGLE_VERSION,
                                     "9.9.9",
+                                    List.of(),
                                     worker)
                             .digest());
         } finally {
@@ -200,6 +205,7 @@ class FormatKeyTest {
                         removeUnusedImports,
                         gjfVersion,
                         FormatPlans.SCALAFMT_VERSION,
+                        List.of(),
                         null)
                 .digest();
     }

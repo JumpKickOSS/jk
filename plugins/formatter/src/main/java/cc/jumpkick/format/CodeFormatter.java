@@ -27,10 +27,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Pattern;
 
 /**
@@ -60,119 +66,212 @@ public final class CodeFormatter implements Plugin {
                 ? new FormatStampCache(CacheTree.FORMAT_STAMPS.under(spec.cacheDir), spec.configKey)
                 : null;
 
+        // Built once for the whole run, then only read, so every thread shares one copy. That is the
+        // property the OpenRewrite pass could not have: it needed a fresh parser per file for source
+        // isolation, so its type cache had to be per-thread and parallelism partly cancelled it.
         TypeIndex index = spec.optimizeImports ? TypeIndex.scan(spec.indexFiles) : null;
 
-        Formatter javaFmt = spec.javaJars.isEmpty()
-                ? null
-                : Formatter.builder()
-                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
-                        .encoding(StandardCharsets.UTF_8)
-                        .steps(javaSteps(spec))
-                        .build();
-
-        Formatter kotlinFmt = spec.kotlinJars.isEmpty()
-                ? null
-                : Formatter.builder()
-                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
-                        .encoding(StandardCharsets.UTF_8)
-                        .steps(List.of(KtfmtStep.create(
-                                spec.kotlinVersion,
-                                provisioner(spec.kotlinJars),
-                                ktfmtStyle(spec.kotlinStyle),
-                                ktfmtOptions(spec.kotlinMaxWidth))))
-                        .build();
-
-        boolean anyGroovy = spec.files.stream().anyMatch(r -> r.kind == Kind.GROOVY);
-        Formatter groovyFmt = anyGroovy
-                ? Formatter.builder()
-                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
-                        .encoding(StandardCharsets.UTF_8)
-                        .steps(groovySteps())
-                        .build()
-                : null;
-
-        Formatter scalaFmt = spec.scalaJars.isEmpty()
-                ? null
-                : Formatter.builder()
-                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
-                        .encoding(StandardCharsets.UTF_8)
-                        .steps(scalaSteps(spec))
-                        .build();
-
-        int changed = 0, errors = 0;
+        int changed = 0, clean = 0, errors = 0;
+        Workers workers = new Workers(spec);
         try {
-            for (FileRef ref : spec.files) {
-                Formatter fmt = formatterFor(ref.kind, javaFmt, kotlinFmt, groovyFmt, scalaFmt);
-                if (fmt == null) continue;
-                try {
-                    byte[] originalBytes = Files.readAllBytes(ref.file.toPath());
-                    String stampKey = stampCache != null ? stampCache.keyFor(originalBytes) : null;
-                    if (stampKey != null && stampCache.contains(stampKey)) {
-                        emitFile(out, ref.file, "clean", null);
-                        continue;
-                    }
-
-                    if (ref.kind == Kind.JAVA && isUnnamedClass(originalBytes)) {
-                        emitFile(out, ref.file, "skipped", null);
-                        if (stampKey != null) stampCache.record(stampKey);
-                        continue;
-                    }
-
-                    boolean shortened = false;
-                    if (index != null) {
-                        String src = new String(originalBytes, StandardCharsets.UTF_8);
-                        FqcnShortener.Result r = FqcnShortener.shorten(src, index, syntax(ref.kind));
-                        if (r.changed() && spec.apply) {
-                            Files.writeString(ref.file.toPath(), r.source(), StandardCharsets.UTF_8);
-                            shortened = true;
-                        } else if (r.changed()) {
-                            shortened = true;
-                        }
-                    }
-
-                    DirtyState state = DirtyState.of(fmt, ref.file);
-                    boolean spotlessChanged = !state.isClean() && !state.didNotConverge();
-
-                    if (state.didNotConverge()) {
-                        errors++;
-                        emitFile(out, ref.file, "error", "formatter did not converge");
-                    } else if (shortened || spotlessChanged) {
-                        changed++;
-                        if (spec.apply && spotlessChanged) state.writeCanonicalTo(ref.file);
-                        emitFile(out, ref.file, "changed", null);
-                        if (spec.apply && stampCache != null) {
-                            byte[] finalBytes = Files.readAllBytes(ref.file.toPath());
-                            String finalKey = stampCache.keyFor(finalBytes);
-                            if (finalKey != null) stampCache.record(finalKey);
-                        }
-                    } else {
-                        emitFile(out, ref.file, "clean", null);
-                        if (stampKey != null) stampCache.record(stampKey);
-                    }
-                } catch (Exception e) {
-                    errors++;
-                    emitFile(out, ref.file, "error", e.getMessage());
+            // Work runs in parallel; results are emitted in spec order, so the per-file stream — and
+            // every tally the host derives from it — does not depend on thread timing.
+            List<Future<FileResult>> pending = new ArrayList<>(spec.files.size());
+            ExecutorService pool = Executors.newFixedThreadPool(concurrency(spec));
+            try {
+                for (FileRef ref : spec.files) {
+                    pending.add(pool.submit(() -> formatOne(ref, spec, stampCache, index, workers)));
                 }
+            } finally {
+                pool.shutdown();
+            }
+            for (Future<FileResult> future : pending) {
+                FileResult result;
+                try {
+                    result = future.get();
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    errors++;
+                    emitFile(out, new File("<unknown>"), "error", String.valueOf(cause.getMessage()));
+                    continue;
+                }
+                switch (result.status()) {
+                    case "changed" -> changed++;
+                    case "error" -> errors++;
+                    default -> clean++;
+                }
+                emitFile(out, result.file(), result.status(), result.msg());
             }
         } finally {
-            if (javaFmt != null) javaFmt.close();
-            if (kotlinFmt != null) kotlinFmt.close();
-            if (groovyFmt != null) groovyFmt.close();
-            if (scalaFmt != null) scalaFmt.close();
+            workers.close();
         }
 
         int exit = errors > 0 || (!spec.apply && changed > 0) ? 1 : 0;
         return exit;
     }
 
-    private static Formatter formatterFor(
-            Kind kind, Formatter javaFmt, Formatter kotlinFmt, Formatter groovyFmt, Formatter scalaFmt) {
-        return switch (kind) {
-            case JAVA -> javaFmt;
-            case KOTLIN -> kotlinFmt;
-            case GROOVY -> groovyFmt;
-            case SCALA -> scalaFmt;
-        };
+    /** One file's verdict, decided off-thread and emitted in spec order by {@link #run}. */
+    private record FileResult(File file, String status, String msg) {}
+
+    /**
+     * How many files to format at once. The work is per-file independent and CPU-bound, and the host
+     * launches this worker as its only fork, so {@code ActiveProcessorCount} is the whole machine.
+     * Capped at 8: past that the curve flattens and every thread adds a live Spotless step chain to a
+     * heap sized for one worker. {@code jk.format.threads} overrides for measurement.
+     */
+    static int concurrency(Spec spec) {
+        Integer override = Integer.getInteger("jk.format.threads");
+        int files = Math.max(1, spec.files.size());
+        if (override != null && override > 0) return Math.min(override, files);
+        int cores = Math.max(1, Runtime.getRuntime().availableProcessors());
+        long heapMb = Runtime.getRuntime().maxMemory() / (1024 * 1024);
+        int byHeap = (int) Math.max(1, heapMb / 256);
+        return Math.max(1, Math.min(Math.min(cores, 8), Math.min(byHeap, files)));
+    }
+
+    /**
+     * Per-thread Spotless formatters. A {@link Formatter} owns its step chain — google-java-format,
+     * palantir, ktfmt and scalafmt behind their own classloaders — and is not documented thread-safe,
+     * so no two threads share one. Built lazily per language: a tree with no Scala never pays for a
+     * scalafmt chain, and a thread that only ever sees Java builds only that one.
+     *
+     * <p>The {@link TypeIndex} is deliberately <em>not</em> in here — it is immutable once built, so
+     * one copy serves every thread.
+     */
+    private static final class Workers implements AutoCloseable {
+
+        private final List<Holder> created = Collections.synchronizedList(new ArrayList<>());
+        private final ThreadLocal<Holder> local;
+
+        Workers(Spec spec) {
+            this.local = ThreadLocal.withInitial(() -> {
+                Holder h = new Holder(spec);
+                created.add(h);
+                return h;
+            });
+        }
+
+        Holder get() {
+            return local.get();
+        }
+
+        @Override
+        public void close() {
+            synchronized (created) {
+                for (Holder h : created) h.close();
+            }
+        }
+
+        static final class Holder implements AutoCloseable {
+            private final Spec spec;
+            private final EnumMap<Kind, Formatter> byKind = new EnumMap<>(Kind.class);
+
+            Holder(Spec spec) {
+                this.spec = spec;
+            }
+
+            /** The formatter for {@code kind} on this thread, or null when the run has no jars for it. */
+            Formatter formatter(Kind kind) {
+                if (byKind.containsKey(kind)) return byKind.get(kind);
+                Formatter f = build(kind);
+                byKind.put(kind, f);
+                return f;
+            }
+
+            private Formatter build(Kind kind) {
+                List<FormatterStep> steps =
+                        switch (kind) {
+                            case JAVA -> spec.javaJars.isEmpty() ? null : javaSteps(spec);
+                            case KOTLIN ->
+                                spec.kotlinJars.isEmpty()
+                                        ? null
+                                        : List.of(KtfmtStep.create(
+                                                spec.kotlinVersion,
+                                                provisioner(spec.kotlinJars),
+                                                ktfmtStyle(spec.kotlinStyle),
+                                                ktfmtOptions(spec.kotlinMaxWidth)));
+                            case GROOVY -> groovySteps();
+                            case SCALA -> spec.scalaJars.isEmpty() ? null : scalaSteps(spec);
+                        };
+                if (steps == null) return null;
+                return Formatter.builder()
+                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
+                        .encoding(StandardCharsets.UTF_8)
+                        .steps(steps)
+                        .build();
+            }
+
+            @Override
+            public void close() {
+                for (Formatter f : byKind.values()) {
+                    if (f != null) f.close();
+                }
+            }
+        }
+    }
+
+    /**
+     * One file, start to finish: stamp lookup, the FQCN pass, then Spotless. Runs on a pool thread
+     * and returns its verdict rather than emitting it, so {@link #run} keeps the stream in spec order.
+     */
+    private static FileResult formatOne(
+            FileRef ref, Spec spec, FormatStampCache stampCache, TypeIndex index, Workers workers) {
+        Formatter fmt = workers.get().formatter(ref.kind());
+        // The host listed a file but sent no jars for its language. Reported, not skipped in silence:
+        // a file the run was told to visit and said nothing about is indistinguishable from a dead
+        // worker, which is the shortfall FormatWorker.reconcile exists to catch.
+        if (fmt == null) {
+            return new FileResult(ref.file(), "error", "no " + ref.kind() + " formatter jars were provided");
+        }
+        try {
+            byte[] originalBytes = Files.readAllBytes(ref.file().toPath());
+            String stampKey = stampCache != null ? stampCache.keyFor(originalBytes) : null;
+            if (stampKey != null && stampCache.contains(stampKey)) {
+                return new FileResult(ref.file(), "clean", null);
+            }
+
+            if (ref.kind() == Kind.JAVA && isUnnamedClass(originalBytes)) {
+                if (stampKey != null) stampCache.record(stampKey);
+                return new FileResult(ref.file(), "skipped", null);
+            }
+
+            // Java only. The blanking pass implements Java's lexeme set, and the other three differ in
+            // ways that make it rewrite string contents: Groovy has `'''` blocks and slashy `/…/`
+            // literals, Kotlin and Scala have `import … as Alias` and brace/underscore imports whose
+            // bindings this pass cannot read. Java is also the only one of the four whose Spotless
+            // chain includes an import-repair step, so it is the only one where a mistake here would
+            // be noticed downstream rather than written and stamped. Widening this needs a real lexer
+            // per language, not a wider regex.
+            boolean shortened = false;
+            if (index != null && ref.kind() == Kind.JAVA) {
+                String src = new String(originalBytes, StandardCharsets.UTF_8);
+                FqcnShortener.Result r = FqcnShortener.shorten(src, index, syntax(ref.kind()));
+                if (r.changed()) {
+                    shortened = true;
+                    if (spec.apply) Files.writeString(ref.file().toPath(), r.source(), StandardCharsets.UTF_8);
+                }
+            }
+
+            DirtyState state = DirtyState.of(fmt, ref.file());
+            boolean spotlessChanged = !state.isClean() && !state.didNotConverge();
+
+            if (state.didNotConverge()) {
+                return new FileResult(ref.file(), "error", "formatter did not converge");
+            }
+            if (shortened || spotlessChanged) {
+                if (spec.apply && spotlessChanged) state.writeCanonicalTo(ref.file());
+                if (spec.apply && stampCache != null) {
+                    byte[] finalBytes = Files.readAllBytes(ref.file().toPath());
+                    String finalKey = stampCache.keyFor(finalBytes);
+                    if (finalKey != null) stampCache.record(finalKey);
+                }
+                return new FileResult(ref.file(), "changed", null);
+            }
+            if (stampKey != null) stampCache.record(stampKey);
+            return new FileResult(ref.file(), "clean", null);
+        } catch (Exception e) {
+            return new FileResult(ref.file(), "error", e.getMessage());
+        }
     }
 
     private static FqcnShortener.Syntax syntax(Kind kind) {
@@ -278,7 +377,7 @@ public final class CodeFormatter implements Plugin {
         SCALA
     }
 
-    private record FileRef(Kind kind, File file) {}
+    record FileRef(Kind kind, File file) {}
 
     static final class Spec {
         boolean apply = true;

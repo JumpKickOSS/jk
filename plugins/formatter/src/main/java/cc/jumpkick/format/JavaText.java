@@ -17,10 +17,29 @@ final class JavaText {
      */
     static final Pattern FQCN = Pattern.compile("(?<![\\w.$])(?:[a-z][a-z0-9_]*\\.){2,}[A-Z][A-Za-z0-9_]*");
 
-    static final Pattern PACKAGE = Pattern.compile("(?m)^package\\s+([\\w.]+)\\s*;?\\s*$");
+    /**
+     * The trailing run is {@code [ \\t]*}, deliberately not {@code \\s*}: these patterns are matched
+     * against the comment-blanked copy, where a javadoc block is a rectangle of spaces. A trailing
+     * {@code \\s*$} then slides the match end past the blank lines AND the blanked comment to the next
+     * line-end, so an import inserted at that offset landed after the class javadoc — which
+     * palantir-java-format rejects outright as "Imports not contiguous". Ending the match at its own
+     * line keeps the insertion point immediately after the last real import.
+     */
+    static final Pattern PACKAGE = Pattern.compile("(?m)^package[ \\t]+([\\w.]+)[ \\t]*;?[ \\t]*$");
 
     static final Pattern IMPORT =
-            Pattern.compile("(?m)^import\\s+(static\\s+)?([\\w.]+)(?:\\s+as\\s+\\w+)?\\s*;?\\s*$");
+            Pattern.compile("(?m)^import[ \\t]+(static[ \\t]+)?([\\w.]+)(?:[ \\t]+as[ \\t]+\\w+)?[ \\t]*;?[ \\t]*$");
+
+    /** An upper-case-initial identifier: the shape a type name takes in all four languages. */
+    static final Pattern TYPE_NAME = Pattern.compile("(?<![\\w.$])[A-Z][A-Za-z0-9_]*");
+
+    /**
+     * An import whose supplied simple names this pass cannot enumerate: on-demand ({@code x.*},
+     * Scala {@code x._}), a Scala/Kotlin brace list, or an {@code as} alias. Any of these can already
+     * be binding the name a new single-type import would claim.
+     */
+    static final Pattern OPAQUE_IMPORT = Pattern.compile(
+            "(?m)^\\s*import\\s+(?:static\\s+)?[\\w.]*(?:\\*|_\\s*$|\\{)|^\\s*import\\s+[\\w.]+\\s+as\\s+\\w+");
 
     static final Pattern TYPE_DECL = Pattern.compile(
             "\\b(?:class|interface|enum|record|object|trait)\\s+([A-Z][\\w]*)|@interface\\s+([A-Z][\\w]*)");
@@ -53,6 +72,17 @@ final class JavaText {
                 }
                 out.append(c == '\n' ? '\n' : ' ');
             } else if (text) {
+                // A text block may escape a quote to keep a `"""` sequence from closing it. Without
+                // consuming the escape, the blanker closed the block early and treated the remaining
+                // string body as code — where the FQCN matcher would rewrite the literal's contents.
+                // That output still compiles; only the string's value changes, and the unused-import
+                // step then removes the evidence. Silent data loss, so it is handled here rather than
+                // left to a later guard.
+                if (c == '\\') {
+                    out.append("  ");
+                    i += 2;
+                    continue;
+                }
                 if ("\"\"\"".equals(three)) {
                     text = false;
                     out.append("   ");
