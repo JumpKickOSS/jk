@@ -29,7 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>An empty {@code jdksDir} override reproduces the first-run shape deterministically.
  * Network test (Maven Central + the JDK feed; the CAS under build/ keeps repeats warm).
  */
-@Tag("integration")
+@Tag("network")
 class FirstBuildJdkTest {
 
     @Test

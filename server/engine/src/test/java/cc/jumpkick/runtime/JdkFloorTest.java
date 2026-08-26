@@ -25,7 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network tests (Maven Central; provisions the pin on first run); the CAS under build/
  * keeps repeats warm.
  */
-@Tag("integration")
+@Tag("network")
 class JdkFloorTest {
 
     @Test
