@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -20,7 +21,8 @@ public final class MavenResolver {
     /** jk's bundled default when no wrapper is present. */
     public static final String DEFAULT_VERSION = "3.9.9";
 
-    private static final String DEFAULT_BASE = "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/";
+    /** Apache Maven's own distribution zips, published to Central like any other artifact. */
+    private static final String DEFAULT_BASE = RepositorySpec.MAVEN_CENTRAL.url() + "org/apache/maven/apache-maven/";
 
     // apache-maven-<version>-bin.<zip|tar.gz>
     private static final Pattern FILENAME_VERSION = Pattern.compile("apache-maven-(?<v>[^/]+)-bin\\.(?:zip|tar\\.gz)$");

@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.discovery.JkProbe;
+import cc.jumpkick.lock.Lockfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +36,7 @@ class JdkResolutionTest {
         makeJdk(jdks, "temurin-21.0.5");
         makeJdk(jdks, "temurin-25.0.3");
         Files.writeString(tmp.resolve(".jdk-version"), "temurin-25");
-        var req = req(tmp).lockJdkId("temurin-21.0.5").projectJdkSpec("21").build();
+        var req = req(tmp).lockJdk("temurin", "21.0.5").projectJdkSpec("21").build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JDK_VERSION_FILE);
@@ -47,7 +48,7 @@ class JdkResolutionTest {
         Path jdks = jdks(tmp);
         makeJdk(jdks, "temurin-21.0.5");
         makeJdk(jdks, "temurin-25.0.3");
-        var req = req(tmp).lockJdkId("temurin-21.0.5").projectJdkSpec("25").build();
+        var req = req(tmp).lockJdk("temurin", "21.0.5").projectJdkSpec("25").build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
@@ -125,6 +126,45 @@ class JdkResolutionTest {
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
     }
 
+    @Test
+    void lock_accepts_newer_major_when_locked_install_is_gone(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        Path j26 = makeJdk(jdks, "temurin-26.0.1");
+        var req = req(tmp).lockJdk("temurin", "25.0.4").build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
+        assertThat(r.jdk().get().home()).isEqualTo(j26);
+        assertThat(r.wouldInstall()).isFalse();
+    }
+
+    @Test
+    void build_would_install_when_lock_major_is_unmet(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-21.0.5");
+        var req = req(tmp).lockJdk("temurin", "25.0.4").build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.jdk()).isEmpty();
+        assertThat(r.wouldInstall()).isTrue();
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
+        assertThat(r.installSpec()).isEqualTo("temurin-25");
+    }
+
+    @Test
+    void hook_does_not_export_a_too_old_default_for_an_unmet_lock(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        Path j21 = makeJdk(jdks, "temurin-21.0.5");
+        JdkInventory gdj = gdj(tmp);
+        gdj.setDefault(new InstalledJdk("temurin-21.0.5", j21));
+        var req = req(tmp).lockJdk("temurin", "25.0.4").build();
+
+        var r = JdkResolution.resolveForHook(req, reg(jdks), gdj);
+        assertThat(r.wouldInstall()).isFalse();
+        assertThat(r.jdk()).isEmpty();
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.NONE);
+    }
+
     // -- helpers -------------------------------------------------------------
 
     private static Path jdks(Path tmp) throws IOException {
@@ -158,7 +198,8 @@ class JdkResolutionTest {
     /** Tiny builder so each test only sets the tiers it cares about. */
     private static final class ReqBuilder {
         private final Path projectDir;
-        private String switchSpec, envSpec, lockJdkId, projectJdkSpec;
+        private String switchSpec, envSpec, projectJdkSpec;
+        private Lockfile.JdkPin lockJdk;
         private int projectJavaRelease;
         private final Map<String, String> env = new HashMap<>();
 
@@ -176,8 +217,8 @@ class JdkResolutionTest {
             return this;
         }
 
-        ReqBuilder lockJdkId(String s) {
-            this.lockJdkId = s;
+        ReqBuilder lockJdk(String vendor, String version) {
+            this.lockJdk = new Lockfile.JdkPin(vendor, version);
             return this;
         }
 
@@ -193,7 +234,7 @@ class JdkResolutionTest {
 
         JdkResolution.Request build() {
             return new JdkResolution.Request(
-                    projectDir, switchSpec, envSpec, lockJdkId, projectJdkSpec, projectJavaRelease, env::get);
+                    projectDir, switchSpec, envSpec, lockJdk, projectJdkSpec, projectJavaRelease, env::get);
         }
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
@@ -63,7 +64,7 @@ public final class KspResolver {
     public static List<Path> resolveClasspath(RepoGroup repos, Cas cas, String kspVersion)
             throws IOException, InterruptedException {
         Path cacheFile = cacheFile(cas, kspVersion);
-        boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean refresh = SessionContext.current().config().forceOr(false);
         if (!refresh) {
             List<Path> cached = readCachedClosure(cacheFile, cas);
             if (cached != null) return cached;

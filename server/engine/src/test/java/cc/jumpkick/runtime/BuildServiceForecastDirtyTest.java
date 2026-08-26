@@ -9,7 +9,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -27,11 +26,11 @@ class BuildServiceForecastDirtyTest {
     }
 
     private static JkConfig withRebuild(boolean rebuild) {
-        return JkConfig.empty().withRebuild(Optional.of(rebuild));
+        return JkConfig.empty().withRebuild(rebuild);
     }
 
     private static JkConfig withForce(boolean force) {
-        return JkConfig.empty().withForce(Optional.of(force));
+        return JkConfig.empty().withForce(force);
     }
 
     @Test

@@ -4,25 +4,37 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.git.GitFetcher;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.M2CompatWriter;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -55,15 +67,15 @@ public final class InstallPlans {
     public static BuildPlan projectInstallBuildPlan(
             Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, Path graalHome)
             throws IOException {
-        JkBuild proj = JkBuildParser.parse(projectDir.resolve("jk.toml"));
+        JkBuild proj = JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST));
 
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
-        boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
+        Path lockFile = LockPaths.lockFile(projectDir);
+        boolean compact = ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 projectDir,
                 cache,
-                projectDir.resolve("jk.toml"),
+                projectDir.resolve(ManifestPaths.MANIFEST),
                 lockFile,
                 projectDir,
                 1,
@@ -75,11 +87,11 @@ public final class InstallPlans {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
         // client-resolved GraalVM so install does not re-resolve.
-        BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, true);
+        PlannerTails.appendDeclaredTails(builder, inputs, graalHome, true);
         appendCacheInstall(builder, proj, cache, m2Dir);
         return builder.build();
     }
@@ -93,7 +105,7 @@ public final class InstallPlans {
         List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
         if (isNative) requires.add(TaskNames.NATIVE_IMAGE);
         Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
-                .stage(cc.jumpkick.run.BuildStage.PUBLISH)
+                .stage(BuildStage.PUBLISH)
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
                 .execute(ctx -> {
@@ -151,7 +163,7 @@ public final class InstallPlans {
                         throw new RuntimeException(e);
                     }
                     Path checkout = fetched.checkoutPath();
-                    if (requireJkToml && !Files.exists(checkout.resolve("jk.toml"))) {
+                    if (requireJkToml && !Files.exists(checkout.resolve(ManifestPaths.MANIFEST))) {
                         ctx.error("no-jk-toml", url + " has no jk.toml at " + ref);
                         throw new RuntimeException("no jk.toml in checkout");
                     }
@@ -187,8 +199,8 @@ public final class InstallPlans {
 
     /** Cache-install the thin jar of {@code moduleDir} after a workspace package. */
     public static void installThinJar(Path moduleDir, Path cache, Path m2Dir) throws IOException {
-        JkBuild proj = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
-        proj = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(moduleDir, proj);
+        JkBuild proj = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
+        proj = WorkspaceResolve.applyWorkspace(moduleDir, proj);
         cacheInstallArtifact(proj, BuildLayout.of(moduleDir, proj), cache, m2Dir);
     }
 
@@ -202,8 +214,8 @@ public final class InstallPlans {
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         Path jar = layout.mainJar();
-        String jarRelPath = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
-        String pomRelPath = cc.jumpkick.repo.MavenLayout.pomPath(coord);
+        String jarRelPath = MavenLayout.artifactPath(coord);
+        String pomRelPath = MavenLayout.pomPath(coord);
         byte[] pomBytes = renderedPom(project, layout);
 
         if (installToMavenLocal(p)) {
@@ -211,16 +223,14 @@ public final class InstallPlans {
             Path m2Root = m2Dir.resolve("repository");
 
             Path m2Jar = m2Root.resolve(jarRelPath);
-            cc.jumpkick.repo.M2CompatWriter.MavenHashes jarH =
-                    cc.jumpkick.repo.M2CompatWriter.copyToM2AndHash(jar, m2Jar);
-            cc.jumpkick.repo.M2CompatWriter.writeMavenSidecars(m2Jar, jarH.sha1(), jarH.md5());
-            cc.jumpkick.repo.M2CompatWriter.writeRemoteRepositories(
+            M2CompatWriter.MavenHashes jarH = M2CompatWriter.copyToM2AndHash(jar, m2Jar);
+            M2CompatWriter.writeMavenSidecars(m2Jar, jarH.sha1(), jarH.md5());
+            M2CompatWriter.writeRemoteRepositories(
                     m2Jar.getParent(), "local", m2Jar.getFileName().toString());
 
             Path m2Pom = m2Root.resolve(pomRelPath);
-            cc.jumpkick.repo.M2CompatWriter.MavenHashes pomH =
-                    cc.jumpkick.repo.M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
-            cc.jumpkick.repo.M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
+            M2CompatWriter.MavenHashes pomH = M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
+            M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
 
             RepoArtifactStore local = localStore(cacheDir);
             local.writeMemo(jarRelPath, m2Jar, Hashing.sha256Hex(jar));
@@ -232,7 +242,7 @@ public final class InstallPlans {
     }
 
     /** Project {@code [m2] install} and the machine {@code JK_M2_INSTALL} / {@code [m2] install} policy. */
-    private static boolean installToMavenLocal(JkBuild.Project p) {
+    private static boolean installToMavenLocal(Project p) {
         return p.m2install() && JkM2Config.resolve().install();
     }
 
@@ -252,9 +262,8 @@ public final class InstallPlans {
             String jarHex = Hashing.sha256Hex(jar);
             String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
             if (installToMavenLocal(p)) {
-                Path storeLocal = JkStores.storeRootFor(cacheDir)
-                        .resolve("repos")
-                        .resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+                Path storeLocal =
+                        JkStores.storeRootFor(cacheDir).resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
                 Path m2 = M2Dirs.localRepository();
                 return ArtifactMemo.verify(
                                 m2.resolve(jarRel), ArtifactMemo.jkPath(storeLocal, jarRel), coord.toGav(), jarHex)
@@ -280,11 +289,8 @@ public final class InstallPlans {
         // PomRuntimeClasspath looks for e.g. jk-plugin-sdk at the workspace version while Gradle
         // installLocal only published the independent SPI line (0.1.0).
         JkBuild forPom = omitVendoredWorkerSiblings(project, moduleRoot);
-        String pomXml = cc.jumpkick.publish.PublishablePom.render(
-                        forPom,
-                        null,
-                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(moduleRoot),
-                        lockPins(moduleRoot))
+        String pomXml = PublishablePom.render(
+                        forPom, null, WorkspaceResolve.siblingCoordinates(moduleRoot), lockPins(moduleRoot))
                 .xml();
         return pomXml.getBytes(StandardCharsets.UTF_8);
     }
@@ -294,25 +300,23 @@ public final class InstallPlans {
      * keep sibling deps so consumers can resolve them.
      */
     static JkBuild omitVendoredWorkerSiblings(JkBuild project, Path moduleRoot) {
-        if (project == null || moduleRoot == null || !cc.jumpkick.plugin.PluginModule.isWorker(moduleRoot)) {
+        if (project == null || moduleRoot == null || !PluginModule.isWorker(moduleRoot)) {
             return project;
         }
-        Set<String> siblings = cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(moduleRoot);
+        Set<String> siblings = WorkspaceResolve.siblingCoordinates(moduleRoot);
         if (siblings.isEmpty()) return project;
-        Map<cc.jumpkick.model.Scope, List<cc.jumpkick.model.Dependency>> by = new LinkedHashMap<>();
+        Map<Scope, List<Dependency>> by = new LinkedHashMap<>();
         boolean changed = false;
-        for (cc.jumpkick.model.Scope scope : cc.jumpkick.model.Scope.values()) {
-            List<cc.jumpkick.model.Dependency> deps = project.dependencies().of(scope);
+        for (Scope scope : Scope.values()) {
+            List<Dependency> deps = project.dependencies().of(scope);
             if (deps.isEmpty()) continue;
-            boolean strip = scope == cc.jumpkick.model.Scope.MAIN
-                    || scope == cc.jumpkick.model.Scope.RUNTIME
-                    || scope == cc.jumpkick.model.Scope.EXPORT;
+            boolean strip = scope == Scope.MAIN || scope == Scope.RUNTIME || scope == Scope.EXPORT;
             if (!strip) {
                 by.put(scope, deps);
                 continue;
             }
-            List<cc.jumpkick.model.Dependency> kept = new ArrayList<>(deps.size());
-            for (cc.jumpkick.model.Dependency d : deps) {
+            List<Dependency> kept = new ArrayList<>(deps.size());
+            for (Dependency d : deps) {
                 if (siblings.contains(d.module())) {
                     changed = true;
                     continue;
@@ -358,8 +362,7 @@ public final class InstallPlans {
     }
 
     private static RepoArtifactStore localStore(Path cacheDir) {
-        return RepoArtifactStore.forRepoName(
-                JkStores.storeRootFor(cacheDir), cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+        return RepoArtifactStore.forRepoName(JkStores.storeRootFor(cacheDir), RepoArtifactResolver.JK_LOCAL);
     }
 
     /** Write byte content into {@code repos/jk-local/} as a full-store entry with a {@code .jk} memo. */

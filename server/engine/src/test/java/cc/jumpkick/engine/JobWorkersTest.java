@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.JkThreads;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -144,8 +145,12 @@ class JobWorkersTest {
             long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
             assertThat(killed).isEqualTo(1);
             assertThat(p.isAlive()).isFalse();
-            // Must not wait far past grace (poll + force); allow generous CI slack.
-            assertThat(ms).isLessThan(3_000L);
+            // LIVENESS, not performance: the grace asked for above is 300ms, so 3s is 10x it.
+            // What this can catch is a shutdown that ignores its grace entirely; what it must not
+            // become is a measurement of how fast this machine forks and reaps (JK-2446).
+            assertThat(ms)
+                    .as("honoured the 300ms grace rather than waiting out the child's own 120s sleep")
+                    .isLessThan(3_000L);
             assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
         } finally {
             if (p.isAlive()) p.destroyForcibly();
@@ -177,9 +182,7 @@ class JobWorkersTest {
 
         JobWorkers.open(222L);
         try {
-            Long seen = cc.jumpkick.run.JkThreads.cpu()
-                    .submit(JobWorkers::currentScope)
-                    .get(10, TimeUnit.SECONDS);
+            Long seen = JkThreads.cpu().submit(JobWorkers::currentScope).get(10, TimeUnit.SECONDS);
             assertThat(seen)
                     .as("pool task must see the submitting request's scope")
                     .isEqualTo(222L);
@@ -188,8 +191,7 @@ class JobWorkersTest {
         }
 
         // With no scope open, a pool task must not inherit a stale one either.
-        Long unscoped =
-                cc.jumpkick.run.JkThreads.cpu().submit(JobWorkers::currentScope).get(10, TimeUnit.SECONDS);
+        Long unscoped = JkThreads.cpu().submit(JobWorkers::currentScope).get(10, TimeUnit.SECONDS);
         assertThat(unscoped)
                 .as("no ambient scope must not leak a stale request")
                 .isNull();

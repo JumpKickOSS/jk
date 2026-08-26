@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.util.PathUtil;
+import cc.jumpkick.runtime.ProjectCard;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,7 +25,7 @@ public final class McpProjectCards {
             m.put("dir", dir);
             return m;
         }
-        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(root);
+        ProjectCard card = ProjectCard.of(root);
         m.put("dir", card.dir());
         if (card.coord() != null) m.put("coord", card.coord());
         if (card.description() != null) m.put("description", card.description());
@@ -39,9 +40,9 @@ public final class McpProjectCards {
         return m;
     }
 
-    private static List<Map<String, Object>> members(cc.jumpkick.runtime.ProjectCard card) {
+    private static List<Map<String, Object>> members(ProjectCard card) {
         List<Map<String, Object>> out = new ArrayList<>();
-        for (cc.jumpkick.runtime.ProjectCard.Member member : card.members()) {
+        for (ProjectCard.Member member : card.members()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("dir", member.dir());
             if (member.coord() != null) row.put("coord", member.coord());

@@ -4,8 +4,12 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.args.Abbreviations;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.LiveRegion;
 import cc.jumpkick.command.ActivateCommand;
 import cc.jumpkick.command.ActivityCommand;
 import cc.jumpkick.command.AddCommand;
@@ -71,14 +75,19 @@ import cc.jumpkick.command.WatchCommand;
 import cc.jumpkick.command.WebCommand;
 import cc.jumpkick.command.WhyCommand;
 import cc.jumpkick.command.WrapperCommand;
-import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.plugin.PluginJarNotFoundException;
+import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Command;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -203,7 +212,7 @@ public final class CommandDispatch {
         Abbreviations.Result<CliCommand> r = Abbreviations.resolve(command, BY_NAME);
         if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
             printAmbiguousCommand(command, r.candidates(), ansiEnabled());
-            return 2;
+            return Exit.USAGE;
         }
         CliCommand cmd = r.value();
         if (cmd == null) {
@@ -240,14 +249,12 @@ public final class CommandDispatch {
      */
     private static Integer tryPluginCommand(String command, List<String> args) {
         Path dir = Path.of("").toAbsolutePath().normalize();
-        if (!Files.isRegularFile(dir.resolve("jk.toml"))) return null;
+        if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return null;
         try {
-            cc.jumpkick.engine.protocol.PluginCommandReport report;
-            var paths = cc.jumpkick.engine.EnginePaths.current();
-            if (!cc.jumpkick.cli.engine.EngineClient.ping(cc.jumpkick.engine.EnginePaths.activeSocket(paths)))
-                return null;
-            report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
-                    paths, dir, cc.jumpkick.util.JkDirs.cache(), command, args);
+            PluginCommandReport report;
+            var paths = EnginePaths.current();
+            if (!EngineClient.ping(EnginePaths.activeSocket(paths))) return null;
+            report = EngineClient.pluginCommand(paths, dir, JkDirs.cache(), command, args);
 
             if (!report.found()) return null;
             // A plugin command is a leaf command: same envelope, same close after the failure
@@ -258,7 +265,7 @@ public final class CommandDispatch {
             CliOutput.beginCommand(pluginArgsAskJson(args));
             try {
                 if (report.error() != null) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail(command, report.error());
+                    CommandWedge.printFail(command, report.error());
                     return 1;
                 }
                 for (String line : report.output()) CliOutput.out(line);
@@ -311,18 +318,18 @@ public final class CommandDispatch {
                     return dispatch(def, qualified + " " + def.name(), rest, ansi);
                 }
                 System.out.print(renderHelp(cmd, qualified, ansi));
-                return 64;
+                return Exit.USAGE;
             }
             String subName = rest.get(subAt);
             Abbreviations.Result<CliCommand> r = resolveSub(cmd, subName);
             if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
                 printAmbiguousSubcommand(cmd, qualified, subName, r.candidates(), ansi);
-                return 2;
+                return Exit.USAGE;
             }
             CliCommand sub = r.value();
             if (sub == null) {
                 printUnknownSubcommand(cmd, qualified, subName, ansi);
-                return 2;
+                return Exit.USAGE;
             }
             return dispatch(sub, qualified + " " + sub.name(), carryGlobals(rest, subAt), ansi);
         }
@@ -338,7 +345,7 @@ public final class CommandDispatch {
             in = ArgParser.parse(withGlobals(cmd), rest, cmd.passthrough());
         } catch (ParseException e) {
             printError(qualified, cmd, e, ansi);
-            return 2;
+            return Exit.USAGE;
         }
         if (in.isSet("version")) {
             System.out.println("jk " + Jk.VERSION);
@@ -351,11 +358,11 @@ public final class CommandDispatch {
             // (JSON/JSONL, or a script-mode command) opts out of both and of the ASCII rewrite.
             CliOutput.beginCommand(script);
             // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
-            cc.jumpkick.cli.tui.Confirm.setAssumeYes(in.isSet("yes"));
+            Confirm.setAssumeYes(in.isSet("yes"));
             try {
                 return cmd.run(in);
             } finally {
-                cc.jumpkick.cli.tui.Confirm.clearAssumeYes();
+                Confirm.clearAssumeYes();
             }
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();
@@ -379,7 +386,7 @@ public final class CommandDispatch {
      * the captured streams first, so the error line prints to the real stderr.
      */
     static void closeActiveLiveRegion() {
-        cc.jumpkick.cli.tui.LiveRegion region = cc.jumpkick.cli.tui.LiveRegion.active();
+        LiveRegion region = LiveRegion.active();
         if (region instanceof AutoCloseable closeable) {
             try {
                 closeable.close();
@@ -443,7 +450,7 @@ public final class CommandDispatch {
     }
 
     private static String renderHelp(CliCommand cmd, String qualified, boolean ansi) {
-        List<cc.jumpkick.cli.OptionModel> globals = new ArrayList<>();
+        List<OptionModel> globals = new ArrayList<>();
         for (Opt g : GlobalOptions.globalOpts()) {
             if (!g.hidden()) globals.add(CommandModels.option(g));
         }
@@ -598,16 +605,8 @@ public final class CommandDispatch {
         return false;
     }
 
+    /** Colored help/error chrome follows the one color gate ({@link GlobalConfig#colorEnabled}). */
     static boolean ansiEnabled() {
-        JkConfig.ColorChoice choice =
-                cc.jumpkick.config.SessionContext.current().config().colorOr(JkConfig.ColorChoice.AUTO);
-        return switch (choice) {
-            case ALWAYS -> true;
-            case NEVER -> false;
-            case AUTO -> {
-                String nc = System.getenv("NO_COLOR");
-                yield nc == null || nc.isEmpty();
-            }
-        };
+        return GlobalConfig.colorEnabled();
     }
 }

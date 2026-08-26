@@ -16,12 +16,6 @@ public final class BuildNumberAllocator {
 
     private BuildNumberAllocator() {}
 
-    /** @deprecated per-project {@code run-number.txt}; kept so call sites compile. */
-    @Deprecated
-    public static Path defaultFile() {
-        return ProjectBuilds.buildsRoot().resolve("run-number.txt");
-    }
-
     /**
      * Next build number for {@code projectDir} (≥ 1). {@code coord} may be null (falls back to
      * unknown). {@code countersFile}/{@code metricsFile} are ignored (API compat for call sites).

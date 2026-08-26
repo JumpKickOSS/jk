@@ -3,8 +3,10 @@ package cc.jumpkick.tool;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -17,7 +19,6 @@ import cc.jumpkick.resolver.VersionSelectors;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +39,8 @@ public final class ToolResolver {
 
     /** Convenience: Central-only resolver backed by a shared {@link Cas}. */
     public static ToolResolver mavenCentral(Http http, Cas cas) {
-        MavenRepo central = new MavenRepo("central", URI.create("https://repo.maven.apache.org/maven2/"), http, cas);
+        MavenRepo central =
+                new MavenRepo(RepositorySpec.MAVEN_CENTRAL.name(), RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         return new ToolResolver(RepoGroup.of(central));
     }
 
@@ -144,10 +146,9 @@ public final class ToolResolver {
      * {@code <os>-<arch>} classifiers (type {@code exe}). Empty → fall through to jar path.
      */
     private Optional<Path> fetchNativeBinary(Coordinate primary) throws IOException, InterruptedException {
-        String os = cc.jumpkick.jdk.HostPlatform.currentOs();
-        String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
-        if (cc.jumpkick.jdk.HostPlatform.UNSUPPORTED.equals(os)
-                || cc.jumpkick.jdk.HostPlatform.UNSUPPORTED.equals(arch)) {
+        String os = HostPlatform.currentOs();
+        String arch = HostPlatform.currentArch();
+        if (HostPlatform.UNSUPPORTED.equals(os) || HostPlatform.UNSUPPORTED.equals(arch)) {
             return Optional.empty();
         }
         String protocOs = "macos".equals(os) ? "osx" : os;

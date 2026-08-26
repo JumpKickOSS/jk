@@ -3,9 +3,15 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
+import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,57 +30,18 @@ import org.junit.jupiter.api.Test;
  */
 class SelfHostingTomlTest {
 
-    /**
-     * Walk up from the test class's own location until we find a {@code jk.toml} whose {@code
-     * [workspace]} table claims this directory as a module. That root is the repo. This is more
-     * robust than relying on the JVM's cwd, which differs between the Gradle test launcher
-     * (per-module cwd) and a forked test JVM under {@code jk test} (typically inherits the parent
-     * process's cwd).
-     */
-    private static final Path REPO = findRepoRoot();
+    /** The checkout root. See {@link RepoRoot} for why this cannot come from the JVM's CWD. */
+    private static final Path REPO = RepoRoot.find(SelfHostingTomlTest.class);
 
     @BeforeAll
-    static void requireSelfHostingWorkspace() {
-        // restored the workspace root; fail hard if it disappears.
-        Assumptions.assumeTrue(
-                REPO != null && Files.isRegularFile(REPO.resolve("jk.toml")),
-                "workspace root jk.toml missing — self-hosting manifests are required");
-        try {
-            Assumptions.assumeTrue(
-                    JkBuildParser.parse(REPO.resolve("jk.toml")).isWorkspaceRoot(),
-                    "root jk.toml is not a workspace root");
-        } catch (Exception e) {
-            Assumptions.assumeTrue(false, "root jk.toml unparseable: " + e.getMessage());
-        }
-    }
-
-    private static Path findRepoRoot() {
-        // The.class file path tells us where we are on disk regardless of
-        // cwd. From there, walk up looking for jk.toml with [workspace].
-        try {
-            Path classPath = Path.of(SelfHostingTomlTest.class
-                    .getProtectionDomain()
-                    .getCodeSource()
-                    .getLocation()
-                    .toURI());
-            Path candidate = classPath.toAbsolutePath().normalize();
-            for (int i = 0; i < 12 && candidate != null; i++) {
-                Path manifest = candidate.resolve("jk.toml");
-                if (Files.isRegularFile(manifest)) {
-                    try {
-                        JkBuild parsed = JkBuildParser.parse(manifest);
-                        if (parsed.isWorkspaceRoot()) return candidate;
-                    } catch (RuntimeException ignored) {
-                        // unparseable jk.toml — keep walking
-                    }
-                }
-                candidate = candidate.getParent();
-            }
-        } catch (Exception ignored) {
-            // fall through
-        }
-        // No workspace root found — tests will skip via @BeforeAll.
-        return null;
+    static void requireSelfHostingWorkspace() throws Exception {
+        // A root jk.toml that is missing or is not a workspace root is a failure, not a reason to
+        // skip: every test below reads the manifests underneath it, so an assumption here would
+        // report eleven passes for a suite that checked nothing. The comment on the old
+        // `assumeTrue` already said "fail hard if it disappears"; now the code does.
+        assertThat(JkBuildParser.parse(REPO.resolve("jk.toml")).isWorkspaceRoot())
+                .as("root jk.toml at %s declares [workspace]", REPO)
+                .isTrue();
     }
 
     @Test
@@ -83,12 +50,12 @@ class SelfHostingTomlTest {
         assertThat(root.project().group()).isEqualTo("cc.jumpkick");
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
-        // jsonl is the S1/S7 codec leaf; plugin-sdk sits above it. jk-api is a zero-dep
-        // model (PluginConfig lives there — JK-2139).
+        // host is the S1/S7 codec + host-primitive leaf; plugin-sdk sits above it. jk-api is a
+        // zero-dep model (PluginConfig lives there — JK-2139).
         // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
         assertThat(root.workspace().modules())
                 .containsExactly(
-                        "shared/jsonl",
+                        "shared/host",
                         "shared/plugin-sdk",
                         "shared/jk-api",
                         "shared/core",
@@ -110,7 +77,6 @@ class SelfHostingTomlTest {
                         "plugins/auditor",
                         "plugins/publisher",
                         "plugins/image-builder",
-                        "plugins/compat-bridge",
                         "plugins/minified",
                         "plugins/formatter",
                         "plugins/spring-boot",
@@ -148,8 +114,7 @@ class SelfHostingTomlTest {
         JkBuild root = JkBuildParser.parseLocal(REPO.resolve("jk.toml"));
         List<Path> manifests = new ArrayList<>();
         manifests.add(REPO.resolve("jk.toml"));
-        for (Path moduleDir :
-                cc.jumpkick.config.WorkspaceLoader.loadModules(REPO, root).keySet()) {
+        for (Path moduleDir : WorkspaceLoader.loadModules(REPO, root).keySet()) {
             Path mt = moduleDir.resolve("jk.toml");
             if (Files.isRegularFile(mt)) manifests.add(mt);
         }
@@ -172,10 +137,9 @@ class SelfHostingTomlTest {
         }
         assertThat(shortNames).as("self-host manifests use catalog short names").isNotEmpty();
 
-        cc.jumpkick.library.LibraryCatalog bundled = cc.jumpkick.library.LibraryCatalog.bundled();
-        cc.jumpkick.library.LibraryCatalog pins = cc.jumpkick.library.LibraryCatalog.parse(
-                Files.readString(cc.jumpkick.library.LibraryCatalog.projectFile(REPO)));
-        cc.jumpkick.library.LibraryCatalog chain = cc.jumpkick.library.LibraryCatalog.forProject(REPO);
+        LibraryCatalog bundled = LibraryCatalog.bundled();
+        LibraryCatalog pins = LibraryCatalog.parse(Files.readString(LibraryCatalog.projectFile(REPO)));
+        LibraryCatalog chain = LibraryCatalog.forProject(REPO);
         for (String name : shortNames) {
             var expected = bundled.lookup(name);
             assertThat(expected)
@@ -203,10 +167,10 @@ class SelfHostingTomlTest {
     void lock_stamp_matches_manifests() throws Exception {
         Path lock = REPO.resolve("jk-lock.toml");
         Assumptions.assumeTrue(Files.isRegularFile(lock), "workspace lock missing");
-        assertThat(cc.jumpkick.lock.LockfileReader.read(lock).manifestsSha256())
+        assertThat(LockfileReader.read(lock).manifestsSha256())
                 .as("jk-lock.toml manifests-sha256 is stale — re-lock (jk lock) and commit the "
                         + "re-stamp together with the manifest/pin edit")
-                .isEqualTo(cc.jumpkick.lock.LockManifestDigest.compute(REPO));
+                .isEqualTo(LockManifestDigest.compute(REPO));
     }
 
     @Test
@@ -226,8 +190,7 @@ class SelfHostingTomlTest {
         assertThat(web.project().name()).isEqualTo("jk-web");
         assertThat(web.mainClass()).isNull();
         assertThat(web.assembly()).isFalse();
-        assertThat(cc.jumpkick.layout.SourceLayout.looksTraditional(REPO.resolve("clients/web")))
-                .isTrue();
+        assertThat(SourceLayout.looksTraditional(REPO.resolve("clients/web"))).isTrue();
     }
 
     @Test
@@ -268,7 +231,7 @@ class SelfHostingTomlTest {
                     .as(module + " must not declare [application]")
                     .isFalse();
             assertThat(p.mainClass()).as(module).isNull();
-            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+            assertThat(PluginModule.isWorker(REPO.resolve(module)))
                     .as(module + " is a plugin worker")
                     .isTrue();
             assertThat(p.dependencies().of(Scope.MAIN).stream()
@@ -283,8 +246,8 @@ class SelfHostingTomlTest {
         assertThat(runner.project().javaRelease()).isEqualTo(17);
         JkBuild sdk = JkBuildParser.parse(REPO.resolve("shared/plugin-sdk/jk.toml"));
         assertThat(sdk.project().javaRelease()).isEqualTo(17);
-        JkBuild jsonl = JkBuildParser.parse(REPO.resolve("shared/jsonl/jk.toml"));
-        assertThat(jsonl.project().javaRelease()).isEqualTo(17);
+        JkBuild host = JkBuildParser.parse(REPO.resolve("shared/host/jk.toml"));
+        assertThat(host.project().javaRelease()).isEqualTo(17);
     }
 
     @Test
@@ -297,7 +260,7 @@ class SelfHostingTomlTest {
                     .as(module + " must not declare [application]")
                     .isFalse();
             assertThat(p.mainClass()).as(module).isNull();
-            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+            assertThat(PluginModule.isWorker(REPO.resolve(module)))
                     .as(module + " is a plugin worker")
                     .isTrue();
             assertThat(p.assembly())
@@ -318,13 +281,13 @@ class SelfHostingTomlTest {
         // to apply WorkspaceMerge.
         List<String> mainModules =
                 cli.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList();
-        // The slim client (Stage 5): the wire contract + jsonl codec, never the engine itself
+        // The slim client (Stage 5): the wire contract + the :host leaf, never the engine itself
         // and never the plugin SPI (JK-2138).
         assertThat(mainModules)
                 .contains(
                         "cc.jumpkick:jk-core",
                         "cc.jumpkick:jk-engine-api",
-                        "cc.jumpkick:jk-jsonl",
+                        "cc.jumpkick:jk-host",
                         "cc.jumpkick:jk-cli-terminal");
         assertThat(mainModules)
                 .doesNotContain(

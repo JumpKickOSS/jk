@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -306,7 +308,7 @@ class AotManifestTest {
                         .gc("serial")
                         .build());
         // Sticky marker present, .aot file absent — the exact state after a failed engine train.
-        Files.writeString(dir.resolve("engine-0.12.0-ab12.noaot"), "");
+        Files.writeString(dir.resolve("engine-0.12.0-ab12.aot.noaot"), "");
 
         var listed = AotManifest.list(dir);
         AotManifest.Entry e = listed.stream()
@@ -335,6 +337,76 @@ class AotManifestTest {
         var files = AotManifest.load(dir).stream().map(AotManifest.Entry::file).toList();
         assertThat(files).contains("engine-0.12.0-cd34.aot");
         assertThat(files).doesNotContain("stale.aot");
+    }
+
+    /**
+     * A killed trainer leaves a {@code pending} row describing a train that will never finish, and
+     * nothing else will ever remove it: the row has no {@code .aot} file, so the on-disk sweeps
+     * that reclaim by name never see it. Left alone, one manifest reached 371 rows and 187 KB with
+     * 370 of them pending. Age is the only test that can retire one.
+     */
+    @Test
+    void reconcile_drops_a_pending_row_whose_trainer_is_long_dead() {
+        AotManifest.upsert(dir, pending("engine-0.12.0-dead0000dead0000.aot", AotManifest.PENDING_TTL_MILLIS + 60_000));
+        AotManifest.upsert(dir, pending("engine-0.12.0-dead1111dead1111.aot", 30L * 24 * 60 * 60 * 1_000));
+
+        AotManifest.reconcile(dir);
+
+        assertThat(AotManifest.load(dir)).isEmpty();
+    }
+
+    /**
+     * The other half, and the reason {@code reconcile} skipped pending rows in the first place: a
+     * train that is genuinely in flight has no {@code .aot} yet either, and dropping its row would
+     * be the original bug in reverse.
+     */
+    @Test
+    void reconcile_keeps_a_pending_row_while_its_train_could_still_be_running() {
+        AotManifest.upsert(dir, pending("engine-0.12.0-live0000live0000.aot", 0));
+        AotManifest.upsert(dir, pending("kotlinc-0.12.0-live1111live1111.aot", AotManifest.PENDING_TTL_MILLIS / 2));
+
+        AotManifest.reconcile(dir);
+
+        assertThat(AotManifest.load(dir))
+                .extracting(AotManifest.Entry::file)
+                .containsExactlyInAnyOrder("engine-0.12.0-live0000live0000.aot", "kotlinc-0.12.0-live1111live1111.aot");
+    }
+
+    /**
+     * An undatable pending row is exactly the unbounded shape this rule exists to remove, so it
+     * goes too — the next train writes a fresh row with a stamp. Written as text because {@code
+     * upsert} stamps {@code created} itself; only a hand-edit or an older writer produces one
+     * without.
+     */
+    @Test
+    void reconcile_drops_a_pending_row_with_no_usable_created_stamp() throws Exception {
+        Files.writeString(AotManifest.path(dir), """
+                schema = 1
+
+                [[cache]]
+                file = "engine-0.12.0-nodate00nodate00.aot"
+                tool = "engine"
+                status = "pending"
+                """);
+        AotManifest.upsert(
+                dir,
+                AotManifest.Entry.builder("engine-0.12.0-baddate0baddate0.aot")
+                        .status("pending")
+                        .created("last tuesday")
+                        .build());
+
+        AotManifest.reconcile(dir);
+
+        assertThat(AotManifest.load(dir)).isEmpty();
+    }
+
+    /** A {@code pending} row stamped {@code ageMillis} ago; no {@code .aot} file, as in real life. */
+    private static AotManifest.Entry pending(String file, long ageMillis) {
+        return AotManifest.Entry.builder(file)
+                .tool(file.startsWith("engine-") ? "engine" : "kotlinc")
+                .status("pending")
+                .created(DateTimeFormatter.ISO_INSTANT.format(Instant.now().minusMillis(ageMillis)))
+                .build();
     }
 
     private static String read(Path p) {

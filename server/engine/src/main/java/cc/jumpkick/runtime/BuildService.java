@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -511,12 +512,12 @@ public final class BuildService {
     public static boolean isProductiveStep(String name) {
         if (name == null || name.isEmpty()) return false;
         return name.startsWith("compile")
-                || name.equals(cc.jumpkick.run.TaskNames.RUN_TESTS)
+                || name.equals(TaskNames.RUN_TESTS)
                 || name.startsWith("package")
                 || name.startsWith("native")
-                || name.startsWith("write-image")
+                || name.startsWith(TaskNames.WRITE_IMAGE)
                 || name.startsWith("image-")
-                || name.contains("ksp")
+                || name.contains(TaskNames.KSP)
                 || name.startsWith("transform");
     }
 

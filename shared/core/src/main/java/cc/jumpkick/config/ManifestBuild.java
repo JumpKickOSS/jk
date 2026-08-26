@@ -8,7 +8,9 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -77,7 +79,7 @@ public final class ManifestBuild {
         Map<String, String> failures = new LinkedHashMap<>();
         for (String key : root.keySet()) {
             if (CORE_TABLES.contains(key) || ManifestProject.PROJECT_KEYS.contains(key)) continue;
-            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
+            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof TomlArray)) continue;
             if (PluginTableRegistry.byTable(key).isPresent()) continue;
             String detail = PluginTableRegistry.tryFetchMissingBuiltIn(key);
             if (detail != null) failures.put(key, detail);
@@ -102,7 +104,7 @@ public final class ManifestBuild {
             if (owned.contains(key)) continue;
             // Project identity keys (and Cargo-style inherit tables like group = { workspace = true }).
             if (ManifestProject.PROJECT_KEYS.contains(key)) continue;
-            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
+            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof TomlArray)) continue;
             StringBuilder known = new StringBuilder();
             for (PluginDescriptor m : installed) {
                 if (known.length() > 0) known.append(", ");
@@ -153,7 +155,7 @@ public final class ManifestBuild {
 
     static JkBuild.Dependencies withPlatformContributions(
             JkBuild.Dependencies deps,
-            JkBuild.Project project,
+            Project project,
             boolean nativeDeclared,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installedManifests) {
@@ -203,7 +205,27 @@ public final class ManifestBuild {
         String graal = ManifestProject.parseGraalSpec(native_);
         if (graal == null) graal = "graalvm";
         JkBuild.NativeMode enabled = parseNativeEnabled(native_);
-        return Optional.of(new JkBuild.NativeConfig(mainClass, name, args, graal, enabled));
+        return Optional.of(
+                new JkBuild.NativeConfig(mainClass, name, args, graal, enabled, parseMetadataRepository(native_)));
+    }
+
+    /**
+     * {@code [native].metadata-repository} — the GraalVM reachability-metadata repository release,
+     * in the dependency version grammar. Null (key omitted) leaves {@link
+     * JkBuild.NativeConfig#METADATA_REPOSITORY_DEFAULT} in place. Bare versions float like a
+     * dependency's ({@code "1.1"} is a caret floor); write {@code "=1.1.4"} to nail one release.
+     */
+    private static VersionSelector parseMetadataRepository(TomlTable native_) {
+        String raw = native_.getString("metadata-repository");
+        if (raw == null) return null;
+        if (raw.isBlank()) {
+            throw new JkBuildParseException("[native].metadata-repository must not be blank");
+        }
+        try {
+            return VersionSelector.parseFloating(raw);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException("[native].metadata-repository: " + e.getMessage());
+        }
     }
 
     /**
@@ -258,7 +280,7 @@ public final class ManifestBuild {
             }
         }
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
-        cc.jumpkick.model.UnmappedPolicy unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.MEDIATE;
+        UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
         if (resolve != null && resolve.contains("platform")) {
             String raw = resolve.getString("platform");
             if (raw == null || raw.isBlank()) {
@@ -276,7 +298,7 @@ public final class ManifestBuild {
                 throw new JkBuildParseException("[resolve].unmapped must be a string (mediate or strict)");
             }
             try {
-                unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.parse(raw);
+                unmappedPolicy = UnmappedPolicy.parse(raw);
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException("[resolve].unmapped: " + e.getMessage());
             }
@@ -290,11 +312,12 @@ public final class ManifestBuild {
                     List.of(),
                     List.of(),
                     List.of(),
+                    List.of(),
                     null,
                     List.of(),
                     platformPolicy,
                     unmappedPolicy,
-                    Map.of());
+                    List.of());
         }
 
         List<String> orderAfter = new ArrayList<>();
@@ -302,6 +325,7 @@ public final class ManifestBuild {
         boolean lint = true;
         List<String> kspOptions = new ArrayList<>();
         List<String> extraSrc = new ArrayList<>();
+        List<String> testExtraSrc = new ArrayList<>();
         Integer testWorkers = null;
         List<String> testSerialTags = new ArrayList<>();
 
@@ -380,6 +404,23 @@ public final class ManifestBuild {
             if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
                 testWorkers = 1;
             }
+            // [test] extra-src — the test-scoped twin of [build] extra-src, and the same spelling on
+            // purpose: one vocabulary, two scopes. These roots compile with the test tier, so a
+            // sibling reaches them through an existing `kind = "tests"` edge and no main jar can.
+            // Gradle spells the same fact as a `testFixtures` source set; declaring shared test
+            // helpers under [build] extra-src instead would ship them, which is the mistake this
+            // key exists to make unnecessary. An entry may name a single file where a directory
+            // would over-reach: see clients/cli, which needs one source out of a package whose
+            // other members do not compile without the IntelliJ platform SDK.
+            TomlArray tes = test.getArray("extra-src");
+            if (tes != null) {
+                for (int i = 0; i < tes.size(); i++) {
+                    Object val = tes.get(i);
+                    if (!(val instanceof String str) || str.isBlank())
+                        throw new JkBuildParseException("[test].extra-src must be an array of directory or file paths");
+                    testExtraSrc.add(str);
+                }
+            }
             // [test] serial-tags — class-level tags that never share the sharded worker pool.
             TomlArray st = test.getArray("serial-tags");
             if (st != null) {
@@ -398,11 +439,12 @@ public final class ManifestBuild {
                 List.of(),
                 kspOptions,
                 extraSrc,
+                List.copyOf(testExtraSrc),
                 testWorkers,
                 testSerialTags,
                 platformPolicy,
                 unmappedPolicy,
-                Map.of());
+                List.of());
     }
 
     /**
@@ -413,29 +455,78 @@ public final class ManifestBuild {
      * env = { JK_HOME = "${target}/test-jk-home", JK_HTTP_ENABLED = "false" }
      * </pre>
      *
-     * Values are literal strings; {@code ${target}} and {@code ${module}} are substituted at launch
-     * (see {@code TestEnv}). Environment variables are deliberately <em>not</em> interpolated here
-     * yet — that is whitelisted separately.
+     * Values are stored exactly as written. {@code ${target}}, {@code ${module}} and {@code ${VAR}}
+     * are all expanded later, by {@link TestEnvValues}, because what they expand to depends on the
+     * consumer: the forked JVM wants real directories and real values, the run-tests cache key wants
+     * portable tokens and a digest. {@code [test] env} is one of the few positions where
+     * {@code ${VAR}} is legal at all — see {@link Interpolation}.
      */
-    static Map<String, String> parseTestEnv(TomlTable root) {
+    /**
+     * {@code [test] env} — an array whose element shape says which of the two statements it is.
+     *
+     * <pre>{@code
+     * env = [
+     *   "JK_WEB_JS_SKIP",                       # forward the caller's, if set
+     *   { TZ = "UTC", LANG = "C" },             # set these outright
+     * ]
+     * }</pre>
+     *
+     * <p>A bare string is a name and nothing else: it may not carry {@code =} or {@code ${…}}.
+     * Both are rejected rather than interpreted, because both are how the same idea is spelled in
+     * the two neighbouring formats a reader is likely arriving from — a {@code .env} file and a
+     * {@code docker run -e} flag — and quietly accepting either would make {@code "TZ=UTC"} a
+     * variable literally named {@code TZ=UTC}.
+     */
+    static List<JkBuild.TestEnvDecl> parseTestEnv(TomlTable root) {
         TomlTable test = root.getTable("test");
-        if (test == null) return Map.of();
-        TomlTable env = test.getTable("env");
-        if (env == null) return Map.of();
-        Map<String, String> out = new LinkedHashMap<>();
-        for (String key : env.keySet()) {
-            Object value = env.get(List.of(key));
-            if (value == null) continue;
-            if (!(value instanceof String s)) {
-                if (value instanceof Boolean || value instanceof Long || value instanceof Double) {
-                    out.put(key, String.valueOf(value));
-                    continue;
-                }
-                throw new JkBuildParseException("[test].env." + key + " must be a string (or a bare boolean/number)");
-            }
-            out.put(key, s);
+        if (test == null) return List.of();
+        Object raw = test.get(List.of("env"));
+        if (raw == null) return List.of();
+        if (!(raw instanceof TomlArray arr)) {
+            throw new JkBuildParseException("[test] env must be an array — a bare name to forward the"
+                    + " caller's value, or a table to set one: env = [\"CI\", { TZ = \"UTC\" }]");
         }
-        return out;
+        List<JkBuild.TestEnvDecl> out = new ArrayList<>();
+        for (int i = 0; i < arr.size(); i++) {
+            Object element = arr.get(i);
+            String where = "[test].env[" + i + "]";
+            if (element instanceof String name) {
+                out.add(new JkBuild.TestEnvDecl.Forward(forwardName(name, where)));
+            } else if (element instanceof TomlTable table) {
+                for (String key : table.keySet()) {
+                    out.add(new JkBuild.TestEnvDecl.Set(key, scalar(table.get(List.of(key)), where + "." + key)));
+                }
+            } else {
+                throw new JkBuildParseException(
+                        where + " must be a name to forward (a string) or a table of values to set");
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /** A forwarded name is a name: no value half, no reference. */
+    private static String forwardName(String raw, String where) {
+        String name = raw.trim();
+        if (name.isEmpty()) throw new JkBuildParseException(where + " is an empty environment variable name");
+        if (name.indexOf('=') >= 0) {
+            throw new JkBuildParseException(where + " (\"" + raw + "\") looks like NAME=value. A bare string"
+                    + " forwards the caller's value; to set one, use a table: { "
+                    + name.substring(0, name.indexOf('=')) + " = \""
+                    + name.substring(name.indexOf('=') + 1) + "\" }");
+        }
+        if (name.indexOf('$') >= 0) {
+            throw new JkBuildParseException(where + " (\"" + raw + "\") is a variable name, not a value —"
+                    + " ${…} is expanded in the table form, not here");
+        }
+        return name;
+    }
+
+    private static String scalar(Object value, String where) {
+        if (value instanceof String s) return s;
+        if (value instanceof Boolean || value instanceof Long || value instanceof Double) {
+            return String.valueOf(value);
+        }
+        throw new JkBuildParseException(where + " must be a string (or a bare boolean/number)");
     }
 
     /**

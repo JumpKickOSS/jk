@@ -102,7 +102,7 @@ public final class ProtoReads {
                 + skipTests
                 + ",\"profile\":"
                 + Jsonl.quote(profile)
-                + ",\"jdksDir\":"
+                + ",\"" + ProtoJobs.JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"serial\":"
                 + serial
@@ -206,7 +206,7 @@ public final class ProtoReads {
     public static String ideModelRequest(String dir, String cache, String jdksDir) {
         return "{\"type\":\"" + EngineProtocol.IDE_MODEL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)
-                + ",\"jdksDir\":" + Jsonl.quote(jdksDir)
+                + ",\"" + ProtoJobs.JDKS_DIR + "\":" + Jsonl.quote(jdksDir)
                 + "}";
     }
 

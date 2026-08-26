@@ -3,8 +3,15 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -29,25 +36,24 @@ class BuildServiceEtaParityTest {
      * TaskForecaster content-prediction walk); the distrust fallback in etaCostsFromExplainPlan
      * prices each module from its full plan shape, so the seed is still non-zero.
      */
-    @org.junit.jupiter.api.Test
+    @Test
     void force_prices_shape_only_plan_without_forecast_walk(@org.junit.jupiter.api.io.TempDir Path tmp)
             throws Exception {
-        Path dir = java.nio.file.Files.createDirectories(tmp.resolve("mod"));
-        java.nio.file.Files.createDirectories(dir.resolve("src/main/java"));
-        java.nio.file.Files.writeString(dir.resolve("jk.toml"), """
+        Path dir = Files.createDirectories(tmp.resolve("mod"));
+        Files.createDirectories(dir.resolve("src/main/java"));
+        Files.writeString(dir.resolve("jk.toml"), """
                 group = "ex"
                 name = "m"
                 version = "1.0"
                 java = 25
                 """);
-        var shapeOnly = new cc.jumpkick.runtime.TaskForecast.Module(dir, "ex:m", List.of(), 0, 0, true, false);
-        var plan = new ExplainPlan(List.of(shapeOnly), java.util.Map.of(dir, Set.of()), 1, List.of());
+        var shapeOnly = new TaskForecast.Module(dir, "ex:m", List.of(), 0, 0, true, false);
+        var plan = new ExplainPlan(List.of(shapeOnly), Map.of(dir, Set.of()), 1, List.of());
 
-        var forced = cc.jumpkick.config.Session.defaults()
-                .withConfig(cc.jumpkick.config.JkConfig.empty()
-                        .withRebuild(java.util.Optional.of(true))) // same distrust lever as force
+        var forced = Session.defaults()
+                .withConfig(JkConfig.empty().withRebuild(true)) // same distrust lever as force
                 .withCacheDir(tmp.resolve("cache"));
-        List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
+        List<EffortWeights.ModuleCost> costs = SessionContext.where(
                 forced,
                 () -> BuildService.etaCostsFromExplainPlan(plan, tmp.resolve("cache"), 1, null, null, false, false));
         assertThat(costs).hasSize(1);
@@ -63,15 +69,13 @@ class BuildServiceEtaParityTest {
         Path a = Path.of("/ws/a");
         Path b = Path.of("/ws/b");
         Path c = Path.of("/ws/c");
-        var run = new cc.jumpkick.runtime.TaskForecast.Task(
-                "compile-java", cc.jumpkick.runtime.TaskForecast.Status.RUN, "", null);
-        var cached = new cc.jumpkick.runtime.TaskForecast.Task(
-                "compile-java", cc.jumpkick.runtime.TaskForecast.Status.CACHED, "", "k");
-        var ma = new cc.jumpkick.runtime.TaskForecast.Module(a, "g:a", List.of(run), 1, 0, true, false);
-        var mb = new cc.jumpkick.runtime.TaskForecast.Module(b, "g:b", List.of(run), 1, 0, true, false);
-        var mc = new cc.jumpkick.runtime.TaskForecast.Module(c, "g:c", List.of(cached), 1, 0, true, false);
-        var plan = new ExplainPlan(
-                List.of(ma, mb, mc), java.util.Map.of(a, Set.of(b, c), b, Set.of(), c, Set.of()), 2, List.of());
+        var run = new TaskForecast.Task("compile-java", TaskForecast.Status.RUN, "", null);
+        var cached = new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "k");
+        var ma = new TaskForecast.Module(a, "g:a", List.of(run), 1, 0, true, false);
+        var mb = new TaskForecast.Module(b, "g:b", List.of(run), 1, 0, true, false);
+        var mc = new TaskForecast.Module(c, "g:c", List.of(cached), 1, 0, true, false);
+        var plan =
+                new ExplainPlan(List.of(ma, mb, mc), Map.of(a, Set.of(b, c), b, Set.of(), c, Set.of()), 2, List.of());
 
         ExplainPlan restricted = BuildService.restrictToSelection(plan, Set.of(a, c));
 
@@ -116,15 +120,13 @@ class BuildServiceEtaParityTest {
 
     @Test
     void pipeline_cost_of_derives_test_weight_from_the_same_walk() {
-        var plan = cc.jumpkick.run.BuildPlan.builder("m")
-                .addTask(cc.jumpkick.run.Task.builder("compile-java")
+        var plan = BuildPlan.builder("m")
+                .addTask(Task.builder("compile-java")
                         .weight(20)
                         .execute(ctx -> {})
                         .build())
-                .addTask(cc.jumpkick.run.Task.builder("run-tests")
-                        .weight(100)
-                        .execute(ctx -> {})
-                        .build())
+                .addTask(
+                        Task.builder("run-tests").weight(100).execute(ctx -> {}).build())
                 .build();
         var cost = EffortWeights.costOf(MOD, Set.of(), plan);
         assertThat(cost.weight()).isEqualTo(120);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.process;
 
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.FileDescriptor;
@@ -17,8 +18,9 @@ import java.util.ServiceLoader;
  * exit codes): this loads the jar's {@link Plugin} via {@link ServiceLoader}, builds the {@link
  * ProtocolWriter} from its manifest, and bridges stdio to {@link Plugin#run}.
  *
- * <p>Exit codes: the plugin's own return value on success; {@code 70} when no plugin can be
- * selected; {@code 1} when {@code run} throws.
+ * <p>Exit codes come from {@link Exit}, the same vocabulary the engine and CLI use: the plugin's
+ * own return value on success; {@link Exit#SOFTWARE} when no plugin can be selected (the jar is
+ * built wrong — nothing the user can act on); {@link Exit#FAILURE} when {@code run} throws.
  */
 public final class PluginMain {
 
@@ -31,12 +33,12 @@ public final class PluginMain {
         }
         if (plugins.isEmpty()) {
             System.err.println("jk-plugin-host: no cc.jumpkick.plugin.Plugin found on the classpath");
-            System.exit(70);
+            System.exit(Exit.SOFTWARE);
             return;
         }
         Plugin plugin = select(plugins);
         if (plugin == null) {
-            System.exit(70);
+            System.exit(Exit.SOFTWARE);
             return;
         }
 
@@ -50,7 +52,7 @@ public final class PluginMain {
             System.exit(plugin.run(List.of(args), writer));
         } catch (Exception e) {
             System.err.println(plugin.manifest().id() + ": " + e.getMessage());
-            System.exit(1);
+            System.exit(Exit.FAILURE);
         }
     }
 

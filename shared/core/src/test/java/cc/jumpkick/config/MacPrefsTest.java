@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.util.Locale;
+import cc.jumpkick.host.Os;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class MacPrefsTest {
 
     private static boolean onMac() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
+        return Os.isDarwin();
     }
 
     @Test

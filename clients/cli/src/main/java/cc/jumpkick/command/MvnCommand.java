@@ -2,7 +2,11 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.model.command.Arity;
@@ -44,8 +48,7 @@ public final class MvnCommand implements CliCommand {
         return List.of(
                 Opt.value("<dir>", "Override the tools install root.", "--tools-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.flag("Skip tool discovery.", "--no-discover"));
     }
 
@@ -64,7 +67,7 @@ public final class MvnCommand implements CliCommand {
     public int run(Invocation in) throws IOException, InterruptedException {
         this.directory = in.value("dir").map(Path::of).orElse(null);
         this.toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.noDiscover = in.isSet("no-discover");
         this.args = in.positionals();
 
@@ -72,10 +75,9 @@ public final class MvnCommand implements CliCommand {
                 ? directory.toAbsolutePath().normalize()
                 : Path.of(".").toAbsolutePath().normalize();
         Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
-        Path cache = JkDirs.cache();
 
-        // Provision Maven via the compat-runner (engine-hosted), get back the bin path.
-        Path mvnBin = provision(cache, projectDir, toolsRoot, noDiscover, false);
+        // Provision Maven engine-side, get back the bin path.
+        Path mvnBin = provision(projectDir, toolsRoot, noDiscover, false);
         if (mvnBin == null) return 1;
 
         // Exec Maven directly so stdio is inherited cleanly.
@@ -83,10 +85,9 @@ public final class MvnCommand implements CliCommand {
         List<String> command = new ArrayList<>();
         command.add(mvnBin.toString());
         command.addAll(args);
-        ProcessBuilder pb =
-                new ProcessBuilder(command).directory(projectDir.toFile()).inheritIO();
+        ProcessBuilder pb = new ProcessBuilder(command).directory(projectDir.toFile());
         PassthroughEnv.apply(pb.environment(), jdk.map(InstalledJdk::home).orElse(null));
-        Process p = pb.start();
+        Process p = CliOutput.handOffTerminal(pb);
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
@@ -95,30 +96,26 @@ public final class MvnCommand implements CliCommand {
 
     /**
      * Provision a Maven/Gradle distribution and return its launcher path, or {@code null} (with the
-     * error already rendered) on failure. Engine-hosted; the test-only in-process path runs the
-     * identical {@code CompatPlans.provision} code.
+     * error already rendered) on failure. Engine-hosted: {@code CompatPlans.provision} links or
+     * downloads the distribution in the engine JVM and answers with the launcher path.
      */
-    static Path provision(Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
+    static Path provision(Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
             throws IOException, InterruptedException {
         String tool = isGradle ? "gradle" : "mvn";
         HostedEvents.Provision p;
         try {
-            p = cc.jumpkick.cli.engine.EngineClient.provision(
-                    cc.jumpkick.engine.EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
+            p = EngineClient.provision(EnginePaths.current(), projectDir, toolsRoot, noDiscover, isGradle);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(tool, e.getMessage());
+            CommandWedge.printFail(tool, e.getMessage());
             return null;
         }
 
-        if (p.error() != null) cc.jumpkick.cli.tui.CommandWedge.printFail(tool, p.error());
+        if (p.error() != null) CommandWedge.printFail(tool, p.error());
         if ("LINKED".equals(p.source()) || "DOWNLOADED".equals(p.source())) {
             CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " "
                     + p.source().toLowerCase());
         }
-        if (p.exit() != 0) {
-            if (p.diag() != null && !p.diag().isBlank()) CliOutput.err(p.diag());
-            return null;
-        }
+        if (p.exit() != 0) return null;
         return p.bin() != null ? Path.of(p.bin()) : null;
     }
 }

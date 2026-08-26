@@ -6,7 +6,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
-import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -61,7 +60,7 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
         if (alreadyFull) {
             full = eta;
         } else {
-            Session fullSession = session.withConfig(config.withRebuild(Optional.of(true)));
+            Session fullSession = session.withConfig(config.withRebuild(true));
             full = SessionContext.where(
                     fullSession,
                     () -> BuildService.estimateEtaMillis(

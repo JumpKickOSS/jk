@@ -4,14 +4,13 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -26,7 +25,7 @@ class TuiModeFixturesTest {
     @Test
     void wedge_ok_fail_and_box_table_in_all_modes() throws Exception {
         // Plain: forced no-ansi.
-        withConfig(noAnsiConfig(), () -> {
+        NoAnsi.withConfig(noAnsiConfig(), () -> {
             String ok = CommandWedge.ok("Build", "done", NerdFontCaps.NONE);
             String fail = CommandWedge.fail("Build", "boom", NerdFontCaps.NONE);
             String table = JkWedge.menu("Installed JDKs").renderTitleBar(RenderContext.current(), 40);
@@ -76,7 +75,7 @@ class TuiModeFixturesTest {
 
     @Test
     void progress_bar_plain_is_ascii_hashes() throws Exception {
-        withConfig(noAnsiConfig(), () -> {
+        NoAnsi.withConfig(noAnsiConfig(), () -> {
             String bar = TestAnsi.strip(new ProgressBar().render(50, 100));
             assertThat(bar).contains(String.valueOf(Glyphs.BAR_FULL_PLAIN));
             assertThat(bar).contains(String.valueOf(Glyphs.BAR_EMPTY_PLAIN));
@@ -87,20 +86,25 @@ class TuiModeFixturesTest {
     }
 
     @Test
-    void spinner_wedge_frame_plain_is_ascii() {
+    void spinner_wedge_frame_plain_is_ascii() throws Exception {
         var colors = Spinner.buildChipPulseStyles(
-                Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
-        // Force plain path inside renderWedgeFrame via Theme — under CI isAnsi is often false already.
-        String frame = Spinner.renderWedgeFrame(0, "Status", "working", NerdFontCaps.NONE, colors);
-        if (frame.contains("Status") && !frame.contains(CSI)) {
-            assertThat(frame).isEqualTo("jk: * Status > working");
-            assertThat(frame).doesNotContain(Glyphs.PULSE).doesNotContain(PUA).doesNotContain(CSI);
-        }
+                Spinner.PULSE_FRAMES, Theme.active().planBadgeColor());
+        NoAnsi.withConfig(noAnsiConfig(), () -> {
+            // Every animator frame renders the same still line: --no-ansi has no animation.
+            for (int i : new int[] {0, 1, Spinner.PULSE_FRAMES - 1}) {
+                String frame = Spinner.renderWedgeFrame(i, "Status", "working", NerdFontCaps.NONE, colors);
+                assertThat(frame).isEqualTo("jk: * Status > working");
+            }
+            // Nerd caps must not smuggle PUA glyphs past the plain switch either.
+            String nerd = Spinner.renderWedgeFrame(0, "Status", "working", NerdFontCaps.ALL, colors);
+            assertThat(nerd).isEqualTo("jk: * Status > working");
+            return null;
+        });
     }
 
     @Test
     void glyphs_helpers_switch_on_ansi() throws Exception {
-        withConfig(noAnsiConfig(), () -> {
+        NoAnsi.withConfig(noAnsiConfig(), () -> {
             assertThat(Glyphs.check()).isEqualTo(Glyphs.CHECK_PLAIN);
             assertThat(Glyphs.cross()).isEqualTo(Glyphs.CROSS_PLAIN);
             assertThat(Glyphs.pulse()).isEqualTo(Glyphs.PULSE_PLAIN);
@@ -117,8 +121,8 @@ class TuiModeFixturesTest {
 
     @Test
     void format_settle_plain_shape_matches_wedge_and_took() throws Exception {
-        withConfig(noAnsiConfig(), () -> {
-            String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(547));
+        NoAnsi.withConfig(noAnsiConfig(), () -> {
+            String took = ConsoleSpec.took(Duration.ofMillis(547));
             String settle = CommandWedge.ok("Format", "Already formatted " + took, NerdFontCaps.NONE);
             assertThat(settle).isEqualTo("jk: + Format > Already formatted - took 547ms");
             assertThat(settle).doesNotContain(CSI).doesNotContain(Glyphs.CHECK);
@@ -127,15 +131,6 @@ class TuiModeFixturesTest {
     }
 
     private static JkConfig noAnsiConfig() {
-        return JkConfig.empty().withNoAnsi(Optional.of(true));
-    }
-
-    private static <T> T withConfig(JkConfig cfg, Supplier<T> body) throws Exception {
-        Session original = SessionContext.current();
-        try {
-            return SessionContext.where(original.withConfig(cfg), body::get);
-        } finally {
-            SessionContext.install(original);
-        }
+        return JkConfig.empty().withNoAnsi(true);
     }
 }

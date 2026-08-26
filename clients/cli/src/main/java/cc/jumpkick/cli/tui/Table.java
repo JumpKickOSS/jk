@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;
 import java.util.ArrayList;
@@ -626,7 +627,7 @@ public final class Table implements Widget {
         boolean ansi = ctx.ansi();
         Theme theme = ctx.theme();
         boolean banded = row.highlight() && ansi;
-        cc.jumpkick.cli.theme.Rgb band = banded ? theme.darkBlackColor() : null;
+        Rgb band = banded ? theme.darkBlackColor() : null;
         String outerBar = ansi ? Theme.colorize("│", theme.darkGray()) : "|";
         String innerBar = banded ? Theme.colorize("│", theme.withBackground(theme.darkGray(), band)) : outerBar;
         String sp = banded ? Theme.colorize(" ", theme.withBackground(Style.EMPTY, band)) : " ";

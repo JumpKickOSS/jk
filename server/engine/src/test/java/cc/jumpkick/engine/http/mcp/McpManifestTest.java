@@ -4,6 +4,10 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.http.EngineHttpJobs;
+import cc.jumpkick.engine.http.McpHandler;
+import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -52,9 +56,9 @@ class McpManifestTest {
 
     @Test
     void applied_manifest_edits_carry_the_relock_hint() {
-        cc.jumpkick.engine.http.EngineHttpJobs jobs = new cc.jumpkick.engine.http.EngineHttpJobs() {
+        EngineHttpJobs jobs = new EngineHttpJobs() {
             @Override
-            public long trigger(cc.jumpkick.engine.jobs.JobSpec spec) {
+            public long trigger(JobSpec spec) {
                 return 1L;
             }
 
@@ -68,9 +72,8 @@ class McpManifestTest {
                 return 0;
             }
         };
-        cc.jumpkick.engine.http.McpHandler mcp = new cc.jumpkick.engine.http.McpHandler(
-                () -> new cc.jumpkick.engine.http.StatusSnapshot(
-                        "0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+        McpHandler mcp = new McpHandler(
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
                 jobs,
                 d -> Map.of(),
                 List::of,
@@ -97,6 +100,26 @@ class McpManifestTest {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * The edit goes through {@link cc.jumpkick.config.JkBuildEditor}, not a regex. The regex
+     * matched only a bare integer to end-of-line, so a commented value missed and the miss fell
+     * through to the "insert a root key" branch — writing a second {@code java =} line, which is
+     * invalid TOML, and writing it to disk unvalidated with {@code applied: true}.
+     */
+    @Test
+    void set_java_replaces_an_annotated_value_instead_of_duplicating_the_key(@TempDir Path dir) throws Exception {
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                "name = \"a\"\ngroup = \"g\"\nversion = \"1\"\njava = 17  # from the CI image\n[dependencies]\n",
+                StandardCharsets.UTF_8);
+        Map<String, Object> out = McpManifest.setJava(dir.toString(), 25, true);
+        assertThat(out).doesNotContainKey("error");
+        String after = Files.readString(dir.resolve("jk.toml"), StandardCharsets.UTF_8);
+        assertThat(after).containsOnlyOnce("java =");
+        assertThat(after).contains("# from the CI image");
+        assertThat(JkBuildParser.parse(after).project().javaRelease()).isEqualTo(25);
     }
 
     @Test

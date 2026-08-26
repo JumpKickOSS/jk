@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -180,7 +181,7 @@ public final class ModuleSelection {
         String bare = bareName(rel);
         if (!bare.isBlank()) aliases.add(bare);
         if (withNames) {
-            Path manifest = root.resolve(rel).resolve("jk.toml");
+            Path manifest = root.resolve(rel).resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(manifest)) {
                 try {
                     JkBuild unit = JkBuildParser.parse(manifest);

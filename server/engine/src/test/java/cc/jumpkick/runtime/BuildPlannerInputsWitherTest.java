@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SessionContext;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
@@ -29,7 +30,7 @@ class BuildPlannerInputsWitherTest {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         BuildPlanner.Inputs decorated = base.withWorkerCount(6)
                 .withProfileName("ci")
                 .withProjectModules(Set.of(dir))

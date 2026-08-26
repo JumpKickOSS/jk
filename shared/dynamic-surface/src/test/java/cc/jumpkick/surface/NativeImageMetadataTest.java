@@ -388,4 +388,20 @@ class NativeImageMetadataTest {
                         .entries())
                 .isEmpty();
     }
+
+    /**
+     * This input is a third party's jar entry, so it is untrusted. The module's own recursive-descent
+     * parser had no nesting cap and overflowed the stack on it — and {@code StackOverflowError} is an
+     * {@link Error}, so the {@code catch (RuntimeException)} that makes a broken metadata file a
+     * no-op did not catch it and the whole package step died. Reading through the one tree codec
+     * (JK-2422) means its depth cap applies here too.
+     */
+    @Test
+    void a_deeply_nested_metadata_file_is_skipped_rather_than_overflowing_the_stack() {
+        String body = "[".repeat(20_000) + "]".repeat(20_000);
+
+        assertThat(NativeImageMetadata.parse("x/reflect-config.json", body, "lib")
+                        .entries())
+                .isEmpty();
+    }
 }

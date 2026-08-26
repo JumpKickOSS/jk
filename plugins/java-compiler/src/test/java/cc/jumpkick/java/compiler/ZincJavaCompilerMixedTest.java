@@ -187,6 +187,8 @@ class ZincJavaCompilerMixedTest {
                     List.of(),
                     "3.8.4",
                     compilerCp,
+                    null,
+                    null,
                     null);
         }
     }

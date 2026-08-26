@@ -5,13 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import cc.jumpkick.config.JkTemplatesConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -33,7 +33,12 @@ class OfficialTemplatesFreshenTest {
                 assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 2));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         assertEquals("git timed out", e.getMessage());
-        assertTrue(elapsedMs < 30_000, "timeout not enforced: took " + elapsedMs + "ms");
+        // LIVENESS, not performance: the script sleeps 600s and runGit was given a 2s timeout, so
+        // anything under 30s proves the timeout fired rather than the read blocking to EOF.
+        assertTrue(
+                elapsedMs < 30_000,
+                "LIVENESS: the 2s git timeout did not fire — the call took " + elapsedMs
+                        + "ms against a helper that sleeps 600s");
     }
 
     /** Large output must not deadlock the pipe (discarded at the OS level). */
@@ -58,21 +63,16 @@ class OfficialTemplatesFreshenTest {
      * short name on an offline host can't re-run a 60–120s git attempt on every retry. */
     @Test
     void sourceRefEncodesUrlAndRev() {
-        var plain = new cc.jumpkick.config.JkTemplatesConfig.Source(
-                "acme", "https://github.com/acme/jk-g8", Optional.empty());
-        var pinned = new cc.jumpkick.config.JkTemplatesConfig.Source(
-                "corp", "https://git.example/corp/jk-templates.git", Optional.of("main"));
-        org.assertj.core.api.Assertions.assertThat(OfficialTemplatesFreshen.sourceRef(plain))
-                .isEqualTo("https://github.com/acme/jk-g8");
-        org.assertj.core.api.Assertions.assertThat(OfficialTemplatesFreshen.sourceRef(pinned))
+        var plain = new JkTemplatesConfig.Source("acme", "https://github.com/acme/jk-g8");
+        var pinned = new JkTemplatesConfig.Source("corp", "https://git.example/corp/jk-templates.git", "main");
+        org.assertj.core.api.Assertions.assertThat(plain.gitRef()).isEqualTo("https://github.com/acme/jk-g8");
+        org.assertj.core.api.Assertions.assertThat(pinned.gitRef())
                 .isEqualTo("https://git.example/corp/jk-templates.git#main");
         // Distinct cache dirs per source — a rev pin never shadows the unpinned clone.
         org.assertj.core.api.Assertions.assertThat(
-                        OfficialTemplatesFreshen.parse(OfficialTemplatesFreshen.sourceRef(pinned))
-                                .cacheKey())
+                        OfficialTemplatesFreshen.parse(pinned.gitRef()).cacheKey())
                 .isEqualTo("git.example_corp_jk-templates_main")
-                .isNotEqualTo(OfficialTemplatesFreshen.parse(OfficialTemplatesFreshen.sourceRef(plain))
-                        .cacheKey());
+                .isNotEqualTo(OfficialTemplatesFreshen.parse(plain.gitRef()).cacheKey());
     }
 
     @Test

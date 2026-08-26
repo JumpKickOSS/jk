@@ -3,11 +3,14 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
-import cc.jumpkick.engine.EngineServer;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildMetrics;
@@ -69,7 +72,8 @@ public final class JournalWriter {
 
     public static @Nullable String coordOf(String dir) {
         try {
-            var project = JkBuildParser.parse(Path.of(dir).resolve("jk.toml")).project();
+            var project = JkBuildParser.parse(Path.of(dir).resolve(ManifestPaths.MANIFEST))
+                    .project();
             return project.group() + ":" + project.name();
         } catch (Exception e) {
             return null;
@@ -106,11 +110,6 @@ public final class JournalWriter {
         if (a != null && tests != null) a.addTests(tests);
     }
 
-    public void accOutcome(long requestId, boolean success, int exitCode) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.setOutcome(success, exitCode);
-    }
-
     public void write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
         if (a == null) {
@@ -128,7 +127,7 @@ public final class JournalWriter {
             long buildNumber = a.buildNumber();
             if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
             a.flushTimeline().ifPresent(path -> {
-                if (writer != null) EngineServer.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
+                if (writer != null) WireWriter.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
             });
             List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
             if (record.synthetic()) {
@@ -145,7 +144,7 @@ public final class JournalWriter {
             if (historyConfig.enabled()) {
                 Path dir = Path.of(a.dir());
                 BuildJournal.Snapshot snapshot =
-                        new BuildJournal.Snapshot(null, cc.jumpkick.lock.LockPaths.lockFile(dir), a.diagnosticsText());
+                        new BuildJournal.Snapshot(null, LockPaths.lockFile(dir), a.diagnosticsText());
                 String jid = a.journalId();
                 String locator;
                 if (jid != null && !jid.isBlank()) {
@@ -181,7 +180,7 @@ public final class JournalWriter {
     static @Nullable Path latestPath(String dir) {
         if (dir == null || dir.isBlank()) return null;
         try {
-            return Path.of(dir).resolve("target").resolve(JkResultsMarkdown.FILE_NAME);
+            return Path.of(dir).resolve(BuildLayout.TARGET).resolve(JkResultsMarkdown.FILE_NAME);
         } catch (RuntimeException e) {
             return null;
         }
@@ -224,7 +223,7 @@ public final class JournalWriter {
                 .put("exceptionClass", d.exceptionClass());
         if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
         if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
-        if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
+        if (d.className() != null && !d.className().isEmpty()) o.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
         if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
         if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
         if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());

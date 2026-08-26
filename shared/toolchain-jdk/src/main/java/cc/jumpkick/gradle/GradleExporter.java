@@ -4,6 +4,8 @@ package cc.jumpkick.gradle;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -50,14 +52,14 @@ public final class GradleExporter {
     /**
      * Export a project or workspace. {@code modulesByRelPath} (empty for a single project) maps each
      * module's path relative to the root to its parsed build; {@code layoutByRelPath} carries the
-     * concrete {@link JkBuild.Layout} for each project keyed the same way (root = {@code ""}), so
+     * concrete {@link Layout} for each project keyed the same way (root = {@code ""}), so
      * jk's flat {@code SIMPLE} layout emits a matching {@code sourceSets} block. Missing entries
      * default to traditional (Maven source sets).
      */
     public static Result export(
             JkBuild root,
             Map<String, JkBuild> modulesByRelPath,
-            Map<String, JkBuild.Layout> layoutByRelPath,
+            Map<String, Layout> layoutByRelPath,
             Map<String, String> locked) {
         if (locked == null) locked = Map.of();
         if (layoutByRelPath == null) layoutByRelPath = Map.of();
@@ -73,9 +75,9 @@ public final class GradleExporter {
         return new Result(settings, buildFiles, report.build());
     }
 
-    private static JkBuild.Layout layoutOf(Map<String, JkBuild.Layout> map, String key) {
-        JkBuild.Layout l = map.get(key);
-        return l != null ? l : JkBuild.Layout.TRADITIONAL;
+    private static Layout layoutOf(Map<String, Layout> map, String key) {
+        Layout l = map.get(key);
+        return l != null ? l : Layout.TRADITIONAL;
     }
 
     private static String renderSettings(JkBuild root, Set<String> moduleRelPaths) {
@@ -98,8 +100,8 @@ public final class GradleExporter {
     }
 
     private static String renderBuild(
-            JkBuild jk, JkBuild.Layout layout, Map<String, String> locked, ImportReport.Builder report) {
-        JkBuild.Project p = jk.project();
+            JkBuild jk, Layout layout, Map<String, String> locked, ImportReport.Builder report) {
+        Project p = jk.project();
         boolean kotlin = p.kotlin() != null;
         boolean app = jk.mainClass() != null;
         boolean assembly = jk.assembly();
@@ -185,12 +187,12 @@ public final class GradleExporter {
     }
 
     /**
-     * jk's {@link JkBuild.Layout#SIMPLE} layout is Mill-like ({@code ./src}, {@code ./test/src},
+     * jk's {@link Layout#SIMPLE} layout is Mill-like ({@code ./src}, {@code ./test/src},
      * {@code ./resources}, {@code ./test/resources}) where Gradle defaults to {@code src/main/java}.
      * Remap the source sets so the exported build compiles the same files.
      */
-    private static void appendSourceSets(StringBuilder sb, JkBuild.Layout layout, boolean kotlin) {
-        if (layout != JkBuild.Layout.SIMPLE) return;
+    private static void appendSourceSets(StringBuilder sb, Layout layout, boolean kotlin) {
+        if (layout != Layout.SIMPLE) return;
         sb.append("\nsourceSets {\n");
         sb.append("    main {\n");
         sb.append("        java.setSrcDirs(listOf(\"src\"))\n");
@@ -205,7 +207,7 @@ public final class GradleExporter {
         sb.append("}\n");
     }
 
-    private static void appendToolchain(StringBuilder sb, JkBuild.Project p) {
+    private static void appendToolchain(StringBuilder sb, Project p) {
         int major = p.jdkMajor() > 0 ? p.jdkMajor() : p.javaRelease();
         if (major <= 0) return;
         sb.append("\njava {\n    toolchain {\n        languageVersion = JavaLanguageVersion.of(")

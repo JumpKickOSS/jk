@@ -12,6 +12,7 @@ quiet = false
 verbose = false
 no-progress = false
 no-ansi = false         # ASCII-only; implies no-progress
+force-ansi = false      # emit ANSI even under TERM=dumb / CI
 no-osc = false
 notify = "auto"         # auto | always | never
 build-output = false    # live-plan process-output peek (Ctrl-O)
@@ -24,6 +25,7 @@ force = false
 | `color` | `--color` | `JK_COLOR`, `NO_COLOR` |
 | `no-progress` | `--no-progress` | `JK_NO_PROGRESS` |
 | `no-ansi` | `--no-ansi` | `JK_NO_ANSI` |
+| `force-ansi` | — | `JK_FORCE_ANSI` |
 | `no-osc` | `--no-osc` | `JK_NO_OSC` |
 | `notify` | `--notify` / `--no-notify` | `JK_NOTIFY` |
 | `build-output` | — | `JK_BUILD_OUTPUT` |
@@ -32,6 +34,11 @@ force = false
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
 elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never.
 `--no-progress` and `--no-osc` also suppress notifications.
+
+**`force-ansi`:** ANSI is otherwise suppressed by `TERM=dumb` or a truthy `CI`, whichever the
+host sets. `force-ansi` outranks both, so output can be pinned to ANSI where the environment
+would strip it. `no-ansi` still wins when both are set — turning ANSI off is the safer
+direction to honor.
 
 Under `--no-ansi`, chrome lines start with `jk: ` so they stay distinct from compiler/test
 output. Agents should use [machine output](machine-output.md), not scrape prose.
@@ -49,8 +56,11 @@ jk self setup-terminal --mode wedge     # powerline triangles only
 jk self setup-terminal --mode pill      # half-circle pill caps only
 ```
 
-`auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal; the wedge only
-on Terminal.app; nothing over SSH, under `CI`, or on an unrecognised terminal. Env
+`auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal; at least the
+wedge on Terminal.app and Alacritty, which draw the powerline triangles themselves
+(Alacritty upgrades to both axes when its font is a Nerd Font); on iTerm2, VS Code, and
+Zed it follows the configured font. Nothing over SSH, under `CI`, or on an
+unrecognised terminal. Env
 `JK_NERD_FONT` takes all five values; host-wide `NERD_FONT` takes booleans only.
 
 Contributor TUI rules: [TUI](../contributors/tui.md).
@@ -74,6 +84,17 @@ jobs = 0
 [Engine](engine.md), [MCP](mcp.md), [Web](web.md).
 
 ## Other env
+
+Every boolean jk reads — from a `JK_*` variable, from `CI`, or from a quoted value in
+`jk.toml` — accepts the same set, trimmed and case-insensitive:
+
+| true | false |
+|---|---|
+| `1` `true` `yes` `on` | `0` `false` `no` `off` |
+
+Anything else means "unset", so the next layer down decides; a malformed value is never a
+hard failure. There is one reader behind all of it, so `CI=yes` and `CI=1` mean exactly what
+`CI=true` means everywhere.
 
 Install / dirs: [Install](install.md). Format: [Format](format.md). Cache budgets:
 [Cache](cache.md). `.env` layering: `jk env` on the install page.

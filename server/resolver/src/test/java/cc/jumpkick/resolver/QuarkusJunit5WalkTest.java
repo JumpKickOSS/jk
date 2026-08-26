@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Diagnostic walk of the quarkus-junit5 graph (network). Prefer {@link QuarkusJunit5ResolveTest}. */
-@Tag("integration")
+@Tag("network")
 class QuarkusJunit5WalkTest {
     @Test
     void walk_with_highest(@TempDir Path tmp) throws Exception {

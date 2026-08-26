@@ -2,7 +2,13 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Interactivity;
+import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -34,9 +40,7 @@ public final class ShellCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     @Override
@@ -46,40 +50,43 @@ public final class ShellCommand implements CliCommand {
         // is a control pipe) the spawned shell would sit at its prompt forever and
         // waitFor() would block. Fail fast instead. Keyed on the controlling
         // terminal, so `jk shell` under `curl | bash` (piped stdin) still works.
-        if (!cc.jumpkick.cli.tui.Interactivity.canPrompt()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+        if (!Interactivity.canPrompt()) {
+            CommandWedge.printFail(
                     "Shell",
                     "requires an interactive terminal " + "(run it directly from your shell, not piped or scripted)");
             return Exit.CONFIG;
         }
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         Path dir = new GlobalOptions().workingDir();
-        var origPath = System.getenv().getOrDefault("PATH", "");
+        String livePath = System.getenv().getOrDefault("PATH", "");
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
-        var target = new JkEnv(registry, origPath).resolve(dir);
+        var target = new JkEnv(
+                        registry,
+                        livePath,
+                        JdkInventory.current(),
+                        System.getenv(JkEnv.JAVA_HOME),
+                        System.getenv(JkEnv.GRAALVM_HOME))
+                .resolve(dir);
         if (!target.isActive()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Shell",
-                    "no pinned JDK for " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
-                            + " (run `jk new` to scaffold, or stamp `jdk = \"<id>\"` in jk-lock.toml)");
+                    "no pinned JDK for " + PathDisplay.styledRaw(dir)
+                            + " (run `jk new` to scaffold, or stamp `[jdk]` in jk-lock.toml)");
             return Exit.CONFIG;
         }
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");
         ProcessBuilder pb = new ProcessBuilder(shell);
         pb.directory(dir.toFile());
-        cc.jumpkick.terminal.Terminals.restoreForChild();
-        pb.inheritIO();
         var env = pb.environment();
         target.vars().forEach(env::put);
-        // Strip well-known tool-options envs that would override jk's choice
-
-        env.remove("JAVA_TOOL_OPTIONS");
-        env.remove("_JAVA_OPTIONS");
-        env.remove("JDK_HOME");
+        // Strip the vars through which the surrounding shell could out-vote the pin we just applied
+        // (JDK_HOME above all — see PassthroughEnv). Null javaHome: JkEnv already swapped the JDK
+        // bin onto PATH, so prepending <jdk>/bin again here would double it.
+        PassthroughEnv.apply(env, null);
 
         var javaHome = target.vars().get(JkEnv.JAVA_HOME);
         CliOutput.out("Entering jk shell with JAVA_HOME=" + javaHome);
-        Process p = pb.start();
+        Process p = CliOutput.handOffTerminal(pb);
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();

@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Merges {@link ConfigSources} file layers and {@code JK_*} env into a {@link JkConfig}. CLI flags
@@ -23,6 +24,7 @@ public final class JkConfigLoader {
     private static final String ENV_VERBOSE = "JK_VERBOSE";
     private static final String ENV_NO_COLOR = "NO_COLOR";
     private static final String ENV_NO_ANSI = "JK_NO_ANSI";
+    private static final String ENV_FORCE_ANSI = "JK_FORCE_ANSI";
     private static final String ENV_NO_OSC = "JK_NO_OSC";
     private static final String ENV_NOTIFY = "JK_NOTIFY";
     private static final String ENV_BUILD_OUTPUT = "JK_BUILD_OUTPUT";
@@ -36,8 +38,8 @@ public final class JkConfigLoader {
     public static JkConfig load(Path startDir, boolean noConfig, Optional<Path> explicitConfigFile) throws IOException {
         // File layers, lowest precedence first, then the env layer on top.
         JkConfig out = JkConfig.empty();
-        for (Path layer :
-                ConfigSources.discover(startDir, noConfig, explicitConfigFile).layers()) {
+        for (Path layer : ConfigSources.discover(startDir, noConfig, explicitConfigFile.orElse(null))
+                .layers()) {
             out = out.mergedWith(loadTomlOrEmpty(layer));
         }
         // Env vars override files but are overridden by CLI flags (caller's job).
@@ -60,58 +62,65 @@ public final class JkConfigLoader {
                 "config.directory",
                 "config.force",
                 "config.no-ansi",
+                "config.force-ansi",
                 "config.no-osc",
                 "config.notify",
                 "config.build-output");
         return new JkConfig(
-                Optional.ofNullable(scan.get("config.color")).flatMap(JkConfig.ColorChoice::parse),
+                JkConfig.ColorChoice.parse(scan.get("config.color")).orElse(null),
                 scanBool(scan, "config.offline"),
-                Optional.empty(), // rebuild is a per-invocation CLI flag, not a config-file key
+                null, // rebuild is a per-invocation CLI flag, not a config-file key
                 scanBool(scan, "config.no-progress"),
                 scanBool(scan, "config.quiet"),
                 scanBool(scan, "config.verbose"),
-                Optional.ofNullable(scan.get("config.directory")).map(Paths::get),
+                Optional.ofNullable(scan.get("config.directory"))
+                        .map(Paths::get)
+                        .orElse(null),
                 scanBool(scan, "config.force"),
                 scanBool(scan, "config.no-ansi"),
+                scanBool(scan, "config.force-ansi"),
                 scanBool(scan, "config.no-osc"),
-                Optional.ofNullable(scan.get("config.notify")).flatMap(JkConfig.NotifyChoice::parse),
+                JkConfig.NotifyChoice.parse(scan.get("config.notify")).orElse(null),
                 scanBool(scan, "config.build-output"));
     }
 
-    /** A scanned TOML boolean: strictly {@code true}/{@code false}, anything else = absent. */
-    private static Optional<Boolean> scanBool(TomlScan scan, String key) {
-        String v = scan.get(key);
-        if ("true".equalsIgnoreCase(v)) return Optional.of(true);
-        if ("false".equalsIgnoreCase(v)) return Optional.of(false);
-        return Optional.empty();
+    /** A scanned {@code jk.toml} boolean, per the jk-wide truth set; anything else = unset. */
+    private static @Nullable Boolean scanBool(TomlScan scan, String key) {
+        return EnvValues.parseBool(scan.get(key)).orElse(null);
     }
 
     /** Build a config layer from environment variables. */
     static JkConfig loadFromEnv(Function<String, String> env) {
         // NO_COLOR (any non-empty value) → never; defers to JK_COLOR if also set.
-        Optional<JkConfig.ColorChoice> color = EnvValues.string(env, ENV_COLOR)
+        JkConfig.ColorChoice color = EnvValues.string(env, ENV_COLOR)
                 .flatMap(JkConfig.ColorChoice::parse)
                 .or(() -> {
                     String noColor = env.apply(ENV_NO_COLOR);
                     return (noColor != null && !noColor.isEmpty())
                             ? Optional.of(JkConfig.ColorChoice.NEVER)
                             : Optional.empty();
-                });
-        Optional<Boolean> force = EnvValues.bool(env, ENV_FORCE);
-        Optional<JkConfig.NotifyChoice> notify =
-                EnvValues.string(env, ENV_NOTIFY).flatMap(JkConfig.NotifyChoice::parse);
+                })
+                .orElse(null);
         return new JkConfig(
                 color,
-                EnvValues.bool(env, ENV_OFFLINE),
-                Optional.empty(), // rebuild is a per-invocation CLI flag, not env-driven
-                EnvValues.bool(env, ENV_NO_PROGRESS),
-                EnvValues.bool(env, ENV_QUIET),
-                EnvValues.bool(env, ENV_VERBOSE),
-                Optional.empty(), // directory isn't env-var-driven
-                force,
-                EnvValues.bool(env, ENV_NO_ANSI),
-                EnvValues.bool(env, ENV_NO_OSC),
-                notify,
-                EnvValues.bool(env, ENV_BUILD_OUTPUT));
+                envBool(env, ENV_OFFLINE),
+                null, // rebuild is a per-invocation CLI flag, not env-driven
+                envBool(env, ENV_NO_PROGRESS),
+                envBool(env, ENV_QUIET),
+                envBool(env, ENV_VERBOSE),
+                null, // directory isn't env-var-driven
+                envBool(env, ENV_FORCE),
+                envBool(env, ENV_NO_ANSI),
+                envBool(env, ENV_FORCE_ANSI),
+                envBool(env, ENV_NO_OSC),
+                EnvValues.string(env, ENV_NOTIFY)
+                        .flatMap(JkConfig.NotifyChoice::parse)
+                        .orElse(null),
+                envBool(env, ENV_BUILD_OUTPUT));
+    }
+
+    /** A {@code JK_*} boolean, per the jk-wide truth set; anything else = unset. */
+    private static @Nullable Boolean envBool(Function<String, String> env, String name) {
+        return EnvValues.bool(env, name).orElse(null);
     }
 }

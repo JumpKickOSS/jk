@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.journal.JkResultsMarkdown;
+import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -67,7 +68,7 @@ public final class McpResults {
         String dir = McpHistoryViews.str(rec, "dir");
         if (dir == null || dir.isBlank()) return null;
         try {
-            Path latest = Path.of(dir).resolve("target").resolve(JkResultsMarkdown.FILE_NAME);
+            Path latest = Path.of(dir).resolve(BuildLayout.TARGET).resolve(JkResultsMarkdown.FILE_NAME);
             return Files.isRegularFile(latest) ? latest : null;
         } catch (RuntimeException e) {
             return null;

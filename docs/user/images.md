@@ -13,6 +13,33 @@ base = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 # aot-cache = true
 ```
 
+## Private registries
+
+Both registry legs authenticate: the **base-image pull** (every mode — tarball, daemon and
+push) and the **push** itself. Credentials are looked up by the registry **host**, through the
+same chain `jk publish` uses:
+
+```bash
+echo "$GITHUB_TOKEN" | jk repo login ghcr.io --username "$GITHUB_USER"
+export JK_REPO_GHCR_IO_USERNAME=… JK_REPO_GHCR_IO_PASSWORD=…   # or JK_REPO_GHCR_IO_TOKEN
+```
+
+Order: environment → `jk repo login` store → `~/.m2/settings.xml` server of that id → forge
+token. Whatever that finds is tried first; an existing **`docker login`** is the fallback, so
+`~/.docker/config.json`, its `credHelpers`, and the well-known cloud helpers (`gcloud`,
+`ecr-login`, ACR) keep working with no jk-side setup.
+
+A token with no user name is sent as the password with a placeholder user name, which is what
+registries that issue opaque tokens expect. A registry that reads the user name — Docker Hub, a
+Harbor robot account — needs the `--username` form.
+
+Dockerfile mode (`image.docker-file`) is unaffected: it shells out to `docker build` /
+`docker push`, which read `~/.docker/config.json` themselves. It shares that file with Jib mode
+but not the jk-side sources above.
+
+A registry on `localhost` / `127.0.0.1` is reached over plain HTTP, the same default docker and
+podman apply.
+
 ## AOT cache in the image
 
 ```toml

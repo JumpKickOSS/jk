@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,21 +34,21 @@ final class TaskCatalog {
         }
     }
 
-    static Optional<Path> output(TaskDef task, cc.jumpkick.engine.protocol.ProjectInfo info) {
+    static Optional<Path> output(TaskDef task, ProjectInfo info) {
         if (task.primaryOutput == null || info == null) return Optional.empty();
         String path =
                 switch (task.name()) {
-                    case "compile-java",
-                            "assemble-classes",
-                            "copy-resources",
-                            "build-logic-after-compile",
-                            "build-logic-before-package" -> info.classesDir();
-                    case "compile-kotlin" -> info.kotlinClassesDir();
-                    case "compile-groovy" -> info.groovyClassesDir();
-                    case "compile-test" -> info.testClassesDir();
-                    case "run-tests" -> info.testResultsDir();
-                    case "package-jar" -> info.mainJarPath();
-                    case "package-assembly" -> info.assemblyJarPath();
+                    case TaskNames.COMPILE_JAVA,
+                            TaskNames.ASSEMBLE_CLASSES,
+                            TaskNames.COPY_RESOURCES,
+                            TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                            TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> info.classesDir();
+                    case TaskNames.COMPILE_KOTLIN -> info.kotlinClassesDir();
+                    case TaskNames.COMPILE_GROOVY -> info.groovyClassesDir();
+                    case TaskNames.COMPILE_TEST -> info.testClassesDir();
+                    case TaskNames.RUN_TESTS -> info.testResultsDir();
+                    case TaskNames.PACKAGE_JAR -> info.mainJarPath();
+                    case TaskNames.PACKAGE_ASSEMBLY -> info.assemblyJarPath();
                     default -> "";
                 };
         if (path == null || path.isBlank()) return Optional.empty();
@@ -57,17 +59,20 @@ final class TaskCatalog {
             def(TaskNames.PARSE_BUILD, "Parse jk.toml / workspace modules", null),
             def(TaskNames.RESOLVE_DEPS, "Resolve dependencies / lock materialize", null),
             def(TaskNames.ENSURE_JDK, "Ensure configured JDK is available", null),
-            def("build-logic-before-compile", "Project build-logic SPI (BEFORE_COMPILE)", null),
+            def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic SPI (BEFORE_COMPILE)", null),
             def(
                     TaskNames.COMPILE_JAVA,
                     "Compile main Java sources",
                     BuildLayout::classesDir,
-                    "compile-main",
+                    TaskNames.COMPILE_MAIN,
                     "compile"),
             def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
             def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),
             def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into classes/main", BuildLayout::classesDir),
-            def("build-logic-after-compile", "Project build-logic SPI (AFTER_COMPILE)", BuildLayout::classesDir),
+            def(
+                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                    "Project build-logic SPI (AFTER_COMPILE)",
+                    BuildLayout::classesDir),
             def(
                     TaskNames.COPY_RESOURCES,
                     "Copy main resources + AFTER_RESOURCES build-logic",
@@ -75,7 +80,10 @@ final class TaskCatalog {
                     "resources"),
             def(TaskNames.COMPILE_TEST, "Compile test sources", BuildLayout::testClassesDir),
             def(TaskNames.RUN_TESTS, "Run tests", BuildLayout::testResultsDir, "test"),
-            def("build-logic-before-package", "Project build-logic SPI (BEFORE_PACKAGE)", BuildLayout::classesDir),
+            def(
+                    TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
+                    "Project build-logic SPI (BEFORE_PACKAGE)",
+                    BuildLayout::classesDir),
             def(TaskNames.PACKAGE_JAR, "Package main jar", BuildLayout::mainJar, "package", "jar"),
             def(TaskNames.PACKAGE_ASSEMBLY, "Package assembly (fat) jar", BuildLayout::assemblyJar, "assembly"),
             def(TaskNames.WRITE_STAMP, "Write Java compile freshness stamp", null),
@@ -117,7 +125,6 @@ final class TaskCatalog {
         // Stage comes from the one taxonomy the whole system speaks: the catalog once
         // said `setup` where BuildStage says `resolve`, and hand-assigned stages drifted from
         // the inference (`write-stamp` is COMPILE, not package).
-        return new TaskDef(
-                name, cc.jumpkick.run.BuildStage.ofTaskName(name).wireName(), description, out, List.of(aliases));
+        return new TaskDef(name, BuildStage.ofTaskName(name).wireName(), description, out, List.of(aliases));
     }
 }

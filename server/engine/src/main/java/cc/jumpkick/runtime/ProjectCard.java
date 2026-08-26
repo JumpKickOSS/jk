@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.LockFreshness;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -46,7 +47,7 @@ public record ProjectCard(
         String jdk = null;
         List<Member> members = List.of();
         try {
-            JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
+            JkBuild build = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
             var p = build.project();
             coord = p.group() + ":" + p.name();
             description = p.description();
@@ -74,7 +75,8 @@ public record ProjectCard(
             Path moduleDir = root.resolve(rel).normalize();
             String coord = null;
             try {
-                var p = JkBuildParser.parseLocal(moduleDir.resolve("jk.toml")).project();
+                var p = JkBuildParser.parseLocal(moduleDir.resolve(ManifestPaths.MANIFEST))
+                        .project();
                 coord = p.group() + ":" + p.name();
             } catch (Exception ignored) {
                 // path-only member

@@ -5,15 +5,19 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.task.Bound;
-import cc.jumpkick.task.CacheTier;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -64,7 +68,7 @@ public final class CacheInventoryOps {
 
         Cas cas = new Cas(cacheRoot);
         Set<String> seenShas = new HashSet<>();
-        Path keysDir = cacheRoot.resolve("actions").resolve("keys");
+        Path keysDir = ActionTree.KEYS.under(CacheTree.ACTIONS.under(cacheRoot));
         if (Files.isDirectory(keysDir)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(keysDir)) {
                 for (Path keyFile : stream) {
@@ -109,14 +113,15 @@ public final class CacheInventoryOps {
             }
         }
 
-        DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
+        DiskUsage.Stats stamps = DiskUsage.of(CacheTree.FORMAT_STAMPS.under(cacheRoot));
         // Total is the action cache — the exact bytes the budget bounds. Every other tier under
         // this root is bounded on its own terms (see CacheTier), so folding them in would measure
         // one tier's usage against another tier's line; they are reported beside the total as
         // `stamps` and `derived`. Zinc analysis sits under actions/ and comes out for the same
         // reason: its own budget, its own row.
-        DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
-        DiskUsage.Stats incremental = incrementalStats(cacheRoot.resolve("actions"));
+        DiskUsage.Stats[] budgeted =
+                DiskUsage.exclusive(CacheTree.ACTIONS.under(cacheRoot), CacheTree.CACHE_CAS.under(cacheRoot));
+        DiskUsage.Stats incremental = incrementalStats(CacheTree.ACTIONS.under(cacheRoot));
         DiskUsage.Stats derived = derivedStats(cacheRoot);
         List<String> stats = List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
@@ -138,16 +143,15 @@ public final class CacheInventoryOps {
 
     /**
      * The tiers with no row of their own: small derived caches bounded by count or supersession
-     * rather than by the action budget. Read off {@link CacheTier} so the report cannot fall
+     * rather than by the action budget. Read off {@link CacheTree} so the report cannot fall
      * behind the table.
      */
     private static DiskUsage.Stats derivedStats(Path cacheRoot) throws IOException {
         long files = 0;
         long bytes = 0;
-        for (CacheTier tier : CacheTier.values()) {
-            if (tier == CacheTier.ACTIONS || tier == CacheTier.CACHE_CAS || tier == CacheTier.FORMAT_STAMPS) continue;
-            if (tier.bound().kind() == Bound.Kind.UNBOUNDED) continue;
-            DiskUsage.Stats stats = DiskUsage.of(cacheRoot.resolve(tier.entry()));
+        for (CacheTree tier : CacheTree.cached()) {
+            if (tier == CacheTree.ACTIONS || tier == CacheTree.CACHE_CAS || tier == CacheTree.FORMAT_STAMPS) continue;
+            DiskUsage.Stats stats = DiskUsage.of(tier.under(cacheRoot));
             files += stats.files();
             bytes += stats.bytes();
         }
@@ -158,8 +162,8 @@ public final class CacheInventoryOps {
     private static DiskUsage.Stats incrementalStats(Path actionsDir) throws IOException {
         long files = 0;
         long bytes = 0;
-        for (String name : List.of("incremental-java", "incremental-kotlin")) {
-            DiskUsage.Stats tree = DiskUsage.of(actionsDir.resolve(name));
+        for (Path dir : ActionTree.incrementalUnder(actionsDir)) {
+            DiskUsage.Stats tree = DiskUsage.of(dir);
             files += tree.files();
             bytes += tree.bytes();
         }
@@ -216,7 +220,7 @@ public final class CacheInventoryOps {
         long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
         DiskUsage.Stats mavenLocal;
         try {
-            mavenLocal = DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
+            mavenLocal = DiskUsage.of(M2Dirs.localRepository());
         } catch (Exception e) {
             mavenLocal = new DiskUsage.Stats(0, 0);
         }
@@ -256,7 +260,7 @@ public final class CacheInventoryOps {
             try {
                 coord = Coordinate.parse(spec);
             } catch (IllegalArgumentException e) {
-                return CacheInventoryAck.error(cc.jumpkick.util.Errors.text(e));
+                return CacheInventoryAck.error(Errors.text(e));
             }
             String relPath = MavenLayout.artifactPath(coord);
             List<String> hitRepos = new ArrayList<>();
@@ -275,33 +279,42 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.repoRefresh(lines, evicted, missed);
     }
 
+    /**
+     * {@code jk storage nuke} / the store leg of {@code jk self nuke --data}: the store root goes,
+     * not only its children. Both commands print that path under <strong>Path to Delete</strong>,
+     * and a row in a confirm table has to name something that is actually gone afterwards —
+     * JK-2455 made that true for the cache and state roots and left this one emptied.
+     *
+     * <p>Nothing guarded lives under the store. Of {@code SelfNukeCommand.Guards}, only
+     * {@code <store>/lib} (installed tools) is a child, and this pass already deletes it; the two
+     * the nuke really keeps — {@code <data>/lib}, the live engine jar, and the forge/repo
+     * credential stores — are siblings of the store, under the data root, which is not a row.
+     *
+     * <p>Removing the directory is safe for the same reason a fresh install is: every writer under
+     * the store creates its own subtree ({@code sha256/ab/…}, {@code repos/<name>/…}), which
+     * creates the root along with it.
+     */
     private static CacheInventoryAck wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         if (storeRoot == null || !Files.isDirectory(storeRoot)) return CacheInventoryAck.wipe(0, 0);
         // Unique-inode bytes (POSIX ino/dev or Windows fileKey) so leftover hard links under
         // sha256/ and repos/ are not counted twice.
         DiskUsage.Stats stats = DiskUsage.of(storeRoot);
-        if (!dryRun) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(storeRoot)) {
-                for (Path child : stream) {
-                    PathUtil.deleteRecursivelyOrThrow(child);
-                }
-            }
-        }
+        if (!dryRun) PathUtil.deleteRecursivelyOrThrow(storeRoot);
         return CacheInventoryAck.wipe(stats.files(), stats.bytes());
     }
 
     private static List<String> repoNames(Path reposRoot) {
         if (!Files.isDirectory(reposRoot)) {
-            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+            return List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL);
         }
         try (var s = Files.list(reposRoot)) {
             List<String> names = s.filter(Files::isDirectory)
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
-            return names.isEmpty() ? List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL) : names;
+            return names.isEmpty() ? List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL) : names;
         } catch (IOException e) {
-            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+            return List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL);
         }
     }
 

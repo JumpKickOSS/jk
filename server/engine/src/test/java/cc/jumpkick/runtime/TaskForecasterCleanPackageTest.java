@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -47,10 +48,8 @@ class TaskForecasterCleanPackageTest {
         // Wipe classes (jk clean).
         deleteTree(classes);
 
-        JkBuild project = JkBuild.builder(JkBuild.Project.builder("g", "lib", "1.0")
-                        .jdkMajor(25)
-                        .java(21)
-                        .build())
+        JkBuild project = JkBuild.builder(
+                        Project.builder("g", "lib", "1.0").jdkMajor(25).java(21).build())
                 .build();
         BuildLayout layout = BuildLayout.of(module, project);
         // Point layout classes at our wiped tree by using traditional? SIMPLE classes under target/
@@ -58,7 +57,7 @@ class TaskForecasterCleanPackageTest {
         // The helper reconstructs against layout.classesDir(); pin that it is the tree we
         // stored the compile record for, so the equality below cannot silently test nothing.
         assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
-        String tok = TaskForecaster.classesTokenForPackage(module, true, layout, project, ac, "key-compile", null);
+        String tok = PackagingKeys.classesTokenForPackage(module, true, layout, project, ac, "key-compile", null);
         // Reconstruct must equal the pre-clean live fingerprint (class + resource).
         assertThat(tok).isEqualTo(live);
     }
@@ -117,17 +116,15 @@ class TaskForecasterCleanPackageTest {
         // Revert to v1 and jk clean: the current compile key is v1's again.
         deleteTree(classes);
 
-        JkBuild project = JkBuild.builder(JkBuild.Project.builder("g", "lib", "1.0")
-                        .jdkMajor(25)
-                        .java(21)
-                        .build())
+        JkBuild project = JkBuild.builder(
+                        Project.builder("g", "lib", "1.0").jdkMajor(25).java(21).build())
                 .build();
         BuildLayout layout = BuildLayout.of(module, project);
         assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
 
         // Reconstruction keyed by the CURRENT (v1) key must produce v1's fingerprint —
         // the live build restores v1 and computes v1's package key, not v2's.
-        String tok = TaskForecaster.classesTokenForPackage(module, true, layout, project, ac, "key-v1", null);
+        String tok = PackagingKeys.classesTokenForPackage(module, true, layout, project, ac, "key-v1", null);
         assertThat(tok).isEqualTo(v1Live);
     }
 

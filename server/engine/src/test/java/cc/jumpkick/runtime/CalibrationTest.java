@@ -5,13 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.model.JkVersion;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-/** Host calibration: the probe-derived anchor, TOML round-trip, staleness, and refine fold. */
+/** Host calibration model: the probe-derived anchor, staleness policy, and refine fold. */
 class CalibrationTest {
 
     private static final long DAY = 86_400_000L;
@@ -38,24 +35,6 @@ class CalibrationTest {
     }
 
     @Test
-    void round_trips_through_toml(@TempDir Path dir) throws Exception {
-        Path f = dir.resolve("calibration.toml");
-        Calibration written = Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW);
-        Calibration.writeTo(f, written);
-        Calibration read = Calibration.readFrom(f, NOW);
-        assertThat(read.present()).isTrue();
-        assertThat(read.measured()).isTrue();
-        assertThat(read.msPerWeight()).isCloseTo(42.5, within(1e-3));
-    }
-
-    @Test
-    void missing_file_is_absent_and_falls_back_to_the_constant() {
-        Calibration absent = Calibration.readFrom(Path.of("/no/such/calibration.toml"), NOW);
-        assertThat(absent.present()).isFalse();
-        assertThat(absent.msPerWeight()).isEqualTo((double) EffortWeights.MS_PER_WEIGHT);
-    }
-
-    @Test
     void a_different_jk_version_is_stale() {
         assertThat(Calibration.stale("0.0.0-OLD", NOW, NOW)).isTrue();
         assertThat(Calibration.stale(JkVersion.VERSION, NOW, NOW)).isFalse();
@@ -66,81 +45,6 @@ class CalibrationTest {
         long updated = NOW - 61 * DAY; // TTL is ~60 days
         assertThat(Calibration.stale(JkVersion.VERSION, updated, NOW)).isTrue();
         assertThat(Calibration.stale(JkVersion.VERSION, NOW - 30 * DAY, NOW)).isFalse();
-    }
-
-    @Test
-    void stale_file_reads_as_absent(@TempDir Path dir) throws Exception {
-        Path f = dir.resolve("calibration.toml");
-        Calibration.writeTo(f, Calibration.testInstance(42.5, true, "0.0.0-OLD", NOW));
-        assertThat(Calibration.readFrom(f, NOW).present()).isFalse();
-    }
-
-    @Test
-    void language_buckets_seed_compile_priors_when_mean_is_cold(@TempDir Path dir) throws Exception {
-        Path f = dir.resolve("host-metrics.toml");
-        Files.writeString(f, """
-                # host-metrics
-                [calibration]
-                schema = 4
-                ms-per-weight = 150
-                measured = true
-                jk-version = "%s"
-                updated = %d
-
-                [mean.by_language.java]
-                fixture_wall_ms = 2000
-                compile_per_source_ms = 22
-                [mean.by_language.kotlin]
-                fixture_wall_ms = 4000
-                compile_per_source_ms = 40
-                """.formatted(JkVersion.VERSION, NOW));
-        Calibration read = Calibration.readFrom(f, NOW);
-        assertThat(read.compilePerSourceMs("compile-java")).isEqualTo(22L);
-        assertThat(read.compilePerSourceMs("compile-kotlin")).isEqualTo(40L);
-    }
-
-    @Test
-    void language_bucket_poison_values_are_rejected(@TempDir Path dir) throws Exception {
-        Path f = dir.resolve("host-metrics.toml");
-        Files.writeString(f, """
-                [calibration]
-                schema = 4
-                ms-per-weight = 150
-                measured = true
-                jk-version = "%s"
-                updated = %d
-
-                [mean.by_language.java]
-                compile_per_source_ms = 5291
-                """.formatted(JkVersion.VERSION, NOW));
-        Calibration read = Calibration.readFrom(f, NOW);
-        // Falls back to product baseline × scale (not the multi-second poison).
-        assertThat(read.compilePerSourceMs("compile-java")).isLessThan(500L);
-    }
-
-    @Test
-    void language_bucket_type_mismatch_never_poisons_the_whole_read(@TempDir Path dir) throws Exception {
-        Path f = dir.resolve("host-metrics.toml");
-        // Float and string values in by_language buckets (tomlj getLong throws on both):
-        // the bad bucket is skipped, the float bucket folds, and calibration stays present.
-        Files.writeString(f, """
-                [calibration]
-                schema = 4
-                ms-per-weight = 150
-                measured = true
-                jk-version = "%s"
-                updated = %d
-
-                [mean.by_language.java]
-                compile_per_source_ms = 22.5
-                [mean.by_language.kotlin]
-                compile_per_source_ms = "oops"
-                """.formatted(JkVersion.VERSION, NOW));
-        Calibration read = Calibration.readFrom(f, NOW);
-        assertThat(read.present()).isTrue();
-        assertThat(read.measured()).isTrue();
-        assertThat(read.compilePerSourceMs("compile-java")).isEqualTo(23L); // 22.5 rounded up
-        assertThat(read.compilePerSourceMs("compile-kotlin")).isLessThan(500L); // baseline fallback
     }
 
     @Test
@@ -156,26 +60,6 @@ class CalibrationTest {
         Calibration measured = Calibration.testInstance(100.0, true, JkVersion.VERSION, NOW);
         Calibration refined = Calibration.foldRefine(measured, 200.0, NOW + 1);
         assertThat(refined.msPerWeight()).isCloseTo(140.0, within(1e-6)); // 0.4*200 + 0.6*100
-    }
-
-    @Test
-    void learned_rates_round_trip_toml(@TempDir Path dir) throws Exception {
-        HostLearnedRates learned = new HostLearnedRates()
-                .withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 42, 0)
-                .withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 48, 0);
-        Calibration written = Calibration.testInstance(100.0, true, JkVersion.VERSION, NOW, learned, 200, 15, 20);
-        Path f = dir.resolve("calibration.toml");
-        Calibration.writeTo(f, written);
-        Calibration read = Calibration.readFrom(f, NOW);
-        assertThat(read.present()).isTrue();
-        // Scalars only on disk — trimmed mean persists as a single prior sample.
-        assertThat(read.learned().sampleCount(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
-                .isEqualTo(1);
-        assertThat(read.learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
-                .hasValueCloseTo(45.0, within(1e-6));
-        assertThat(read.probeTestMethodMs()).isEqualTo(15);
-        assertThat(read.probeTestSuiteStartupMs()).isEqualTo(200);
-        assertThat(read.testMethodMs()).isEqualTo(45); // learned wins over probe
     }
 
     @Test

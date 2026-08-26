@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class OutputWindowTest {
@@ -59,24 +61,23 @@ class OutputWindowTest {
     void no_ansi_plan_animate_prints_plainly_hidden_or_visible() {
         // JK-2091: --no-ansi TTY animate mode has no live region — the ANSI path leaked raw
         // escapes when the peek was visible and swallowed tool output entirely when hidden.
-        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
-        cc.jumpkick.config.SessionContext.runWhere(
-                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
-                    CliOutput.beginCommand(false);
-                    var buf = new ByteArrayOutputStream();
-                    var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
-                    cm.name = "Build";
-                    cm.startNanos = System.nanoTime();
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
+        SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
+            CliOutput.beginCommand(false);
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
 
-                    cm.writeAbove("hidden-tool-line");
-                    cm.outputWindow().show();
-                    cm.writeAbove("visible-tool-line");
+            cm.writeAbove("hidden-tool-line");
+            cm.outputWindow().show();
+            cm.writeAbove("visible-tool-line");
 
-                    String out = buf.toString(StandardCharsets.UTF_8);
-                    assertThat(out).contains("hidden-tool-line").contains("visible-tool-line");
-                    assertThat(out).doesNotContain("\u001b");
-                    cm.close();
-                });
+            String out = buf.toString(StandardCharsets.UTF_8);
+            assertThat(out).contains("hidden-tool-line").contains("visible-tool-line");
+            assertThat(out).doesNotContain("\u001b");
+            cm.close();
+        });
     }
 
     @Test
@@ -220,34 +221,23 @@ class OutputWindowTest {
     @Test
     void plan_opens_peek_when_config_build_output_true() {
         CliOutput.beginCommand(false);
-        var prev = cc.jumpkick.config.SessionContext.current();
-        try {
-            cc.jumpkick.config.SessionContext.installConfig(
-                    cc.jumpkick.config.JkConfig.empty().withBuildOutput(Optional.of(true)));
-            var buf = new ByteArrayOutputStream();
-            var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
-            assertThat(cm.outputWindow().visible()).isTrue();
-            List<String> lines = cm.renderBuildPlanLines(80, 0);
-            assertThat(TestAnsi.strip(lines.get(0))).contains("output");
-            cm.close();
-        } finally {
-            cc.jumpkick.config.SessionContext.install(prev);
-        }
+        SessionContext.installConfig(JkConfig.empty().withBuildOutput(true));
+        var buf = new ByteArrayOutputStream();
+        var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        assertThat(cm.outputWindow().visible()).isTrue();
+        List<String> lines = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(lines.get(0))).contains("output");
+        cm.close();
     }
 
     @Test
     void plan_keeps_peek_closed_by_default() {
         CliOutput.beginCommand(false);
-        var prev = cc.jumpkick.config.SessionContext.current();
-        try {
-            cc.jumpkick.config.SessionContext.installConfig(cc.jumpkick.config.JkConfig.empty());
-            var buf = new ByteArrayOutputStream();
-            var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
-            assertThat(cm.outputWindow().visible()).isFalse();
-            cm.close();
-        } finally {
-            cc.jumpkick.config.SessionContext.install(prev);
-        }
+        SessionContext.installConfig(JkConfig.empty());
+        var buf = new ByteArrayOutputStream();
+        var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        assertThat(cm.outputWindow().visible()).isFalse();
+        cm.close();
     }
 
     @Test
@@ -341,7 +331,7 @@ class OutputWindowTest {
     void rule_line_is_full_width_with_centered_caption() {
         int cols = 40;
         String plain = TestAnsi.strip(OutputWindow.ruleLine(cols));
-        int width = JkManagerColor.rowColumnBudget(cols);
+        int width = RenderContext.rowColumnBudget(cols);
         assertThat(plain).hasSize(width);
         assertThat(plain).contains("\u2191 output \u2191");
         assertThat(plain).isEqualTo(OutputWindow.centeredRuleBody(width));
@@ -350,15 +340,48 @@ class OutputWindowTest {
         int right = plain.length() - plain.lastIndexOf(' ') - 1;
         assertThat(Math.abs(left - right)).isLessThanOrEqualTo(1);
         // Narrow terminal: still fits width without throwing.
-        assertThat(TestAnsi.strip(OutputWindow.ruleLine(8))).hasSize(JkManagerColor.rowColumnBudget(8));
+        assertThat(TestAnsi.strip(OutputWindow.ruleLine(8))).hasSize(RenderContext.rowColumnBudget(8));
     }
 
     @Test
     void force_show_on_step_failure_excludes_run_tests() {
-        assertThat(JkManager.forceShowOnStepFailure("native-image", "native")).isTrue();
-        assertThat(JkManager.forceShowOnStepFailure("compile-main", "compile")).isTrue();
-        assertThat(JkManager.forceShowOnStepFailure("run-tests", "test")).isFalse();
-        assertThat(JkManager.forceShowOnStepFailure("run-tests-fork", "test")).isFalse();
+        assertThat(JkManager.forceShowOnStepFailure("native-image")).isTrue();
+        // compile-test is group Test too and must force-open — step identity decides, not group.
+        assertThat(JkManager.forceShowOnStepFailure("compile-main")).isTrue();
+        assertThat(JkManager.forceShowOnStepFailure("compile-test")).isTrue();
+        assertThat(JkManager.forceShowOnStepFailure(null)).isTrue();
+        assertThat(JkManager.forceShowOnStepFailure("run-tests")).isFalse();
+        assertThat(JkManager.forceShowOnStepFailure("run-tests-fork")).isFalse();
+    }
+
+    @Test
+    void peek_open_lifts_the_live_region_before_it_prints_the_pane() {
+        // JK-2434: the cursor lift is this file's most fragile invariant and it used to be four
+        // copy-pasted sequences (JK-2092 / JK-2106 / JK-2109 were each a bug in one of them). It is
+        // one method now, so pin what it must do: the pane paint starts by climbing over the live
+        // region, never by appending under it — appending leaves every later repaint one region
+        // too low and the wipe erases finished output instead.
+        CliOutput.beginCommand(false);
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.name = "Build";
+        cm.height = 30;
+        cm.startNanos = System.nanoTime();
+        cm.addTask("g:a", "compile-main");
+        cm.stepRunning("g:a", "compile-main");
+        cm.tick(); // paint a live region there is something to climb over
+        assertThat(cm.lastLines).isNotEmpty();
+        cm.writeAbove("native-image: error"); // ring only while the pane is hidden
+        int painted = cm.lastLines.size(); // openPeekPaint replaces lastLines — sample it first
+        buf.reset();
+
+        cm.outputWindow().show();
+        cm.view.openPeekPaint();
+
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out).startsWith("\u001b[" + painted + "A");
+        assertThat(TestAnsi.strip(out)).contains("native-image: error");
+        cm.close();
     }
 
     @Test

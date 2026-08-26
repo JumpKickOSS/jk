@@ -5,6 +5,7 @@ import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.HttpLive;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.runtime.ProjectIds;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,7 +91,7 @@ public final class LiveRuns {
             m.put("serverNow", serverNow);
         }
         if (run.dir() != null && !run.dir().isBlank()) {
-            m.put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(run.dir()));
+            m.put("projectId", ProjectIds.idOf(run.dir()));
         }
         m.put("running", true);
         if (run.buildNumber() > 0) m.put("buildNumber", run.buildNumber());

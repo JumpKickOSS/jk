@@ -1,19 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSelect;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.NativePreflight;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -63,11 +73,11 @@ public final class NativeVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+    public String decodeJob(JobSpec spec) {
         Path entryDir = Path.of(spec.dir());
         JkBuild entry;
         try {
-            entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
             throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
         }
@@ -84,7 +94,7 @@ public final class NativeVerb implements HostedVerb {
         } catch (IOException e) {
             throw new IllegalArgumentException("cannot load workspace modules: " + e.getMessage());
         }
-        Set<Path> selected = cc.jumpkick.engine.jobs.JobSelect.selected(entryDir, entry, spec.modules());
+        Set<Path> selected = JobSelect.selected(entryDir, entry, spec.modules());
         Set<Path> targets = nativeEligibleTargets(allModules, selected);
         if (targets.isEmpty()) {
             // Never "image everything" as a fallback — an unrequested multi-minute native-image
@@ -96,10 +106,10 @@ public final class NativeVerb implements HostedVerb {
         for (Path d : targets) graalHomes.put(d.toString(), graal.toString());
         // The binary is the job's deliverable; the dashboard/agent surface has no test toggle.
         return ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.nativeRequest(
+                ProtoJobs.nativeRequest(
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.cache().toString(),
-                        cc.jumpkick.util.JkDirs.jdks().toString(),
+                        JkDirs.cache().toString(),
+                        JkDirs.jdks().toString(),
                         null,
                         true,
                         false,
@@ -115,9 +125,9 @@ public final class NativeVerb implements HostedVerb {
         if (!entry.isWorkspaceRoot()) {
             return Map.of(entryDir, entry);
         }
-        Map<Path, JkBuild> modules = cc.jumpkick.config.WorkspaceLoader.loadModules(entryDir, entry);
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(entryDir, entry);
         Map<Path, JkBuild> ordered = new LinkedHashMap<>();
-        for (Path dir : cc.jumpkick.runtime.BuildGraph.orderModules(modules)) ordered.put(dir, modules.get(dir));
+        for (Path dir : BuildGraph.orderModules(modules)) ordered.put(dir, modules.get(dir));
         return ordered;
     }
 
@@ -138,15 +148,13 @@ public final class NativeVerb implements HostedVerb {
         Set<Path> targets = new LinkedHashSet<>();
         for (var e : allModules.entrySet()) {
             Path dir = e.getKey();
-            boolean inSelection =
-                    selected == null || selected.contains(cc.jumpkick.runtime.BuildGraph.canonicalPath(dir));
+            boolean inSelection = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
             if (!inSelection) continue;
             // enabled = false is an explicit opt-out — never re-enters via the fallback.
             if (e.getValue().nativeExplicitlyDisabled()) continue;
             boolean eligible = e.getValue().nativeImage();
             if (!eligible && !anyNativeTable) {
-                eligible = cc.jumpkick.layout.NativePreflight.resolveMain(dir, null)
-                        instanceof cc.jumpkick.layout.NativePreflight.Main.Unique;
+                eligible = NativePreflight.resolveMain(dir, null) instanceof NativePreflight.Main.Unique;
             }
             if (eligible) targets.add(dir);
         }
@@ -154,19 +162,19 @@ public final class NativeVerb implements HostedVerb {
     }
 
     private static @org.jspecify.annotations.Nullable Path graalHome() {
-        String g = System.getenv("GRAALVM_HOME");
+        // Request env, then this process's — never the daemon's alone (JK-1021).
+        String g = BuildEnv.ambient().apply("GRAALVM_HOME");
         if (g == null || g.isBlank()) return null;
         Path p = Path.of(g);
         return Files.isDirectory(p) ? p : null;
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
             Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             String mainClass = Jsonl.str(requestLine, "mainClass");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
@@ -177,16 +185,16 @@ public final class NativeVerb implements HostedVerb {
             List<String> moduleTokens = Jsonl.strArray(requestLine, "moduleDirs");
             Set<Path> selected = new LinkedHashSet<>();
             if (!moduleTokens.isEmpty()) {
-                JkBuild entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                var hit = cc.jumpkick.engine.jobs.JobSelect.resolveTokens(entryDir, entry, moduleTokens);
+                JkBuild entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                var hit = JobSelect.resolveTokens(entryDir, entry, moduleTokens);
                 if (hit != null && !hit.ok()) {
                     host.sendQuiet(
                             writer, host.requestFailedLine(null, new IllegalArgumentException(hit.errorMessage())));
-                    return cc.jumpkick.engine.jobs.JobOutcome.failed(2);
+                    return JobOutcome.failed(2);
                 }
                 if (hit != null) {
                     for (Path p : hit.moduleDirs()) {
-                        selected.add(cc.jumpkick.runtime.BuildGraph.canonicalPath(p));
+                        selected.add(BuildGraph.canonicalPath(p));
                     }
                 } else {
                     for (String d : moduleTokens) {
@@ -210,23 +218,10 @@ public final class NativeVerb implements HostedVerb {
             WorkspaceResult result = SessionContext.where(
                     session,
                     () -> BuildService.buildWorkspace(req, host.workspaceListener(writer, entryDir.toString())));
-            host.releaseExclusiveSlot();
-            boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-            cc.jumpkick.engine.jobs.JobOutcome outcome =
-                    cc.jumpkick.engine.jobs.JobOutcome.of(result.success() && !cancelled, result.exitCode());
-            if (rid > 0) {
-                if (result.success() && !cancelled) host.finishProgress(rid);
-                host.emitWorkspaceProgress(rid, writer, true);
-            }
-            host.flushTimeline(rid, writer);
-            host.sendQuiet(
-                    writer,
-                    ProtoEvents.workspaceFinish(
-                            result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
-            return outcome;
+            return WorkspaceTerminal.finish(host, writer, entryDir.toString(), result, cancelToken.cancelled());
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(Jsonl.str(requestLine, "dir"), e));
-            return null;
+            return JobOutcome.failed(Exit.FAILURE);
         }
     }
 }

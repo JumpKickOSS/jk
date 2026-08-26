@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.publish.testkit.GpgTestFixture;
+import cc.jumpkick.testing.SysProps;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -15,39 +16,52 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
+@SysProps.TempRoots("jk.m2.local")
 class PublishCommandTest {
-
-    // These tests drive the real fetch plan against a mock Maven server; fetched
-    // artifacts mirror into the Maven local repo. Point that at a throwaway dir (see
-    // M2Dirs) so stub artifacts never overwrite the developer's real ~/.m2 — the
-    // fixture reuses real coordinates (junit-jupiter et al).
-    @BeforeAll
-    static void isolateM2(@TempDir Path m2) {
-        System.setProperty("jk.m2.local", m2.toString());
-    }
 
     private HttpServer server;
     private URI base;
     private final Map<String, byte[]> received = new HashMap<>();
+    /** When set, the metadata GET answers this status — the transient-failure shape (JK-2394). */
+    private volatile int metadataGetStatus = 0;
 
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
-            if ("PUT".equals(exchange.getRequestMethod())) {
-                received.put(
-                        exchange.getRequestURI().getPath(),
-                        exchange.getRequestBody().readAllBytes());
-                exchange.sendResponseHeaders(201, -1);
-            } else {
-                exchange.sendResponseHeaders(405, -1);
+            String path = exchange.getRequestURI().getPath();
+            switch (exchange.getRequestMethod()) {
+                case "PUT" -> {
+                    received.put(path, exchange.getRequestBody().readAllBytes());
+                    exchange.sendResponseHeaders(201, -1);
+                }
+                // A real repository serves what it stores. This used to answer 405 to every GET,
+                // which meant the metadata read always failed — publish swallowed that and wrote a
+                // single-version document, so the suite could not see the version list being
+                // truncated (JK-2394). Serving GET is what makes these tests exercise the merge.
+                case "GET", "HEAD" -> {
+                    if (metadataGetStatus != 0 && path.endsWith("maven-metadata.xml")) {
+                        exchange.sendResponseHeaders(metadataGetStatus, -1);
+                        exchange.close();
+                        return;
+                    }
+                    byte[] body = received.get(path);
+                    if (body == null) {
+                        exchange.sendResponseHeaders(404, -1);
+                    } else {
+                        exchange.sendResponseHeaders(200, body.length);
+                        if (!"HEAD".equals(exchange.getRequestMethod())) {
+                            exchange.getResponseBody().write(body);
+                        }
+                    }
+                }
+                default -> exchange.sendResponseHeaders(405, -1);
             }
             exchange.close();
         });
@@ -277,5 +291,71 @@ class PublishCommandTest {
     private static void writeSource(Path path, String text) throws IOException {
         Files.createDirectories(path.getParent());
         Files.writeString(path, text);
+    }
+    /**
+     * The version list must accumulate across publishes. Before JK-2394 a failed metadata read was
+     * swallowed and replaced with a single-version document, so publishing 0.2.0 erased 0.1.0 — and
+     * this suite could not see it, because its server answered 405 to every GET and so every read
+     * "failed". This is the end-to-end assertion that would have caught it.
+     */
+    @Test
+    void publishing_a_second_version_keeps_the_first_in_the_metadata(@TempDir Path tempDir) throws Exception {
+        String manifest = """
+                group    = "com.example"
+                name     = "widget"
+                version  = "%s"
+                jdk      = 25
+                """;
+
+        Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.1.0"));
+        writeJar(tempDir.resolve("target/lib/widget-0.1.0.jar"));
+        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+                .isEqualTo(0);
+
+        Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.2.0"));
+        writeJar(tempDir.resolve("target/lib/widget-0.2.0.jar"));
+        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+                .isEqualTo(0);
+
+        String metadata =
+                new String(received.get("/repo/com/example/widget/maven-metadata.xml"), StandardCharsets.UTF_8);
+        assertThat(metadata).contains("<version>0.1.0</version>").contains("<version>0.2.0</version>");
+    }
+
+    /**
+     * A transient failure reading the existing metadata must not replace the version list with a
+     * single-version document. This is the end-to-end guard for JK-2394: the artifacts are already
+     * uploaded at that point, so silently truncating is unrecoverable on a real repository.
+     *
+     * <p>A 403 rather than a 503 on purpose — `Http` never retries it, and a write-only deploy
+     * credential is the likeliest way a real publish hits this, which would truncate on *every* run.
+     */
+    @Test
+    void a_failed_metadata_read_does_not_truncate_the_version_list(@TempDir Path tempDir) throws Exception {
+        String manifest = """
+                group    = "com.example"
+                name     = "widget"
+                version  = "%s"
+                jdk      = 25
+                """;
+
+        Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.1.0"));
+        writeJar(tempDir.resolve("target/lib/widget-0.1.0.jar"));
+        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+                .isEqualTo(0);
+        byte[] afterFirst = received.get("/repo/com/example/widget/maven-metadata.xml");
+        assertThat(new String(afterFirst, StandardCharsets.UTF_8)).contains("<version>0.1.0</version>");
+
+        metadataGetStatus = 403;
+        Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.2.0"));
+        writeJar(tempDir.resolve("target/lib/widget-0.2.0.jar"));
+
+        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+                .as("publish must fail loudly rather than truncate the version list")
+                .isNotEqualTo(0);
+
+        assertThat(new String(received.get("/repo/com/example/widget/maven-metadata.xml"), StandardCharsets.UTF_8))
+                .as("the stored version list must still hold 0.1.0")
+                .contains("<version>0.1.0</version>");
     }
 }

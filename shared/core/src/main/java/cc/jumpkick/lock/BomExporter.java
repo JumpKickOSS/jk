@@ -71,8 +71,8 @@ public final class BomExporter {
                 byModule.put(a.name(), a);
                 continue;
             }
-            boolean prevMain = prev.scopes().contains(cc.jumpkick.model.Scope.MAIN);
-            boolean curMain = a.scopes().contains(cc.jumpkick.model.Scope.MAIN);
+            boolean prevMain = prev.scopes().contains(Scope.MAIN);
+            boolean curMain = a.scopes().contains(Scope.MAIN);
             if (curMain && !prevMain) byModule.put(a.name(), a);
             else if (curMain == prevMain) byModule.put(a.name(), a); // sorted ascending — keep higher
         }

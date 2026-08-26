@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.test.TestWorkers;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
 
 /**
@@ -179,7 +186,7 @@ public final class BuildEta {
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
         // Same jobs budget the live runner uses for -w auto (not raw availableProcessors alone).
-        int jobsBudget = Math.max(1, cc.jumpkick.test.TestWorkers.effectiveJobs());
+        int jobsBudget = Math.max(1, TestWorkers.effectiveJobs());
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
         for (TaskForecast.Module m : plan.modules()) {
             if (!distrust && !m.dirty()) continue;
@@ -215,8 +222,8 @@ public final class BuildEta {
                 BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
                         mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, true);
-                BuildPlanner.appendDeclaredTails(builder, inputs);
-                for (cc.jumpkick.run.Task s : builder.build().steps()) running.add(s.name());
+                PlannerTails.appendDeclaredTails(builder, inputs);
+                for (Task s : builder.build().steps()) running.add(s.name());
             }
             if (running.isEmpty()) {
                 // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.
@@ -224,15 +231,15 @@ public final class BuildEta {
                 costs.add(EffortWeights.costOf(mdir, prereqs, w, 0));
                 continue;
             }
-            java.util.Map<String, Integer> counts = new java.util.HashMap<>();
-            if (m.testCount() > 0) counts.put("run-tests", m.testCount());
+            Map<String, Integer> counts = new HashMap<>();
+            if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
             if (m.sourceCount() > 0) {
-                counts.put("compile-java", m.sourceCount());
-                counts.put("compile-test", m.sourceCount());
+                counts.put(TaskNames.COMPILE_JAVA, m.sourceCount());
+                counts.put(TaskNames.COMPILE_TEST, m.sourceCount());
             }
             int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             // workers: 0 = auto (same as bare jk build -w omit)
-            int testW = cc.jumpkick.test.TestWorkers.resolve(workers, classGuess, jobsBudget);
+            int testW = TestWorkers.resolve(workers, classGuess, jobsBudget);
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
             if (cascadeRecheck > 0) {
@@ -258,7 +265,7 @@ public final class BuildEta {
         String name = s.name();
         // TEST-resource drift reruns the suite for real — test action keys hash test resources —
         // so run-tests must keep its full wall no matter which rule below would discount it.
-        if ("run-tests".equals(name) && testResourceDrift) {
+        if (TaskNames.RUN_TESTS.equals(name) && testResourceDrift) {
             return false;
         }
         // Cascade-forced compile/package without local source edits.
@@ -267,17 +274,17 @@ public final class BuildEta {
         }
         // Cascade-forced native ("rebuild · compile changed") without local compile — cli native
         // often SKIPPED while tests still run (dogfood: priced ~34s native, actual SKIPPED).
-        if (!localCompile && isCascadeForcedStep(s) && "native-image".equals(name)) {
+        if (!localCompile && isCascadeForcedStep(s) && TaskNames.NATIVE_IMAGE.equals(name)) {
             return true;
         }
         // MAIN-resource drift schedules copy/package only — never a full compile/test suite
         // (dogfood-validated discount; the test-resource case exited above).
-        if (!localCompile && resourceDrift && (isCompileStepName(name) || "run-tests".equals(name))) {
+        if (!localCompile && resourceDrift && (isCompileStepName(name) || TaskNames.RUN_TESTS.equals(name))) {
             return true;
         }
         // Pure cascade module: discount tests. Cli keeps tests when a heavy tail is forecast
         // (test-dep on a dirty engine) even if native itself is discounted.
-        if (!localCompile && !keepFullTests && "run-tests".equals(name)) {
+        if (!localCompile && !keepFullTests && TaskNames.RUN_TESTS.equals(name)) {
             return true;
         }
         return false;
@@ -288,8 +295,7 @@ public final class BuildEta {
      * ("10 sources changed"), see . Text form from {@code JavaCompile}:
      * {@code "1 source changed"} / {@code "<n> sources changed"}.
      */
-    private static final java.util.regex.Pattern ZERO_SOURCES =
-            java.util.regex.Pattern.compile("(?<!\\d)0 sources? changed");
+    private static final Pattern ZERO_SOURCES = Pattern.compile("(?<!\\d)0 sources? changed");
 
     /**
      * True when the module has real local compile content (sources/options/classpath) — not
@@ -313,7 +319,7 @@ public final class BuildEta {
                     || t.contains("classpath")
                     || t.contains("options")
                     || t.contains("not locked")
-                    || t.contains("jk.toml")) {
+                    || t.contains(ManifestPaths.MANIFEST)) {
                 return true;
             }
         }
@@ -330,9 +336,10 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if ("copy-resources".equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
+            if (TaskNames.COPY_RESOURCES.equals(s.name()) || TaskNames.COPY_TEST_RESOURCES.equals(s.name()))
+                return true;
             String t = s.text() == null ? "" : s.text();
-            if ("package-jar".equals(s.name()) && t.contains("resources changed")) return true;
+            if (TaskNames.PACKAGE_JAR.equals(s.name()) && t.contains("resources changed")) return true;
         }
         return false;
     }
@@ -345,7 +352,7 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if ("copy-test-resources".equals(s.name())) return true;
+            if (TaskNames.COPY_TEST_RESOURCES.equals(s.name())) return true;
         }
         return false;
     }
@@ -355,9 +362,9 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         return m.steps().stream()
                 .anyMatch(s -> !s.cached()
-                        && ("native-image".equals(s.name())
-                                || "write-image".equals(s.name())
-                                || "package-assembly".equals(s.name())));
+                        && (TaskNames.NATIVE_IMAGE.equals(s.name())
+                                || TaskNames.WRITE_IMAGE.equals(s.name())
+                                || TaskNames.PACKAGE_ASSEMBLY.equals(s.name())));
     }
 
     /**
@@ -372,16 +379,16 @@ public final class BuildEta {
 
     static boolean isCompileStepName(String name) {
         if (name == null) return false;
-        return name.startsWith("compile-main")
-                || name.startsWith("compile-java")
-                || name.startsWith("compile-kotlin")
-                || name.startsWith("compile-groovy")
-                || name.startsWith("compile-test");
+        return name.startsWith(TaskNames.COMPILE_MAIN)
+                || name.startsWith(TaskNames.COMPILE_JAVA)
+                || name.startsWith(TaskNames.COMPILE_KOTLIN)
+                || name.startsWith(TaskNames.COMPILE_GROOVY)
+                || name.startsWith(TaskNames.COMPILE_TEST);
     }
 
     static boolean isCompileOrPackageStep(String name) {
         if (name == null) return false;
-        return isCompileStepName(name) || "package-jar".equals(name) || "package-assembly".equals(name);
+        return isCompileStepName(name) || TaskNames.PACKAGE_JAR.equals(name) || TaskNames.PACKAGE_ASSEMBLY.equals(name);
     }
 
     /**
@@ -535,9 +542,7 @@ public final class BuildEta {
         if (seedMs <= 0 || actualExecuteMs <= 0) return;
         double ratio = (double) seedMs / (double) actualExecuteMs;
         double relErr = Math.abs(seedMs - actualExecuteMs) / (double) actualExecuteMs;
-        boolean verbose = "1".equals(System.getenv("JK_ETA_SEED_LOG"))
-                || "true".equalsIgnoreCase(System.getenv("JK_ETA_SEED_LOG"))
-                || Perf.ENABLED;
+        boolean verbose = EnvValues.bool(System::getenv, "JK_ETA_SEED_LOG").orElse(false) || Perf.ENABLED;
         // Always note serious misses so they show up in engine logs without env.
         boolean serious = relErr >= 0.35 && actualExecuteMs >= 5_000L;
         if (!verbose && !serious) return;

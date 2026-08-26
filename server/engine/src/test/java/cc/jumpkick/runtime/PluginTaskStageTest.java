@@ -11,7 +11,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Plugin-task stage inference must agree with the edges {@link BuildPlanner#pluginRequires} builds
+ * Plugin-task stage inference must agree with the edges {@link PlannerPlugin#pluginRequires} builds
  * — a plan the planner emits can never be one its own validator rejects. The Android task set is
  * the fixture because its manifest → res edge is what broke.
  */
@@ -62,10 +62,10 @@ class PluginTaskStageTest {
     /** Every edge a plugin task declares must point at an equal-or-earlier stage. */
     private static void assertEdgesValidate(Map<String, PluginBuild.TaskDecl> decls) {
         for (PluginBuild.TaskDecl step : decls.values()) {
-            BuildStage from = BuildPlanner.pluginStage(step);
-            for (String req : BuildPlanner.pluginRequires(step, null)) {
+            BuildStage from = PlannerPlugin.pluginStage(step);
+            for (String req : PlannerPlugin.pluginRequires(step, null)) {
                 BuildStage upstream = req.startsWith("plugin-")
-                        ? BuildPlanner.pluginStage(decls.get(req.substring("plugin-".length())))
+                        ? PlannerPlugin.pluginStage(decls.get(req.substring("plugin-".length())))
                         : ENGINE_STAGES.get(req);
                 assertThat(upstream)
                         .as("stage of %s (required by %s)", req, step.name())
@@ -83,10 +83,10 @@ class PluginTaskStageTest {
 
         // android-manifest runs in the pre-compile window (no classes input, no contributions),
         // so it is `generate` — not `compile` by name, which is what made android-res illegal.
-        assertThat(BuildPlanner.pluginStage(decls.get("android-manifest"))).isEqualTo(BuildStage.GENERATE);
-        assertThat(BuildPlanner.pluginStage(decls.get("android-res"))).isEqualTo(BuildStage.GENERATE);
-        assertThat(BuildPlanner.pluginStage(decls.get("android-test-config"))).isEqualTo(BuildStage.TEST);
-        assertThat(BuildPlanner.pluginStage(decls.get("android-dex"))).isEqualTo(BuildStage.COMPILE);
+        assertThat(PlannerPlugin.pluginStage(decls.get("android-manifest"))).isEqualTo(BuildStage.GENERATE);
+        assertThat(PlannerPlugin.pluginStage(decls.get("android-res"))).isEqualTo(BuildStage.GENERATE);
+        assertThat(PlannerPlugin.pluginStage(decls.get("android-test-config"))).isEqualTo(BuildStage.TEST);
+        assertThat(PlannerPlugin.pluginStage(decls.get("android-dex"))).isEqualTo(BuildStage.COMPILE);
 
         assertEdgesValidate(decls);
     }
@@ -106,21 +106,21 @@ class PluginTaskStageTest {
                 List.of("cp"),
                 null,
                 null);
-        assertThat(BuildPlanner.pluginStage(step)).isEqualTo(BuildStage.COMPILE);
-        assertThat(BuildStage.TEST.mayRequire(BuildPlanner.pluginStage(step))).isTrue();
+        assertThat(PlannerPlugin.pluginStage(step)).isEqualTo(BuildStage.COMPILE);
+        assertThat(BuildStage.TEST.mayRequire(PlannerPlugin.pluginStage(step))).isTrue();
     }
 
     @Test
     void declared_stage_may_sharpen_the_fold_within_the_window() {
         PluginBuild.TaskDecl dex = decl("android-dex", List.of("classes", "config"), List.of(), List.of(), "package");
-        assertThat(BuildPlanner.pluginStage(dex)).isEqualTo(BuildStage.PACKAGE);
+        assertThat(PlannerPlugin.pluginStage(dex)).isEqualTo(BuildStage.PACKAGE);
         assertThat(BuildStage.PACKAGE.mayRequire(BuildStage.COMPILE)).isTrue();
     }
 
     @Test
     void unknown_declared_stage_is_an_error_not_a_silent_other() {
         PluginBuild.TaskDecl typo = decl("mystery", List.of("config"), List.of(), List.of(), "packge");
-        assertThatThrownBy(() -> BuildPlanner.pluginStage(typo))
+        assertThatThrownBy(() -> PlannerPlugin.pluginStage(typo))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("mystery")
                 .hasMessageContaining("packge")
@@ -130,7 +130,7 @@ class PluginTaskStageTest {
     @Test
     void declared_stage_earlier_than_the_window_names_the_plugin_task() {
         PluginBuild.TaskDecl bad = decl("late-codegen", List.of("classes"), List.of(), List.of(), "generate");
-        assertThatThrownBy(() -> BuildPlanner.pluginStage(bad))
+        assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("late-codegen")
                 .hasMessageContaining("compile window");
@@ -139,7 +139,7 @@ class PluginTaskStageTest {
     @Test
     void declared_stage_after_test_is_rejected_for_a_test_classpath_contributor() {
         PluginBuild.TaskDecl bad = decl("fixtures", List.of("config"), List.of(), List.of("cp"), "package");
-        assertThatThrownBy(() -> BuildPlanner.pluginStage(bad))
+        assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("fixtures")
                 .hasMessageContaining("run-tests");
@@ -148,9 +148,9 @@ class PluginTaskStageTest {
     @Test
     void declared_stage_after_package_is_rejected_for_a_package_time_task() {
         // package-jar (PACKAGE) requires every packageTime() task unconditionally
-        // (BuildPlanner#packageRequires) — mirrors the run-tests/TEST case above for PACKAGE.
+        // (PlannerPackage#packageRequires) — mirrors the run-tests/TEST case above for PACKAGE.
         PluginBuild.TaskDecl bad = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "native");
-        assertThatThrownBy(() -> BuildPlanner.pluginStage(bad))
+        assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("dex-native")
                 .hasMessageContaining("package");
@@ -159,6 +159,6 @@ class PluginTaskStageTest {
     @Test
     void package_time_task_may_declare_up_to_package_stage() {
         PluginBuild.TaskDecl ok = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "package");
-        assertThat(BuildPlanner.pluginStage(ok)).isEqualTo(BuildStage.PACKAGE);
+        assertThat(PlannerPlugin.pluginStage(ok)).isEqualTo(BuildStage.PACKAGE);
     }
 }

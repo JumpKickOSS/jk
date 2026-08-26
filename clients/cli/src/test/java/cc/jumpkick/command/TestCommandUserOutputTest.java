@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.runtime.TestSupport;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -44,8 +46,7 @@ class TestCommandUserOutputTest {
     @Test
     void user_output_is_suppressed_when_verbose_is_false() {
         var ctx = new RecordingContext();
-        TestProgressListener listener =
-                cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, /* workerCount */ 1, /* verbose */ false);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, /* workerCount */ 1, /* verbose */ false);
 
         listener.onUserOutput(0, "hello from a passing test");
 
@@ -57,8 +58,7 @@ class TestCommandUserOutputTest {
     @Test
     void user_output_is_forwarded_through_the_context_when_verbose_is_true() {
         var ctx = new RecordingContext();
-        TestProgressListener listener =
-                cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, /* workerCount */ 1, /* verbose */ true);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, /* workerCount */ 1, /* verbose */ true);
 
         listener.onUserOutput(0, "hello from a passing test");
 
@@ -70,8 +70,7 @@ class TestCommandUserOutputTest {
     @Test
     void worker_prefix_appears_in_parallel_mode() {
         var ctx = new RecordingContext();
-        TestProgressListener listener =
-                cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, /* workerCount */ 4, /* verbose */ true);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, /* workerCount */ 4, /* verbose */ true);
 
         listener.onUserOutput(2, "from worker two");
 
@@ -85,7 +84,7 @@ class TestCommandUserOutputTest {
         // reshape the denominator, or the bar would visibly reset when
         // the test JVM finishes its static walk.
         var ctx = new RecordingContext();
-        TestProgressListener listener = cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, 1, false);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, 1, false);
 
         listener.onDiscoveryTotal(/* classes */ 3, /* tests */ 42);
 
@@ -96,7 +95,7 @@ class TestCommandUserOutputTest {
     @Test
     void static_test_finished_ticks_progress_and_sets_label() {
         var ctx = new RecordingContext();
-        TestProgressListener listener = cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, 1, false);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, 1, false);
 
         listener.onTestFinished("id", "ClassA.method", "PASSED", /* isTest */ true, /* wasStatic */ true, 5L, 0);
 
@@ -110,7 +109,7 @@ class TestCommandUserOutputTest {
         // numerator must NOT advance — they're not in the denominator
         // either, so a tick here would push num past den.
         var ctx = new RecordingContext();
-        TestProgressListener listener = cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, 1, false);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, 1, false);
 
         listener.onTestFinished(
                 "id", "ClassA.parameterized[1]", "PASSED", /* isTest */ true, /* wasStatic */ false, 5L, 0);
@@ -122,7 +121,7 @@ class TestCommandUserOutputTest {
     @Test
     void static_test_skipped_ticks_progress() {
         var ctx = new RecordingContext();
-        TestProgressListener listener = cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, 1, false);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, 1, false);
 
         listener.onTestSkipped("id", "ClassA.disabled", "@Disabled", /* isTest */ true, /* wasStatic */ true, 0);
 
@@ -132,7 +131,7 @@ class TestCommandUserOutputTest {
     @Test
     void dynamic_test_skipped_does_not_tick() {
         var ctx = new RecordingContext();
-        TestProgressListener listener = cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, 1, false);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, 1, false);
 
         listener.onTestSkipped(
                 "id", "ClassA.parameterized[3]", "assumption failed", /* isTest */ true, /* wasStatic */ false, 0);
@@ -143,7 +142,7 @@ class TestCommandUserOutputTest {
     @Test
     void failures_route_through_ctx_error() {
         var ctx = new RecordingContext();
-        TestProgressListener listener = cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, 1, false);
+        TestProgressListener listener = TestSupport.bridgeListener(ctx, 1, false);
 
         listener.onFailure(
                 "id",
@@ -188,13 +187,13 @@ class TestCommandUserOutputTest {
                 }
                 """);
 
-        assertThat(cc.jumpkick.runtime.TestSupport.estimateTestCount(tempDir.resolve("src/test/java")))
+        assertThat(TestSupport.estimateTestCount(tempDir.resolve("src/test/java")))
                 .isEqualTo(6);
     }
 
     @Test
     void estimate_test_count_for_missing_dir_is_zero(@TempDir Path tempDir) {
-        assertThat(cc.jumpkick.runtime.TestSupport.estimateTestCount(tempDir.resolve("does/not/exist")))
+        assertThat(TestSupport.estimateTestCount(tempDir.resolve("does/not/exist")))
                 .isZero();
     }
 
@@ -211,7 +210,7 @@ class TestCommandUserOutputTest {
                 @Test
                 """);
 
-        assertThat(cc.jumpkick.runtime.TestSupport.estimateTestCount(src)).isEqualTo(1);
+        assertThat(TestSupport.estimateTestCount(src)).isEqualTo(1);
     }
 
     /** Minimal TaskContext stub that records every call. */
@@ -265,7 +264,7 @@ class TestCommandUserOutputTest {
         }
 
         @Override
-        public void error(String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+        public void error(String code, String message, TestFailureInfo failure) {
             errors.add(new Diag(
                     code,
                     message,

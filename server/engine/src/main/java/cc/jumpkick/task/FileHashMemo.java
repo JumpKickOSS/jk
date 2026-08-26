@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -182,9 +185,9 @@ public final class FileHashMemo {
     /** The store for the session's cache root, or {@code null} when no session cache resolves. */
     private static Store store() {
         try {
-            Path cache = cc.jumpkick.config.SessionContext.current().cacheDir();
+            Path cache = SessionContext.current().cacheDir();
             return STORES.computeIfAbsent(
-                    cache.toAbsolutePath().normalize(), root -> Store.load(root.resolve("hash-memo")));
+                    cache.toAbsolutePath().normalize(), root -> Store.load(CacheTree.HASH_MEMO.under(root)));
         } catch (RuntimeException e) {
             return null;
         }
@@ -247,11 +250,7 @@ public final class FileHashMemo {
             try (Stream<Path> children = Files.list(dir)) {
                 for (Path p : (Iterable<Path>) children::iterator) {
                     if (p.equals(keep)) continue;
-                    try (Stream<Path> tree = Files.walk(p)) {
-                        for (Path victim : (Iterable<Path>) tree.sorted(Comparator.reverseOrder())::iterator) {
-                            Files.deleteIfExists(victim);
-                        }
-                    }
+                    PathUtil.deleteRecursively(p);
                 }
             } catch (IOException | RuntimeException ignored) {
                 // Housekeeping, never load-bearing.

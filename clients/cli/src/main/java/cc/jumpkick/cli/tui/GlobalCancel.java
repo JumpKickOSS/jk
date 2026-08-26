@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Signals;
 import cc.jumpkick.terminal.Terminals;
 import java.nio.file.Path;
 
 /**
- * App-level SIGINT handlercancel the live engine job through the same
+ * App-level SIGINT handler — cancel the live engine job through the same
  * {@code cancel-request} path as {@code jk cancel}, settle the TUI as cancelled, then hard-exit
- * the CLI ({@link Runtime#halt(int) halt(2)}) as a backup so Ctrl-C never hangs.
+ * the CLI ({@link Runtime#halt(int) halt}({@link Exit#INTERRUPTED})) as a backup so Ctrl-C never
+ * hangs.
  *
  * <p>Order matters:
  *
@@ -18,8 +23,14 @@ import java.nio.file.Path;
  * <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
  * kill path as the web UI and {@code jk cancel}
  * <li>Settle the active plan region ("Build job was cancelled by user took …")
- * <li>{@code halt(2)} — guaranteed process death if anything above is stuck
+ * <li>{@code halt(}{@link Exit#INTERRUPTED}{@code )} — guaranteed process death if anything
+ * above is stuck. 130 is {@code 128 + SIGINT}, what every shell already means by it; this
+ * handler halted with 2 until JK-2417, which is jk's bad-config code.
  * </ol>
+ *
+ * <p>The halt is a backup, not the normal route: a verb that notices the cancel unwinds and exits
+ * on its own thread long before step 3. {@link #exitCodeFor} is what makes both routes end at
+ * {@link Exit#INTERRUPTED}.
  *
  * <p>Wizards run in {@code PROMPT} (ISIG off) so Ctrl-C arrives as {@code Key.CtrlC} instead of
  * SIGINT. Live plans use {@code PLAN_KEYS} (ISIG on) so this handler still owns Ctrl-C.
@@ -29,31 +40,53 @@ import java.nio.file.Path;
  */
 public final class GlobalCancel {
 
+    /**
+     * Set the instant SIGINT lands, before anything that can block. The halt below is only a
+     * backup, and on a TTY it routinely loses: the verb notices the cancel, settles its plan and
+     * returns an ordinary failure while this handler is still waiting out the cancel RPCs. Left
+     * alone, the same Ctrl-C exited {@code 130} through a pipe and {@code 1} under a pty —
+     * indistinguishable in a script from a build that ran and failed. {@link #exitCodeFor} is how
+     * the entry point closes that gap.
+     */
+    private static volatile boolean interrupted;
+
     private GlobalCancel() {}
+
+    /**
+     * The code the process must exit with, given the verb returned {@code verbExit}. Once Ctrl-C
+     * has fired, {@link Exit#INTERRUPTED} — whichever path reaches the exit first — so {@code $?}
+     * and the engine's journal row agree about the same run.
+     */
+    public static int exitCodeFor(int verbExit) {
+        return interrupted ? Exit.INTERRUPTED : verbExit;
+    }
 
     public static void install() {
         Signals.register("INT", () -> {
+            // 0) Claim the exit code before anything that can block or throw: from here on this
+            // process is interrupted no matter which thread reaches the exit.
+            interrupted = true;
             // 1) Cooperative cancel is synchronous (cheap, in-process); the engine RPCs go on a
             // background thread so the user sees the cancelled settle immediately instead of a
             // still-animating spinner while a wedged engine eats socket watchdogs.
-            cc.jumpkick.config.SessionContext.current().cancel().cancel();
+            SessionContext.current().cancel().cancel();
             // The session's working dir honors -C/--dir (the raw process CWD does not),
             // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
             // member dir cancels the covering workspace build.
             Path invocationDir;
             try {
-                invocationDir = cc.jumpkick.config.SessionContext.current().workingDir();
+                invocationDir = SessionContext.current().workingDir();
             } catch (RuntimeException e) {
                 invocationDir = null;
             }
             if (invocationDir == null) {
                 invocationDir = Path.of("").toAbsolutePath().normalize();
             }
-            Path dir = cc.jumpkick.config.WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
+            Path dir = WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
             Thread rpc = Thread.ofPlatform()
                     .daemon(true)
                     .name("jk-sigint-cancel")
-                    .start(() -> cc.jumpkick.cli.engine.EngineClient.cancelBestEffortForInterrupt(dir));
+                    .start(() -> EngineClient.cancelBestEffortForInterrupt(dir));
 
             // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();
@@ -73,7 +106,7 @@ public final class GlobalCancel {
             err.flush();
 
             // 3) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
-            // halt(2) skips shutdown hooks, so nothing else puts the terminal back. Bounded so
+            // halt() skips shutdown hooks, so nothing else puts the terminal back. Bounded so
             // a wedged JLine close can never break the Ctrl-C-never-hangs guarantee.
             Thread tty = Thread.ofPlatform()
                     .daemon(true)
@@ -92,7 +125,7 @@ public final class GlobalCancel {
             } catch (InterruptedException ignored) {
                 // halt follows regardless
             }
-            Runtime.getRuntime().halt(2);
+            Runtime.getRuntime().halt(Exit.INTERRUPTED);
         });
     }
 }

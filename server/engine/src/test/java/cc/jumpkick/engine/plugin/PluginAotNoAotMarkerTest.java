@@ -3,46 +3,114 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.AotCacheFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Read-time TTL on sticky {@code .noaot} markers: failures back off, but a marker
- * older than {@link PluginAot#NOAOT_RETRY_MILLIS} expires so the key gets a fresh training
- * attempt — the sweep-side expiry only ever runs from a successful sibling train.
+ * The worker side of the read-time TTL on sticky {@code .noaot} markers: a failed train backs its
+ * key off, and a marker older than {@link AotCacheFiles#MARKER_TTL_MILLIS} expires so the key gets
+ * a fresh attempt. The sweep-side expiry runs only from a <em>successful</em> train of a sibling
+ * key, so a tool whose sole key failed depends entirely on this one.
+ *
+ * <p>Driven through {@link PluginAot#ensureTrained} rather than the predicate, because the fact
+ * under test is that the worker's own decision reads the shared window — a private copy of the
+ * rule would satisfy a test of the predicate alone. {@code EngineAotCacheTest} pins the same
+ * window from the engine's spawn decision.
+ *
+ * <p>The trainer throws instead of returning a command line: "training was attempted" is the
+ * observable, and no fork is needed to see it.
  */
 class PluginAotNoAotMarkerTest {
+
+    private static final String TOOL = "kotlinc";
+    private static final String WORKER_CP = "/worker/kotlinc.jar";
 
     @TempDir
     Path tmp;
 
-    @Test
-    void a_fresh_marker_blocks_training() throws IOException {
-        Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
-        Files.createFile(PluginAot.noaotMarker(cache));
+    private Path jdkHome;
+    private String prevState;
+    private String prevTrain;
+    private String prevWorkerAot;
 
-        assertThat(PluginAot.noAotBlocked(cache)).isTrue();
-        assertThat(PluginAot.noaotMarker(cache)).exists(); // still backing off
+    @BeforeEach
+    void isolateState() throws IOException {
+        prevState = System.getProperty("jk.env.JK_STATE_DIR");
+        prevTrain = System.getProperty("jk.aot.train");
+        prevWorkerAot = System.getProperty("jk.worker.aot");
+        System.setProperty(
+                "jk.env.JK_STATE_DIR", tmp.resolve("state").toAbsolutePath().toString());
+        // Ambient JK_AOT_TRAIN=off (jk test workers / CI) would make every arm skip training and
+        // the test agree with itself for the wrong reason. Properties win over the environment.
+        System.setProperty("jk.aot.train", "on");
+        System.setProperty("jk.worker.aot", "on");
+        jdkHome = Files.createDirectories(tmp.resolve("jdk25"));
+        Files.writeString(jdkHome.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"25.0.3\"\n");
+    }
+
+    @AfterEach
+    void restore() {
+        restore("jk.env.JK_STATE_DIR", prevState);
+        restore("jk.aot.train", prevTrain);
+        restore("jk.worker.aot", prevWorkerAot);
+    }
+
+    private static void restore(String key, String prev) {
+        if (prev == null) System.clearProperty(key);
+        else System.setProperty(key, prev);
+    }
+
+    /** Plant a refusal marker for this host's kotlinc key, aged {@code ageMillis}. */
+    private Path plantMarker(long ageMillis) throws IOException {
+        Path cache = PluginAot.cachePath(TOOL, jdkHome, WORKER_CP);
+        assertThat(cache).isNotNull();
+        Files.createDirectories(cache.getParent());
+        Path marker = Files.createFile(AotCacheFiles.marker(cache));
+        Files.setLastModifiedTime(marker, FileTime.fromMillis(System.currentTimeMillis() - ageMillis));
+        return marker;
+    }
+
+    /** Did the worker path reach its trainer? */
+    private boolean trainAttempted() {
+        AtomicBoolean reached = new AtomicBoolean();
+        PluginAot.ensureTrained(
+                TOOL,
+                jdkHome,
+                WORKER_CP,
+                (aotOutput, scratch) -> {
+                    reached.set(true);
+                    throw new IOException("no fork needed: reaching the trainer is the observable");
+                },
+                5_000);
+        return reached.get();
     }
 
     @Test
-    void a_marker_older_than_the_ttl_is_expired_and_removed_at_read_time() throws IOException {
-        Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
-        Path marker = Files.createFile(PluginAot.noaotMarker(cache));
-        Files.setLastModifiedTime(
-                marker, FileTime.fromMillis(System.currentTimeMillis() - PluginAot.NOAOT_RETRY_MILLIS - 60_000));
+    void a_marker_inside_the_window_still_blocks_training() throws IOException {
+        Path marker = plantMarker(AotCacheFiles.MARKER_TTL_MILLIS - 60_000);
 
-        assertThat(PluginAot.noAotBlocked(cache)).isFalse(); // the key retrains
-        assertThat(marker).doesNotExist(); // expired marker is gone, not consulted again
+        assertThat(trainAttempted()).isFalse();
+        assertThat(marker).exists(); // still backing off
     }
 
     @Test
-    void no_marker_means_not_blocked() {
-        assertThat(PluginAot.noAotBlocked(tmp.resolve("kotlinc-0123456789abcdef.aot")))
-                .isFalse();
+    void a_marker_older_than_the_window_is_expired_and_the_key_retrains() throws IOException {
+        Path marker = plantMarker(AotCacheFiles.MARKER_TTL_MILLIS + 60_000);
+
+        assertThat(trainAttempted()).isTrue();
+        assertThat(marker).doesNotExist(); // expired marker is deleted, not merely ignored
+    }
+
+    @Test
+    void no_marker_means_no_refusal_to_honour() {
+        assertThat(trainAttempted()).isTrue();
     }
 }

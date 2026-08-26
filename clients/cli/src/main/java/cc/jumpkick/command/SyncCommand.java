@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -46,9 +56,8 @@ public final class SyncCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                cc.jumpkick.cli.CommonOpts.cacheDir(),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.cacheDir(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override declared repos with a single URL (for tests).", "--repo-url")
                         .hide(),
                 Opt.flag("Prepare for an offline build.", "--offline-prepare"),
@@ -57,8 +66,8 @@ public final class SyncCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.offlinePrepare = in.isSet("offline-prepare");
         this.sources = in.isSet("sources");
@@ -72,7 +81,7 @@ public final class SyncCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         // Sync materializes the lock — freshen first so users never hand-run `jk lock`.
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Sync", repoUrl);
+        int lockCode = EnsureFreshLock.ensure(dir, cache, global, "Sync", repoUrl);
         if (lockCode != 0) return lockCode;
 
         // Pre-flight the JDK ensure client-side: a missing pinned JDK is downloaded HERE, before
@@ -81,18 +90,18 @@ public final class SyncCommand implements CliCommand {
         // the already-installed JDK (JdkEnsure with allowInstall=false). Thin client: the three
         // values JdkEnsure needs (project jdk spec, java floor, lock pin) ride the ProjectInfo
         // summary rather than a client-side parse.
-        var info = BuildCommand.projectInfoOrNull(dir);
+        var info = ProjectInfos.orNull(dir);
         try {
             JdkEnsure.ensure(
                     dir,
                     jdksDir,
                     info == null ? null : info.jdk(),
                     info == null ? 0 : info.javaRelease(),
-                    info == null ? null : info.lockJdk(),
-                    m -> cc.jumpkick.cli.tui.CommandWedge.printFail("Sync", m),
+                    lockJdkPin(dir),
+                    m -> CommandWedge.printFail("Sync", m),
                     true);
         } catch (Exception e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
             return 1;
         }
@@ -104,11 +113,11 @@ public final class SyncCommand implements CliCommand {
         long[] upToDate = new long[1];
         ConsoleSpec spec = syncSpec(() -> fetched[0], () -> upToDate[0]);
 
-        var session = cc.jumpkick.config.SessionContext.current();
+        var session = SessionContext.current();
         BuildPlanResult result;
         try {
             result = EngineClient.runSync(
-                    cc.jumpkick.engine.EnginePaths.current(),
+                    EnginePaths.current(),
                     new EngineRequests.SyncRequest(
                             dir,
                             cache,
@@ -123,7 +132,7 @@ public final class SyncCommand implements CliCommand {
                     fetched,
                     upToDate);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Sync", e.getMessage());
+            CommandWedge.printFail("Sync", e.getMessage());
             return Exit.SOFTWARE;
         }
         // The engine ran the opportunistic cache prune on success (it did the work); nothing more
@@ -142,5 +151,21 @@ public final class SyncCommand implements CliCommand {
                 },
                 r -> "Failed to sync dependencies.",
                 true);
+    }
+
+    /**
+     * Workspace lock {@code [jdk]} pin, or null when there is no lock / no pin. A lock that exists
+     * but fails to parse propagates: the pin is a floor sync must enforce (docs/user/lockfile.md),
+     * so a corrupt lock has to fail the command, not silently drop the pin. Only an unreadable
+     * file degrades to null — the freshen step just rewrote the lock, so IO here is transient.
+     */
+    private static Lockfile.JdkPin lockJdkPin(Path dir) {
+        Path lf = LockPaths.lockFile(dir);
+        if (!Files.isRegularFile(lf)) return null;
+        try {
+            return LockfileReader.read(lf).jdk();
+        } catch (IOException e) {
+            return null;
+        }
     }
 }

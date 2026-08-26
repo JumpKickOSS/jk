@@ -4,15 +4,17 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.Channels;
@@ -21,26 +23,24 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * The loopback-TCP transport (Windows' lane), forced via -Djk.engine.transport=tcp so the auth
  * handshake is exercised off-Windows. Regression: engine→engine signalling (helloProbe /
- * drainDisplaced) once sent a raw token line where the server requires the {@code auth} envelope,
+ * EngineElection.askPredecessorToYield) once sent a raw token line where the server requires the {@code auth} envelope,
  * so same-version election and takeover drain silently failed on TCP.
  */
 @Tag("integration")
 class EngineTcpTransportTest {
 
-    private final List<Path> tempDirs = new ArrayList<>();
+    @RegisterExtension
+    final ShortTempDirs tempDirs = new ShortTempDirs("jkt-");
 
     @BeforeAll
     static void forceTcpTransport() {
@@ -52,37 +52,9 @@ class EngineTcpTransportTest {
         System.clearProperty("jk.engine.transport");
     }
 
-    private Path shortTempDir() throws IOException {
-        // Prefer /tmp: macOS TMPDIR under /var/folders overflows UDS sun_path (~104 bytes).
-        Path root =
-                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
-        Path dir = Files.createTempDirectory(root, "jkt-");
-        tempDirs.add(dir);
-        return dir;
-    }
-
     @AfterEach
-    void cleanupTempDirs() {
-        cc.jumpkick.engine.plugin.JvmOptions.resetSharedPlanForTests();
-        for (Path dir : tempDirs) {
-            try (var walk = Files.walk(dir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                    }
-                });
-            } catch (IOException | UncheckedIOException ignored) {
-            }
-        }
-    }
-
-    private static void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) throw new AssertionError("condition not met within " + timeout);
-            Thread.sleep(10);
-        }
+    void resetSharedWorkerHeapPlan() {
+        JvmOptions.resetSharedPlanForTests();
     }
 
     /** Hello over TCP the way any client must: auth envelope first, then the hello. */
@@ -111,7 +83,7 @@ class EngineTcpTransportTest {
 
     @Test
     void same_version_election_and_hello_work_over_tcp() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer first = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
@@ -123,7 +95,7 @@ class EngineTcpTransportTest {
         });
         t.start();
         try {
-            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+            Await.until(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
             assertThat(tcpHelloVersion(EnginePaths.activeSocket(p))).isEqualTo("1.0.0-test");
 
             // The second same-version instance must LOSE the election — which only happens when

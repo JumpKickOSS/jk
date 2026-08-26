@@ -23,7 +23,7 @@ dependencies {
     compileOnly(libs.junit.platform.launcher)
     compileOnly(project(":plugin-sdk"))
     bundledCodec(project(":plugin-sdk"))
-    bundledCodec(project(":jsonl"))
+    bundledCodec(project(":host"))
     testImplementation(project(":plugin-sdk"))
 }
 

@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.PluginAot;
+import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -174,25 +180,25 @@ public final class ForkedJavac {
             // Zinc worker (there is no in-engine javac path); --release supplies the project's
             // target semantics. It's a thin, JDK-only plugin (the compile classpath travels in
             // the spec, not on the plugin's classpath), so its own jar is the whole classpath.
-            boolean win = HostPlatform.isWindows();
-            Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
-            Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+            Path hostJavaHome = JavaHomes.runningJavaHome();
+            Path javaExe = JdkFingerprint.java(hostJavaHome);
             // Thin worker + Maven runtime closure from its POM.
             String workerCp = workerClasspath(req);
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
-            List<String> jvmFlags = new ArrayList<>(cc.jumpkick.engine.plugin.PluginAot.javaCompilerFlags(
+            List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
                     hostJavaHome,
                     workerCp,
                     (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)));
-            jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
-            List<String> command = cc.jumpkick.engine.plugin.PluginLoader.command(
-                    javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
-            int exit = new cc.jumpkick.engine.plugin.PluginClient(PREFIX)
+            jvmFlags.addAll(JvmOptions.batchFlags(1));
+            List<String> command =
+                    PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
+            int exit = new PluginClient(PREFIX)
                     .on(PluginProtocol.DIAGNOSTIC, json -> {
-                        String file = Jsonl.str(json, "file");
-                        diagnostics.add(new CompileResult.Diagnostic(
-                                CompileResult.Severity.fromName(Jsonl.str(json, "sev")),
-                                file == null ? null : Path.of(file),
+                        // Same contract as the pull-mode host: the locus must live in the
+                        // message text (WorkerDiagnostics), not only in the record fields.
+                        diagnostics.add(WorkerDiagnostics.located(
+                                Jsonl.str(json, "sev"),
+                                Jsonl.str(json, "file"),
                                 Jsonl.longValue(json, "line", 0),
                                 Jsonl.longValue(json, "col", 0),
                                 Jsonl.str(json, "msg")));
@@ -219,7 +225,8 @@ public final class ForkedJavac {
         }
     }
 
-    static Path writeSpec(Request req) throws IOException {
+    /** Renders {@code req} and seals the network policy — its forks bypass {@code PluginLaunch}. */
+    public static Path writeSpec(Request req) throws IOException {
         Map<String, Path> layout = new LinkedHashMap<>();
         layout.put("classesDir", req.classOutput());
         if (req.sourceOutput() != null) layout.put("sourceOutput", req.sourceOutput());
@@ -243,6 +250,7 @@ public final class ForkedJavac {
         for (String a : req.extraArgs()) sw.arg(a);
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(spec);
         return spec;
     }
 
@@ -288,15 +296,14 @@ public final class ForkedJavac {
                 .source(src);
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(trainSpec);
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
-        jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
-        boolean win = HostPlatform.isWindows();
-        Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+        jvmFlags.addAll(JvmOptions.batchFlags(1));
+        Path javaExe = JdkFingerprint.java(hostJavaHome);
         // Same classpath as the real fork: the classpath is part of the AOT key, and a
         // thin worker jar alone would CNFE on PluginMain, silently never training.
-        return cc.jumpkick.engine.plugin.PluginLoader.command(
-                javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
+        return PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
     }
 
     /**
@@ -304,6 +311,6 @@ public final class ForkedJavac {
      * inside the worker; it is not on this JVM classpath so the AOT key stays Zinc-only.
      */
     static String workerClasspath(Request req) {
-        return cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
+        return WorkerLaunchClasspath.resolve(req.workerJar());
     }
 }

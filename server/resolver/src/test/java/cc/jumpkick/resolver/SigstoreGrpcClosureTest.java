@@ -8,6 +8,8 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
@@ -26,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  * silently dropped the whole subtree: an unresolvable transitive must fail the solve loudly, never
  * vanish.
  */
-@Tag("integration")
+@Tag("network")
 class SigstoreGrpcClosureTest {
 
     @Test
@@ -51,8 +53,7 @@ class SigstoreGrpcClosureTest {
             MavenRepo google =
                     new MavenRepo("google", URI.create("https://dl.google.com/dl/android/maven2/"), http, cas);
             repos = new RepoGroup(
-                    List.of(central, google),
-                    List.of(List.of(), cc.jumpkick.model.RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
+                    List.of(central, google), List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
         } else {
             repos = RepoGroup.of(central);
         }
@@ -60,8 +61,7 @@ class SigstoreGrpcClosureTest {
         by.put(
                 Scope.MAIN,
                 List.of(new Dependency("dev.sigstore:sigstore-java", VersionSelector.parseFloating("2.2.0"))));
-        JkBuild project =
-                new JkBuild(new JkBuild.Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
+        JkBuild project = new JkBuild(new Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
         Lockfile lock = new LockOrchestrator(repos).lock(project, "test");
 
         Lockfile.Artifact sigstore = lock.artifacts().stream()

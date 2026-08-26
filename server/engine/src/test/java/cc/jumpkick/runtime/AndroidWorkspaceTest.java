@@ -3,10 +3,15 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -15,6 +20,7 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -36,6 +42,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Same harness as {@link AndroidSpikeTest}: real tools, persistent CAS/SDK under build/.
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class AndroidWorkspaceTest {
 
     @Test
@@ -43,7 +50,7 @@ class AndroidWorkspaceTest {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeWorkspace(root);
         acceptLicenses();
@@ -143,19 +150,18 @@ class AndroidWorkspaceTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                Set.of(),
+                SessionContext.current());
         BuildPlan plan = BuildPlanner.fullPlan(in);
         return plan.run();
     }
 
     private static void acceptLicenses() throws Exception {
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-28")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
     }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import java.nio.file.Path;
 import java.util.Set;
@@ -19,8 +22,8 @@ public final class CompilePlans {
     /** As above with request-level Inputs decoration (JK-2102). {@code null} = none. */
     public static BuildPlan compileBuildPlan(
             Path dir, Path cache, String profileName, boolean verbose, UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+        Path lockFile = LockPaths.lockFile(dir);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 dir,
                 cache,
@@ -36,7 +39,7 @@ public final class CompilePlans {
                 false, /* compileOnly */
                 true,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         if (decorate != null) inputs = decorate.apply(inputs);
         return BuildPlanner.coreBuilder(inputs).build();
     }

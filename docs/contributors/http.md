@@ -150,7 +150,7 @@ workspace member missing its `jk.toml`, IO failure — is a **422** with `{ erro
 broken; a malformed `dir` or unknown scope is a **400**. Token-gated like `/api/project`. The SPA
 loads this **only** when the Dependencies panel opens.
 
-The default scope set is defined once — `DependencyTree.defaultScopeOrder()` (`export`, `main`,
+The default scope set is defined once — `DependencyTreeStyle.defaultScopeOrder()` (`export`, `main`,
 `runtime`) — and shared verbatim by `jk tree` and this endpoint. Declared-only is the default on
 both; `transitive=1` matches `jk tree -t` / `--transitive`.
 
@@ -362,7 +362,7 @@ Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`c
 actionMaxBytes, artifactStorageBytes, mavenLocalBytes, lastPrunedMillis }` — enough for the
 footer; change-gated on MiB quanta.
 
-**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes` is the combined sum.
+**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes`/`totalCount` are the **cache root walked as one tree** — the same fact `jk status` prints as *Size on Disk* and the same one `jk cache nuke` frees. They are not the sum of the section fields (that sum both counted store bytes a nuke leaves and missed every cache tier nobody had added to it); the store's own figure is `artifactStorageBytes`.
 
 Capture is a full exclusive walk of the store/cache trees (hardlink-aware). The engine memoizes it
 with a **30 s TTL and single-flight** so concurrent `GET /api/cache` calls do not re-walk multi‑GiB

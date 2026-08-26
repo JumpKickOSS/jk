@@ -3,11 +3,21 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.http.OfflineException;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -16,11 +26,11 @@ import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.PublishContext;
 import cc.jumpkick.plugin.build.PublishExtension;
 import cc.jumpkick.plugin.build.PublishResult;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.publish.PublishablePom;
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -33,7 +43,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * The {@code jk-publisher} plugin: the terminal {@link PublishExtension} goal for Maven publishing.
@@ -60,20 +69,27 @@ public final class Publisher implements Plugin, PublishExtension {
     public int run(List<String> args, ProtocolWriter out) {
         if (args.isEmpty()) {
             System.err.println("jk-publish-runner: expected spec file path as first argument");
-            return 2;
+            return Exit.USAGE;
         }
         Path specFile = Path.of(args.get(0));
         if (!Files.isRegularFile(specFile)) {
             System.err.println("jk-publisher: spec file not found: " + specFile);
-            return 2;
+            return Exit.NO_INPUT;
         }
         PluginSpec spec;
         try {
             spec = PluginSpec.read(specFile);
         } catch (IOException e) {
             System.err.println("jk-publisher: could not read spec: " + e.getMessage());
-            return 2;
+            return Exit.NO_INPUT;
         }
+
+        // Make the transport's offline guard real inside this worker JVM. Http.checkOffline reads
+        // the ambient session, and a forked worker starts on Session.defaults() — so without this
+        // the guard MavenPublisher relies on is permanently disarmed and an `--offline` publish
+        // uploads. The value comes off the spec, never off this process's environment: a worker
+        // inherits the engine daemon's env, not the job's.
+        SessionContext.installConfig(JkConfig.empty().withOffline(spec.offline()));
 
         try {
             PublishResult result = publish(new SpecPublishContext(spec, out));
@@ -100,19 +116,14 @@ public final class Publisher implements Plugin, PublishExtension {
         Path jar = ctx.mainArtifact().orElseThrow(() -> new IOException("publish goal needs a built main artifact"));
         URI repoUrl = URI.create(c.string("repoUrl"));
 
-        c.stringOpt("pluginJars").ifPresent(joined -> {
-            for (String p : joined.split(Pattern.quote(File.pathSeparator))) {
-                if (!p.isBlank()) {
-                    cc.jumpkick.plugin.manifest.PluginTableRegistry.installFromJar(Path.of(p));
-                }
-            }
-        });
+        c.stringOpt("pluginJars")
+                .ifPresent(joined -> Classpaths.split(joined).forEach(PluginTableRegistry::installFromJar));
 
         // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
         // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
         // artifact unconsumable.
-        JkBuild project = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(
-                projectDir, JkBuildParser.parse(projectDir.resolve("jk.toml")));
+        JkBuild project = WorkspaceResolve.applyWorkspace(
+                projectDir, JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST)));
 
         // Assemble artifacts.
         List<MavenPublisher.Artifact> artifacts = new ArrayList<>();
@@ -121,9 +132,7 @@ public final class Publisher implements Plugin, PublishExtension {
         ctx.label("artifact " + jar.getFileName() + " (" + jarBytes.length + " bytes)");
 
         PublishablePom.Pom pom = PublishablePom.render(
-                project,
-                PublishablePom.Metadata.empty(),
-                cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(projectDir));
+                project, PublishablePom.Metadata.empty(), WorkspaceResolve.siblingCoordinates(projectDir));
         byte[] pomBytes = pom.xml().getBytes(StandardCharsets.UTF_8);
         artifacts.add(new MavenPublisher.Artifact(".pom", pomBytes));
         ctx.label(
@@ -131,12 +140,12 @@ public final class Publisher implements Plugin, PublishExtension {
 
         if (project.project().sourcesMode().publishSources()) {
             byte[] sourcesBytes;
-            cc.jumpkick.layout.BuildLayout layout = cc.jumpkick.layout.BuildLayout.of(projectDir, project);
+            BuildLayout layout = BuildLayout.of(projectDir, project);
             Path onDisk = layout.sourcesJar();
             if (Files.isRegularFile(onDisk)) {
                 sourcesBytes = Files.readAllBytes(onDisk);
             } else {
-                boolean compact = cc.jumpkick.layout.SourceLayout.isSimpleLayout(project.project(), projectDir);
+                boolean compact = SourceLayout.isSimpleLayout(project.project(), projectDir);
                 List<Path> sourceRoots = compact
                         ? List.of(projectDir.resolve("src"))
                         : List.of(projectDir.resolve("src/main/java"), projectDir.resolve("src/main/kotlin"));
@@ -155,7 +164,7 @@ public final class Publisher implements Plugin, PublishExtension {
                     UUID.randomUUID().toString(),
                     Instant.now(),
                     Instant.now(),
-                    Map.of("configRef", "jk.toml"),
+                    Map.of("configRef", ManifestPaths.MANIFEST),
                     Map.of(
                             "group", project.project().group(),
                             "artifact", project.project().name(),
@@ -172,7 +181,7 @@ public final class Publisher implements Plugin, PublishExtension {
         }
 
         if (c.bool("sbom", false)) {
-            Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+            Path lockPath = LockPaths.lockFile(projectDir);
             Lockfile lock = Files.exists(lockPath) ? LockfileReader.read(lockPath) : null;
             byte[] cdx = Sbom.cyclonedx(project, lock);
             byte[] spdxBytes = Sbom.spdx(project, lock);
@@ -183,6 +192,14 @@ public final class Publisher implements Plugin, PublishExtension {
 
         if (c.bool("dryRun", false)) {
             return PublishResult.dryRun(artifacts.size());
+        }
+
+        // Everything past here talks to someone else's server — the PUTs, and Sigstore's Fulcio/
+        // Rekor round trip when keyless signing is on. Refuse before any of it, naming the target,
+        // rather than discovering it one layer down: `--offline` that uploads anyway is worse than
+        // no `--offline` at all.
+        if (ctx.offline()) {
+            throw new OfflineException(repoUrl);
         }
 
         // Load signing.
@@ -219,9 +236,8 @@ public final class Publisher implements Plugin, PublishExtension {
             for (Map.Entry<String, Integer> e : result.statusByPath().entrySet()) {
                 ctx.label("upload " + e.getKey() + " → " + e.getValue());
             }
-            if (!result.allOk()) {
-                throw new IOException("partial upload failure");
-            }
+            // No partial-failure check: publish() throws on the first non-2xx PUT, so a Result here
+            // is a fully successful upload.
             return PublishResult.uploaded(result.statusByPath().size(), result.bytes());
         } finally {
             if (signing.sigstore() instanceof AutoCloseable closeable) {
@@ -264,6 +280,11 @@ public final class Publisher implements Plugin, PublishExtension {
         @Override
         public Path javaHome() {
             return spec.javaHome();
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override

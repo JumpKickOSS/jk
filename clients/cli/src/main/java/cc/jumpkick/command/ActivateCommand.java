@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
@@ -241,7 +242,7 @@ public final class ActivateCommand implements CliCommand {
     }
 
     private static boolean isInteractiveTerminalSession() {
-        return cc.jumpkick.cli.tui.Interactivity.canPrompt();
+        return Interactivity.canPrompt();
     }
 
     /**

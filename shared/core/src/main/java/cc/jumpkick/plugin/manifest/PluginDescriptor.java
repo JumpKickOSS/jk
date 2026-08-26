@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.manifest;
 
+import cc.jumpkick.model.PluginConfig;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -113,7 +114,7 @@ public record PluginDescriptor(
         public record Variant(Condition when, Packaging packaging) {}
 
         /** The effective descriptor for {@code config}: the first matching variant, else this. */
-        public Packaging resolve(cc.jumpkick.model.PluginConfig config) {
+        public Packaging resolve(PluginConfig config) {
             for (Variant v : variants) {
                 if (v.when() instanceof Condition.ConfigEquals c
                         && c.equals().equals(String.valueOf(config.values().get(c.key())))) {
@@ -135,13 +136,19 @@ public record PluginDescriptor(
             List<KotlinPlugin> kotlinPlugins,
             List<PackagerDependency> packagerDependencies,
             List<StepDependency> stepDependencies,
+            /**
+             * The command lane: tools only {@code ctx.command} bodies read (an {@code adb}, an SDK
+             * root). Provisioned when the command runs; in no step's or packager's action key.
+             */
+            List<StepDependency> commandDependencies,
             List<ProvidedClasspath> providedClasspath,
             List<SourceRoot> sourceRoots,
             /** GMM {@code org.gradle.jvm.environment} (e.g. {@code "android"}), or null. */
             String jvmEnvironment) {
 
         public static final Contributions NONE = new Contributions(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                null);
 
         public Contributions {
             platformDependencies = platformDependencies == null ? List.of() : List.copyOf(platformDependencies);
@@ -150,6 +157,7 @@ public record PluginDescriptor(
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
             packagerDependencies = packagerDependencies == null ? List.of() : List.copyOf(packagerDependencies);
             stepDependencies = stepDependencies == null ? List.of() : List.copyOf(stepDependencies);
+            commandDependencies = commandDependencies == null ? List.of() : List.copyOf(commandDependencies);
             providedClasspath = providedClasspath == null ? List.of() : List.copyOf(providedClasspath);
             sourceRoots = sourceRoots == null ? List.of() : List.copyOf(sourceRoots);
         }
@@ -160,6 +168,7 @@ public record PluginDescriptor(
                     && kotlinPlugins.isEmpty()
                     && packagerDependencies.isEmpty()
                     && stepDependencies.isEmpty()
+                    && commandDependencies.isEmpty()
                     && providedClasspath.isEmpty()
                     && sourceRoots.isEmpty();
         }
@@ -181,8 +190,12 @@ public record PluginDescriptor(
     public record PackagerDependency(String artifact, String coordinate, Condition when) {}
 
     /**
-     * Tool artifact for a step: either a Maven {@code coordinate} ({@code transitive} → full
-     * runtime closure) or an {@code sdk-component} (+ optional {@code sdk-path}). Fetch-only.
+     * One tool artifact entry — the shape of both {@code [[contribute.step-dependency]]} and
+     * {@code [[contribute.command-dependency]]}: either a Maven {@code coordinate}
+     * ({@code transitive} → full runtime closure) or an {@code sdk-component} (+ optional
+     * {@code sdk-path}). Fetch-only. The lane is the list it sits in — step tools key steps and
+     * packagers and are provisioned before a build; command tools are provisioned only when a
+     * plugin command runs and key nothing.
      *
      * <p>{@code with} adds extra roots into the <em>same</em> resolve graph (one version per GA).
      * {@code managedBy} is a BOM GAV whose managed pins apply during that resolve — Maven-like

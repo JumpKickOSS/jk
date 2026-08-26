@@ -3,10 +3,17 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -17,6 +24,7 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -39,6 +47,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Same harness as {@link AndroidWorkspaceTest}: real tools, persistent CAS/SDK under build/.
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class AndroidReleaseTest {
 
     @Test
@@ -46,7 +55,7 @@ class AndroidReleaseTest {
         Path app = Files.createDirectories(tmp.resolve("relapp"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         Path keystore = tmp.resolve("release.jks");
         generateKeystore(keystore);
@@ -77,8 +86,8 @@ class AndroidReleaseTest {
                         false,
                         false,
                         false,
-                        java.util.Set.of(),
-                        cc.jumpkick.config.SessionContext.current())
+                        Set.of(),
+                        SessionContext.current())
                 .withVariant(
                         "release",
                         Map.of(
@@ -130,9 +139,7 @@ class AndroidReleaseTest {
         // bundletool accepts the bundle: validate + the universal-APK local-deploy path.
         // Tool closures live under the shared store's CAS root (JkStores redirects every
         // cache root to the store), not under the cache dir the test passes.
-        Path bundletool = cc.jumpkick.cache.JkStores.cas(cache)
-                .root()
-                .resolve("plugin-tools/com.android.tools.build_bundletool_1.17.2");
+        Path bundletool = JkStores.cas(cache).root().resolve("plugin-tools/com.android.tools.build_bundletool_1.17.2");
         assertThat(bundletool).isDirectory();
         assertThat(bundletoolRun(bundletool, "validate", "--bundle=" + aab.toAbsolutePath()))
                 .contains("App Bundle information");
@@ -158,7 +165,7 @@ class AndroidReleaseTest {
         try (var listing = Files.list(closureDir)) {
             for (Path jar : (Iterable<Path>) listing.sorted()::iterator) {
                 if (!jar.toString().endsWith(".jar")) continue;
-                if (cp.length() > 0) cp.append(java.io.File.pathSeparatorChar);
+                if (cp.length() > 0) cp.append(File.pathSeparatorChar);
                 cp.append(jar.toAbsolutePath());
             }
         }
@@ -201,12 +208,11 @@ class AndroidReleaseTest {
     }
 
     private static void acceptLicenses() throws Exception {
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-28")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
     }

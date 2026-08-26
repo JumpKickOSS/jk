@@ -2,14 +2,22 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -58,7 +66,7 @@ public final class OutdatedCommand implements CliCommand {
                 Opt.flag("Hide deps already on newest compatible", "--exclude-up-to-date"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
-                cc.jumpkick.cli.CommonOpts.cacheDir());
+                CommonOpts.cacheDir());
     }
 
     @Override
@@ -66,28 +74,27 @@ public final class OutdatedCommand implements CliCommand {
         this.showTip = in.isSet("show-tip");
         this.excludeUpToDate = in.isSet("exclude-up-to-date");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
-        if (!Files.exists(dir.resolve("jk.toml"))) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir));
+        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
+            CommandWedge.printFail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
         // Best-effort: outdated resolves against its repos independently — a lockless project
         // whose freshen cannot resolve (e.g. --repo-url world) still reports (JK-2178).
-        cc.jumpkick.cli.EnsureFreshLock.ensureBestEffort(dir, cache, global, "Outdated", repoUrl);
+        EnsureFreshLock.ensureBestEffort(dir, cache, global, "Outdated", repoUrl);
 
         OutdatedReport report;
-        report = cc.jumpkick.cli.engine.EngineClient.runOutdated(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineRequests.OutdatedRequest(
-                        dir, cache, repoUrl, global.offline, global.force));
+        report = EngineClient.runOutdated(
+                EnginePaths.current(),
+                new EngineRequests.OutdatedRequest(dir, cache, repoUrl, global.offline, global.force));
 
         if (report.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Outdated", report.error());
+            CommandWedge.printFail("Outdated", report.error());
             return Exit.CONFIG;
         }
 
@@ -107,7 +114,7 @@ public final class OutdatedCommand implements CliCommand {
             CliOutput.out(excludeUpToDate ? "(no outdated dependencies)" : "(no dependencies to check)");
             return Exit.SUCCESS;
         }
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+        CommandWedge.envelopeStart();
         for (String line : renderTable(rows, report.workspace(), showTip, "Dependency versions")) {
             CliOutput.out(line);
         }

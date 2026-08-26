@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -10,6 +11,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
@@ -43,9 +45,7 @@ public final class JdkDefaultCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Pick the latest installed LTS JDK (Temurin preferred).", "--lts"),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+                Opt.flag("Pick the latest installed LTS JDK (Temurin preferred).", "--lts"), CommonOpts.jdksDir());
     }
 
     @Override
@@ -61,26 +61,26 @@ public final class JdkDefaultCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         String spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
         boolean lts = in.isSet("lts");
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 
         if (lts) {
             if (spec != null && !spec.isBlank()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("JDK", "--lts and <spec> are mutually exclusive.");
+                CommandWedge.printFail("JDK", "--lts and <spec> are mutually exclusive.");
                 return Exit.USAGE;
             }
             return applyLts(registry, defaults, CliOutput.stdout(), CliOutput.stderr()) ? 0 : 1;
         }
         if (spec == null || spec.isBlank()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("JDK", "<spec> required (or pass --lts).");
+            CommandWedge.printFail("JDK", "<spec> required (or pass --lts).");
             return Exit.USAGE;
         }
-        Optional<JdkHit> match = cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)
-                ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, registry.listHits())
+        Optional<JdkHit> match = JdkKeywords.isKeyword(spec)
+                ? JdkKeywords.bestInstalledMatch(spec, registry.listHits())
                 : registry.findHitBySpec(spec);
         if (match.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "no installed JDK matches `" + spec + "` (try `jk jdk list` or `jk jdk install " + spec + "`)");
             return 1;
@@ -94,14 +94,15 @@ public final class JdkDefaultCommand implements CliCommand {
         List<JdkHit> hits = registry.listHits();
         List<JdkHit> ltsHits = new ArrayList<>();
         for (JdkHit hit : hits) {
-            Integer m = majorOf(hit.version());
+            Integer m = JdkKeywords.leadingMajor(hit.version());
             if (m != null && JdkLts.isLtsMajor(m)) ltsHits.add(hit);
         }
         if (ltsHits.isEmpty()) {
             err.println("jk jdk default --lts: no LTS JDK installed (try `jk jdk install --lts`).");
             return false;
         }
-        ltsHits.sort(Comparator.comparingInt((JdkHit h) -> majorOf(h.version()) == null ? 0 : majorOf(h.version()))
+        ltsHits.sort(Comparator.comparingInt((JdkHit h) ->
+                        JdkKeywords.leadingMajor(h.version()) == null ? 0 : JdkKeywords.leadingMajor(h.version()))
                 .reversed()
                 .thenComparing(h -> h.vendor() == JdkVendor.TEMURIN ? 0 : 1)
                 .thenComparing((JdkHit h) -> h.version() == null ? "" : h.version(), Comparator.reverseOrder()));
@@ -119,21 +120,9 @@ public final class JdkDefaultCommand implements CliCommand {
     }
 
     private static String renderDisplayName(JdkHit hit) {
-        Integer major = majorOf(hit.version());
+        Integer major = JdkKeywords.leadingMajor(hit.version());
         if (hit.vendor() == JdkVendor.UNKNOWN) return major != null ? "JDK " + major : "JDK " + hit.version();
         String name = hit.vendor().displayName();
         return major != null ? name + " " + major : name + " " + hit.version();
-    }
-
-    static Integer majorOf(String version) {
-        if (version == null || version.isEmpty()) return null;
-        int end = 0;
-        while (end < version.length() && Character.isDigit(version.charAt(end))) end++;
-        if (end == 0) return null;
-        try {
-            return Integer.parseInt(version.substring(0, end));
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 }

@@ -3,7 +3,9 @@ package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.PluginDeclaration;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -42,6 +44,9 @@ public final class PluginTableRegistry {
 
     private static final String TEST_RUNNER_PLUGIN_CLASS = "cc.jumpkick.testrunner.TestRunner";
     private static final String BUILT_IN_SUFFIX = ".jk-plugin.toml";
+
+    /** The engine fat jar: the only shipped artifact that embeds {@code :core}. */
+    private static final String ENGINE_FAT_JAR_PREFIX = "jk-engine";
 
     private static final List<String> BUILT_IN = List.of(
             "spring-boot.jk-plugin.toml",
@@ -111,9 +116,9 @@ public final class PluginTableRegistry {
     public static void installFromJar(Path jar) {
         Objects.requireNonNull(jar, "jar");
         try {
-            String toml = zipEntryText(jar, "jk-plugin.toml");
+            String toml = zipEntryText(jar, ManifestPaths.PLUGIN_MANIFEST);
             if (toml == null || toml.isBlank()) return;
-            PluginDescriptor manifest = PluginDescriptors.parse(toml, jar + "!jk-plugin.toml");
+            PluginDescriptor manifest = PluginDescriptors.parse(toml, jar + "!" + ManifestPaths.PLUGIN_MANIFEST);
             putBuiltIn(manifest, jar);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to read plugin manifest from " + jar, e);
@@ -182,7 +187,7 @@ public final class PluginTableRegistry {
      * engine materializes (sync/lock/build pre-flight). An explicit declaration may <em>replace</em>
      * a built-in with the same id or table; two declarations colliding with each other is an error.
      */
-    public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<cc.jumpkick.model.PluginDeclaration> decls) {
+    public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<PluginDeclaration> decls) {
         if (decls == null || decls.isEmpty()) return manifests();
         List<PluginDescriptor> out = new ArrayList<>(manifests());
         Set<String> ids = new HashSet<>();
@@ -193,7 +198,7 @@ public final class PluginTableRegistry {
         }
         Set<String> declaredIds = new HashSet<>();
         Set<String> declaredTables = new HashSet<>();
-        for (cc.jumpkick.model.PluginDeclaration decl : decls) {
+        for (PluginDeclaration decl : decls) {
             PluginDescriptor m =
                     PluginDescriptorStore.manifestFor(moduleDir, decl).orElse(null);
             if (m == null) continue;
@@ -461,9 +466,22 @@ public final class PluginTableRegistry {
 
     /**
      * Workspace sources are a test-classpath substitute, not a production catalog. Load them
-     * when this class came from jk-core's classes dir / {@code jk-core-*.jar} (unit tests) or
-     * the test-runner host set {@code jk.plugin.class}. Skip the native CLI and the engine fat
-     * jar — those stay empty until {@link #putBuiltIn}.
+     * unless this class came from a shipped artifact, or the test-runner host set
+     * {@code jk.plugin.class}.
+     *
+     * <p>The effective guard is not this method — it is {@link #isFirstPartyPluginCheckout}, which
+     * only finds sources when the code source sits inside a checkout that ships
+     * {@code plugins/<id>/jk-plugin.toml}. No shipped layout does: the native CLI has no
+     * filesystem code source, and an installed worker resolves {@code :core} out of the store. So
+     * this method only has to exclude the one shipped artifact that both embeds {@code :core} and
+     * could be run from inside a checkout — the engine fat jar, which seeds via
+     * {@link #putBuiltIn} instead.
+     *
+     * <p>This deliberately does <em>not</em> match on {@code :core}'s artifact name. It used to
+     * require {@code jk-core-*.jar}, which is the <em>published</em> name; Gradle hands consumers
+     * the build-internal {@code core.jar}, so every test JVM that received the jar rather than the
+     * classes directory silently got an empty registry, and any manifest naming a plugin table
+     * failed to parse with "plugin tables installed here: none".
      */
     private static boolean shouldLoadWorkspacePluginSources() {
         if (TEST_RUNNER_PLUGIN_CLASS.equals(System.getProperty("jk.plugin.class"))) return true;
@@ -474,8 +492,7 @@ public final class PluginTableRegistry {
             if (Files.isDirectory(loc)) {
                 return "main".equals(pathFileName(loc));
             }
-            String name = pathFileName(loc);
-            return name.startsWith("jk-core-") && name.endsWith(".jar");
+            return !pathFileName(loc).startsWith(ENGINE_FAT_JAR_PREFIX);
         } catch (Exception e) {
             return false;
         }
@@ -506,9 +523,9 @@ public final class PluginTableRegistry {
             Path jar = Path.of(override);
             if (!Files.isRegularFile(jar)) continue;
             try {
-                String toml = zipEntryText(jar, "jk-plugin.toml");
+                String toml = zipEntryText(jar, ManifestPaths.PLUGIN_MANIFEST);
                 if (toml == null || toml.isBlank()) continue;
-                PluginDescriptor manifest = parseBuiltIn(toml, jar + "!jk-plugin.toml");
+                PluginDescriptor manifest = parseBuiltIn(toml, jar + "!" + ManifestPaths.PLUGIN_MANIFEST);
                 byTable.put(manifest.table(), manifest);
                 ARCHIVES.put(manifest.id(), jar);
             } catch (IOException e) {
@@ -527,7 +544,7 @@ public final class PluginTableRegistry {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
         int missing = 0;
         for (String resource : BUILT_IN) {
-            Path toml = root.resolve("plugins").resolve(builtInId(resource)).resolve("jk-plugin.toml");
+            Path toml = root.resolve("plugins").resolve(builtInId(resource)).resolve(ManifestPaths.PLUGIN_MANIFEST);
             if (!Files.isRegularFile(toml)) {
                 missing++;
                 continue;
@@ -591,10 +608,10 @@ public final class PluginTableRegistry {
 
     /** True when {@code dir} is a jk checkout that ships first-party {@code plugins/<id>/jk-plugin.toml}. */
     private static boolean isFirstPartyPluginCheckout(Path dir) {
-        return Files.isRegularFile(dir.resolve("jk.toml"))
+        return Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))
                 && Files.isRegularFile(dir.resolve("plugins")
                         .resolve(builtInId(BUILT_IN.getFirst()))
-                        .resolve("jk-plugin.toml"));
+                        .resolve(ManifestPaths.PLUGIN_MANIFEST));
     }
 
     private static String zipEntryText(Path jar, String entry) throws IOException {

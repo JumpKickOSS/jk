@@ -5,7 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ForkedJavac;
-import cc.jumpkick.util.PathUtil;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

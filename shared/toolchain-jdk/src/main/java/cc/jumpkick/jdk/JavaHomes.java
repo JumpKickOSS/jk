@@ -2,9 +2,18 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import cc.jumpkick.config.BuildEnv;
+import java.util.function.UnaryOperator;
 
 /**
  * Resolves the JDK home for a Java launch: project pin via {@link JdkResolution#resolveForHook},
@@ -15,21 +24,31 @@ public final class JavaHomes {
     private JavaHomes() {}
 
     public static Path resolveJavaHome(Path projectDir) {
+        return resolveJavaHome(projectDir, new JdkRegistry());
+    }
+
+    /**
+     * As {@link #resolveJavaHome(Path)} with a caller-owned registry, so one probe scan serves
+     * both this walk and whatever the caller does next with the same registry.
+     */
+    public static Path resolveJavaHome(Path projectDir, JdkRegistry registry) {
         try {
-            cc.jumpkick.lock.Lockfile lock = readLockSoft(projectDir);
+            Lockfile lock = readLockSoft(projectDir);
             JkBuild build = readBuildSoft(projectDir);
+            // The request's environment, not the daemon's — see JK-1021.
+            UnaryOperator<String> env = BuildEnv.forModule(projectDir);
             JdkResolution.Request req = new JdkResolution.Request(
                     projectDir,
                     SessionContext.current().jdkSpec(),
-                    System.getenv("JK_JDK"),
-                    lock != null ? lock.jdk() : null,
+                    null,
+                    lock == null ? null : lock.jdk(),
                     (build != null && build.project() != null) ? build.project().jdk() : null,
                     (build != null && build.project() != null) ? build.project().javaRelease() : 0,
-                    System::getenv);
+                    env::apply);
             // Non-installing walk of the canonical order — JdkEnsure already
             // installed any pin during sync, so this just locates it. Falls back
             // to the running JVM when nothing resolves.
-            JdkResolution.Resolved r = JdkResolution.resolveForHook(req, new JdkRegistry(), JdkInventory.current());
+            JdkResolution.Resolved r = JdkResolution.resolveForHook(req, registry, JdkInventory.current());
             if (r.jdk().isPresent()) return r.jdk().get().home();
         } catch (RuntimeException ignored) {
             // fall through to the running JVM
@@ -37,10 +56,10 @@ public final class JavaHomes {
         return runningJavaHome();
     }
 
-    private static cc.jumpkick.lock.Lockfile readLockSoft(Path projectDir) {
+    private static Lockfile readLockSoft(Path projectDir) {
         try {
-            Path lock = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
-            return Files.isRegularFile(lock) ? cc.jumpkick.lock.LockfileReader.read(lock) : null;
+            Path lock = LockPaths.lockFile(projectDir);
+            return Files.isRegularFile(lock) ? LockfileReader.read(lock) : null;
         } catch (Exception e) {
             return null;
         }
@@ -49,18 +68,17 @@ public final class JavaHomes {
     /** Bootstrap jdk/java pins for {@code projectDir}, workspace-inherited. Test-visible. */
     static JkBuild readBuildSoft(Path projectDir) {
         try {
-            Path toml = projectDir.resolve("jk.toml");
+            Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return null;
-            var scan = cc.jumpkick.config.TomlScan.scan(toml, "jdk", "java");
+            var scan = TomlScan.scan(toml, "jdk", "java");
             String jdk = scan.get("jdk");
             String java = scan.get("java");
             if (isBlank(jdk) || isBlank(java)) {
-                // A workspace member auto-inherits jdk/java from its root; the parser this scan
-                // replaced applied that via WorkspaceResolve (JK-2156). Mirror it per key —
+                // A workspace member auto-inherits jdk/java from its root. Mirror it per key —
                 // same bootstrap pattern as ProjectIdentity.coordOf's group inheritance.
-                var root = cc.jumpkick.config.WorkspaceScan.findRoot(projectDir);
+                var root = WorkspaceScan.findRoot(projectDir);
                 if (root.isPresent()) {
-                    var rootScan = cc.jumpkick.config.TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java");
+                    var rootScan = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "jdk", "java");
                     if (isBlank(jdk)) jdk = rootScan.get("jdk");
                     if (isBlank(java)) java = rootScan.get("java");
                 }
@@ -73,7 +91,7 @@ public final class JavaHomes {
                     // leave 0 — resolver falls back
                 }
             }
-            return JkBuild.of(JkBuild.Project.builder("local", "local", "0")
+            return JkBuild.of(Project.builder("local", "local", "0")
                     .jdk(jdk)
                     .java(release)
                     .build());
@@ -93,6 +111,10 @@ public final class JavaHomes {
      */
     public static Path runningJavaHome() {
         String home = System.getProperty("java.home");
+        // Ambient on purpose, and not the JK-1021 defect: the question is which JVM *this process*
+        // runs on, not which JDK the request asked for. Inside the engine `java.home` is always set,
+        // so the fallback only fires in the native CLI — where the process is the caller's shell and
+        // its own environment is the right answer.
         if (home == null || home.isBlank()) home = System.getenv("JAVA_HOME");
         if (home == null || home.isBlank()) {
             throw new IllegalStateException("Cannot resolve a JDK: no project pin (`.jdk-version` or `.sdkmanrc`), "

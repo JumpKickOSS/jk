@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

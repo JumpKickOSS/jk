@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -47,9 +48,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
      * {@code .env} parse), which is too heavy per output line. The {@code .env} set is frozen
      * for the plan's life. Redaction fail-open: a failed lookup does not fail the build.
      */
-    private volatile cc.jumpkick.config.@Nullable SecretRedactor redactor;
+    private volatile @Nullable SecretRedactor redactor;
 
-    private cc.jumpkick.config.SecretRedactor redactor() {
+    private SecretRedactor redactor() {
         var r = redactor;
         if (r == null) {
             r = EventRedaction.redactorFor(dir);

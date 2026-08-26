@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import java.lang.reflect.Proxy;
+
 /**
  * Best-effort ignore of terminal-generated signals for the engine process. The engine must not die
  * when the spawning client's process group receives Ctrl-C; build cancel is a wire concern
@@ -25,7 +27,7 @@ public final class TerminalSignals {
             Class<?> signalClass = Class.forName("sun.misc.Signal");
             Class<?> handlerClass = Class.forName("sun.misc.SignalHandler");
             Object signal = signalClass.getConstructor(String.class).newInstance(name);
-            Object handler = java.lang.reflect.Proxy.newProxyInstance(
+            Object handler = Proxy.newProxyInstance(
                     handlerClass.getClassLoader(), new Class<?>[] {handlerClass}, (proxy, method, args) -> null);
             signalClass.getMethod("handle", signalClass, handlerClass).invoke(null, signal, handler);
         } catch (ReflectiveOperationException | RuntimeException ignored) {

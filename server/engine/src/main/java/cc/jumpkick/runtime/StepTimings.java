@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -112,7 +114,7 @@ public final class StepTimings {
     /** Hydrate per-unit rates from harvested project/host metrics. */
     static StepTimings fromAggregates() {
         // Same project-preferring aggregates as BuildMetrics (stale identity homes must not poison rates).
-        cc.jumpkick.builds.AggregatedMetrics agg = BuildMetrics.aggregatesForSession();
+        AggregatedMetrics agg = BuildMetrics.aggregatesForSession();
         Map<String, Entry> m = new HashMap<>();
         long now = System.currentTimeMillis();
         for (var e : agg.meanMap().entrySet()) {
@@ -403,7 +405,7 @@ public final class StepTimings {
     }
 
     private static String quote(String s) {
-        return cc.jumpkick.util.MinimalToml.quote(s);
+        return MinimalToml.quote(s);
     }
 
     private static double round3(double v) {

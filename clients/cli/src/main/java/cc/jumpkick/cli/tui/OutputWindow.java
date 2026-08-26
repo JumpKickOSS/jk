@@ -179,7 +179,7 @@ public final class OutputWindow {
         int n = Math.max(1, cols);
         // Match live plan rows: keep the last column free so DEC auto-wrap does not push the
         // rule onto the next physical row.
-        int width = Math.max(1, JkManagerColor.rowColumnBudget(n));
+        int width = Math.max(1, RenderContext.rowColumnBudget(n));
         String body = centeredRuleBody(width);
         // darkGray (bright black) × 0.65 — a step dimmer than the rail gray so the rule reads as
         // a quiet separator under process output.

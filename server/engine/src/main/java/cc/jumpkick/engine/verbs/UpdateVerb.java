@@ -5,12 +5,19 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.LockPlans;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Files;
@@ -52,11 +59,11 @@ public final class UpdateVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.updateRequest(
+    public String decodeJob(JobSpec spec) {
+        return ProtoSession.withTrigger(
+                ProtoJobs.updateRequest(
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        JkDirs.cache().toString(),
                         List.of(),
                         false,
                         null,
@@ -70,8 +77,7 @@ public final class UpdateVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             List<String> features = Jsonl.strArray(requestLine, "features");
             boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
@@ -82,39 +88,35 @@ public final class UpdateVerb implements HostedVerb {
             String platformOverride = Jsonl.str(requestLine, "platform");
             if (platformOverride != null && platformOverride.isBlank()) platformOverride = null;
             String platformFinal = platformOverride;
-            SessionContext.where(session, () -> {
+            return SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
-                if (gitOnly) {
-                    Files.createDirectories(cache);
-                    JkBuild root;
-                    try {
-                        root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                    } catch (RuntimeException e) {
-                        host.sendQuiet(
-                                writer,
-                                ProtoEvents.lockFinish(
-                                        false, Exit.CONFIG, List.of(cc.jumpkick.util.Errors.text(e)), -1));
-                        return null;
-                    }
-                    var outcome =
-                            LockPlans.updateGitOnly(entryDir, root, cache, repoUrl, features, withDefaults, gitTarget);
-                    host.sendQuiet(
-                            writer,
-                            ProtoEvents.lockFinish(
-                                    outcome.exitCode() == 0,
-                                    outcome.exitCode(),
-                                    outcome.error() != null ? List.of(outcome.error()) : List.of(),
-                                    outcome.refreshed()));
-                } else {
-                    LockCascade.run(
+                if (!gitOnly) {
+                    return LockCascade.run(
                             host, entryDir, cache, repoUrl, features, withDefaults, false, true, platformFinal, writer);
                 }
-                return null;
+                Files.createDirectories(cache);
+                JkBuild root;
+                try {
+                    root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                } catch (RuntimeException e) {
+                    host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
+                    return JobOutcome.failed(Exit.CONFIG);
+                }
+                var outcome =
+                        LockPlans.updateGitOnly(entryDir, root, cache, repoUrl, features, withDefaults, gitTarget);
+                host.sendQuiet(
+                        writer,
+                        ProtoEvents.lockFinish(
+                                outcome.exitCode() == 0,
+                                outcome.exitCode(),
+                                outcome.error() != null ? List.of(outcome.error()) : List.of(),
+                                outcome.refreshed()));
+                return outcome.exitCode() == Exit.SUCCESS ? JobOutcome.ok() : JobOutcome.failed(outcome.exitCode());
             });
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

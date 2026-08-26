@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -120,12 +121,12 @@ public final class MarkdownTestReport {
         return out;
     }
 
-    /** Extract the FQCN from a JUnit Platform uniqueId. */
+    /**
+     * FQCN from a JUnit Platform uniqueId via the shared {@link JUnitUniqueIds} walk; the raw id
+     * when the {@code [class:…]} segment is absent.
+     */
     static String classNameFrom(String uniqueId) {
-        int s = uniqueId.indexOf("[class:");
-        if (s < 0) return uniqueId;
-        int e = uniqueId.indexOf(']', s);
-        if (e < 0) return uniqueId;
-        return uniqueId.substring(s + 7, e);
+        String cls = JUnitUniqueIds.classOf(uniqueId);
+        return cls.isEmpty() ? uniqueId : cls;
     }
 }

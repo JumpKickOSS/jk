@@ -4,7 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,12 +22,26 @@ import java.util.Map;
  * <ul>
  * <li>the task identifier (e.g. {@code "compile-main"})
  * <li>jk version
- * <li>{@code --release} and any extra javac options
+ * <li>{@code --release}, the pinned source encoding, and any extra javac options
+ * <li>the project JDK's identity ({@link #jdkToken})
  * <li>each source file's SHA-256 (so editing a file invalidates the key)
  * <li>each classpath entry's content identity ({@code file:<sha256>} / directory tree hash)
  * </ul>
  */
 public final class ActionKey {
+
+    /**
+     * The charset both javac front ends pin. {@link cc.jumpkick.compile.JavacRunner} passes this
+     * very constant to {@code -encoding}; {@code ZincJavaCompiler} keeps its own copy because it
+     * runs in a forked worker JVM whose classpath is rebuilt from a POM and cannot see this class
+     * — layer-forced, so move the two together.
+     *
+     * <p>Because it is a constant it can never separate two of today's keys. It is hashed anyway
+     * because the charset decides the bytes: a key that omits it would serve Latin-1-decoded
+     * artifacts to a UTF-8 build the day the pin moves, and a one-time recompile is the whole cost
+     * of being able to move it.
+     */
+    public static final String SOURCE_ENCODING = "UTF-8";
 
     private ActionKey() {}
 
@@ -36,6 +50,13 @@ public final class ActionKey {
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         sb.append("release:").append(request.release()).append('\n');
+        sb.append("encoding:").append(SOURCE_ENCODING).append('\n');
+        // The project JDK is a compile INPUT, not a consequence of --release: ForkedJavac launches
+        // javac out of this very home, so it is where the platform classes (and the compiler) come
+        // from. Switching jdk = 17 to 21 leaves --release alone, so without this the key never
+        // moves and the build restores bytecode compiled by the old javac against the old
+        // platform. Same reasoning, same rendering, as forKotlinc's `jdk:` (JK-2391/JK-2460).
+        sb.append("jdk:").append(jdkToken(request.javaHome())).append('\n');
         sb.append("options:");
         List<String> opts = new ArrayList<>(request.extraOptions());
         opts.sort(Comparator.naturalOrder());
@@ -75,15 +96,20 @@ public final class ActionKey {
 
     /**
      * Action key for a Kotlin worker invocation. Same shape as {@link #forJavac}: task + jk version +
-     * jvm target + sorted free args + each source's content hash + classpath paths (both the
-     * compilation classpath and the worker's Build Tools API closure — whose CAS paths encode the
-     * compiler version, so a compiler bump invalidates the key).
+     * jvm target + the project JDK + sorted free args + each source's content hash + classpath paths
+     * (both the compilation classpath and the worker's Build Tools API closure — whose CAS paths
+     * encode the compiler version, so a compiler bump invalidates the key).
      */
     public static String forKotlinc(String taskId, KotlincRequest request, String jkVersion) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
+        // The project JDK is a compile INPUT, not a consequence of jvmTarget: KotlincDriver hands
+        // it to kotlinc as -jdk-home, and that is where the platform classes a cross-compile links
+        // against come from. Switching jdk = 17 to 21 leaves jvmTarget alone, so without this the
+        // key never moves and the build restores bytecode linked against the old platform.
+        sb.append("jdk:").append(jdkToken(request.javaHome())).append('\n');
         // -module-name reshapes internal-member mangling in the output.
         if (request.moduleName() != null) {
             sb.append("moduleName:").append(request.moduleName()).append('\n');
@@ -201,7 +227,32 @@ public final class ActionKey {
         }
         result.put("release", Integer.toString(request.release()));
         result.put("options", String.join(",", request.extraOptions()));
+        // The key hashes the JDK, so the why-rebuilt diff has to be able to name it: without this
+        // a JDK switch reads as "nothing changed, rebuilt anyway".
+        result.put("jdk", jdkToken(request.javaHome()));
         return result;
+    }
+
+    /**
+     * Identity of the JDK an action compiles against, from its {@code release} file — one small
+     * property file carrying {@code JAVA_VERSION}, {@code IMPLEMENTOR} and {@code OS_ARCH}, i.e.
+     * exactly the facts that decide which platform classes the compiler sees. Content, not path,
+     * so a point-release upgraded in place (or reached through a stable {@code <vendor>-<major>}
+     * pointer that has been repointed) still moves the key. Deliberately NOT a tree fingerprint:
+     * a JDK is tens of thousands of files and this runs on every compile. A directory with no
+     * readable release file keys its absolute path — the same string that reaches the tool.
+     *
+     * <p>The one JDK-identity convention in the tree: {@link #forJavac}, {@link #forKotlinc} and
+     * the {@code jdk:} token both {@code PlannerPlugin} arms add to their {@link #forArtifact}
+     * bags all render it through here, so a second spelling cannot appear (JK-2460). A null home
+     * — a request that names no project JDK — keys the literal {@code none}, which is a value no
+     * real home can produce, rather than silently collapsing onto whichever JDK ran last.
+     */
+    public static String jdkToken(Path javaHome) throws IOException {
+        if (javaHome == null) return "none";
+        Path abs = javaHome.toAbsolutePath().normalize();
+        Path release = abs.resolve("release");
+        return Files.isRegularFile(release) ? FileHashMemo.contentHash(release) : abs.toString();
     }
 
     /**

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,14 +39,13 @@ import java.util.function.UnaryOperator;
  *
  * <h2>Secrets</h2>
  *
- * A {@code.env} is where tokens live, so {@link #isFromFile} / {@link #secretValues} identify
- * file-sourced values. {@link SecretRedactor#from(EnvLookup)} masks them in free-form text (JSONL,
- * journal, errors) and hashes them for cache keys.
+ * A {@code.env} is where tokens live, so {@link #fileNames} names the secrets and {@link
+ * SecretRedactor#from(EnvLookup)} masks their effective values in free-form text (JSONL, journal,
+ * errors) and hashes them for cache keys. {@link #isFromFile} answers the narrower question of
+ * <em>which layer won</em> — {@code jk env} displays that; redaction deliberately does not depend
+ * on it, because a shadowed name still names a credential.
  */
 public final class EnvLookup {
-
-    /** {@code .env} — no {@code .env.{profile}} yet; profiles already exist and the overlap needs a design. */
-    public static final String FILE_NAME = ".env";
 
     private final Map<String, String> fromFiles;
     private final UnaryOperator<String> realEnv;
@@ -65,9 +65,9 @@ public final class EnvLookup {
     public static EnvLookup forModule(Path moduleDir, UnaryOperator<String> realEnv) {
         Map<String, String> layered = new LinkedHashMap<>();
         workspaceRoot(moduleDir).ifPresent(root -> {
-            if (!root.equals(moduleDir)) layered.putAll(readCached(root.resolve(FILE_NAME)));
+            if (!root.equals(moduleDir)) layered.putAll(readCached(root.resolve(ManifestPaths.ENV)));
         });
-        layered.putAll(readCached(moduleDir.resolve(FILE_NAME))); // module wins over workspace
+        layered.putAll(readCached(moduleDir.resolve(ManifestPaths.ENV))); // module wins over workspace
         return new EnvLookup(layered, realEnv);
     }
 
@@ -116,7 +116,7 @@ public final class EnvLookup {
 
     /**
      * True when {@code name}'s effective value came from a {@code.env} file rather than the real
-     * environment — i.e. it should be treated as a secret.
+     * environment — i.e. which layer won. Not the secrecy predicate: see the class note.
      */
     public boolean isFromFile(String name) {
         return realEnv.apply(name) == null && fromFiles.containsKey(name);

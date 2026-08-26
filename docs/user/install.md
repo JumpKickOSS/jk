@@ -150,7 +150,10 @@ eval "$("$HOME/.local/bin/jk" activate zsh)"
 (bash: `activate bash`; fish: `"$HOME/.local/bin/jk" activate fish | source`.)
 
 - **PATH** — prepends the platform bin so real `jk` / `jkx` resolve
-- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `GRAALVM_HOME` / `PATH` when you `cd`
+- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `GRAALVM_HOME` and swaps only those toolchain
+  `bin` dirs onto your live `PATH` when you `cd` (nvm and other PATH edits are left alone). A
+  project `jk-lock.toml` `[jdk]` / `[graal]` pin wins over the global default when some installed
+  JDK/Graal meets the lock floor (same major or newer).
 - **Completions** — bash, zsh, fish, pwsh
 
 ## Official URLs

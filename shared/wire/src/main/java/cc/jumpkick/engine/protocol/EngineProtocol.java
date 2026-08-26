@@ -16,6 +16,14 @@ public final class EngineProtocol {
     public static final String TYPE_FIELD = "type";
 
     /**
+     * The failing test's class name on diagnostic/error lines, the SSE {@code error} event and the
+     * journal's persisted diagnostics. One spelling everywhere; the retired {@code class} alias is
+     * gone. (The test-worker protocol's {@code class} on {@code --list-only} discovery is a
+     * separate, single-spelled contract.)
+     */
+    public static final String TEST_CLASS_FIELD = "testClass";
+
+    /**
      * Client → server first line on loopback TCP only: shared secret from {@code paths.token}.
      * Never used on the Unix-domain socket (filesystem perms gate access).
      */
@@ -89,6 +97,18 @@ public final class EngineProtocol {
      * optional {@code buildNumber}. Clients track this for Ctrl-C / {@code jk cancel}.
      */
     public static final String JOB_START = "job-start";
+
+    /**
+     * Server → client: the job is finished <em>and the engine has stopped touching the project
+     * tree</em>; carries {@code jid}. Sent after the journal (and its {@code target/jk-results.md}
+     * copy) is written, which happens strictly after the plan terminal
+     * ({@link #BUILDPLAN_FINISH} / {@link #WORKSPACE_FINISH}). A client that returns on the
+     * terminal alone hands control back while those writes are still in flight, so a following
+     * {@code jk clean} races them. Waiting for this line is what makes "the command returned" mean
+     * "the engine is done with this project tree". Stream EOF is the same signal from an engine
+     * that died first.
+     */
+    public static final String JOB_FINISH = "job-finish";
 
     /**
      * Server → client: workspace preflight progress ({@code onPreflight}) before the plan burst

@@ -4,6 +4,8 @@ package cc.jumpkick.http;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -16,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
@@ -105,15 +106,50 @@ class HttpTest {
 
     @Test
     void offline_short_circuits_with_offline_exception() {
-        var prev = cc.jumpkick.config.SessionContext.current().config();
-        cc.jumpkick.config.SessionContext.installConfig(
-                prev.mergedWith(cc.jumpkick.config.JkConfig.empty().withOffline(Optional.of(true))));
+        var prev = SessionContext.current().config();
+        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(true)));
         try {
             assertThatThrownBy(() -> http().get(base.resolve("/anything")))
                     .isInstanceOf(OfflineException.class)
                     .hasMessageContaining("offline:");
         } finally {
-            cc.jumpkick.config.SessionContext.installConfig(prev);
+            SessionContext.installConfig(prev);
+        }
+    }
+
+    /**
+     * A repository declared as {@code https://user:token@host/} authenticates through an
+     * {@code Authorization} header — the JDK's client ignores userinfo — but the URI still carries
+     * the credential, and this is the message that reaches the journal when a host is down.
+     */
+    @Test
+    void the_exhausted_retry_message_carries_no_credential() {
+        server.createContext("/dead", exchange -> {
+            exchange.sendResponseHeaders(503, -1);
+            exchange.close();
+        });
+        URI withCredential = URI.create(
+                "http://alice:s3cr3t-token@127.0.0.1:" + server.getAddress().getPort() + "/dead");
+
+        assertThatThrownBy(() -> http().get(withCredential))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("503")
+                .hasMessageNotContaining("s3cr3t-token")
+                .hasMessageNotContaining("alice");
+    }
+
+    /** The offline refusal prints the URI too, and it is printed before any request is built. */
+    @Test
+    void the_offline_refusal_carries_no_credential() {
+        var prev = SessionContext.current().config();
+        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(true)));
+        try {
+            assertThatThrownBy(() -> http().get(URI.create("https://alice:s3cr3t-token@nexus.example.com/a.jar")))
+                    .isInstanceOf(OfflineException.class)
+                    .hasMessageContaining("nexus.example.com/a.jar")
+                    .hasMessageNotContaining("s3cr3t-token");
+        } finally {
+            SessionContext.installConfig(prev);
         }
     }
 

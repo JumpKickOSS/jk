@@ -5,17 +5,19 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.TreeFingerprint;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,7 +47,9 @@ public final class DoctorCommand implements CliCommand {
         return List.of(
                 Opt.value("<dir>", "Override the tools install root. Default: $JK_CACHE_DIR/tools.", "--tools-dir")
                         .hide(),
-                Opt.flag("Fingerprint each linked install (SHA-256 every file)", "--verify-linked"));
+                // Kept under HelpWidthTest's 78-column budget: 20 columns go to the indent and the
+                // flag itself, so this string has 58 to spend.
+                Opt.flag("Fingerprint each linked install and report drift", "--verify-linked"));
     }
 
     @Override
@@ -70,13 +74,25 @@ public final class DoctorCommand implements CliCommand {
             toolRows = List.of();
             toolsError = e.getMessage();
         }
-        int healthy = 0, pruned = 0, verified = 0;
+        int healthy = 0, pruned = 0, verified = 0, drifted = 0, firstSeen = 0, empty = 0;
         for (ToolRow row : toolRows) {
             switch (row.kind()) {
                 case PRUNED -> pruned++;
                 case VERIFIED -> {
                     healthy++;
                     verified++;
+                }
+                case DRIFTED -> {
+                    healthy++;
+                    drifted++;
+                }
+                case FIRST_SEEN -> {
+                    healthy++;
+                    firstSeen++;
+                }
+                case EMPTY -> {
+                    healthy++;
+                    empty++;
                 }
                 case LINKED, OK -> healthy++;
             }
@@ -94,6 +110,7 @@ public final class DoctorCommand implements CliCommand {
                     + "\"jdk\":" + checkJson(jdk) + ","
                     + "\"lock\":" + checkJson(lock) + ","
                     + "\"tools\":{\"healthy\":" + healthy + ",\"pruned\":" + pruned + ",\"verified\":" + verified
+                    + ",\"drifted\":" + drifted + ",\"firstSeen\":" + firstSeen + ",\"empty\":" + empty
                     + ",\"error\":" + Jsonl.quote(toolsError) + "}"
                     + "}";
             CliOutput.out(json);
@@ -101,8 +118,8 @@ public final class DoctorCommand implements CliCommand {
         }
 
         Theme t = Theme.active();
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Doctor"));
+        CommandWedge.envelopeStart();
+        CliOutput.out(CommandWedge.menu("Doctor"));
 
         printCheck(engine, t);
         printCheck(cache, t);
@@ -125,7 +142,17 @@ public final class DoctorCommand implements CliCommand {
                                 + Theme.colorize(row.detail(), t.path()) + ")");
                     case VERIFIED ->
                         CliOutput.out(Theme.colorize("verified:", t.completedStep()) + " " + label + " (sha256-tree="
-                                + row.detail().substring(0, 12) + "…)");
+                                + short12(row.detail()) + "…, unchanged)");
+                    case FIRST_SEEN ->
+                        CliOutput.out(Theme.colorize("recorded:", t.completedStep()) + " " + label + " (sha256-tree="
+                                + short12(row.detail()) + "…, first fingerprint)");
+                    case DRIFTED ->
+                        CliOutput.out(Theme.colorize("drifted: ", t.warning()) + " " + label + " — link target changed "
+                                + Theme.colorize(row.detail(), t.path()) + " (baseline updated)");
+                    case EMPTY ->
+                        CliOutput.out(Theme.colorize("warn:    ", t.warning()) + " " + label
+                                + " — link target holds no files; there is nothing to fingerprint ("
+                                + Theme.colorize(row.detail(), t.path()) + ")");
                     case LINKED ->
                         CliOutput.out("linked:   " + label
                                 + " " + Theme.colorize("→", t.darkGray()) + " "
@@ -139,7 +166,10 @@ public final class DoctorCommand implements CliCommand {
         String summary = Theme.colorize(String.valueOf(healthy), t.focused())
                 + " healthy"
                 + (pruned > 0 ? ", " + Theme.colorize(String.valueOf(pruned), t.focused()) + " pruned" : "")
-                + (verified > 0 ? ", " + Theme.colorize(String.valueOf(verified), t.focused()) + " fingerprinted" : "");
+                + (verified > 0 ? ", " + Theme.colorize(String.valueOf(verified), t.focused()) + " unchanged" : "")
+                + (firstSeen > 0 ? ", " + Theme.colorize(String.valueOf(firstSeen), t.focused()) + " recorded" : "")
+                + (drifted > 0 ? ", " + Theme.colorize(String.valueOf(drifted), t.focused()) + " drifted" : "")
+                + (empty > 0 ? ", " + Theme.colorize(String.valueOf(empty), t.focused()) + " empty" : "");
         // Append subsystem warnings to summary when any check failed.
         if (hasFail) {
             summary += Theme.colorize(" — issues found", t.warning());
@@ -158,9 +188,19 @@ public final class DoctorCommand implements CliCommand {
 
     private record Check(Status status, String label, String detail) {}
 
+    /**
+     * The verdicts a tool install can carry. The four fingerprint verdicts are reachable only under
+     * {@code --verify-linked}: {@link #VERIFIED} matches the stored baseline, {@link #DRIFTED}
+     * does not, {@link #FIRST_SEEN} had no baseline to compare against, and {@link #EMPTY} means the
+     * digest was {@link JdkFingerprint#EMPTY_TREE} — nothing was hashed, which is a finding, not a
+     * fingerprint (JK-2467).
+     */
     private enum ToolRowKind {
         PRUNED,
         VERIFIED,
+        DRIFTED,
+        FIRST_SEEN,
+        EMPTY,
         LINKED,
         OK
     }
@@ -222,7 +262,7 @@ public final class DoctorCommand implements CliCommand {
     private static Check checkLock() {
         try {
             Path cwd = Path.of(System.getProperty("user.dir", "."));
-            Path lock = cc.jumpkick.lock.LockPaths.lockFile(cwd);
+            Path lock = LockPaths.lockFile(cwd);
             Path proj = lock.getParent();
             if (!Files.isRegularFile(lock))
                 return new Check(Status.WARN, "lock", "no jk-lock.toml at " + proj + " (run jk lock)");
@@ -241,6 +281,15 @@ public final class DoctorCommand implements CliCommand {
      * Scan every installed/linked tool, applying repair as it goes (unlink a broken symlink,
      * fingerprint a verified one) — the single pass both JSON and human output render from, so
      * {@code --output json} performs the same repair the human view reports.
+     *
+     * <p>Only a symlinked home is fingerprinted, because a link is the only install whose contents
+     * jk does not control: {@code ToolProvisioning} links a discovered host install rather than
+     * downloading one, and that tree can change underneath jk at any time. A directory jk installed
+     * itself is {@code OK} without a digest. On Windows that means {@code --verify-linked}
+     * fingerprints nothing, and deliberately so — {@code SymlinkProvisioner.canSymlink()} is false
+     * there, so jk never creates a linked tool home in the first place and there is no drift to
+     * detect. (A junction, which {@code Files.isSymbolicLink} also reports false for, is not
+     * something jk creates either.)
      */
     private static List<ToolRow> scanTools(Path root, boolean verifyLinked) throws IOException {
         List<ToolRow> rows = new ArrayList<>();
@@ -254,10 +303,7 @@ public final class DoctorCommand implements CliCommand {
                     continue;
                 }
                 if (Files.isSymbolicLink(home) && verifyLinked) {
-                    String fingerprint = TreeFingerprint.compute(home);
-                    Path marker = root.resolve(tool.slug()).resolve(installed.version() + ".fingerprint");
-                    Files.writeString(marker, fingerprint);
-                    rows.add(new ToolRow(tool, installed, ToolRowKind.VERIFIED, fingerprint));
+                    rows.add(verifyLinkedTool(root, tool, installed, home));
                 } else if (Files.isSymbolicLink(home)) {
                     rows.add(new ToolRow(tool, installed, ToolRowKind.LINKED, readlinkSafe(home)));
                 } else {
@@ -266,6 +312,39 @@ public final class DoctorCommand implements CliCommand {
             }
         }
         return rows;
+    }
+
+    /**
+     * Fingerprint one symlinked tool home and compare it against the digest the last run stored at
+     * {@code <slug>/<version>.fingerprint}. Before JK-2467 that marker was written and never read by
+     * anything in the tree, so {@code --verify-linked} verified nothing; the read is what makes the
+     * write mean something.
+     *
+     * <p>The baseline is re-written on every verdict, drift included, so a change is reported once
+     * and the next run is quiet. That matches what {@code scanTools} already is — a repair pass, not
+     * a monitor — and doctor's exit code is deliberately unaffected either way.
+     */
+    private static ToolRow verifyLinkedTool(Path root, BuildTool tool, InstalledTool installed, Path home)
+            throws IOException {
+        String fingerprint = JdkFingerprint.compute(home);
+        // Nothing was hashed. Report it and do NOT store it: a digest of no files is not a baseline
+        // a later run should be able to match.
+        if (JdkFingerprint.EMPTY_TREE.equals(fingerprint)) {
+            return new ToolRow(tool, installed, ToolRowKind.EMPTY, readlinkSafe(home));
+        }
+        Path marker = root.resolve(tool.slug()).resolve(installed.version() + ".fingerprint");
+        String baseline = Files.isRegularFile(marker) ? Files.readString(marker).strip() : null;
+        Files.writeString(marker, fingerprint);
+        if (baseline == null) return new ToolRow(tool, installed, ToolRowKind.FIRST_SEEN, fingerprint);
+        if (baseline.equals(fingerprint)) return new ToolRow(tool, installed, ToolRowKind.VERIFIED, fingerprint);
+        return new ToolRow(
+                tool, installed, ToolRowKind.DRIFTED, short12(baseline) + "… → " + short12(fingerprint) + "…");
+    }
+
+    /** The leading 12 hex characters a digest is quoted by, tolerant of a short/absent value. */
+    private static String short12(String digest) {
+        if (digest == null) return "?";
+        return digest.length() <= 12 ? digest : digest.substring(0, 12);
     }
 
     private static void printCheck(Check c, Theme t) {

@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.boot;
 
-import java.io.ByteArrayOutputStream;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicProperties;
+import cc.jumpkick.host.DeterministicZip;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +25,6 @@ import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
-import java.util.zip.CRC32;
-import java.util.zip.CheckedInputStream;
-import java.util.zip.ZipEntry;
 
 /**
  * Packages a Spring Boot executable jar ({@code JarLauncher} layout: loader, {@code
@@ -51,17 +49,17 @@ public final class BootJarPackager {
     public Path packageBootJar(BootJarRequest request) throws IOException {
         Files.createDirectories(request.outputJar().getParent());
         Manifest manifest = buildManifest(request);
-        long epoch = request.timestampEpochSeconds();
+        DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
         Set<String> dirsWritten = new HashSet<>();
 
         try (OutputStream out = Files.newOutputStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
-            writeManifest(jos, manifest, epoch);
+            zip.writeManifest(jos, manifest);
             dirsWritten.add("META-INF/");
 
             // 1. Loader classes exploded at the root — java -jar must find
             //    Main-Class before anything else is resolvable.
-            explodeLoader(jos, request.loaderJar(), epoch, dirsWritten);
+            explodeLoader(jos, request.loaderJar(), zip, dirsWritten);
 
             // 2. Application classes + resources under BOOT-INF/classes/, then any AOT
             //    output roots (generated classes + GraalVM hint resources) — app files win
@@ -76,50 +74,47 @@ public final class BootJarPackager {
                 for (Path file : files) {
                     String name = normalize(root, file);
                     if (name.equals("META-INF/MANIFEST.MF")) continue;
-                    if (isBuildStamp(name)) continue;
+                    if (BuildStamps.isStampFile(name)) continue;
                     if (!classEntries.add(name)) continue;
-                    writeParentDirs(jos, CLASSES_PREFIX + name, epoch, dirsWritten);
-                    writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file), epoch);
+                    zip.writeParentDirs(jos, CLASSES_PREFIX + name, dirsWritten);
+                    zip.writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file));
                 }
             }
 
             // 3. Boot-read metadata under BOOT-INF/classes/META-INF (classpath-visible:
             //    BuildProperties and the sbom actuator resolve these as resources).
             if (!request.buildInfo().isEmpty()) {
-                writeParentDirs(jos, BUILD_INFO_ENTRY, epoch, dirsWritten);
-                writeEntry(jos, BUILD_INFO_ENTRY, buildInfoProperties(request.buildInfo()), epoch);
+                zip.writeParentDirs(jos, BUILD_INFO_ENTRY, dirsWritten);
+                zip.writeEntry(jos, BUILD_INFO_ENTRY, buildInfoProperties(request.buildInfo()));
             }
             if (request.sbom() != null) {
-                writeParentDirs(jos, SBOM_ENTRY, epoch, dirsWritten);
-                writeEntry(jos, SBOM_ENTRY, request.sbom(), epoch);
+                zip.writeParentDirs(jos, SBOM_ENTRY, dirsWritten);
+                zip.writeEntry(jos, SBOM_ENTRY, request.sbom());
             }
 
             // 4. Nested dependency jars — STORED with a precomputed CRC.
-            writeDir(jos, LIB_PREFIX, epoch, dirsWritten);
+            zip.writeDir(jos, LIB_PREFIX, dirsWritten);
             for (Lib lib : request.libs()) {
-                writeStored(jos, LIB_PREFIX + lib.fileName(), lib.jar(), epoch);
+                zip.writeStored(jos, LIB_PREFIX + lib.fileName(), lib.jar());
             }
 
             // 5. The two index files the manifest points at.
-            writeEntry(jos, CLASSPATH_IDX, classpathIndex(request.libs()), epoch);
-            writeEntry(jos, LAYERS_IDX, layersIndex(request.libs()), epoch);
+            zip.writeEntry(jos, CLASSPATH_IDX, classpathIndex(request.libs()));
+            zip.writeEntry(jos, LAYERS_IDX, layersIndex(request.libs()));
         }
         return request.outputJar();
     }
 
     /**
      * {@code build-info.properties} the way Boot's {@code BuildProperties} reads it: {@code build.}
-     * prefixed keys, sorted for reproducibility. {@code build.time} is deliberately absent unless
-     * the caller supplies one — a wall-clock stamp would churn an otherwise-identical jar.
+     * prefixed keys, rendered by {@link DeterministicProperties} so separators and controls survive
+     * {@code Properties.load}. {@code build.time} is deliberately absent unless the caller supplies
+     * one — a wall-clock stamp would churn an otherwise-identical jar.
      */
     private static byte[] buildInfoProperties(Map<String, String> info) {
-        StringBuilder sb = new StringBuilder();
-        info.keySet().stream().sorted().forEach(k -> sb.append("build.")
-                .append(k)
-                .append('=')
-                .append(info.get(k))
-                .append('\n'));
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Map<String, String> prefixed = new LinkedHashMap<>();
+        info.forEach((k, v) -> prefixed.put("build." + k, v));
+        return DeterministicProperties.render(prefixed).getBytes(StandardCharsets.UTF_8);
     }
 
     /** {@code classpath.idx}: one {@code - "BOOT-INF/lib/…jar"} line per nested jar, in order. */
@@ -128,7 +123,7 @@ public final class BootJarPackager {
         for (Lib lib : libs) {
             sb.append("- \"").append(LIB_PREFIX).append(lib.fileName()).append("\"\n");
         }
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /**
@@ -155,15 +150,15 @@ public final class BootJarPackager {
         sb.append("  - \"").append(CLASSPATH_IDX).append("\"\n");
         sb.append("  - \"").append(LAYERS_IDX).append("\"\n");
         sb.append("  - \"META-INF/\"\n");
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /**
      * Copy every class from the loader jar to the boot jar's root. Loader jars ship their own
      * signature-free META-INF which we drop (our manifest already points at the launcher).
      */
-    private static void explodeLoader(JarOutputStream jos, Path loaderJar, long epoch, Set<String> dirsWritten)
-            throws IOException {
+    private static void explodeLoader(
+            JarOutputStream jos, Path loaderJar, DeterministicZip zip, Set<String> dirsWritten) throws IOException {
         try (JarFile jf = new JarFile(loaderJar.toFile())) {
             List<JarEntry> entries = new ArrayList<>();
             jf.stream().filter(e -> !e.isDirectory()).forEach(entries::add);
@@ -171,89 +166,10 @@ public final class BootJarPackager {
             for (JarEntry e : entries) {
                 String name = e.getName();
                 if (name.startsWith("META-INF/")) continue;
-                writeParentDirs(jos, name, epoch, dirsWritten);
-                writeEntryStreaming(jos, name, jf.getInputStream(e), epoch);
+                zip.writeParentDirs(jos, name, dirsWritten);
+                zip.writeEntryStreaming(jos, name, jf.getInputStream(e));
             }
         }
-    }
-
-    /**
-     * Write {@code file} as a STORED (uncompressed) entry. Boot's nested-jar loader maps entries
-     * of BOOT-INF/lib/*.jar directly; a DEFLATED nested jar cannot be random-accessed and fails at
-     * launch. STORED requires size + CRC-32 up front, so the file is streamed twice —
-     * constant-memory either way.
-     */
-    /**
-     * Clamp pre-1980 fixed times to 1980-02-01T00:00:00Z: DOS time cannot represent them, and
-     * preserving epoch 0 costs an 18-byte extended-timestamp extra field per entry.
-     */
-    private static long dosSafe(long epochSeconds) {
-        return Math.max(epochSeconds, 318_211_200L);
-    }
-
-    private static void writeStored(JarOutputStream jos, String name, Path file, long epoch) throws IOException {
-        long size = Files.size(file);
-        CRC32 crc = new CRC32();
-        try (InputStream in = new CheckedInputStream(Files.newInputStream(file), crc)) {
-            in.transferTo(OutputStream.nullOutputStream());
-        }
-        JarEntry entry = new JarEntry(name);
-        entry.setMethod(ZipEntry.STORED);
-        entry.setSize(size);
-        entry.setCompressedSize(size);
-        entry.setCrc(crc.getValue());
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epoch), 0, ZoneOffset.UTC));
-        jos.putNextEntry(entry);
-        try (InputStream in = Files.newInputStream(file)) {
-            in.transferTo(jos);
-        }
-        jos.closeEntry();
-    }
-
-    /** Emit any missing directory entries leading up to {@code entryName} (deterministic layout). */
-    private static void writeParentDirs(JarOutputStream jos, String entryName, long epoch, Set<String> written)
-            throws IOException {
-        int slash = -1;
-        while ((slash = entryName.indexOf('/', slash + 1)) >= 0) {
-            writeDir(jos, entryName.substring(0, slash + 1), epoch, written);
-        }
-    }
-
-    private static void writeDir(JarOutputStream jos, String dirName, long epoch, Set<String> written)
-            throws IOException {
-        if (!written.add(dirName)) return;
-        JarEntry entry = new JarEntry(dirName);
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epoch), 0, ZoneOffset.UTC));
-        jos.putNextEntry(entry);
-        jos.closeEntry();
-    }
-
-    private static void writeEntry(JarOutputStream jos, String name, byte[] data, long epochSeconds)
-            throws IOException {
-        JarEntry entry = new JarEntry(name);
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epochSeconds), 0, ZoneOffset.UTC));
-        jos.putNextEntry(entry);
-        jos.write(data);
-        jos.closeEntry();
-    }
-
-    private static void writeEntryStreaming(JarOutputStream jos, String name, InputStream in, long epochSeconds)
-            throws IOException {
-        // Take ownership of `in` before anything that can throw: it is already open at the call
-        // site, so a duplicate-entry putNextEntry would otherwise leak the descriptor.
-        try (in) {
-            JarEntry entry = new JarEntry(name);
-            entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epochSeconds), 0, ZoneOffset.UTC));
-            jos.putNextEntry(entry);
-            in.transferTo(jos);
-        }
-        jos.closeEntry();
-    }
-
-    private static void writeManifest(JarOutputStream jos, Manifest manifest, long epochSeconds) throws IOException {
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        manifest.write(buf);
-        writeEntry(jos, "META-INF/MANIFEST.MF", buf.toByteArray(), epochSeconds);
     }
 
     private static Manifest buildManifest(BootJarRequest request) {
@@ -278,11 +194,6 @@ public final class BootJarPackager {
         return manifest;
     }
 
-    /** jk's freshness/skip stamps — build-host metadata that must not enter the jar. */
-    private static boolean isBuildStamp(String name) {
-        return name.endsWith(".jstamp") || name.endsWith(".kstamp") || name.endsWith(".test-stamp");
-    }
-
     private static List<Path> collectFiles(Path root) throws IOException {
         if (!Files.exists(root)) return List.of();
         List<Path> result = new ArrayList<>();
@@ -298,14 +209,16 @@ public final class BootJarPackager {
 
     /**
      * One nested jar: its {@code BOOT-INF/lib} file name (original {@code artifact-version.jar},
-     * never a CAS hash), the file to copy, and whether it lands in the {@code
-     * snapshot-dependencies} layer.
+     * never a CAS hash), the file to copy, whether it lands in the {@code snapshot-dependencies}
+     * layer, and the coordinate group that disambiguates it from a same-named artifact in another
+     * group ({@code ""} for a workspace sibling, which has no coordinate).
      */
-    public record Lib(String fileName, Path jar, boolean snapshot) {
+    public record Lib(String fileName, Path jar, boolean snapshot, String group) {
 
         public Lib {
             Objects.requireNonNull(fileName, "fileName");
             Objects.requireNonNull(jar, "jar");
+            group = group == null ? "" : group;
         }
     }
 
@@ -336,66 +249,44 @@ public final class BootJarPackager {
             Objects.requireNonNull(loaderJar, "loaderJar");
             Objects.requireNonNull(outputJar, "outputJar");
             Objects.requireNonNull(startClass, "startClass");
-            Objects.requireNonNull(bootVersion, "bootVersion");
+            requireResolvedVersion(bootVersion);
             libs = libs == null ? List.of() : dedupeFileNames(libs);
             attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
             buildInfo = buildInfo == null ? Map.of() : Map.copyOf(buildInfo);
             aotDirs = aotDirs == null ? List.of() : List.copyOf(aotDirs);
         }
 
-        /** Back-compat constructor: no build-info, no SBOM, no AOT output. */
-        public BootJarRequest(
-                Path classesDir,
-                List<Lib> libs,
-                Path loaderJar,
-                Path outputJar,
-                String startClass,
-                String bootVersion,
-                Map<String, String> attributes,
-                long timestampEpochSeconds) {
-            this(
-                    classesDir,
-                    libs,
-                    loaderJar,
-                    outputJar,
-                    startClass,
-                    bootVersion,
-                    attributes,
-                    Map.of(),
-                    null,
-                    List.of(),
-                    timestampEpochSeconds);
-        }
-
-        /** Back-compat constructor: build-info + SBOM, no AOT output. */
-        public BootJarRequest(
-                Path classesDir,
-                List<Lib> libs,
-                Path loaderJar,
-                Path outputJar,
-                String startClass,
-                String bootVersion,
-                Map<String, String> attributes,
-                Map<String, String> buildInfo,
-                byte[] sbom,
-                long timestampEpochSeconds) {
-            this(
-                    classesDir,
-                    libs,
-                    loaderJar,
-                    outputJar,
-                    startClass,
-                    bootVersion,
-                    attributes,
-                    buildInfo,
-                    sbom,
-                    List.of(),
-                    timestampEpochSeconds);
+        /**
+         * {@code Spring-Boot-Version} is a version a consumer reads, so a selector may not reach
+         * it. The declared {@code version} key is a selector — {@code latest}, {@code ^4},
+         * {@code =4.1.0} — and writing it verbatim shipped jars announcing
+         * {@code Spring-Boot-Version: latest}. The resolved closure is the only admissible source
+         * ({@link BootJarInputs}); this refuses the spellings that are unambiguously selectors.
+         *
+         * <p>It cannot refuse all of them: a bare major line ({@code 4}) is a caret floor to the
+         * resolver and a legal Maven version to everyone else, and no shape check can separate the
+         * two. That is precisely why the value must be resolved rather than validated.
+         */
+        private static void requireResolvedVersion(String bootVersion) {
+            Objects.requireNonNull(bootVersion, "bootVersion");
+            if (bootVersion.isBlank() || bootVersion.equals("latest") || !bootVersion.matches("[\\w.+-]+")) {
+                throw new IllegalArgumentException("Spring-Boot-Version must be a resolved version, not the selector \""
+                        + bootVersion + "\" — read it off the runtime closure");
+            }
         }
 
         /**
          * Two coordinates can share an {@code artifact-version.jar} name across groups; nested
-         * entries must be unique, so later collisions get their group prepended.
+         * entries must be unique, so later collisions get their coordinate group prepended —
+         * {@code com.example.b-util-1.0.jar}. The group is the fact that actually distinguishes
+         * them and the only one a reader can act on. A workspace sibling has no coordinate, and a
+         * group can in principle repeat a file name (two classifiers of one artifact), so an
+         * ordinal follows as the last resort: a counter that reads like a counter.
+         *
+         * <p>Never the jar's parent directory. Entries are served out of the content-addressed
+         * store, so that directory is two hex characters of a SHA-256 — unique enough by accident,
+         * meaningless to a reader, and content-derived, so bumping either colliding dependency
+         * renamed a nested entry and churned both index files.
          */
         private static List<Lib> dedupeFileNames(List<Lib> libs) {
             Set<String> seen = new LinkedHashSet<>();
@@ -403,13 +294,12 @@ public final class BootJarPackager {
             for (Lib lib : libs) {
                 Lib effective = lib;
                 if (!seen.add(lib.fileName())) {
-                    String prefixed = lib.jar().getParent() != null
-                            ? lib.jar().getParent().getFileName() + "-" + lib.fileName()
-                            : "dup-" + lib.fileName();
+                    String prefixed =
+                            lib.group().isEmpty() ? "dup-" + lib.fileName() : lib.group() + "-" + lib.fileName();
                     int n = 2;
                     String candidate = prefixed;
                     while (!seen.add(candidate)) candidate = prefixed + "." + n++;
-                    effective = new Lib(candidate, lib.jar(), lib.snapshot());
+                    effective = new Lib(candidate, lib.jar(), lib.snapshot(), lib.group());
                 }
                 out.add(effective);
             }

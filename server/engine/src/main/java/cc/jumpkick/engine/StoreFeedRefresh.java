@@ -5,6 +5,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.repo.LibraryRegistryClient;
+import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -39,7 +40,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
      * Shared cadence for feeds and the scheduled cache-GC enqueue. Aliases the client-side
      * freshness window so foreground {@code ensurePresent} gating and this refresher agree.
      */
-    public static final Duration INTERVAL = cc.jumpkick.repo.LibraryRegistrySync.FRESH_FOR;
+    public static final Duration INTERVAL = LibraryRegistrySync.FRESH_FOR;
 
     private final Consumer<String> log;
     private final Http http;

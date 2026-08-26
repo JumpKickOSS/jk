@@ -2,7 +2,10 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.model.command.CliCommand;
@@ -29,9 +32,7 @@ public final class JdkHomeCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     /** {@code eval "$(jk jdk home)"} — stdout is an export line; the no-pin failure stays a human wedge on stderr. */
@@ -42,13 +43,13 @@ public final class JdkHomeCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException {
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         Path dir = GlobalOptions.from(in).workingDir();
         Optional<InstalledJdk> jdk = JdkResolver.forProject(dir, jdksDir);
         if (jdk.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
-                    "no pinned JDK for " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
+                    "no pinned JDK for " + PathDisplay.styledRaw(dir)
                             + " (write `.jdk-version` via `jk jdk use <spec>`)");
             return Exit.CONFIG;
         }

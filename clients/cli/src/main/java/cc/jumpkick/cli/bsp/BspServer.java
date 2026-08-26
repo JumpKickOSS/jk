@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.bsp;
 
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ide.IdeEngineClient;
+import cc.jumpkick.command.ide.IdeSourceRoots;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -18,7 +23,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -79,8 +83,14 @@ public final class BspServer {
     }
 
     private void handle(String json) throws IOException {
-        String method = extractString(json, "method");
-        String id = extractId(json);
+        Object message;
+        try {
+            message = MiniJson.parse(json);
+        } catch (RuntimeException e) {
+            return; // not a JSON-RPC message; no id to answer on either
+        }
+        String method = MiniJson.str(message, "method");
+        String id = requestId(message);
         if (method == null) return;
         try {
             switch (method) {
@@ -88,7 +98,7 @@ public final class BspServer {
                     respond(
                             id,
                             "{\"displayName\":\"jk\",\"version\":"
-                                    + q(cc.jumpkick.cli.Jk.VERSION)
+                                    + q(Jk.VERSION)
                                     + ",\"bspVersion\":\"2.1.0\","
                                     + "\"capabilities\":{"
                                     + "\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"
@@ -307,7 +317,7 @@ public final class BspServer {
     private static String sourcesItem(String tid, Path mod, IdeWireModel model, int moduleIndex) {
         List<String> srcs = new ArrayList<>();
         // same roots as jk ide (all TestSuites + main + resources).
-        for (cc.jumpkick.command.ide.IdeSourceRoots.Root root : cc.jumpkick.command.ide.IdeSourceRoots.of(mod)) {
+        for (IdeSourceRoots.Root root : IdeSourceRoots.of(mod)) {
             // BSP SourceItemKind: 1 = file/normal source, 2 = test (see BSP protocol).
             int kind = root.test() ? 2 : 1;
             Path s = mod.resolve(root.relative());
@@ -530,28 +540,28 @@ public final class BspServer {
      * Parse optional {@code data} object on a BSP test request into {@link
      * cc.jumpkick.config.TestSelection}. Missing/empty → DEFAULT.
      */
-    static cc.jumpkick.config.TestSelection parseTestSelectionData(String requestJson) {
+    static TestSelection parseTestSelectionData(String requestJson) {
         if (requestJson == null || requestJson.isBlank()) {
-            return cc.jumpkick.config.TestSelection.DEFAULT;
+            return TestSelection.DEFAULT;
         }
         // Structural parse — the old needle/brace-slicing degraded silently on
         // pretty-printed payloads ("suites": [...]) and non-object data values.
         try {
-            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(requestJson);
+            Object parsed = MiniJson.parse(requestJson);
             if (!(parsed instanceof Map<?, ?> outer)) {
-                return cc.jumpkick.config.TestSelection.DEFAULT;
+                return TestSelection.DEFAULT;
             }
             // Full request envelope or bare params object — unwrap either.
             Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
             Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;
             boolean all = Boolean.TRUE.equals(src.get("allSuites"));
-            return cc.jumpkick.config.TestSelection.of(
+            return TestSelection.of(
                     stringList(src.get("suites")),
                     all,
                     stringList(src.get("includeTags")),
                     stringList(src.get("excludeTags")));
         } catch (RuntimeException e) {
-            return cc.jumpkick.config.TestSelection.DEFAULT;
+            return TestSelection.DEFAULT;
         }
     }
 
@@ -617,7 +627,7 @@ public final class BspServer {
         // Structural — the old regex collected any "uri" anywhere — including ones
         // nested inside data payloads.
         try {
-            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(json);
+            Object parsed = MiniJson.parse(json);
             if (!(parsed instanceof Map<?, ?> outer)) return List.of();
             Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
             Object targets = params.get("targets");
@@ -686,39 +696,27 @@ public final class BspServer {
         return p.toAbsolutePath().normalize().toUri().toString();
     }
 
+    /**
+     * JSON string literal, via the one escaper.
+     *
+     * <p>The local copy this replaced escaped only {@code \ " \n \r \t} and passed everything
+     * else through, so any control character below 0x20 — which an application's ANSI-coloured
+     * output routinely carries — produced invalid JSON-RPC on a protocol whose peer is an IDE.
+     */
     private static String q(String s) {
-        if (s == null) return "null";
-        StringBuilder b = new StringBuilder(s.length() + 2);
-        b.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> b.append("\\\\");
-                case '"' -> b.append("\\\"");
-                case '\n' -> b.append("\\n");
-                case '\r' -> b.append("\\r");
-                case '\t' -> b.append("\\t");
-                default -> b.append(c);
-            }
-        }
-        b.append('"');
-        return b.toString();
+        return Jsonl.quote(s);
     }
 
-    /** Compiled once, not per JSON-RPC message: the field set is small and fixed. */
-    private static final Map<String, Pattern> STRING_FIELD_PATTERNS = new ConcurrentHashMap<>();
-
-    private static final Pattern ID_PATTERN = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)");
-
-    private static String extractString(String json, String field) {
-        Pattern p = STRING_FIELD_PATTERNS.computeIfAbsent(
-                field, f -> Pattern.compile("\"" + f + "\"\\s*:\\s*\"([^\"]+)\""));
-        Matcher m = p.matcher(json);
-        return m.find() ? m.group(1) : null;
-    }
-
-    private static String extractId(String json) {
-        Matcher m = ID_PATTERN.matcher(json);
-        return m.find() ? m.group(1) : null;
+    /**
+     * The request id, re-rendered as the JSON literal the response has to echo — a string id comes
+     * back quoted, a numeric one bare — or {@code null} for a notification, which takes no reply.
+     *
+     * <p>The regex this replaced took the first {@code "id":} anywhere in the message, so a
+     * {@code buildTarget/run} whose {@code params.data} carried an {@code id} of its own was
+     * answered under the wrong one and the IDE waited out its own request forever.
+     */
+    private static String requestId(Object message) {
+        Object id = MiniJson.get(message, "id");
+        return id instanceof String || id instanceof Number ? MiniJson.write(id) : null;
     }
 }

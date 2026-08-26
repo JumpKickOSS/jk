@@ -38,6 +38,25 @@ class NativePreflightTest {
         assertThat(NativePreflight.graal(dir.toString())).isEqualTo(new NativePreflight.Graal.Ok(dir));
     }
 
+    /**
+     * The {@code lib/svm/bin} layout. Before JK-2484 this file carried its own launcher search that
+     * only knew {@code <home>/bin}, so a GraalVM whose launcher lives under {@code lib/svm/bin} — the
+     * Windows one, and older GraalVMs everywhere — preflighted as "not a GraalVM home".
+     */
+    @Test
+    void graal_ok_for_the_svm_layout(@TempDir Path dir) throws Exception {
+        Path svmBin = dir.resolve("lib").resolve("svm").resolve("bin");
+        Files.createDirectories(svmBin);
+        Files.writeString(svmBin.resolve("native-image.exe"), "MZ\n");
+        assertThat(NativePreflight.graal(dir.toString())).isEqualTo(new NativePreflight.Graal.Ok(dir));
+    }
+
+    /** The message names the directories the search actually looks in, not a subset of them. */
+    @Test
+    void missing_message_names_every_searched_directory() {
+        assertThat(NativePreflight.NATIVE_IMAGE_MISSING).contains("bin", "lib/svm/bin");
+    }
+
     @Test
     void specified_application_main(@TempDir Path dir) throws Exception {
         writeToml(dir, "group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n\n[application]\nmain=\"com.Acme\"\n");

@@ -4,7 +4,10 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.repo.ReleaseVerifier;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -62,20 +65,20 @@ class EngineJarFetcherTest {
         server.stop(0);
     }
 
-    private static cc.jumpkick.cache.Cas cas(Path root) {
-        return new cc.jumpkick.cache.Cas(root.resolve("cache"));
+    private static Cas cas(Path root) {
+        return new Cas(root.resolve("cache"));
     }
 
-    private static cc.jumpkick.cache.EngineInstall engineInstall(Path root) {
-        return new cc.jumpkick.cache.EngineInstall(root.resolve("lib"));
+    private static EngineInstall engineInstall(Path root) {
+        return new EngineInstall(root.resolve("lib"));
     }
 
     /**
      * Checksum-only verifier (no trusted keys). Production uses the baked-in release key; these
      * unit tests exercise CAS materialize + SHA256SUMS parsing without signing fixtures.
      */
-    private static cc.jumpkick.repo.ReleaseVerifier noSig() {
-        return cc.jumpkick.repo.ReleaseVerifier.of(List.of());
+    private static ReleaseVerifier noSig() {
+        return ReleaseVerifier.of(List.of());
     }
 
     private Path fetch(Path root) throws IOException {

@@ -11,6 +11,10 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.IntConsumer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -19,11 +23,29 @@ import org.junit.jupiter.api.io.TempDir;
 class AtomicWritesTest {
 
     /**
-     * Sum of {@code moveInto}'s seven back-off sleeps. A retrying move cannot finish faster than
-     * this, and a single failing rename cannot plausibly take this long — so the two tests below
-     * bracket the constant from either side.
+     * Redirect {@link AtomicWrites#backOff} into the returned list for the rest of this test, and
+     * put it back afterwards. Counting the retries is the property the two tests below mean; the
+     * millisecond budget they used to assert (140 ms, the sum of the seven back-offs) was a proxy
+     * for it that a loaded machine could flip either way (JK-2446).
      */
-    private static final long BACK_OFF_SUM_MS = 5 + 10 + 15 + 20 + 25 + 30 + 35;
+    private List<Integer> countBackOffs() {
+        List<Integer> seen = new ArrayList<>();
+        IntConsumer previous = AtomicWrites.backOff;
+        AtomicWrites.backOff = seen::add;
+        restoreBackOff = () -> AtomicWrites.backOff = previous;
+        return seen;
+    }
+
+    /** Set by {@link #countBackOffs}; puts the production sleeper back after the test. */
+    private Runnable restoreBackOff;
+
+    @AfterEach
+    void putTheBackOffBack() {
+        if (restoreBackOff != null) {
+            restoreBackOff.run();
+            restoreBackOff = null;
+        }
+    }
 
     @Test
     void replace_creates_parents_and_round_trips(@TempDir Path dir) throws IOException {
@@ -94,18 +116,13 @@ class AtomicWritesTest {
         try {
             assumeFalse(Files.isWritable(locked), "running as root — the mode bits deny nothing");
 
-            // One untimed failure first: class loading and JIT of the failing rename must not land
-            // inside the window, or a cold run measures the JVM rather than the back-off.
-            denyMove(tmp, locked.resolve("target"));
-
-            long start = System.nanoTime();
+            List<Integer> backOffs = countBackOffs();
             IOException thrown = denyMove(tmp, locked.resolve("target"));
-            long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
 
             assertThat(thrown).isInstanceOf(AccessDeniedException.class);
             // EACCES is permanent: waiting cannot turn it into a success, and every caller
             // (JdkInventory, LockfileWriter, …) would pay the wait.
-            assertThat(elapsedMs).as("failed without backing off").isLessThan(BACK_OFF_SUM_MS);
+            assertThat(backOffs).as("failed without backing off").isEmpty();
         } finally {
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
         }
@@ -127,12 +144,11 @@ class AtomicWritesTest {
             assumeFalse(Files.isWritable(locked), "running as root — the mode bits deny nothing");
             System.setProperty("os.name", "Windows 11");
 
-            long start = System.nanoTime();
+            List<Integer> backOffs = countBackOffs();
             IOException thrown = denyMove(tmp, locked.resolve("target"));
-            long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
 
             assertThat(thrown).isInstanceOf(AccessDeniedException.class);
-            assertThat(elapsedMs).as("exhausted the back-off before giving up").isGreaterThanOrEqualTo(BACK_OFF_SUM_MS);
+            assertThat(backOffs).as("exhausted the back-off before giving up").containsExactly(1, 2, 3, 4, 5, 6, 7);
         } finally {
             if (realOs == null) System.clearProperty("os.name");
             else System.setProperty("os.name", realOs);

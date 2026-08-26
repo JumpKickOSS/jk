@@ -1,21 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
+import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.jdk.JdkVendor;
-import java.io.File;
+import cc.jumpkick.jdk.LockPinMatch;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.ToolchainPins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
 /**
  * Desired {@code JAVA_HOME}/{@code GRAALVM_HOME}/{@code PATH} for a cwd (nearest project pin or
- * defaults). PATH is layered on {@code __JK_ORIG_PATH} to avoid duplicate prepends.
+ * defaults). PATH is the live search path with only toolchain {@code bin} dirs swapped — never a
+ * frozen snapshot — so neighbors like nvm stay put across prompts.
  */
 public final class JkEnv {
 
@@ -26,24 +33,40 @@ public final class JkEnv {
     public static final String PATH = "PATH";
 
     private final JdkRegistry registry;
-    private final String origPath;
+    private final String basePath;
+    private final String liveJavaHome;
+    private final String liveGraalHome;
     private final JdkInventory globalDefault;
 
-    public JkEnv(JdkRegistry registry, String origPath) {
-        this(registry, origPath, JdkInventory.current());
+    public JkEnv(JdkRegistry registry, String basePath) {
+        this(registry, basePath, JdkInventory.current(), null, null);
     }
 
-    public JkEnv(JdkRegistry registry, String origPath, JdkInventory globalDefault) {
+    public JkEnv(JdkRegistry registry, String basePath, JdkInventory globalDefault) {
+        this(registry, basePath, globalDefault, null, null);
+    }
+
+    public JkEnv(
+            JdkRegistry registry,
+            String basePath,
+            JdkInventory globalDefault,
+            String liveJavaHome,
+            String liveGraalHome) {
         this.registry = registry;
-        this.origPath = origPath == null ? "" : origPath;
+        this.basePath = basePath == null ? "" : basePath;
         this.globalDefault = globalDefault;
+        this.liveJavaHome = liveJavaHome;
+        this.liveGraalHome = liveGraalHome;
     }
 
-    /** Real-world entry: uses the default probe chain and reads {@code __JK_ORIG_PATH}. */
+    /** Real-world entry: probe chain + live {@code PATH} / toolchain homes (never a frozen copy). */
     public static JkEnv defaults() {
-        var origPath = System.getenv("__JK_ORIG_PATH");
-        if (origPath == null) origPath = System.getenv("PATH");
-        return new JkEnv(new JdkRegistry(), origPath, JdkInventory.current());
+        return new JkEnv(
+                new JdkRegistry(),
+                System.getenv("PATH"),
+                JdkInventory.current(),
+                System.getenv(JAVA_HOME),
+                System.getenv(GRAALVM_HOME));
     }
 
     /**
@@ -58,12 +81,12 @@ public final class JkEnv {
         var root = findProjectRoot(cwd);
         // Shell-hook fast path: runs on every prompt — no engine call, no tomlj parse.
         // TomlScan reads only the JDK-resolution scalars; missing fields fail soft.
-        String lockId = lockJdkId(root);
+        var lockPins = root.isPresent() ? ToolchainPins.scan(root.get()) : ToolchainPins.NONE;
         String projectJdk = null;
         String projectGraal = null;
         int javaRelease = 0;
         if (root.isPresent()) {
-            var scan = cc.jumpkick.config.TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java", "native.graal");
+            var scan = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "jdk", "java", "native.graal");
             projectJdk = scan.get("jdk");
             javaRelease = scan.getInt("java", 0);
             // [native] present without an explicit graal spec defaults to "graalvm" —
@@ -71,30 +94,19 @@ public final class JkEnv {
             projectGraal = scan.get("native.graal");
             if (projectGraal == null && scan.hasSection("native")) projectGraal = "graalvm";
         }
-        var req = new cc.jumpkick.jdk.JdkResolution.Request(
+        var req = new JdkResolution.Request(
                 root.orElse(cwd), /*switch*/
                 null,
                 System.getenv("JK_JDK"),
-                lockId,
+                lockPins.jdk(),
                 projectJdk,
                 javaRelease,
                 System::getenv);
-        var resolved = cc.jumpkick.jdk.JdkResolution.resolveForHook(req, registry, globalDefault);
+        var resolved = JdkResolution.resolveForHook(req, registry, globalDefault);
         if (resolved.jdk().isEmpty()) return Target.empty();
         var home = resolved.jdk().get().home();
         var jdk = new ResolvedJdk(home, matchVendor(home));
-        return targetFor(root, jdk, resolveGraalHome(projectGraal, jdk));
-    }
-
-    /** The jdk identifier the project at {@code root} pins via its {@code jk-lock.toml}, if any. */
-    private String lockJdkId(Optional<Path> root) {
-        if (root.isEmpty()) return null;
-        var lockPath = cc.jumpkick.lock.LockPaths.lockFile(root.get());
-        if (!Files.isRegularFile(lockPath)) return null;
-        // Line scan, not LockfileReader: the lockfile can be large and this runs per prompt;
-        // its top-level `jdk` scalar sits in the machine-written header.
-        String id = cc.jumpkick.config.TomlScan.scan(lockPath, "jdk").get("jdk");
-        return (id == null || id.isBlank()) ? null : id;
+        return targetFor(root, jdk, resolveGraalHome(projectGraal, lockPins.graal()));
     }
 
     /**
@@ -102,90 +114,86 @@ public final class JkEnv {
      * JAVA_HOME from its own chain ({@code JK_GRAAL} > {@code graal} > the {@code jk jdk
      * graal} default); only when that chain finds nothing do we fall back to the active JDK if it is
      * itself a GraalVM. Absent → the hook unsets any GRAALVM_HOME it previously exported.
+     *
+     * <p>{@code PATH} keeps the caller's live entries and only swaps {@code JAVA_HOME/bin} (+
+     * distinct {@code GRAALVM_HOME/bin} for {@code native-image}).
      */
     private Target targetFor(Optional<Path> root, ResolvedJdk jdk, Optional<Path> graalHome) {
         var vars = new LinkedHashMap<String, String>();
         var home = jdk.home();
         vars.put(JAVA_HOME, home.toString());
+        String graal = null;
         if (graalHome.isPresent()) {
-            vars.put(GRAALVM_HOME, graalHome.get().toString());
+            graal = graalHome.get().toString();
+            vars.put(GRAALVM_HOME, graal);
         } else if (isGraalvm(jdk)) {
-            vars.put(GRAALVM_HOME, home.toString());
+            graal = home.toString();
+            vars.put(GRAALVM_HOME, graal);
         }
-        var bin = home.resolve("bin").toString();
-        vars.put(PATH, bin + File.pathSeparator + origPath);
+        vars.put(PATH, ToolchainPath.swap(basePath, liveJavaHome, liveGraalHome, home.toString(), graal));
         return new Target(root, vars);
     }
 
     /**
-     * Resolve the default GraalVM home, independent of JAVA_HOME: {@code JK_GRAAL} > {@code
-     * project.graal} > the {@code jk jdk graal} default pointer. The {@code native} keyword (or no
-     * match) means "the newest installed GraalVM". Empty when no GraalVM is configured/installed.
+     * Resolve the default GraalVM home, independent of JAVA_HOME: {@code JK_GRAAL} >
+     * project {@code [native].graal} > lock {@code [graal]} > the {@code jk jdk graal} pointer >
+     * {@link DefaultGraalPolicy}. The {@code native} keyword means "the preferred installed
+     * GraalVM". Empty when no GraalVM is installed. An unsatisfied lock pin is a floor: later
+     * defaults must still meet it.
      */
-    private Optional<Path> resolveGraalHome(String projectGraalSpec, ResolvedJdk javaJdk) {
+    private Optional<Path> resolveGraalHome(String projectGraalSpec, Lockfile.GraalPin lockGraal) {
         for (String spec : new String[] {System.getenv("JK_GRAAL"), projectGraalSpec}) {
             if (spec == null || spec.isBlank()) continue;
             if (spec.trim().equalsIgnoreCase("native")) {
-                Optional<Path> g = newestInstalledGraal();
+                Optional<Path> g = defactoGraalHome(null);
                 if (g.isPresent()) return g;
                 continue;
             }
-            Optional<cc.jumpkick.jdk.JdkHit> hit = registry.findHitBySpec(spec).filter(JkEnv::isGraalVendor);
+            Optional<JdkHit> hit = registry.findHitBySpec(spec).filter(DefaultGraalPolicy::isGraal);
             if (hit.isPresent()) return Optional.of(hit.get().home());
         }
+        String graalFloor = null;
+        if (lockGraal != null) {
+            Optional<JdkHit> locked =
+                    LockPinMatch.chooseGraal(registry.listHits(), lockGraal.vendor(), lockGraal.version());
+            if (locked.isPresent()) return Optional.of(locked.get().home());
+            graalFloor = lockGraal.version();
+        }
         Optional<Path> ghome = globalDefault.graalHome();
-        if (ghome.isPresent() && Files.isDirectory(ghome.get().resolve("bin"))) return ghome;
+        if (ghome.isPresent()
+                && Files.isDirectory(ghome.get().resolve("bin"))
+                && graalMeetsFloor(ghome.get(), graalFloor)) {
+            return ghome;
+        }
         Optional<String> gid = globalDefault.graalId();
         if (gid.isPresent()) {
             try {
                 var m = registry.find(gid.get());
-                if (m.isPresent()) return Optional.of(m.get().home());
+                if (m.isPresent() && graalMeetsFloor(m.get().home(), graalFloor)) {
+                    return Optional.of(m.get().home());
+                }
             } catch (IOException ignored) {
-                return Optional.empty();
+                // unreadable inventory — fall through to de-facto
             }
         }
-        return Optional.empty();
+        return defactoGraalHome(graalFloor);
     }
 
-    private Optional<Path> newestInstalledGraal() {
-        return registry.listHits().stream()
-                .filter(JkEnv::isGraalVendor)
-                .sorted(Comparator.comparingInt((cc.jumpkick.jdk.JdkHit h) -> {
-                            int i = JdkVendor.GRAAL_PREFERENCE.indexOf(h.vendor());
-                            return i >= 0 ? i : Integer.MAX_VALUE;
-                        })
-                        .thenComparing(
-                                h -> h.version() == null ? "" : cc.jumpkick.jdk.JdkSelector.versionKey(h.version()),
-                                Comparator.reverseOrder()))
-                .map(cc.jumpkick.jdk.JdkHit::home)
-                .findFirst();
-    }
-
-    private static boolean isGraalVendor(cc.jumpkick.jdk.JdkHit h) {
-        return h.vendor() == JdkVendor.ORACLE_GRAALVM || h.vendor() == JdkVendor.GRAALVM_CE;
-    }
-
-    /**
-     * Look up a JDK install by the identifier stored in {@code jk-lock.toml}. {@link JdkRegistry#find}
-     * handles both jk-managed installs (short identifier like {@code temurin-25.0.3}) and external
-     * installs (whose identifier is the basename of the install dir).
-     */
-    Optional<ResolvedJdk> lookupJdkHome(String id) throws IOException {
-        var managed = registry.find(id);
-        if (managed.isPresent()) {
-            var home = managed.get().home();
-            return Optional.of(new ResolvedJdk(home, matchVendor(home)));
+    private Optional<Path> defactoGraalHome(String graalFloor) {
+        var hits = registry.listHits();
+        if (graalFloor != null) {
+            hits = hits.stream()
+                    .filter(h -> LockPinMatch.meetsFloor(h.version(), graalFloor))
+                    .toList();
         }
-        // Fallback for identifiers that no longer round-trip through find()
-        // (e.g. a probe vanished since the lockfile was written): scan hits
-        // by basename.
-        for (var hit : registry.listHits()) {
-            if (hit.home().getFileName() != null
-                    && hit.home().getFileName().toString().equals(id)) {
-                return Optional.of(new ResolvedJdk(hit.home(), hit.vendor()));
-            }
-        }
-        return Optional.empty();
+        return DefaultGraalPolicy.choose(hits).map(JdkHit::home);
+    }
+
+    private boolean graalMeetsFloor(Path home, String graalFloor) {
+        if (graalFloor == null) return true;
+        return LockPinMatch.hitFor(home, registry.listHits())
+                .map(h -> LockPinMatch.meetsFloor(h.version(), graalFloor))
+                .orElse(false);
     }
 
     /** Walk up from {@code cwd} until a {@code jk.toml} is found or root is reached. */
@@ -193,7 +201,7 @@ public final class JkEnv {
         if (cwd == null) return Optional.empty();
         var p = cwd.toAbsolutePath().normalize();
         while (p != null) {
-            if (Files.isRegularFile(p.resolve("jk.toml"))) return Optional.of(p);
+            if (Files.isRegularFile(p.resolve(ManifestPaths.MANIFEST))) return Optional.of(p);
             p = p.getParent();
         }
         return Optional.empty();
@@ -220,13 +228,6 @@ public final class JkEnv {
     private static boolean isGraalvm(ResolvedJdk jdk) {
         var v = jdk.vendor();
         return v == JdkVendor.ORACLE_GRAALVM || v == JdkVendor.GRAALVM_CE;
-    }
-
-    private static boolean isWindowsAbsolute(String s) {
-        return s.length() >= 3
-                && Character.isLetter(s.charAt(0))
-                && s.charAt(1) == ':'
-                && (s.charAt(2) == '\\' || s.charAt(2) == '/');
     }
 
     public record ResolvedJdk(Path home, JdkVendor vendor) {}

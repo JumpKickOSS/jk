@@ -1,23 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.task.RunNotices;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -68,7 +76,7 @@ public final class JobEnvelope {
 
         void unbindEventRequestId();
 
-        cc.jumpkick.task.IoLedger runIo(long id);
+        IoLedger runIo(long id);
 
         InFlightBuilds inFlight();
 
@@ -103,6 +111,15 @@ public final class JobEnvelope {
 
         String coordOf(String dir);
     }
+
+    /**
+     * Why a cancelled row was cancelled, for the two signals this envelope can tell apart. Both
+     * ride the journal as the {@code cancelled} warning diagnostic and {@code request-finish}'s
+     * {@code cancelReason}, next to the wall deadline's own sentence in {@link #enforceDeadline}.
+     */
+    private static final String CANCEL_BY_USER = "cancelled by the user (Ctrl-C, jk cancel, or the dashboard)";
+
+    private static final String CANCEL_BY_DISCONNECT = "the client disconnected before the job finished";
 
     private final Host host;
     private final ConcurrentHashMap<Long, LiveJob> liveJobs = new ConcurrentHashMap<>();
@@ -140,6 +157,7 @@ public final class JobEnvelope {
     public long submit(String requestLine, JobRequest job, JobTransport transport) {
         BufferedReader reader = transport instanceof JobTransport.SocketWatch w ? w.reader() : null;
         BufferedWriter writer = transport instanceof JobTransport.SocketWatch w ? w.writer() : null;
+        SocketChannel channel = transport instanceof JobTransport.SocketWatch w ? w.channel() : null;
         boolean detached = transport instanceof JobTransport.FireAndForget;
         String threadPrefix = job.threadPrefix();
         String kind = job.verb();
@@ -157,7 +175,7 @@ public final class JobEnvelope {
         if (plan ? !claimedBuildPlanSlot : host.draining()) {
             if (detached) throw new IllegalStateException("engine is shutting down");
             try {
-                send(
+                WireWriter.send(
                         writer,
                         ProtoLifecycle.error(
                                 EngineProtocol.ERR_SHUTTING_DOWN,
@@ -195,7 +213,7 @@ public final class JobEnvelope {
                 throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
             }
             try {
-                send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+                WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
             } catch (IOException ignored) {
                 // client gone
             }
@@ -218,7 +236,7 @@ public final class JobEnvelope {
         // Public jid surface — client tracks this for Ctrl-C / jk cancel.
         if (writer != null) {
             try {
-                send(writer, JobAdmit.jobStartLine(host, eventRequestId, eventKind, eventDir, admit));
+                WireWriter.send(writer, JobAdmit.jobStartLine(host, eventRequestId, eventKind, eventDir, admit));
             } catch (IOException ignored) {
                 // client gone before job body — still run cancel registration below
             }
@@ -239,6 +257,7 @@ public final class JobEnvelope {
                 eventKind,
                 workspaceStream);
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> {
+            IoLedger io = host.runIo(eventRequestId);
             // Nothing between the lock and the try: a throw from the setup calls would
             // leak the read lock — one leak and the cache prune's write-lock tryLock never
             // succeeds again for the engine's life — and would strand the in-flight fingerprint
@@ -250,16 +269,31 @@ public final class JobEnvelope {
                 JobWorkers.open(eventRequestId);
                 // Every Session this request builds adopts this ledger, so fetches/cache traffic on
                 // the shared pools all land in one place (see IoLedger).
-                cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
-                JobOutcome outcome = runner.run(requestLine, cancelToken, writer);
-                // The one success law: the body's verdict is stamped here, nowhere else. A null
-                // verdict leaves the journal to the accumulated facts (failures, cancel stamps).
-                if (outcome != null) {
-                    BuildAccumulator acc = host.accumulatorOf(eventRequestId);
-                    if (acc != null) acc.setOutcome(outcome.success(), outcome.exitCode());
+                IoLedger.open(io);
+                // Run-scoped notices join this request's stream for the run's life; the finally
+                // removes the sink, or a later run's notice would ride the wrong request.
+                RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
+                JobOutcome outcome;
+                try {
+                    outcome = runner.run(requestLine, cancelToken, writer);
+                } catch (Throwable t) {
+                    // An escaped throw must not impersonate Declined: with clean rows already
+                    // recorded and no failure row, the derived verdict would read green. Rule
+                    // failure, name the exception on the record, and fall into the teardown.
+                    outcome = JobOutcome.failed(Exit.SOFTWARE);
+                    BuildAccumulator thrown = host.accumulatorOf(eventRequestId);
+                    if (thrown != null) thrown.addEscapedThrow(t);
+                    host.log("jk engine: job " + eventRequestId + " body threw "
+                            + t.getClass().getName()
+                            + (t.getMessage() == null ? "" : ": " + t.getMessage()));
                 }
+                // The one success law: the body's verdict is stamped here, nowhere else. A
+                // declined verdict leaves the journal to the accumulated facts.
+                BuildAccumulator acc = host.accumulatorOf(eventRequestId);
+                if (acc != null) acc.stamp(outcome);
             } finally {
-                cc.jumpkick.task.IoLedger.close();
+                RunNotices.closeSink(io);
+                IoLedger.close();
                 // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
                 // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
                 // burn its full 15s join before this force-kill ran (JK-2299). Killing the process
@@ -267,7 +301,7 @@ public final class JobEnvelope {
                 // Never clear() the registry without shutdown, or a racing cancel thread's
                 // shutdownForRequest finds an empty set and plugin/javac children keep running.
                 JobWorkers.shutdownForRequest(eventRequestId, 0L);
-                cc.jumpkick.compile.JavaCompilerHost.end(eventRequestId);
+                JavaCompilerHost.end(eventRequestId);
                 JobWorkers.close();
                 host.unbindEventRequestId();
                 if (plan) host.cacheGate().readLock().unlock();
@@ -280,11 +314,11 @@ public final class JobEnvelope {
                 done.countDown();
                 // Unblock the connection thread only if it is parked on client readLine
                 // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without
-                // the client writing anything. A blanket interrupt here landed after
-                // the read loop too, leaving the flag set through teardown so the journal
-                // completion died on ClosedByInterruptException — a phantom "running" job in
-                // jk jobs until engine restart.
-                if (!detached && parkedOnRead.get()) connectionThread.interrupt();
+                // the client writing anything. Only while actually parked: a wake that lands
+                // after the read loop poisons teardown I/O instead (a stray interrupt once killed
+                // journal completion with ClosedByInterruptException, leaving a permanent
+                // "running" job in jk jobs).
+                if (!detached && parkedOnRead.get()) wakeOffClientRead(channel, connectionThread);
             }
         });
         runnerRef.set(started);
@@ -321,7 +355,7 @@ public final class JobEnvelope {
                     }
                     if (done.getCount() == 0) return;
                     if (heartbeatMs > 0 && writer != null) {
-                        sendQuiet(writer, ProtoLifecycle.heartbeat(host.nowMillis() - start));
+                        WireWriter.sendQuiet(writer, ProtoLifecycle.heartbeat(host.nowMillis() - start));
                     }
                 }
             });
@@ -434,7 +468,7 @@ public final class JobEnvelope {
                 if (cancelled && writer != null) {
                     // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
                     // their client loop only ends on plan-finish.
-                    sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
+                    WireWriter.sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
                 }
                 // Release the plan slot before request-finish so status SSE carries the post-finish
                 // activeBuildPlans count — Live activity finishes in the same frame.
@@ -445,7 +479,7 @@ public final class JobEnvelope {
                         .put("jid", eventRequestId)
                         .put("kind", eventKind)
                         .put("dir", eventDir)
-                        .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
+                        .put("projectId", ProjectIds.idOf(eventDir))
                         .put("success", success)
                         .put("cancelled", cancelled)
                         .put("millis", elapsedMillis)
@@ -457,7 +491,16 @@ public final class JobEnvelope {
                         host.withProgress(host.withIo(finishPayload, eventRequestId), eventRequestId));
                 // Journal first: clearProgress retires the JobSession (drops the accumulator).
                 // Writing after retire leaves a permanent running=true stub in jk jobs.
-                host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
+                try {
+                    host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
+                } finally {
+                    // Last write under the project's target/ is the journal's jk-results.md copy,
+                    // so this is the moment the engine is provably done with the tree. The client
+                    // blocks on this line rather than the plan terminal — otherwise `jk build`
+                    // returns mid-write and a following `jk clean` races the memo/journal writers
+                    // (JK-2451). In a finally so a throwing journal can never strand the client.
+                    if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(eventRequestId));
+                }
                 host.clearProgress(eventRequestId);
                 // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
                 // Cache maintenance (plan=false) only GCs when nothing else is in flight.
@@ -471,6 +514,27 @@ public final class JobEnvelope {
         }
         finish.run();
         return eventRequestId;
+    }
+
+    /**
+     * A run-scoped {@link RunNotices} note: one WARN line on the request's stream (step {@code ""},
+     * code {@code "notice"}) and the SSE feed, redacted like every other event that leaves the
+     * engine. Invoked from whatever thread noticed — the wire writer and SSE hub both take
+     * concurrent writers.
+     */
+    private void publishNotice(long id, String dir, @Nullable BufferedWriter writer, String message) {
+        String safe = EventRedaction.redactEnv(dir, message);
+        if (writer != null) WireWriter.sendQuiet(writer, ProtoEvents.warn(dir, "", "notice", safe));
+        host.publishEvent(
+                "warn",
+                JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "warn")
+                        .put("jid", id)
+                        .put("dir", dir)
+                        .put("step", "")
+                        .put("code", "notice")
+                        .put("message", safe));
     }
 
     /**
@@ -504,6 +568,33 @@ public final class JobEnvelope {
                         + "ms)");
             }
         });
+    }
+
+    /**
+     * Wake the connection thread off client-readLine so it can run the finish tail.
+     *
+     * <p>Half-closing the read direction is the gentle wake: the blocked read sees EOF while the
+     * write direction stays usable, so the tail can still deliver {@code job-finish} — the line the
+     * client waits for before it may delete {@code target/} (JK-2451). {@link Thread#interrupt} is
+     * the fallback, and it is blunt: on a thread blocked in an InterruptibleChannel read it closes
+     * the whole channel, so the client learns the job ended one journal-write too early. A platform
+     * whose half-close does not wake a blocked read is still covered — the client half-closes its
+     * own end once it has the terminal, which delivers the same EOF.
+     */
+    private static void wakeOffClientRead(@Nullable SocketChannel channel, Thread connectionThread) {
+        if (channel != null) {
+            try {
+                channel.shutdownInput();
+                return;
+            } catch (IOException | UnsupportedOperationException ignored) {
+                // Not a half-closable transport (or already gone) — fall through to the blunt wake.
+            }
+        }
+        try {
+            connectionThread.interrupt();
+        } catch (RuntimeException ignored) {
+            // best-effort wake
+        }
     }
 
     public void registerLiveJob(
@@ -553,7 +644,7 @@ public final class JobEnvelope {
 
     private void pushCancelledTerminal(LiveJob job) {
         if (job.writer() == null) return;
-        sendQuiet(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
+        WireWriter.sendQuiet(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
     }
 
     /**
@@ -590,9 +681,15 @@ public final class JobEnvelope {
         return n;
     }
 
+    /**
+     * Stamp the cancel <em>and</em> why, so the journal can name who stopped the run. {@code
+     * cancelled=true} alone reads the same for a Ctrl-C and for a wall deadline, and only the
+     * deadline recorded a reason (JK-2485) — the flag that already tells the two user paths apart
+     * is the one that picks the sentence, so there is one mapping rather than a literal per caller.
+     */
     private void markUserCancelled(long requestId, boolean explicit) {
         BuildAccumulator a = host.accumulatorOf(requestId);
-        if (a != null) a.markUserCancelled(explicit);
+        if (a != null) a.markUserCancelled(explicit, explicit ? CANCEL_BY_USER : CANCEL_BY_DISCONNECT);
     }
 
     static void interruptRunner(@Nullable Thread runnerThread) {
@@ -626,7 +723,7 @@ public final class JobEnvelope {
         }
         int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
         interruptRunner(runnerThread);
-        sendQuiet(
+        WireWriter.sendQuiet(
                 writer,
                 ProtoLifecycle.error(
                         EngineProtocol.ERR_DEADLINE,
@@ -691,21 +788,6 @@ public final class JobEnvelope {
             return Long.parseLong(raw.trim());
         } catch (NumberFormatException e) {
             return defaultMs;
-        }
-    }
-
-    static void send(BufferedWriter writer, String line) throws IOException {
-        writer.write(line);
-        writer.write('\n');
-        writer.flush();
-    }
-
-    static void sendQuiet(@Nullable BufferedWriter writer, String line) {
-        if (writer == null) return;
-        try {
-            send(writer, line);
-        } catch (IOException ignored) {
-            // the cancel-watching read loop will notice the same disconnect
         }
     }
 }

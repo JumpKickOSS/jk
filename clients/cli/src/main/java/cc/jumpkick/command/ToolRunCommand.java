@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.BuildOptions;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -14,6 +26,9 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
+import cc.jumpkick.tool.ToolTarget;
+import cc.jumpkick.tool.TrustedSources;
+import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -62,8 +77,7 @@ public final class ToolRunCommand implements CliCommand {
                         .hide(),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
                         .hide());
         var all = new ArrayList<>(opts);
@@ -123,16 +137,17 @@ public final class ToolRunCommand implements CliCommand {
         try {
             Path start = cwd.toAbsolutePath().normalize();
             Path wsRoot = null;
-            if (Files.isRegularFile(start.resolve("jk.toml"))) {
-                var peek = BuildCommand.projectInfoOrNull(start);
+            if (Files.isRegularFile(start.resolve(ManifestPaths.MANIFEST))) {
+                var peek = ProjectInfos.orNull(start);
                 if (peek != null && peek.workspaceRoot()) wsRoot = start;
                 else if (peek == null
-                        && !workspaceModules(start.resolve("jk.toml")).isEmpty()) {
+                        && !workspaceModules(start.resolve(ManifestPaths.MANIFEST))
+                                .isEmpty()) {
                     wsRoot = start;
                 }
             }
             if (wsRoot == null) {
-                var peek = BuildCommand.projectInfoOrNull(start);
+                var peek = ProjectInfos.orNull(start);
                 if (peek != null && !peek.workspaceRootDir().isBlank()) {
                     wsRoot = Path.of(peek.workspaceRootDir());
                 }
@@ -140,13 +155,13 @@ public final class ToolRunCommand implements CliCommand {
             if (wsRoot == null) {
                 // Cwd is not in a workspace — still allow path-as-module if it has jk.toml
                 Path direct = start.resolve(name).normalize();
-                if (Files.isRegularFile(direct.resolve("jk.toml"))) return direct;
+                if (Files.isRegularFile(direct.resolve(ManifestPaths.MANIFEST))) return direct;
                 return null;
             }
-            var rootBuild = BuildCommand.projectInfoOrNull(wsRoot);
+            var rootBuild = ProjectInfos.orNull(wsRoot);
             List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
                     ? rootBuild.moduleDirs()
-                    : workspaceModules(wsRoot.resolve("jk.toml"));
+                    : workspaceModules(wsRoot.resolve(ManifestPaths.MANIFEST));
             if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
@@ -160,7 +175,7 @@ public final class ToolRunCommand implements CliCommand {
                         ? Path.of(mod).normalize()
                         : wsRoot.resolve(mod).normalize();
                 String m = wsRoot.relativize(dir).toString().replace('\\', '/');
-                if (!Files.isRegularFile(dir.resolve("jk.toml"))) continue;
+                if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) continue;
                 if (m.equals(want)) return dir; // exact declared path — always unambiguous
                 // Trailing-segment shortcut: `jk run cli` → clients/cli.
                 if (m.endsWith("/" + want)) suffixHits.add(dir);
@@ -191,7 +206,7 @@ public final class ToolRunCommand implements CliCommand {
     }
 
     private static List<String> workspaceModules(Path jkToml) {
-        return cc.jumpkick.config.TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
+        return TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
     }
 
     /** {@code jk run <leaf>} matched more than one workspace module. */
@@ -206,17 +221,17 @@ public final class ToolRunCommand implements CliCommand {
      * or a single script file in the folder.
      */
     private int runDirectory(Path dir, List<String> args) throws IOException, InterruptedException {
-        if (Files.isRegularFile(dir.resolve("jk.toml"))) {
+        if (Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
             RunCommand delegate = new RunCommand();
             delegate.cacheDirOverride = cacheDirOverride;
             delegate.jdksDir = jdksDir;
-            delegate.buildOpts = new cc.jumpkick.cli.BuildOptions();
+            delegate.buildOpts = new BuildOptions();
             delegate.buildOpts.skipTests = true;
             delegate.global = global;
             return delegate.runProject(dir, args);
         }
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Tool", dir + " is a JBang catalog — `alias@…` references aren't" + " supported yet.");
             return Exit.USAGE;
         }
@@ -234,7 +249,7 @@ public final class ToolRunCommand implements CliCommand {
                     .toList();
         }
         if (scripts.size() == 1) return runner.run(scripts.get(0), args);
-        cc.jumpkick.cli.tui.CommandWedge.printFail(
+        CommandWedge.printFail(
                 "Tool",
                 "nothing runnable in " + dir
                         + " — looked for jk.toml, main.java, or exactly one .java/.kt/.kts (found "
@@ -256,8 +271,8 @@ public final class ToolRunCommand implements CliCommand {
             raw = raw.substring(0, bang);
         }
         InstallCommand.UrlAndRef split = InstallCommand.splitUrlRef(raw);
-        String expanded = cc.jumpkick.util.GitUrl.expand(split.url());
-        String canonical = cc.jumpkick.util.GitUrl.canonicalize(split.url());
+        String expanded = GitUrl.expand(split.url());
+        String canonical = GitUrl.canonicalize(split.url());
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         Integer gated = UrlToolSource.gate(UrlToolSource.gitTrustUrl(canonical), stateDir, "jk tool run");
         if (gated != null) return gated;
@@ -265,19 +280,19 @@ public final class ToolRunCommand implements CliCommand {
         String refStr = split.ref() != null ? split.ref() : "main";
         Path cacheDir = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         Files.createDirectories(cacheDir);
-        boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean refresh = SessionContext.current().config().forceOr(false);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         Path checkout;
-        cc.jumpkick.cli.engine.EngineRequests.GitFetchOutcome outcome;
+        EngineRequests.GitFetchOutcome outcome;
         try {
-            outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.GitFetchRequest(
+            outcome = EngineClient.runGitFetch(
+                    EnginePaths.current(),
+                    new EngineRequests.GitFetchRequest(
                             expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.checkout() == null) return 1;
@@ -286,7 +301,7 @@ public final class ToolRunCommand implements CliCommand {
         if (subdir != null) {
             Path sub = checkout.resolve(subdir).normalize();
             if (!sub.startsWith(checkout) || !Files.isDirectory(sub)) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "no directory `" + subdir + "` in " + input);
+                CommandWedge.printFail("Tool", "no directory `" + subdir + "` in " + input);
                 return Exit.USAGE;
             }
             checkout = sub;
@@ -302,7 +317,7 @@ public final class ToolRunCommand implements CliCommand {
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         // Trust decides BEFORE any fetch: the catalog URL is derived from user input, and no
         // request may leave the machine for an origin the user never allowed.
-        var trust = cc.jumpkick.tool.TrustedSources.load(stateDir);
+        var trust = TrustedSources.load(stateDir);
         List<String> origins = JBangCatalog.origins(target);
         boolean preTrusted = origins.stream().anyMatch(trust::isTrusted);
         if (!preTrusted) {
@@ -311,7 +326,7 @@ public final class ToolRunCommand implements CliCommand {
         }
         JBangCatalog.Resolved r;
         try {
-            r = JBangCatalog.resolve(target, new cc.jumpkick.http.Http(), preTrusted ? trust::isTrusted : o -> true);
+            r = JBangCatalog.resolve(target, new Http(), preTrusted ? trust::isTrusted : o -> true);
         } catch (IOException e) {
             CliOutput.err(command + ": " + e.getMessage());
             return Exit.SOFTWARE;
@@ -366,10 +381,9 @@ public final class ToolRunCommand implements CliCommand {
         this.target = positionals.isEmpty() ? "." : positionals.get(0);
         this.toolArgs = positionals.size() > 1 ? positionals.subList(1, positionals.size()) : List.of();
         this.mainClass = in.value("main").orElse(null);
-        this.cacheDirOverride =
-                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.stateDirOverride = in.value("state-dir").map(Path::of).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.forceRecompile = in.isSet("force");
         this.global = GlobalOptions.from(in);
@@ -383,8 +397,8 @@ public final class ToolRunCommand implements CliCommand {
         try {
             moduleHit = resolveWorkspaceModule(global.workingDir(), target);
         } catch (AmbiguousModuleTarget e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
-            return cc.jumpkick.model.command.Exit.USAGE;
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.USAGE;
         }
         if (moduleHit != null) {
             return runDirectory(moduleHit, toolArgs);
@@ -394,8 +408,8 @@ public final class ToolRunCommand implements CliCommand {
         // extension is the signal even when the file is missing, so the user gets
         // a proper "not found" error from the matching mode handler. Routing goes
         // through the classifier so a remote `https://…/tool.jar` is NOT a file.
-        cc.jumpkick.tool.ToolTarget classified = cc.jumpkick.tool.ToolTarget.classify(target);
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.RunnableFile file) {
+        ToolTarget classified = ToolTarget.classify(target);
+        if (classified instanceof ToolTarget.RunnableFile file) {
             List<String> fileWith;
             try {
                 fileWith = ToolTargets.resolveWith(in.values("with"));
@@ -407,13 +421,13 @@ public final class ToolRunCommand implements CliCommand {
                             global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile, fileWith, List.of())
                     .run(file.path(), toolArgs);
         }
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.Directory dir) {
+        if (classified instanceof ToolTarget.Directory dir) {
             return runDirectory(global.workingDir().resolve(dir.path()).normalize(), toolArgs);
         }
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.Git g) {
+        if (classified instanceof ToolTarget.Git g) {
             return runGit(g.raw(), toolArgs);
         }
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.Url u) {
+        if (classified instanceof ToolTarget.Url u) {
             Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
             Integer gated = UrlToolSource.gate(u.raw(), stateDir, "jk tool run");
             if (gated != null) return gated;
@@ -422,14 +436,14 @@ public final class ToolRunCommand implements CliCommand {
                 fetched = UrlToolSource.fetch(
                         u.raw(), cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), forceRecompile);
             } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+                CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.SOFTWARE;
             }
             return new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile)
                     .run(fetched, toolArgs);
         }
 
-        if (classified instanceof cc.jumpkick.tool.ToolTarget.JBangAlias) {
+        if (classified instanceof ToolTarget.JBangAlias) {
             Integer aliasExit = resolveJBangAlias("jk tool run");
             if (aliasExit != null) return aliasExit;
             // A GAV script-ref fell through: `target`/`toolArgs` were rewritten in place.
@@ -451,16 +465,16 @@ public final class ToolRunCommand implements CliCommand {
         Files.createDirectories(cacheDir);
 
         ToolEnv env;
-        cc.jumpkick.cli.engine.EngineRequests.ToolResolveOutcome outcome;
+        EngineRequests.ToolResolveOutcome outcome;
         try {
-            outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.ToolResolveRequest(
+            outcome = EngineClient.runToolResolve(
+                    EnginePaths.current(),
+                    new EngineRequests.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(
                             "tool-run", steps, BuildPlanConsole.modeFor(global)));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;

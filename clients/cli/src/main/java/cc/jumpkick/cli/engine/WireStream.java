@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli.engine;
+
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.jsonl.Jsonl;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.channels.SocketChannel;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * The client's read loop over one engine wire stream. Every hosted verb reads its events through
+ * here, so the beats that are not about any one verb — discriminating the line, registering the
+ * cancel handle, announcing {@code job-start}, and waiting out the engine's finish tail — exist
+ * once.
+ *
+ * <p>Two entry points, mirroring the engine's two dispatch arms. {@link #pumpJob} is for a request
+ * the engine runs as a job (its {@code VerbShape.AsyncPlan} / {@code CacheMaint} verbs): it carries
+ * a {@code job-start} and a {@code job-finish}, and both are handled here. {@link #pumpRead} is for
+ * a request the engine answers inline on the connection thread ({@code VerbShape.SyncRead}): no job
+ * exists, so there is no handle to register and no finish line that would ever arrive. Choosing the
+ * wrong one is not expressible: an inline read has no channel parameter to half-close.
+ */
+public final class WireStream {
+
+    private WireStream() {}
+
+    /** Receives the facts of an engine {@code job-start} line, already decoded off the wire. */
+    @FunctionalInterface
+    public interface JobStartListener {
+        void jobStarted(long jid, long buildNumber, @Nullable String detailsPath, long etaMs);
+    }
+
+    private static volatile @Nullable JobStartListener jobStartListener;
+
+    /**
+     * Register the process-wide {@code job-start} observer. The transcript layer registers itself
+     * here so this package never names its renderers; a {@code null} listener (or none registered)
+     * makes {@code job-start} a plain bookkeeping line.
+     */
+    public static void onJobStart(@Nullable JobStartListener listener) {
+        jobStartListener = listener;
+    }
+
+    /**
+     * Decodes one wire line. Returning non-{@code null} is the terminal: that value becomes the
+     * stream's result and the pump stops. Returning {@code null} asks for the next line, which is
+     * also how an unknown type stays a forward-compatible no-op.
+     */
+    @FunctionalInterface
+    interface Decoder<T> {
+        @Nullable
+        T onLine(String type, String line) throws IOException;
+    }
+
+    /**
+     * Read a job's stream to its terminal. The job's {@code jid} is registered as this process's
+     * cancel handle for as long as the stream is live, so Ctrl-C ({@link
+     * EngineClient#cancelBestEffortForInterrupt}) can cancel it by id — the only handle that works
+     * for a verb whose journal dir is the cache rather than the user's project, which is every
+     * verb that takes no {@code dir} ({@code jk cache prune}, {@code jk tool resolve}, {@code jk
+     * tool run <script>}).
+     *
+     * @param ch the stream's channel, half-closed while waiting for {@code job-finish}; {@code
+     *     null} in tests that drive a plain reader
+     */
+    static <T> T pumpJob(BufferedReader reader, @Nullable SocketChannel ch, Decoder<T> decoder) throws IOException {
+        return pump(reader, ch, true, decoder);
+    }
+
+    /**
+     * Read an inline read-verb's stream to its terminal. The engine serves these on the connection
+     * thread and keeps the connection open for the next request, so no job is admitted: nothing to
+     * register, and no finish tail to wait for.
+     */
+    static <T> T pumpRead(BufferedReader reader, Decoder<T> decoder) throws IOException {
+        return pump(reader, null, false, decoder);
+    }
+
+    private static <T> T pump(BufferedReader reader, @Nullable SocketChannel ch, boolean job, Decoder<T> decoder)
+            throws IOException {
+        long notedJid = -1;
+        try {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String type = EngineProtocol.typeOf(line);
+                if (type == null) continue;
+                if (EngineProtocol.JOB_START.equals(type)) {
+                    notedJid = Jsonl.longValue(line, "jid", -1);
+                    EngineClient.ActiveJobs.note(notedJid);
+                    notifyJobStart(line);
+                    continue;
+                }
+                T terminal = decoder.onLine(type, line);
+                if (terminal != null) {
+                    if (job) awaitJobFinish(reader, ch);
+                    return terminal;
+                }
+            }
+            throw disconnected();
+        } finally {
+            // The job is over however the stream ended — a stale jid here would add a 2s cancel
+            // RPC to every later Ctrl-C in this process.
+            if (notedJid > 0) EngineClient.ActiveJobs.forget(notedJid);
+        }
+    }
+
+    /** Decode a {@code job-start} line and hand its facts to the registered observer, if any. */
+    private static void notifyJobStart(String jobStartLine) {
+        JobStartListener listener = jobStartListener;
+        if (listener == null) return;
+        listener.jobStarted(
+                Jsonl.longValue(jobStartLine, "jid", -1),
+                Jsonl.longValue(jobStartLine, "buildNumber", 0),
+                Jsonl.str(jobStartLine, "detailsPath"),
+                Jsonl.longValue(jobStartLine, "etaMs", -1));
+    }
+
+    /**
+     * Block until the engine says it has stopped writing under the project's {@code target/}
+     * ({@link EngineProtocol#JOB_FINISH}), or the stream ends.
+     *
+     * <p>The verb's terminal is <em>not</em> the end of the engine's work on the tree: a build's
+     * preflight memos ({@code target/.jk/preflight/}) and, for every journaled kind, the journal
+     * run directory and its {@code target/jk-results.md} copy are written after it. Returning on
+     * the terminal hands control back mid-write, so {@code jk build && jk clean} — and any caller
+     * that deletes {@code target/} straight after — raced those writers: the delete either tripped
+     * over a freshly created temp file ({@code DirectoryNotEmptyException}) or completed and then
+     * had {@code target/} recreated under it. Waiting here is the ordering fix; the terminal
+     * already carried the outcome, so nothing read past this point can change the result.
+     *
+     * <p>EOF means the same thing from an engine that died or was killed — the tree is not going
+     * to change either way, so it is a normal exit from this wait, not a failure.
+     *
+     * <p>Half-closing our write side first is what keeps this from being a standoff: the engine's
+     * connection thread is parked reading this socket for a late {@code build-cancel}, and the
+     * terminal is our last word on it. The half-close hands it the EOF it needs to move on to the
+     * finish tail, while our read side stays open for the line we are waiting for.
+     */
+    private static void awaitJobFinish(BufferedReader reader, @Nullable SocketChannel ch) {
+        if (ch != null) {
+            try {
+                ch.shutdownOutput();
+            } catch (IOException | UnsupportedOperationException ignored) {
+                // Not half-closable (or already gone) — the engine still wakes on its own.
+            }
+        }
+        try {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (EngineProtocol.JOB_FINISH.equals(EngineProtocol.typeOf(line))) return;
+            }
+        } catch (IOException ignored) {
+            // Outcome already decided; a broken stream now tells us nothing new.
+        }
+    }
+
+    /**
+     * Bare EOF without a terminal line: a crash — unless this process already asked for cancel
+     * (Ctrl-C's cooperative token), in which case the disconnect IS the cancel settling.
+     */
+    private static IOException disconnected() {
+        try {
+            if (SessionContext.current().cancelled()) return new JobCancelledException();
+        } catch (RuntimeException ignored) {
+            // no session installed — fall through to the crash message
+        }
+        return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
+                + "(it may have crashed); run `jk engine status` for details");
+    }
+}

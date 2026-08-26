@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import com.sun.net.httpserver.HttpServer;
@@ -22,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +50,7 @@ class KmpRedirectsMemoTest {
     @BeforeEach
     void start() throws IOException {
         KmpRedirects.clearProcessCache();
-        cc.jumpkick.repo.GradleModuleMetadata.clearParseCache();
+        GradleModuleMetadata.clearParseCache();
         RepoGroup.clearProcessFetchCache();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         serverPool = Executors.newCachedThreadPool();
@@ -101,14 +103,24 @@ class KmpRedirectsMemoTest {
                     () -> new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0"));
             assertThat(heldArrived.await(10, TimeUnit.SECONDS)).isTrue();
             CountDownLatch secondStarted = new CountDownLatch(1);
+            AtomicReference<Thread> secondThread = new AtomicReference<>();
             Future<Optional<KmpRedirects.Selection>> second = pool.submit(() -> {
+                secondThread.set(Thread.currentThread());
                 secondStarted.countDown();
                 return new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0");
             });
             assertThat(secondStarted.await(10, TimeUnit.SECONDS)).isTrue();
-            // Parking on the in-flight future is not observable from here; the second caller has
-            // provably started, so a short beat covers the rest before the first one is released.
-            Thread.sleep(50);
+            // "Started" is not "parked on the in-flight future", and the gap between them was
+            // covered by a bare Thread.sleep(50) — a guess about this machine, and no assertion
+            // (JK-2446). Parking is not directly observable, but being off the CPU is: wait for the
+            // second caller's thread to leave RUNNABLE before releasing the first one.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (secondThread.get().getState() == Thread.State.RUNNABLE && System.nanoTime() < deadline) {
+                Thread.sleep(5);
+            }
+            assertThat(secondThread.get().getState())
+                    .as("the second caller must be parked on the in-flight lookup, not running")
+                    .isNotEqualTo(Thread.State.RUNNABLE);
             release.countDown();
 
             Optional<KmpRedirects.Selection> a = first.get(10, TimeUnit.SECONDS);

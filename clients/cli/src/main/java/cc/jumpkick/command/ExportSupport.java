@@ -5,8 +5,10 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.JkDirs;
@@ -39,8 +41,7 @@ final class ExportSupport {
             if (lockCode != 0) return null;
         }
         try {
-            GeneratedFiles files = cc.jumpkick.cli.engine.EngineClient.generate(
-                    cc.jumpkick.engine.EnginePaths.current(), dir, kind, params);
+            GeneratedFiles files = EngineClient.generate(EnginePaths.current(), dir, kind, params);
             if (files.error() != null) {
                 CliOutput.err(cmd + ": " + files.error());
                 return null;

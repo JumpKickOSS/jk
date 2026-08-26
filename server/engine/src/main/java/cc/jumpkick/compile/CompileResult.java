@@ -4,8 +4,16 @@ package cc.jumpkick.compile;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
-/** What {@link JavacRunner} returns. {@code success} mirrors {@code javac}'s exit-zero. */
+/**
+ * What a compile returned: the outcome plus one entry per compiler diagnostic. One type for every
+ * language jk compiles — {@code success} mirrors {@code javac}'s exit-zero for {@link JavacRunner},
+ * and the worker's {@code exit == 0 && status == COMPILATION_SUCCESS} for
+ * {@link WorkerCompileDriver}'s kotlinc and groovyc forks. {@code KotlincResult} and
+ * {@code GroovycResult} were byte-identical copies of this record and of each other; the spec was
+ * the same in all three, so the type is.
+ */
 public record CompileResult(boolean success, List<Diagnostic> diagnostics) {
 
     public CompileResult {
@@ -15,6 +23,11 @@ public record CompileResult(boolean success, List<Diagnostic> diagnostics) {
 
     public boolean hasErrors() {
         return diagnostics.stream().anyMatch(d -> d.severity() == Severity.ERROR);
+    }
+
+    /** Joined form for logs and exception messages. */
+    public String output() {
+        return diagnostics.stream().map(Diagnostic::describe).collect(Collectors.joining("\n"));
     }
 
     public record Diagnostic(Severity severity, Path source, long line, long column, String message) {

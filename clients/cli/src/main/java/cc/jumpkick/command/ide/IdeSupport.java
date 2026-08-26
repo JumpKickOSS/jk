@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
+import cc.jumpkick.cli.CommonOpts;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.run.SilentListener;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
@@ -63,7 +74,7 @@ public final class IdeSupport {
      */
     public static IdeModel build(Invocation in, IdeChrome chrome) throws IOException {
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         Path ideConfigDir = in.value("ide-config-dir").map(Path::of).orElse(null);
         return reconstruct(wireModel(in, chrome), cacheDir, jdksDir, ideConfigDir);
     }
@@ -84,18 +95,18 @@ public final class IdeSupport {
     public static IdeWireModel wireModel(Invocation in, IdeChrome chrome) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
 
         Path startDir = global.workingDir();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
-        if (!Files.exists(startDir.resolve("jk.toml"))) {
-            throw new IdeException(2, "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(startDir));
+        if (!Files.exists(startDir.resolve(ManifestPaths.MANIFEST))) {
+            throw new IdeException(2, "no jk.toml in " + PathDisplay.styledRaw(startDir));
         }
 
         // Fresh lock before sync/model — IDE files must match current manifests.
         // Quiet: the IDE chip (or --print-model's raw JSON) owns the terminal. Failure already
         // printed a wedge; rethrow without a second line.
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensureQuiet(syncRoot(startDir), cache, global, "IDE");
+        int lockCode = EnsureFreshLock.ensureQuiet(syncRoot(startDir), cache, global, "IDE");
         if (lockCode != 0) {
             throw new IdeException(lockCode, null);
         }
@@ -105,8 +116,7 @@ public final class IdeSupport {
         hostedBestEffortSync(syncRoot(startDir), cache, jdksDir, global, chrome);
         IdeWireModel wire;
         try {
-            wire = cc.jumpkick.cli.engine.EngineClient.ideModel(
-                    cc.jumpkick.engine.EnginePaths.current(), startDir, cache, jdksDir);
+            wire = EngineClient.ideModel(EnginePaths.current(), startDir, cache, jdksDir);
         } catch (IOException e) {
             throw new IdeException(2, String.valueOf(e.getMessage()));
         }
@@ -230,8 +240,7 @@ public final class IdeSupport {
      */
     private static Path syncRoot(Path startDir) {
         try {
-            var info =
-                    cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), startDir);
+            var info = EngineClient.projectInfo(EnginePaths.current(), startDir);
             if (info.error() == null && !info.workspaceRootDir().isEmpty()) {
                 return Path.of(info.workspaceRootDir());
             }
@@ -256,9 +265,9 @@ public final class IdeSupport {
             Path wsRoot, Path cache, Path jdksDir, GlobalOptions global, IdeChrome chrome) {
         long[] fetched = new long[1];
         long[] upToDate = new long[1];
-        var session = cc.jumpkick.config.SessionContext.current();
-        var paths = cc.jumpkick.engine.EnginePaths.current();
-        var req = new cc.jumpkick.cli.engine.EngineRequests.SyncRequest(
+        var session = SessionContext.current();
+        var paths = EnginePaths.current();
+        var req = new EngineRequests.SyncRequest(
                 wsRoot, cache, jdksDir, null, false, session.offline(), session.force(), false, global.verbose);
         // Time-box: best-effort must never hang the CLI. On timeout, force-stop the engine so the
         // blocked protocol read unblocks via channel close.
@@ -266,10 +275,10 @@ public final class IdeSupport {
         Thread t = new Thread(
                 () -> {
                     try {
-                        cc.jumpkick.cli.engine.EngineClient.runSync(
+                        EngineClient.runSync(
                                 paths,
                                 req,
-                                steps -> new cc.jumpkick.cli.run.SilentListener(System.out, System.err, true),
+                                steps -> new SilentListener(System.out, System.err, true),
                                 fetched,
                                 upToDate);
                     } catch (Exception e) {
@@ -286,7 +295,7 @@ public final class IdeSupport {
         }
         if (t.isAlive()) {
             try {
-                cc.jumpkick.cli.engine.EngineClient.forceStop(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+                EngineClient.forceStop(EnginePaths.activeSocket(paths));
             } catch (RuntimeException ignored) {
                 // best-effort
             }
@@ -310,10 +319,10 @@ public final class IdeSupport {
     /** Soft sync failure: a note under the live IDE chip, or a fail wedge when there is no chrome. */
     private static void syncWarn(IdeChrome chrome, String message) {
         if (chrome != null) {
-            chrome.note(cc.jumpkick.cli.tui.RichText.plain(message));
+            chrome.note(RichText.plain(message));
             return;
         }
-        cc.jumpkick.cli.tui.CommandWedge.printFail("IDE", message);
+        CommandWedge.printFail("IDE", message);
     }
 
     // =========================================================================

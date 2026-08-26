@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo.s3;
 
+import cc.jumpkick.host.Hashing;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
@@ -80,8 +82,7 @@ public final class SigV4Signer {
                 + sha256Hex(canonicalRequest.getBytes(StandardCharsets.UTF_8));
 
         byte[] signingKey = signingKey(secretKey, dateStamp, region, service);
-        String signature =
-                cc.jumpkick.util.Hashing.hex(hmac(signingKey, stringToSign.getBytes(StandardCharsets.UTF_8)));
+        String signature = Hashing.hex(hmac(signingKey, stringToSign.getBytes(StandardCharsets.UTF_8)));
 
         return ALGORITHM
                 + " Credential="
@@ -129,7 +130,7 @@ public final class SigV4Signer {
     }
 
     public static String sha256Hex(byte[] data) {
-        return cc.jumpkick.util.Hashing.sha256Hex(data);
+        return Hashing.sha256Hex(data);
     }
 
     private static byte[] signingKey(String secretKey, String dateStamp, String region, String service) {
@@ -174,7 +175,7 @@ public final class SigV4Signer {
 
     private static String urlDecode(String s) {
         try {
-            return java.net.URLDecoder.decode(s, StandardCharsets.UTF_8);
+            return URLDecoder.decode(s, StandardCharsets.UTF_8);
         } catch (Exception e) {
             return s;
         }

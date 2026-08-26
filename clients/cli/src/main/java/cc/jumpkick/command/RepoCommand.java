@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -59,7 +65,7 @@ public final class RepoCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
+            return List.of(CommonOpts.cacheDir());
         }
 
         @Override
@@ -71,24 +77,24 @@ public final class RepoCommand extends GroupCommand {
         @Override
         public int run(Invocation in) {
             Path cacheRoot = CacheCommand.resolveCacheRoot(
-                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null));
+                    in.value("cache-dir").map(CliPaths::abs).orElse(null));
             CacheInventoryAck ack;
             try {
-                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
-                        cc.jumpkick.engine.EnginePaths.current(),
+                ack = EngineClient.cacheInventory(
+                        EnginePaths.current(),
                         "repo-refresh",
                         cacheRoot,
-                        cc.jumpkick.cache.JkStores.store(),
+                        JkStores.store(),
                         List.of(),
                         in.positionals(),
                         false);
             } catch (IOException e) {
                 CliOutput.err(String.valueOf(e.getMessage()));
-                return 2;
+                return Exit.SOFTWARE;
             }
             if (ack.error() != null) {
                 CliOutput.err(ack.error());
-                return 2;
+                return Exit.FAILURE;
             }
             for (String packed : ack.lines()) {
                 String[] f = packed.split("\\|", -1);
@@ -127,8 +133,7 @@ public final class RepoCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value("<N>", "Cap coordinates shown (default: no cap)", "--limit"),
-                    cc.jumpkick.cli.CommonOpts.cacheDir());
+                    Opt.value("<N>", "Cap coordinates shown (default: no cap)", "--limit"), CommonOpts.cacheDir());
         }
 
         @Override
@@ -141,26 +146,19 @@ public final class RepoCommand extends GroupCommand {
         public int run(Invocation in) {
             List<String> terms = in.positionals();
             Integer limit = in.value("limit").map(Integer::parseInt).orElse(null);
-            Path cacheDir =
-                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+            Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
             Path cacheRoot = CacheCommand.resolveCacheRoot(cacheDir);
             CacheInventoryAck ack;
             try {
-                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        "repo-search",
-                        cacheRoot,
-                        cc.jumpkick.cache.JkStores.store(),
-                        terms,
-                        List.of(),
-                        false);
+                ack = EngineClient.cacheInventory(
+                        EnginePaths.current(), "repo-search", cacheRoot, JkStores.store(), terms, List.of(), false);
             } catch (IOException e) {
                 CliOutput.err(String.valueOf(e.getMessage()));
-                return 1;
+                return Exit.SOFTWARE;
             }
             if (ack.error() != null) {
                 CliOutput.err(ack.error());
-                return 1;
+                return Exit.FAILURE;
             }
             List<String> hits = ack.entries();
             if (hits.isEmpty()) {

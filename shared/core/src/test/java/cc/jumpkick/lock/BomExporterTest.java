@@ -4,6 +4,7 @@ package cc.jumpkick.lock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,7 @@ class BomExporterTest {
 
     @Test
     void renders_dependency_management_for_main_scope() {
-        JkBuild project = JkBuild.of(new JkBuild.Project("com.example", "demo", "1.2.3", 25));
+        JkBuild project = JkBuild.of(new Project("com.example", "demo", "1.2.3", 25));
         Lockfile lock = new Lockfile(
                 1,
                 "jk test",
@@ -45,7 +46,7 @@ class BomExporterTest {
 
     @Test
     void test_scope_includes_test_artifacts() {
-        JkBuild project = JkBuild.of(new JkBuild.Project("com.example", "demo", "1.0.0", 25));
+        JkBuild project = JkBuild.of(new Project("com.example", "demo", "1.0.0", 25));
         Lockfile lock = new Lockfile(
                 1,
                 "jk test",

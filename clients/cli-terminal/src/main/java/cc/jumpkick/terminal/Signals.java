@@ -2,6 +2,7 @@
 package cc.jumpkick.terminal;
 
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
@@ -12,7 +13,14 @@ import java.lang.reflect.Proxy;
 public final class Signals {
     private Signals() {}
 
-    public static void register(String name, Runnable handler) {
+    /**
+     * Install {@code handler} for signal {@code name} ({@code "INT"}, {@code "WINCH"}). Returns
+     * {@code true} when the handler is registered; {@code false} on the two expected refusals, on
+     * which callers keep their best-effort fallback. Any other failure is a bug — a typo'd member
+     * after a refactor, missing native-image reachability metadata for the invoke — and throws
+     * {@link AssertionError} rather than silently shipping a jk with no Ctrl-C handling.
+     */
+    public static boolean register(String name, Runnable handler) {
         try {
             Class<?> signalClass = Class.forName("sun.misc.Signal");
             Class<?> handlerClass = Class.forName("sun.misc.SignalHandler");
@@ -26,8 +34,18 @@ public final class Signals {
             Object proxy = Proxy.newProxyInstance(handlerClass.getClassLoader(), new Class<?>[] {handlerClass}, ih);
             Method handle = signalClass.getMethod("handle", signalClass, handlerClass);
             handle.invoke(null, signal, proxy);
-        } catch (Throwable ignored) {
-            // unsupported runtime — caller keeps plan-start-only / no-op behavior
+            return true;
+        } catch (ClassNotFoundException | LinkageError e) {
+            // A runtime without sun.misc.Signal (or without its native-image metadata).
+            return false;
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof IllegalArgumentException) {
+                // A signal this OS/VM refuses: unknown name, WINCH on Windows, -Xrs.
+                return false;
+            }
+            throw new AssertionError("sun.misc.Signal registration failed for " + name, e.getCause());
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            throw new AssertionError("sun.misc.Signal registration failed for " + name, e);
         }
     }
 

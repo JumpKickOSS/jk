@@ -50,7 +50,8 @@ class JkEnvTest {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1", "temurin-25.0.3"), project.resolve("jk-lock.toml"));
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin:/bin", noGlobalDefault(tempDir));
         var target = env.resolve(project);
@@ -82,7 +83,8 @@ class JkEnvTest {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1", "graalvm-jdk-25"), project.resolve("jk-lock.toml"));
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("graalvm-jdk", "25")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", noGlobalDefault(tempDir));
         var target = env.resolve(project);
@@ -111,7 +113,8 @@ class JkEnvTest {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1", "nonexistent-jdk-999"), project.resolve("jk-lock.toml"));
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("nonexistent-jdk", "999")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).isActive()).isFalse();
@@ -140,6 +143,33 @@ class JkEnvTest {
     }
 
     @Test
+    void path_swap_keeps_nvm_and_replaces_prior_jdk_bin(@TempDir Path tempDir) throws IOException {
+        var jdksRoot = tempDir.resolve("jdks");
+        var jdkHome = fakeJdk(jdksRoot.resolve("temurin-25.0.3"));
+        var project = tempDir.resolve("project");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+
+        String livePath = "/old-jdk/bin"
+                + File.pathSeparator
+                + "/home/u/.nvm/versions/node/v24/bin"
+                + File.pathSeparator
+                + "/usr/bin";
+        var env = new JkEnv(new JdkRegistry(jdksRoot), livePath, noGlobalDefault(tempDir), "/old-jdk", null);
+        var target = env.resolve(project);
+
+        var realBin = jdkHome.toRealPath().resolve("bin").toString();
+        assertThat(target.vars().get("PATH"))
+                .isEqualTo(realBin
+                        + File.pathSeparator
+                        + "/home/u/.nvm/versions/node/v24/bin"
+                        + File.pathSeparator
+                        + "/usr/bin");
+    }
+
+    @Test
     void falls_back_to_default_when_project_has_no_pin(@TempDir Path tempDir) throws IOException {
         var jdksRoot = tempDir.resolve("jdks");
         var jdkHome = fakeJdk(jdksRoot.resolve("temurin-25.0.3"));
@@ -158,6 +188,104 @@ class JkEnvTest {
                 .isEqualTo(jdkHome.toRealPath().toString());
     }
 
+    @Test
+    void lock_jdk_beats_global_default(@TempDir Path tempDir) throws IOException {
+        var jdksRoot = tempDir.resolve("jdks");
+        fakeJdk(jdksRoot.resolve("temurin-21.0.5"), "21.0.5");
+        var j25 = fakeJdk(jdksRoot.resolve("temurin-25.0.3"), "25.0.3");
+        var defaults = globalDefaultConfig(tempDir, "temurin-21.0.5");
+
+        var project = tempDir.resolve("project");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var target = env.resolve(project);
+        assertThat(target.vars().get("JAVA_HOME")).isEqualTo(j25.toRealPath().toString());
+    }
+
+    @Test
+    void lock_accepts_newer_patch_of_the_same_vendor(@TempDir Path tempDir) throws IOException {
+        var jdksRoot = tempDir.resolve("jdks");
+        var newer = fakeJdk(jdksRoot.resolve("temurin-25.0.4"), "25.0.4");
+        var project = tempDir.resolve("project");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", noGlobalDefault(tempDir));
+        assertThat(env.resolve(project).vars().get("JAVA_HOME"))
+                .isEqualTo(newer.toRealPath().toString());
+    }
+
+    @Test
+    void unmet_lock_major_does_not_export_a_too_old_default(@TempDir Path tempDir) throws IOException {
+        var jdksRoot = tempDir.resolve("jdks");
+        fakeJdk(jdksRoot.resolve("temurin-21.0.5"), "21.0.5");
+        var defaults = globalDefaultConfig(tempDir, "temurin-21.0.5");
+
+        var project = tempDir.resolve("project");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.4")), project.resolve("jk-lock.toml"));
+
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        assertThat(env.resolve(project).isActive()).isFalse();
+    }
+
+    @Test
+    void lock_graal_beats_de_facto_graal(@TempDir Path tempDir) throws IOException {
+        var jdksRoot = tempDir.resolve("jdks");
+        var javaHome = fakeJdk(jdksRoot.resolve("temurin-25.0.3"), "25.0.3");
+        var lockedCe = fakeGraal(jdksRoot.resolve("25.0.3-graalce"), "25.0.3");
+        fakeGraal(jdksRoot.resolve("25.0.4-graal"), "25.0.4", true);
+        var defaults = globalDefaultConfig(tempDir, "temurin-25.0.3");
+
+        var project = tempDir.resolve("project");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        LockfileWriter.write(
+                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3"))
+                        .withGraal(new Lockfile.GraalPin("graalvm-ce", "25.0.3")),
+                project.resolve("jk-lock.toml"));
+
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var target = env.resolve(project);
+        assertThat(target.vars().get("JAVA_HOME"))
+                .isEqualTo(javaHome.toRealPath().toString());
+        assertThat(target.vars().get("GRAALVM_HOME"))
+                .isEqualTo(lockedCe.toRealPath().toString());
+    }
+
+    @Test
+    void exports_graalvm_home_for_sole_installed_graal_without_graal_default(@TempDir Path tempDir) throws IOException {
+        var jdksRoot = tempDir.resolve("jdks");
+        var javaHome = fakeJdk(jdksRoot.resolve("temurin-25.0.3"));
+        var graalHome = fakeGraal(jdksRoot.resolve("25.2.4-graalce"));
+        var defaults = globalDefaultConfig(tempDir, "temurin-25.0.3");
+
+        var project = tempDir.resolve("project");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
+
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var target = env.resolve(project);
+
+        assertThat(target.vars().get("JAVA_HOME"))
+                .isEqualTo(javaHome.toRealPath().toString());
+        assertThat(target.vars().get("GRAALVM_HOME"))
+                .isEqualTo(graalHome.toRealPath().toString());
+        assertThat(target.vars().get("PATH"))
+                .startsWith(javaHome.toRealPath().resolve("bin")
+                        + File.pathSeparator
+                        + graalHome.toRealPath().resolve("bin"));
+    }
+
     /** An inventory with no rows and no default. */
     private static JdkInventory noGlobalDefault(Path tempDir) {
         return new JdkInventory(tempDir.resolve("jdks"), tempDir.resolve("jk-jdks.toml"));
@@ -174,10 +302,38 @@ class JkEnvTest {
 
     /** Stand up a fake jk-managed JDK install (bin/java, bin/javac, release) and return its home. */
     private static Path fakeJdk(Path home) throws IOException {
+        return fakeJdk(home, "25.0.3");
+    }
+
+    private static Path fakeJdk(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(JdkFingerprint.java(home), "#!/fake\n");
         Files.writeString(JdkFingerprint.javac(home), "#!/fake\n");
-        Files.writeString(home.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        Files.writeString(
+                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        JdkOwnership.mark(home);
+        return home;
+    }
+
+    private static Path fakeGraal(Path home) throws IOException {
+        return fakeGraal(home, "25.0.4", false);
+    }
+
+    private static Path fakeGraal(Path home, String version) throws IOException {
+        return fakeGraal(home, version, false);
+    }
+
+    private static Path fakeGraal(Path home, String version, boolean oracle) throws IOException {
+        Files.createDirectories(home.resolve("bin"));
+        Files.writeString(JdkFingerprint.java(home), "#!/fake\n");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake\n");
+        String implementor = oracle ? "Oracle Corporation" : "GraalVM Community";
+        String extra = oracle
+                ? "IMPLEMENTOR_VERSION=\"Oracle GraalVM " + version + "\"\nGRAALVM_VERSION=\"" + version + "\"\n"
+                : "GRAALVM_VERSION=\"" + version + "\"\n";
+        Files.writeString(
+                home.resolve("release"),
+                "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n" + extra);
         JdkOwnership.mark(home);
         return home;
     }

@@ -1,12 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSelect;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.BuildService;
+import cc.jumpkick.runtime.CompilePlans;
+import cc.jumpkick.runtime.WorkspaceRequest;
+import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.runtime.WorkspaceSpec;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,30 +67,28 @@ public final class CompileVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+    public String decodeJob(JobSpec spec) {
         Path entryDir = Path.of(spec.dir());
         List<String> moduleDirs = List.of();
         if (!spec.modules().isEmpty()) {
-            cc.jumpkick.model.JkBuild entry;
+            JkBuild entry;
             try {
-                entry = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
             } catch (Exception e) {
                 throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
             }
-            Set<Path> selected = cc.jumpkick.engine.jobs.JobSelect.selected(entryDir, entry, spec.modules());
+            Set<Path> selected = JobSelect.selected(entryDir, entry, spec.modules());
             if (selected != null) {
                 moduleDirs = selected.stream().map(Path::toString).sorted().toList();
             }
         }
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.compileRequest(
-                        spec.dir(), cc.jumpkick.util.JkDirs.cache().toString(), null, false, false, false, moduleDirs),
+        return ProtoSession.withTrigger(
+                ProtoJobs.compileRequest(spec.dir(), JkDirs.cache().toString(), null, false, false, false, moduleDirs),
                 "web");
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String profile = Jsonl.str(requestLine, "profile");
@@ -81,10 +98,9 @@ public final class CompileVerb implements HostedVerb {
                 // Workspace (root or member): the one-orchestrator COMPILE path — compile-only
                 // terminal on the selection, prereqs packaged first via the shared cascade
                 // (JK-2103). The client mirrors this condition and expects workspace events.
-                var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(entryDir);
+                var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
-                    cc.jumpkick.model.JkBuild rootBuild =
-                            cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
                     if (rootBuild.isWorkspaceRoot()) {
                         Set<Path> selected = new LinkedHashSet<>();
                         List<String> raw = new ArrayList<>();
@@ -96,27 +112,27 @@ public final class CompileVerb implements HostedVerb {
                         }
                         if (!raw.isEmpty() || affected != null) {
                             try {
-                                var hit = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                                var hit = ModuleSelection.resolveOptional(
                                         entryDir, rootBuild, raw.isEmpty() ? null : String.join(",", raw), affected);
                                 if (hit != null && !hit.ok()) {
                                     host.sendQuiet(
                                             writer,
                                             host.requestFailedLine(
                                                     null, new IllegalArgumentException(hit.errorMessage())));
-                                    return cc.jumpkick.engine.jobs.JobOutcome.failed(2);
+                                    return JobOutcome.failed(2);
                                 }
                                 if (hit != null) selected.addAll(hit.moduleDirs());
                             } catch (IllegalArgumentException e) {
                                 host.sendQuiet(writer, host.requestFailedLine(null, e));
-                                return cc.jumpkick.engine.jobs.JobOutcome.failed(2);
+                                return JobOutcome.failed(2);
                             }
                         }
-                        boolean isMember = !cc.jumpkick.runtime.BuildGraph.canonicalPath(wsRoot.get())
-                                .equals(cc.jumpkick.runtime.BuildGraph.canonicalPath(entryDir));
+                        boolean isMember =
+                                !BuildGraph.canonicalPath(wsRoot.get()).equals(BuildGraph.canonicalPath(entryDir));
                         if (selected.isEmpty() && isMember) {
                             selected.add(entryDir.toAbsolutePath().normalize());
                         }
-                        cc.jumpkick.runtime.WorkspaceRequest req = new cc.jumpkick.runtime.WorkspaceRequest(
+                        WorkspaceRequest req = new WorkspaceRequest(
                                         wsRoot.get(),
                                         session.cacheDir(),
                                         session.jdksDir(),
@@ -128,48 +144,35 @@ public final class CompileVerb implements HostedVerb {
                                         null,
                                         true,
                                         true)
-                                .withVariant(
-                                        cc.jumpkick.engine.protocol.ProtoSession.variantOf(requestLine),
-                                        cc.jumpkick.engine.protocol.ProtoSession.clientEnvOf(requestLine))
-                                .withSpec(cc.jumpkick.runtime.WorkspaceSpec.compile(selected));
+                                .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                                .withSpec(WorkspaceSpec.compile(selected));
                         long rid = host.eventRequestId();
                         if (rid > 0) host.putProgressRoot(rid, wsRoot.get().toString());
-                        cc.jumpkick.runtime.WorkspaceResult result = SessionContext.where(
+                        WorkspaceResult result = SessionContext.where(
                                 session,
-                                () -> cc.jumpkick.runtime.BuildService.buildWorkspace(
+                                () -> BuildService.buildWorkspace(
                                         req,
                                         host.workspaceListener(
                                                 writer, wsRoot.get().toString())));
-                        host.releaseExclusiveSlot();
-                        boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-                        cc.jumpkick.engine.jobs.JobOutcome outcome = cc.jumpkick.engine.jobs.JobOutcome.of(
-                                result.success() && !cancelled, result.exitCode());
-                        if (rid > 0) {
-                            if (result.success() && !cancelled) host.finishProgress(rid);
-                            host.emitWorkspaceProgress(rid, writer, true);
-                        }
-                        host.flushTimeline(rid, writer);
-                        host.sendQuiet(
-                                writer,
-                                ProtoEvents.workspaceFinish(
-                                        result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
-                        return outcome;
+                        return WorkspaceTerminal.finish(
+                                host, writer, wsRoot.get().toString(), result, cancelToken.cancelled());
                     }
                 }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Constructed in-session — see runImage's note on ambient-session capture.
-                cc.jumpkick.run.BuildPlan plan = SessionContext.where(
+                BuildPlan plan = SessionContext.where(
                         session,
-                        () -> cc.jumpkick.runtime.CompilePlans.compileBuildPlan(
+                        () -> CompilePlans.compileBuildPlan(
                                 session.workingDir(), session.cacheDir(), profile, verbose));
-                host.streamSinglePlan(plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
+                return host.streamSinglePlan(
+                        plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

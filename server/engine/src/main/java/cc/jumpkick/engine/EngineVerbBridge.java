@@ -12,6 +12,7 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.engine.verbs.VerbHost;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -21,7 +22,6 @@ import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -109,13 +109,13 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public void send(@Nullable BufferedWriter writer, String line) throws IOException {
         if (writer == null) return; // detached job — the sinks and hooks carry the facts
-        EngineServer.send(writer, line);
+        WireWriter.send(writer, line);
     }
 
     @Override
     public void sendQuiet(@Nullable BufferedWriter writer, String line) {
         if (writer == null) return;
-        EngineServer.sendQuiet(writer, line);
+        WireWriter.sendQuiet(writer, line);
     }
 
     @Override
@@ -125,7 +125,7 @@ public final class EngineVerbBridge implements VerbHost {
 
     @Override
     public String requestFailedLine(@Nullable String dir, Throwable e) {
-        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, cc.jumpkick.util.Errors.text(e)));
+        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, Errors.text(e)));
     }
 
     @Override
@@ -195,19 +195,11 @@ public final class EngineVerbBridge implements VerbHost {
     static Session resolve(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
         Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
         Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-        JkConfig config = new JkConfig(
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "verbose", false)),
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "force", false) || refresh),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        JkConfig config = JkConfig.empty()
+                .withOffline(Jsonl.bool(requestLine, "offline", false))
+                .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                .withVerbose(Jsonl.bool(requestLine, "verbose", false))
+                .withForce(Jsonl.bool(requestLine, "force", false) || refresh);
         return Session.defaults()
                 .withConfig(config)
                 .withWorkingDir(entryDir)
@@ -215,6 +207,10 @@ public final class EngineVerbBridge implements VerbHost {
                 .withCancel(cancelToken)
                 .withJvm(ProtoSession.jvmTuning(requestLine))
                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                // The request's toolchain selection, resolved once for every verb that takes a
+                // session from here. Without it the engine's SWITCH tier is permanently empty and a
+                // resident daemon ignores both --jdk and JK_JDK (JK-1021).
+                .withToolchainSpecs(ProtoSession.jdkSpecOf(requestLine), ProtoSession.graalSpecOf(requestLine))
                 .withAssemblyOverride(ProtoSession.assemblyOverrideOf(requestLine));
     }
 }

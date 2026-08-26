@@ -78,4 +78,14 @@ class DepFrequencyTest {
         DepFrequency loaded = DepFrequency.load(buildsRoot);
         assertThat(loaded.projects().get("id-1")).containsExactly("com.example:widget", "jspecify");
     }
+
+    @Test
+    void round_trip_survives_quotes_backslashes_controls_and_non_ascii(@TempDir Path buildsRoot) throws Exception {
+        String project = "id \"quoted\" \\slash\tand\nnewline é";
+        String dep = "com.exàmple:art\"if\\act\twith\ncontrols";
+        DepFrequency.empty().observe(project, Set.of(dep, "plain")).save(buildsRoot);
+
+        DepFrequency loaded = DepFrequency.load(buildsRoot);
+        assertThat(loaded.projects().get(project)).containsExactly(dep, "plain");
+    }
 }

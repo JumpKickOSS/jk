@@ -8,7 +8,7 @@ graal = 25
 [workspace]
 modules = [
   # Shared Libraries
-  "shared/jsonl",
+  "shared/host",
   "shared/plugin-sdk",
   "shared/jk-api",
   "shared/core",
@@ -33,7 +33,6 @@ modules = [
   "plugins/auditor",
   "plugins/publisher",
   "plugins/image-builder",
-  "plugins/compat-bridge",
   "plugins/minified",
   "plugins/formatter",
   "plugins/spring-boot",

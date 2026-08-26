@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -43,6 +45,35 @@ public final class CommonOpts {
         return List.of(
                 Opt.value("<sel>", "Only selected modules (paths/globs)", "-m", "--modules"),
                 Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
+    }
+
+    /**
+     * The canonical name of {@code --jdks-dir} — the key {@link Invocation} files its value under,
+     * and the one spelling of the flag. Wire-side it is {@code jdksDir}
+     * ({@code cc.jumpkick.engine.protocol.ProtoJobs.JDKS_DIR}); the two are different vocabularies
+     * (a CLI flag and a JSON field) and each has exactly one owner.
+     */
+    public static final String JDKS_DIR = "jdks-dir";
+
+    /**
+     * JDK install-root override, shared by the 24 verbs that accept it. Default is
+     * {@code $JK_JDKS_DIR}, else the IntelliJ shared root ({@code ~/.jdks}, or
+     * {@code ~/Library/Java/JavaVirtualMachines} on macOS) so the IDE and jk share managed
+     * runtimes — {@code JK_HOME} does <em>not</em> relocate it (see {@code JkDirs.jdksDir}).
+     *
+     * <p>Hidden: it exists for tests and for a power user who keeps runtimes elsewhere, and every
+     * one of the 24 declarations hid it. Round 3 found six different help strings behind that
+     * {@code hide()}, one of which ({@code jk jdk update}'s "the jk JDK directory") named the wrong
+     * default — invisible text drifts because nothing renders it.
+     */
+    public static Opt jdksDir() {
+        return Opt.value("<dir>", "Override the JDK install root.", "--" + JDKS_DIR)
+                .hide();
+    }
+
+    /** The {@code --jdks-dir} override as a path, or {@code null} when the user gave none. */
+    public static Path jdksDirValue(Invocation in) {
+        return in.value(JDKS_DIR).map(Path::of).orElse(null);
     }
 
     /** Skip compiling and running tests — shared by build / native / install-style verbs. */

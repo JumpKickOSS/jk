@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -106,14 +107,14 @@ public final class EffectivePomBuilder {
      * each call uses its own cycle-detection set so sibling BOM imports can expand in parallel.
      */
     public EffectivePom build(Coordinate coord) throws IOException, InterruptedException {
-        boolean profile = cc.jumpkick.resolve.ResolveProfile.on();
+        boolean profile = ResolveProfile.on();
         long t0 = profile ? System.nanoTime() : 0L;
         String localKey = coord.toGav();
         String processKey = processKey(coord);
         boolean known = cache.containsKey(localKey) || PROCESS_CACHE.containsKey(processKey);
         EffectivePom built = buildInternal(coord, new HashSet<>(), 0);
         if (profile) {
-            cc.jumpkick.resolve.ResolveProfile.pomBuild(known ? 0L : System.nanoTime() - t0, known);
+            ResolveProfile.pomBuild(known ? 0L : System.nanoTime() - t0, known);
         }
         return built;
     }

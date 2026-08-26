@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.NativePreflight;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -12,7 +17,7 @@ import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
- * {@code jk native} plan: {@link BuildPlanner} plus {@link BuildPlanner#nativeStep} for
+ * {@code jk native} plan: {@link BuildPlanner} plus {@link PlannerNative#nativeStep} for
  * eligible modules. GraalVM home is always resolved client-side and passed in.
  */
 public final class NativePlans {
@@ -34,7 +39,7 @@ public final class NativePlans {
      */
     public static String resolveMain(Path buildFile, String mainOverride) {
         Path dir = buildFile.getParent();
-        return dir == null ? mainOverride : cc.jumpkick.layout.NativePreflight.specifiedMain(dir, mainOverride);
+        return dir == null ? mainOverride : NativePreflight.specifiedMain(dir, mainOverride);
     }
 
     /**
@@ -105,9 +110,9 @@ public final class NativePlans {
             boolean verbose,
             boolean allowNative,
             UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path buildFile = moduleDir.resolve("jk.toml");
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
-        boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(moduleDir);
+        Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path lockFile = LockPaths.lockFile(moduleDir);
+        boolean compact = ModuleLayout.isCompact(moduleDir);
         int estimatedTests = TestSupport.estimateAllSuiteTestCount(moduleDir, compact);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 moduleDir,
@@ -124,15 +129,15 @@ public final class NativePlans {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         if (decorate != null) inputs = decorate.apply(inputs);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // Assembly / sources tails only here — native carries CLI main/args from this command.
         // Do not append [native] always via allowNative; that is the jk build path. jk native
         // attaches native-image only for modules the client marked with a Graal home (unique main).
-        BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
+        PlannerTails.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
         if (allowNative && isNativeEligible(graalHome)) {
-            builder.addTask(BuildPlanner.nativeStep(
+            builder.addTask(PlannerNative.nativeStep(
                     moduleDir,
                     cache,
                     lockFile,

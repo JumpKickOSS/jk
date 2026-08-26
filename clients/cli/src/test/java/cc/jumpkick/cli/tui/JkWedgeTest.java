@@ -43,6 +43,25 @@ class JkWedgeTest {
     }
 
     @Test
+    void plain_status_line_names_every_tail_variant() {
+        // With a command: full wedge head, tail spelled by the variant.
+        assertThat(JkWedge.plainStatusLine("Format", "Examining", JkWedge.PlainTail.WORKING))
+                .isEqualTo("jk: * Format > Examining - working...");
+        assertThat(JkWedge.plainStatusLine("Format", "Examining", JkWedge.PlainTail.DONE))
+                .isEqualTo("jk: * Format > Examining - done.");
+        assertThat(JkWedge.plainStatusLine("Format", "Examining", JkWedge.PlainTail.BARE))
+                .isEqualTo("jk: * Format > Examining");
+        // PERCENT_DONE drops the message entirely — the settled plan line.
+        assertThat(JkWedge.plainStatusLine("Format", "Examining", JkWedge.PlainTail.PERCENT_DONE))
+                .isEqualTo("jk: * Format > 100% - done");
+        // Without a command: prefix + pulse glyph, no chip.
+        assertThat(JkWedge.plainStatusLine(null, "Cleaning", JkWedge.PlainTail.WORKING))
+                .isEqualTo("jk: * Cleaning - working...");
+        // Blank message falls back to "working".
+        assertThat(JkWedge.plainStatusLine(null, " ", JkWedge.PlainTail.DONE)).isEqualTo("jk: * working - done.");
+    }
+
+    @Test
     void progress_suffix_is_rich_text() {
         JkWedge w = new JkWedge(Icon.spinner(), "Build", RichText.empty())
                 .progress(new Progress(1, 2).suffix(RichText.plain("ETA ~12s")));

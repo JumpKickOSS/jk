@@ -4,6 +4,7 @@ package cc.jumpkick.cache;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Hashing;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -79,7 +80,7 @@ class CasTest {
         Path buildOut = tempDir.resolve("target/classes/Hello.class");
         Files.createDirectories(buildOut.getParent());
         Files.writeString(buildOut, "class-bytes-v1");
-        String hex = cc.jumpkick.util.Hashing.sha256Hex(buildOut);
+        String hex = Hashing.sha256Hex(buildOut);
 
         Path casBlob = cas.putFile(buildOut, hex);
         assertThat(casBlob).exists();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.config.BuildLogicToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,11 +14,10 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import org.tomlj.TomlTable;
 
 /**
- * Offline discovery of project build-logic task names for {@code jk tasks}. Scans
- * {@code .jk-build/} (or {@code [build].logic}) sources without compiling — stem scripts
+ * Offline discovery of project build-logic task names for {@code jk tasks}. Scans the directory
+ * {@link BuildLogicToml} resolves — the same one the engine runs — without compiling: stem scripts
  * ({@code before-compile.groovy} / {@code .kts}), SPI {@code .task("name", …)} strings, and legacy
  * {@code *Build} class names.
  */
@@ -35,8 +34,10 @@ final class BuildLogicTaskScan {
 
     /** Task names (no {@code build-logic:} prefix); empty when no logic dir / no hits. */
     static List<String> discoverNames(Path projectDir) {
-        Path logicDir = logicDir(projectDir);
-        if (logicDir == null || !Files.isDirectory(logicDir)) return List.of();
+        // Same resolution the engine will use — see BuildLogicToml for why the CLI can share it.
+        var logic = BuildLogicToml.resolve(projectDir);
+        if (logic.isEmpty()) return List.of();
+        Path logicDir = logic.get().dir();
         Set<String> names = new LinkedHashSet<>();
         // Top-level stem scripts (engine only discovers non-recursive *.groovy / *.kts)
         try (Stream<Path> top = Files.list(logicDir)) {
@@ -89,29 +90,5 @@ final class BuildLogicTaskScan {
             return new ArrayList<>(names);
         }
         return new ArrayList<>(names);
-    }
-
-    static Path logicDir(Path projectDir) {
-        if (projectDir == null) return null;
-        Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = root.resolve("jk.toml");
-        String logicRel = ".jk-build";
-        var parsed = TomlValues.parse(toml);
-        if (parsed.isPresent()) {
-            TomlTable build = parsed.get().getTable("build");
-            if (build != null) {
-                String logic = build.getString("logic");
-                if (logic != null && !logic.isBlank()) {
-                    String n = logic.trim().toLowerCase(Locale.ROOT);
-                    if (n.equals("off") || n.equals("false") || n.equals("none") || n.equals("disable")) {
-                        return null;
-                    }
-                    logicRel = logic.trim();
-                }
-            }
-        }
-        Path logicDir = root.resolve(logicRel).normalize();
-        if (!logicDir.startsWith(root)) return null;
-        return Files.isDirectory(logicDir) ? logicDir : null;
     }
 }

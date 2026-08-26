@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -205,18 +207,18 @@ class EffortWeightsStepEtaTest {
 
     @Test
     void step_counts_and_running_steps_come_from_the_prepared_pipeline() {
-        var plan = cc.jumpkick.run.BuildPlan.builder("m")
-                .addTask(cc.jumpkick.run.Task.builder("parse-build")
+        var plan = BuildPlan.builder("m")
+                .addTask(Task.builder("parse-build")
                         .weight(EffortWeights.TOKEN)
                         .ticks(1)
                         .execute(ctx -> {})
                         .build())
-                .addTask(cc.jumpkick.run.Task.builder("compile-java")
+                .addTask(Task.builder("compile-java")
                         .weight(40)
                         .ticks(227)
                         .execute(ctx -> {})
                         .build())
-                .addTask(cc.jumpkick.run.Task.builder("run-tests")
+                .addTask(Task.builder("run-tests")
                         .weight(800)
                         .ticks(884)
                         .execute(ctx -> {})

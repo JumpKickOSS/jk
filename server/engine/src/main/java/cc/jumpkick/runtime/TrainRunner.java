@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.TrainConfig;
+import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.GraalLauncher;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.surface.DynamicSurface;
 import cc.jumpkick.surface.DynamicSurfaceIo;
 import cc.jumpkick.surface.KeepRuleEmitter;
 import cc.jumpkick.surface.TrainLayout;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,8 +26,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.jar.JarFile;
 
 /**
  * Runs {@code jk train}: observe one or more profiles under the Graal tracing agent, merge into a
@@ -248,10 +260,12 @@ public final class TrainRunner {
     }
 
     private static boolean looksLikeGraal(Path home) {
-        if (Files.isExecutable(home.resolve("bin/native-image"))
-                || Files.isRegularFile(home.resolve("bin/native-image.cmd"))) {
-            return true;
-        }
+        // Where the launcher lives is GraalLauncher's answer. This site used to probe
+        // bin/native-image and bin/native-image.cmd only, so an .exe-only Windows GraalVM was not
+        // recognised as GraalVM at all — and, spelling the name path-joined, it evaded guard G12.
+        if (GraalLauncher.in(home).isPresent()) return true;
+        // The agent is a shared library, not a launcher: a different vocabulary, deliberately not
+        // GraalLauncher's business.
         for (String rel : List.of(
                 "lib/libnative-image-agent.so",
                 "lib/server/libnative-image-agent.so",
@@ -264,14 +278,14 @@ public final class TrainRunner {
 
     private static Path javaBinary(Path javaHome) {
         if (javaHome != null) {
-            Path j = javaHome.resolve("bin/java");
+            Path j = JdkFingerprint.java(javaHome);
             if (Files.isExecutable(j)) return j;
         }
-        return Path.of(System.getProperty("java.home"), "bin", "java");
+        return JdkFingerprint.java(JavaHomes.runningJavaHome());
     }
 
     private static List<String> shell(String command) {
-        String os = System.getProperty("os.name", "").toLowerCase();
+        String os = Os.name().toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             return List.of("cmd", "/c", command);
         }
@@ -298,18 +312,17 @@ public final class TrainRunner {
         }
         String mainClass = project.mainClass();
         if (cache != null && mainClass != null && Files.isRegularFile(lockFile)) {
-            var resolver = new cc.jumpkick.compile.ClasspathResolver(cc.jumpkick.cache.JkStores.cas(cache));
-            var lock = cc.jumpkick.lock.LockfileReader.read(lockFile);
-            StringBuilder cp = new StringBuilder(mainJar.toAbsolutePath().toString());
-            int deps = 0;
-            for (var entry : resolver.entriesFor(lock, cc.jumpkick.compile.ClasspathResolver.RUNTIME)) {
-                if (!Files.exists(entry.jar())) continue;
-                cp.append(java.io.File.pathSeparatorChar).append(entry.jar().toAbsolutePath());
-                deps++;
+            var resolver = new ClasspathResolver(JkStores.cas(cache));
+            var lock = LockfileReader.read(lockFile);
+            List<Path> cp = new ArrayList<>();
+            cp.add(mainJar);
+            for (var entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
+                if (Files.exists(entry.jar())) cp.add(entry.jar());
             }
+            int deps = cp.size() - 1;
             if (deps > 0) {
                 log.accept("training with the lock's runtime classpath (" + deps + " jars)");
-                return List.of("-cp", cp.toString(), mainClass);
+                return List.of("-cp", Classpaths.join(cp), mainClass);
             }
         }
         return List.of("-jar", mainJar.toAbsolutePath().toString());
@@ -323,7 +336,7 @@ public final class TrainRunner {
 
     /** Boot launcher layout, or any jar whose manifest names its own {@code Class-Path}. */
     private static boolean isSelfContained(Path jar) {
-        try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jar.toFile())) {
+        try (JarFile jf = new JarFile(jar.toFile())) {
             if (jf.getEntry("BOOT-INF/") != null) return true;
             var manifest = jf.getManifest();
             if (manifest == null) return false;
@@ -360,14 +373,14 @@ public final class TrainRunner {
         create.addAll(launch);
         ProcessBuilder pb2 =
                 new ProcessBuilder(create).redirectErrorStream(true).directory(moduleDir.toFile());
-        Process p = cc.jumpkick.engine.JobWorkers.start(pb2);
+        Process p = JobWorkers.start(pb2);
         // Drain the pipe: a chatty assembler fills the 64K buffer, stalls, gets force-killed at
         // the timeout, and is then misreported as "did not produce a cache".
         StringBuilder createOut = new StringBuilder();
         Thread drain = Thread.ofVirtual().start(() -> {
             try (var in = p.inputReader()) {
                 in.lines().forEach(l -> createOut.append(l).append('\n'));
-            } catch (java.io.IOException ignored) {
+            } catch (IOException ignored) {
             }
         });
         p.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -387,10 +400,9 @@ public final class TrainRunner {
 
     private static Output runUntilSettled(ProcessBuilder pb, Consumer<String> log)
             throws IOException, InterruptedException {
-        Process process = cc.jumpkick.engine.JobWorkers.start(pb);
+        Process process = JobWorkers.start(pb);
         StringBuilder out = new StringBuilder();
-        java.util.concurrent.atomic.AtomicLong lastOutput =
-                new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+        AtomicLong lastOutput = new AtomicLong(System.nanoTime());
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {

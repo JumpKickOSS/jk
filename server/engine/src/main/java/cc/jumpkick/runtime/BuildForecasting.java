@@ -4,7 +4,10 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -138,8 +141,7 @@ public final class BuildForecasting {
         // The memo is also keyed without the test selection: a widened run (`jk build --all`,
         // tag flags) must take the real forecast walk — its run-tests stamps differ from the
         // default tier the memo's clean claim covered (JK-2203).
-        boolean defaultSelection =
-                SessionContext.current().testSelection().equals(cc.jumpkick.config.TestSelection.DEFAULT);
+        boolean defaultSelection = SessionContext.current().testSelection().equals(TestSelection.DEFAULT);
         boolean memoSafe = (t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST) && defaultSelection;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
@@ -177,7 +179,7 @@ public final class BuildForecasting {
         }
         try {
             Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
-            ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
+            ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
             List<TaskForecast.Module> modules = TaskForecaster.of(
                     graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs);
             Set<Path> dirty = new HashSet<>();
@@ -212,7 +214,7 @@ public final class BuildForecasting {
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached() || TaskForecast.Module.isBookkeepingStep(s.name())) continue;
             if (!TaskForecast.Module.isMaterialWork(s.name())) continue;
-            if ("restore-outputs".equals(s.name())) {
+            if (TaskNames.RESTORE_OUTPUTS.equals(s.name())) {
                 sawRestore = true;
                 continue;
             }
@@ -275,7 +277,7 @@ public final class BuildForecasting {
             }
         }
         Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
-        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
         List<TaskForecast.Module> modules = TaskForecaster.of(graph, cas, actionCache, cache, skipTests);
         return new ExplainPlan(modules, graph.edges(), graph.maxReadyWidth(), List.of());
     }

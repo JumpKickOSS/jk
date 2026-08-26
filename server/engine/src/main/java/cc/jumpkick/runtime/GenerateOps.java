@@ -6,11 +6,15 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.gradle.GradleExporter;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.BomExporter;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.mvn.PomExporter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -43,7 +47,7 @@ public final class GenerateOps {
                 default -> GeneratedFiles.error("unknown generate kind: " + kind);
             };
         } catch (IOException | RuntimeException e) {
-            return GeneratedFiles.error(cc.jumpkick.util.Errors.text(e));
+            return GeneratedFiles.error(Errors.text(e));
         }
     }
 
@@ -80,7 +84,7 @@ public final class GenerateOps {
      */
     private static GeneratedFiles exportBom(Path dir, Map<String, String> params) throws IOException {
         Loaded loaded = load(dir);
-        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockPath = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockPath)) {
             return GeneratedFiles.error("no jk-lock.toml — run `jk lock` before `jk export bom`");
         }
@@ -107,7 +111,7 @@ public final class GenerateOps {
         Loaded loaded = load(dir);
 
         Map<String, JkBuild> byRel = new LinkedHashMap<>();
-        Map<String, JkBuild.Layout> layoutByRel = new LinkedHashMap<>();
+        Map<String, Layout> layoutByRel = new LinkedHashMap<>();
         layoutByRel.put("", resolveLayout(dir, loaded.root()));
         for (Map.Entry<Path, JkBuild> e : loaded.modules().entrySet()) {
             String rel = dir.relativize(e.getKey()).toString().replace('\\', '/');
@@ -134,7 +138,7 @@ public final class GenerateOps {
 
     /** The export view: parsed root (+ workspace modules) and merged locked versions. */
     private static Loaded load(Path dir) throws IOException {
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(toml)) {
             throw new IOException("no jk.toml in " + dir);
         }
@@ -148,7 +152,7 @@ public final class GenerateOps {
     }
 
     private static Map<String, String> lockedVersions(Path dir) {
-        Path lock = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lock = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lock)) return Map.of();
         try {
             Lockfile lf = LockfileReader.read(lock);
@@ -162,8 +166,8 @@ public final class GenerateOps {
         }
     }
 
-    private static JkBuild.Layout resolveLayout(Path dir, JkBuild build) {
-        return SourceLayout.isSimpleLayout(build.project(), dir) ? JkBuild.Layout.SIMPLE : JkBuild.Layout.TRADITIONAL;
+    private static Layout resolveLayout(Path dir, JkBuild build) {
+        return SourceLayout.isSimpleLayout(build.project(), dir) ? Layout.SIMPLE : Layout.TRADITIONAL;
     }
 
     private static void addNotes(List<String> notes, ImportReport report) {

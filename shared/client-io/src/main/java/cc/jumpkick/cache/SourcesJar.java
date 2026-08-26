@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.DeterministicZip;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,15 +13,16 @@ import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
 
 /**
  * Builds a Maven-style {@code <artifact>-<version>-sources.jar} by zipping the project's source
  * directories. Entries are stored relative to each root ({@code src/main/java/com/foo/Bar.java}
- * becomes {@code com/foo/Bar.java} in the archive). Deterministic: entries are sorted and mtime is
- * pinned to zero.
+ * becomes {@code com/foo/Bar.java} in the archive). Deterministic: entries are sorted and every
+ * mtime — the manifest's included — is pinned by {@link DeterministicZip}.
  */
 public final class SourcesJar {
+
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private SourcesJar() {}
 
@@ -33,7 +35,10 @@ public final class SourcesJar {
         mf.getMainAttributes().putValue("Created-By", "jk");
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (JarOutputStream jos = new JarOutputStream(baos, mf)) {
+        // NOT `new JarOutputStream(baos, mf)`: the convenience constructor stamps the manifest
+        // entry with System.currentTimeMillis(), so every rebuild would churn the first entry.
+        try (JarOutputStream jos = new JarOutputStream(baos)) {
+            ZIP.writeManifest(jos, mf);
             for (Path root : sourceRoots) {
                 if (!Files.isDirectory(root)) continue;
                 appendTree(jos, root);
@@ -49,12 +54,7 @@ public final class SourcesJar {
         }
         Collections.sort(entries);
         for (Path file : entries) {
-            String name = root.relativize(file).toString().replace('\\', '/');
-            ZipEntry entry = new ZipEntry(name);
-            entry.setTime(0L); // stable mtime → reproducible archive
-            jos.putNextEntry(entry);
-            Files.copy(file, jos);
-            jos.closeEntry();
+            ZIP.writeEntry(jos, root.relativize(file).toString().replace('\\', '/'), file);
         }
     }
 }

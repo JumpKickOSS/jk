@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The action-cache fast path of {@link GroovyCompile}: an exact-input hit restores the output dir
+ * The action-cache fast path of {@link LangCompile} (Groovy arm): an exact-input hit restores the output dir
  * from the CAS and never forks the worker (so this runs with no Groovy toolchain present).
  */
 @Tag("integration")
@@ -39,7 +39,7 @@ class GroovyCompileTest {
         String sha = cas.hashFromPath(blob).orElseThrow();
         cache.storeWithOutputs("compile-groovy", key, Map.of(), Map.of("A.class", sha));
 
-        GroovyCompile.Result r = GroovyCompile.run("compile-groovy", req, "jk-test", /* useCache= */ true, cas, cache);
+        LangCompile.Result r = LangCompile.run("compile-groovy", req, "jk-test", /* useCache= */ true, cas, cache);
 
         assertThat(r.success()).isTrue();
         assertThat(r.cacheHit()).isTrue();

@@ -3,8 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.model.BuildIdentity;
-import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,46 +16,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * package-jar forecast keys must match {@link BuildPlanner} packaging tokens
- * (including empty {@code sbom:} for libraries) so a warm jar is not permanently "repackage".
+ * The parts of the packaging forecast that only running production can settle: whether a
+ * fingerprint the forecast computes is spelled the same way the live build spelled it, and whether
+ * an action record can actually restore.
+ *
+ * <p>Which <em>facts</em> the two sides hash is not asserted here and must not be — the tests that
+ * tried asserted two hand-typed {@code List.of(...)} literals in this file against each other,
+ * never reading a token out of {@code PlannerPackage}, {@code PlannerTails} or
+ * {@link TaskForecaster}, and stayed green through six live drifts. That is the
+ * {@code checkForecastKeyParity} guard in {@code server/engine/build.gradle.kts} (JK-2410), which
+ * reads the real token bags.
  */
 class TaskForecasterPackageKeyTest {
-
-    @Test
-    void library_package_tokens_include_empty_sbom_like_the_build(@TempDir Path tmp) throws Exception {
-        Path classes = Files.createDirectories(tmp.resolve("classes"));
-        Path classFile = classes.resolve("t/Lib.class");
-        Files.createDirectories(classFile.getParent());
-        Files.writeString(classFile, "fake");
-
-        Path jar = tmp.resolve("lib.jar");
-        String mainClass = "";
-        Map<String, String> manifest = Map.of();
-        byte[] sbom = null; // libraries: no application SBOM
-
-        // BuildPlanner.packageJarStep tokens (library path).
-        List<String> buildTokens = List.of(
-                "classes:" + ClasspathFingerprint.entry(classes),
-                "main:" + mainClass,
-                "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
-                "manifest:" + manifest);
-
-        // Forecast tokens after fix (must stay in lockstep with the build).
-        List<String> forecastTokens = List.of(
-                "classes:" + ClasspathFingerprint.entry(classes),
-                "main:" + mainClass,
-                "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
-                "manifest:" + manifest);
-
-        assertThat(forecastTokens).isEqualTo(buildTokens);
-        // Pre-fix tokens (missing sbom:) produce a different action key — the bug we fixed.
-        List<String> broken =
-                List.of("classes:" + ClasspathFingerprint.entry(classes), "main:" + mainClass, "manifest:" + manifest);
-        String task = ActionKey.qualifiedTaskId("package-jar", jar);
-        String good = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), buildTokens);
-        String bad = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), broken);
-        assertThat(good).isNotEqualTo(bad);
-    }
 
     @Test
     void post_clean_sibling_fingerprints_in_the_live_file_form(@TempDir Path tmp) throws Exception {
@@ -64,14 +37,13 @@ class TaskForecasterPackageKeyTest {
         // the pinned sha names a payload blob in the CACHE-tier pool the action records
         // write to — recovery must consult the action cache's own CAS, not the artifact store.
         byte[] bytes = "sibling-jar-bytes".getBytes(StandardCharsets.UTF_8);
-        String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
+        String sha = Hashing.sha256Hex(bytes);
         Path cacheRoot = tmp.resolve("cache");
-        var actionCache = new cc.jumpkick.task.ActionCache(
-                cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        var actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         actionCache.cas().put(bytes, sha);
 
         Path wiped = tmp.resolve("target/sibling.jar"); // does not exist (post-clean)
-        String recovered = TaskForecaster.fingerprintJarOrCached(
+        String recovered = PackagingKeys.fingerprintJarOrCached(
                 wiped, actionCache, Map.of(wiped.toAbsolutePath().normalize(), sha));
 
         // Live-build form: the same content on disk.
@@ -87,10 +59,9 @@ class TaskForecasterPackageKeyTest {
         // CAS, a hand-deleted blob). A record whose blobs are gone cannot restore, so the forecast
         // must report RUN, not CACHED.
         Path cacheRoot = tmp.resolve("cache");
-        var ac = new cc.jumpkick.task.ActionCache(
-                cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        var ac = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
-        String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
+        String sha = Hashing.sha256Hex(bytes);
         Path blob = ac.cas().put(bytes, sha);
         ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());
 
@@ -110,50 +81,17 @@ class TaskForecasterPackageKeyTest {
     }
 
     @Test
-    void assembly_forecast_tokens_match_build_pipelines_recipe(@TempDir Path tmp) throws Exception {
-        // Regression: forecast used whole-lock RUNTIME + all sibling lock RUNTIME jars while
-        // assemblyStep uses ModuleRuntimeClasspath — permanent "repackage" on explain.
-        Path classes = Files.createDirectories(tmp.resolve("classes"));
-        Path classFile = classes.resolve("App.class");
-        Files.writeString(classFile, "fake");
-        Path dep = tmp.resolve("dep.jar");
-        Files.writeString(dep, "dep-bytes");
+    void forecast_dep_fingerprint_is_spelled_the_way_the_build_spells_it(@TempDir Path tmp) throws Exception {
+        // Both assembly sites emit a "deps:" token, and the guard checks that they both do. What it
+        // cannot check is that the two sides compute the same string for it: the build calls
+        // ClasspathFingerprint.of, the forecast calls fingerprintDepJars because it also has to
+        // recover jars a `jk clean` wiped. When those two disagree the key never matches and explain
+        // shows a permanent "repackage".
+        Path a = Files.writeString(tmp.resolve("a.jar"), "a-bytes");
+        Path b = Files.writeString(tmp.resolve("b.jar"), "b-bytes");
+        List<Path> depJars = List.of(b, a); // declaration order, not sorted: both sides must sort
 
-        List<Path> depJars = List.of(dep);
-        String main = "com.example.Main";
-        Map<String, String> manifest = Map.of();
-
-        List<String> buildTokens = List.of(
-                "classes:" + ClasspathFingerprint.entry(classes),
-                "deps:" + ClasspathFingerprint.of(depJars),
-                "main:" + main,
-                "manifest:" + manifest,
-                "packaging:fat");
-
-        // Forecast path: same deps set (assemblyDependencyJars) + fingerprintDepJars when jars exist.
-        String depsTok = TaskForecaster.fingerprintDepJars(depJars, null, Map.of());
-        List<String> forecastTokens = List.of(
-                "classes:" + ClasspathFingerprint.entry(classes),
-                "deps:" + depsTok,
-                "main:" + main,
-                "manifest:" + manifest,
-                "packaging:fat");
-
-        assertThat(forecastTokens).isEqualTo(buildTokens);
-
-        Path assemblyJar = tmp.resolve("app-all.jar");
-        String task = ActionKey.qualifiedTaskId("package-assembly", assemblyJar);
-        String good = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), buildTokens);
-        // Old whole-workspace-style deps set (extra unrelated jar) must not share the key.
-        Path extra = tmp.resolve("workspace-noise.jar");
-        Files.writeString(extra, "noise");
-        List<String> oldStyle = List.of(
-                "classes:" + ClasspathFingerprint.entry(classes),
-                "deps:" + ClasspathFingerprint.of(List.of(dep, extra)),
-                "main:" + main,
-                "manifest:" + manifest,
-                "packaging:fat");
-        String bad = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), oldStyle);
-        assertThat(good).isNotEqualTo(bad);
+        assertThat(PackagingKeys.fingerprintDepJars(depJars, null, Map.of()))
+                .isEqualTo(ClasspathFingerprint.of(depJars));
     }
 }

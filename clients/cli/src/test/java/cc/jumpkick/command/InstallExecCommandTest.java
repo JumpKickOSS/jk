@@ -6,6 +6,9 @@ import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,7 +19,6 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -26,16 +28,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 @DisabledOnOs(OS.WINDOWS) // POSIX launcher only.
 @Tag("integration")
+@SysProps.TempRoots("jk.m2.local")
 class InstallExecCommandTest {
-
-    // These tests drive the real fetch plan against a mock Maven server; fetched
-    // artifacts mirror into the Maven local repo. Point that at a throwaway dir (see
-    // M2Dirs) so stub artifacts never overwrite the developer's real ~/.m2 — the
-    // fixture reuses real coordinates (junit-jupiter et al).
-    @BeforeAll
-    static void isolateM2(@TempDir Path m2) {
-        System.setProperty("jk.m2.local", m2.toString());
-    }
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
@@ -203,7 +197,7 @@ class InstallExecCommandTest {
         serveJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
 
         // System global catalog layer (store/libs.global.toml — JK_HOME is redirected in tests).
-        Path libsToml = cc.jumpkick.util.JkDirs.libraryRegistry();
+        Path libsToml = JkDirs.libraryRegistry();
         Files.createDirectories(libsToml.getParent());
         Files.writeString(libsToml, "[libraries]\ntesttool-fixture = \"com.example:widget-cli\"\n");
         try {
@@ -433,8 +427,7 @@ class InstallExecCommandTest {
     void native_classifier_tool_installs_a_direct_exec_launcher(@TempDir Path tempDir) throws Exception {
         // PRD §20.4: a published native binary for this platform beats the JVM path.
         maven.servePom("com.example", "fastcli", "1.0.0");
-        String classifier =
-                "native-" + cc.jumpkick.jdk.HostPlatform.currentArch() + "-" + cc.jumpkick.jdk.HostPlatform.currentOs();
+        String classifier = "native-" + HostPlatform.currentArch() + "-" + HostPlatform.currentOs();
         maven.served()
                 .put(
                         "/com/example/fastcli/1.0.0/fastcli-1.0.0-" + classifier + ".exe",

@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.BuildStamps;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -165,6 +166,36 @@ class JarPackagerTest {
                 assertThat(content).isEqualTo("round-trip");
             }
         }
+    }
+
+    @Test
+    void freshness_stamps_never_enter_the_jar(@TempDir Path tempDir) throws IOException {
+        // A Groovy module's classes dir carries .gstamp (Java .jstamp, Kotlin .kstamp) beside the
+        // classes. The stamp body is a wall clock, so shipping it both leaks build-host metadata
+        // and makes two builds of identical sources differ byte-for-byte.
+        Path input = tempDir.resolve("classes");
+        Files.createDirectories(input.resolve("com/example"));
+        Files.writeString(input.resolve("com/example/Greeting.class"), "groovyc output");
+
+        Path jarA = tempDir.resolve("a.jar");
+        Path jarB = tempDir.resolve("b.jar");
+        writeStamps(input, "STAMP_MILLIS 1000");
+        new JarPackager().packageJar(JarPackager.JarRequest.of(input, jarA));
+        writeStamps(input, "STAMP_MILLIS 9999999999");
+        new JarPackager().packageJar(JarPackager.JarRequest.of(input, jarB));
+
+        assertThat(listEntries(jarA))
+                .as("build-host metadata, not jar content")
+                .doesNotContain(BuildStamps.GROOVY, BuildStamps.JAVA, BuildStamps.KOTLIN);
+        assertThat(Files.readAllBytes(jarA))
+                .as("two builds of the same sources produce the same bytes")
+                .isEqualTo(Files.readAllBytes(jarB));
+    }
+
+    private static void writeStamps(Path classes, String body) throws IOException {
+        Files.writeString(classes.resolve(BuildStamps.JAVA), body);
+        Files.writeString(classes.resolve(BuildStamps.KOTLIN), body);
+        Files.writeString(classes.resolve(BuildStamps.GROOVY), body);
     }
 
     private static List<String> listEntries(Path jar) throws IOException {

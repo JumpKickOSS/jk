@@ -3,6 +3,8 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.model.RepositorySpec;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -13,15 +15,154 @@ import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
- * Shared {@code [repositories.<name>]} field parser ({@code ${ENV}} interpolation, credentials,
- * object-store, exclusive {@code groups}). Callers supply missing-var policy via {@code
- * resolveVar} (strict project vs lenient global).
+ * The one reader of a {@code [repositories]} table, and the field parser under it ({@code ${ENV}}
+ * interpolation, credentials, object-store, exclusive {@code groups}).
+ *
+ * <p>Two files declare repositories with the same vocabulary and two different temperaments: a
+ * project {@code jk.toml} must fail loudly on a table that lies, while {@code
+ * ~/.config/jk/config.toml} must never fail a build over a machine-local preference. Those are two
+ * <em>policies</em>, {@link VarPolicy} and {@link OnBad} — not two readers. They used to be two
+ * readers, and the pair had drifted into three different {@code ${ENV}} rules.
  */
 public final class RepositoryToml {
 
     private RepositoryToml() {}
 
     private static final Pattern ENV_REF = Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)}");
+
+    /** What a {@code ${VAR}} reference means to a layer. */
+    public enum VarPolicy {
+        /**
+         * Leave the reference alone. The project manifest's policy: expansion happens at the
+         * credential resolver, so a parsed {@code JkBuild} never carries a secret.
+         */
+        DEFER,
+        /**
+         * An unset variable stays the literal {@code ${VAR}} text. The user-config layer's policy —
+         * global config must never fail a build.
+         */
+        LENIENT,
+        /** An unset variable is an error naming the position. The publish path's policy. */
+        STRICT
+    }
+
+    /** What a malformed entry means to a layer. */
+    public enum OnBad {
+        /** Reject the document. A project manifest that lies about a repository is a build error. */
+        REJECT,
+        /** Drop the entry and carry on. */
+        SKIP
+    }
+
+    /**
+     * Every {@code [repositories.<name>]} entry in {@code repos}, in declaration order. Empty when
+     * the table is absent.
+     *
+     * @param onBad {@link OnBad#REJECT} throws {@link JkBuildParseException} on the first bad entry;
+     *     {@link OnBad#SKIP} drops it
+     */
+    public static List<RepositorySpec> repositories(TomlTable repos, VarPolicy vars, OnBad onBad) {
+        if (repos == null) return List.of();
+        List<RepositorySpec> result = new ArrayList<>(repos.size());
+        for (String name : repos.keySet()) {
+            if (RepositorySpec.JK_LOCAL.equals(name)) {
+                // The first-party install store (repos/jk-local) is not a user's to redeclare.
+                if (onBad == OnBad.REJECT) {
+                    throw new JkBuildParseException(
+                            "repositories.jk-local is reserved for JumpKick's first-party install store"
+                                    + " (repos/jk-local); pick another repository name");
+                }
+                continue;
+            }
+            try {
+                RepositorySpec spec = entry(name, repos.get(name), vars, onBad);
+                if (spec != null) result.add(spec);
+            } catch (JkBuildParseException e) {
+                if (onBad == OnBad.REJECT) throw e;
+            } catch (RuntimeException e) {
+                if (onBad == OnBad.REJECT) throw new JkBuildParseException(e.getMessage(), e);
+            }
+        }
+        return result;
+    }
+
+    /** One entry; {@code null} when it is malformed and the layer skips rather than rejects. */
+    private static RepositorySpec entry(String name, Object value, VarPolicy vars, OnBad onBad) {
+        String url;
+        Optional<RepoCredential> credential = Optional.empty();
+        Optional<ObjectStoreConfig> objectStore = Optional.empty();
+        List<String> groups = List.of();
+        if (value instanceof String s) {
+            url = s;
+        } else if (value instanceof TomlTable t) {
+            url = t.getString("url");
+            if (url == null) {
+                if (onBad == OnBad.SKIP) return null;
+                throw new JkBuildParseException("repositories." + name + " requires a string `url` field");
+            }
+            UnaryOperator<String> interp = raw -> interpolate(raw, vars, "repositories." + name);
+            credential = credential(t, interp);
+            objectStore = objectStore(t, interp);
+            try {
+                groups = groups(t, "repositories." + name);
+            } catch (IllegalArgumentException e) {
+                if (onBad == OnBad.SKIP) groups = List.of();
+                else throw new JkBuildParseException(e.getMessage(), e);
+            }
+        } else {
+            if (onBad == OnBad.SKIP) return null;
+            throw new JkBuildParseException(
+                    "repositories." + name + " must be a URL string or an inline table with `url`");
+        }
+        try {
+            return new RepositorySpec(name, URI.create(url), credential, objectStore, groups);
+        } catch (IllegalArgumentException e) {
+            if (onBad == OnBad.SKIP) return null;
+            throw new JkBuildParseException("repositories." + name + " has malformed URL: " + url, e);
+        }
+    }
+
+    /** Expand {@code raw} under {@code policy} against the process environment; {@code where} names the position. */
+    public static String interpolate(String raw, VarPolicy policy, String where) {
+        return interpolate(raw, policy, where, System::getenv);
+    }
+
+    /**
+     * As {@link #interpolate(String, VarPolicy, String)} but resolving against {@code env} — the
+     * build path expands object-store credentials against the layered request environment
+     * ({@code .env} under the caller's shell), not the engine process's environ.
+     */
+    public static String interpolate(String raw, VarPolicy policy, String where, UnaryOperator<String> env) {
+        return switch (policy) {
+            case DEFER -> raw;
+            case LENIENT ->
+                interpolate(raw, var -> {
+                    String v = env.apply(var);
+                    return v != null ? v : "${" + var + "}";
+                });
+            case STRICT ->
+                interpolate(raw, var -> {
+                    String v = env.apply(var);
+                    if (v == null) {
+                        throw new JkBuildParseException(
+                                where + " references unset environment variable ${" + var + "}");
+                    }
+                    return v;
+                });
+        };
+    }
+
+    /**
+     * Bearer beats basic — the one place that decides what a {@code token} / {@code username} /
+     * {@code password} triple means. Blank is absent.
+     */
+    public static Optional<RepoCredential> credentialOf(String token, String username, String password) {
+        if (token != null && !token.isBlank()) return Optional.of(new RepoCredential.Bearer(token));
+        if (username != null && !username.isBlank()) {
+            return Optional.of(new RepoCredential.Basic(username, password == null ? "" : password));
+        }
+        return Optional.empty();
+    }
 
     /**
      * Expand {@code ${VAR}} references in {@code raw}, resolving each var name via {@code resolveVar}
@@ -44,16 +185,10 @@ public final class RepositoryToml {
      * empty. {@code interp} applies the caller's {@code ${ENV}} interpolation to each value.
      */
     public static Optional<RepoCredential> credential(TomlTable t, UnaryOperator<String> interp) {
-        String token = interp.apply(t.getString("token"));
-        String username = interp.apply(t.getString("username"));
-        String password = interp.apply(t.getString("password"));
-        if (token != null && !token.isBlank()) {
-            return Optional.of(new RepoCredential.Bearer(token));
-        }
-        if (username != null && !username.isBlank()) {
-            return Optional.of(new RepoCredential.Basic(username, password == null ? "" : password));
-        }
-        return Optional.empty();
+        return credentialOf(
+                interp.apply(t.getString("token")),
+                interp.apply(t.getString("username")),
+                interp.apply(t.getString("password")));
     }
 
     /**

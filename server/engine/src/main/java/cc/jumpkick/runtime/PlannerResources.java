@@ -2,14 +2,20 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerSupport.copyResources;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,20 +60,20 @@ public final class PlannerResources {
                     // SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
                     // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
                     List<Path> resDirs = new ArrayList<>();
-                    Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(in.dir(), compact);
+                    Path resMain = ModuleLayout.mainResourcesDir(in.dir(), compact);
                     if (Files.isDirectory(resMain)) resDirs.add(resMain);
-                    for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(in.dir())) {
+                    for (var root : ModuleLayoutPlugins.pluginContributedRoots(in.dir())) {
                         if (!root.resource()) continue;
                         Path dir = in.dir().resolve(root.relative());
                         if (Files.isDirectory(dir)) resDirs.add(dir);
                     }
-                    Path pluginManifest = in.dir().resolve("jk-plugin.toml");
+                    Path pluginManifest = in.dir().resolve(ManifestPaths.PLUGIN_MANIFEST);
                     boolean ownManifest = Files.isRegularFile(pluginManifest);
                     // Orphan reconciliation: a manifest deleted (or renamed away) at the module
                     // root must also leave the classes tree, or the jar keeps describing a
                     // plugin that no longer exists.
                     if (!ownManifest) {
-                        Files.deleteIfExists(classes.resolve("jk-plugin.toml"));
+                        Files.deleteIfExists(classes.resolve(ManifestPaths.PLUGIN_MANIFEST));
                     }
                     boolean copied = false;
                     if (!resDirs.isEmpty() || ownManifest) {
@@ -76,7 +82,7 @@ public final class PlannerResources {
                         if (ownManifest) {
                             Files.copy(
                                     pluginManifest,
-                                    classes.resolve("jk-plugin.toml"),
+                                    classes.resolve(ManifestPaths.PLUGIN_MANIFEST),
                                     StandardCopyOption.REPLACE_EXISTING);
                         }
                         copied = true;
@@ -97,7 +103,7 @@ public final class PlannerResources {
                                 ctx.require(LAYOUT),
                                 actionCache,
                                 classes,
-                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_RESOURCES,
+                                BuildLogicAnchor.AFTER_RESOURCES,
                                 ctx::label,
                                 buildLogicInputTokensRef);
                         if (logicRan) ctx.label("build-logic applied");
@@ -122,7 +128,7 @@ public final class PlannerResources {
     static boolean stripFlattenedPluginCatalog(Path classesDir, Consumer<String> warn) throws IOException {
         Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
         if (!Files.isDirectory(catalog)) return false;
-        List<String> builtIn = cc.jumpkick.plugin.manifest.PluginTableRegistry.builtInManifestNames();
+        List<String> builtIn = PluginTableRegistry.builtInManifestNames();
         boolean stripped = false;
         List<Path> children;
         try (var stream = Files.list(catalog)) {
@@ -174,7 +180,7 @@ public final class PlannerResources {
                                 ctx.require(LAYOUT),
                                 actionCache,
                                 classes,
-                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_COMPILE,
+                                BuildLogicAnchor.BEFORE_COMPILE,
                                 ctx::label,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
@@ -210,7 +216,7 @@ public final class PlannerResources {
                                 ctx.require(LAYOUT),
                                 actionCache,
                                 classes,
-                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_COMPILE,
+                                BuildLogicAnchor.AFTER_COMPILE,
                                 ctx::label,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
@@ -245,7 +251,7 @@ public final class PlannerResources {
                                 ctx.require(LAYOUT),
                                 actionCache,
                                 classes,
-                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_PACKAGE,
+                                BuildLogicAnchor.BEFORE_PACKAGE,
                                 ctx::label,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");

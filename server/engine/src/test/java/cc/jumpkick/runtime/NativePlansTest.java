@@ -4,7 +4,11 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,8 +76,8 @@ class NativePlansTest {
         return c;
     }
 
-    private static cc.jumpkick.model.JkBuild parse(Path dir) throws Exception {
-        return cc.jumpkick.config.JkBuildParser.parse(dir.resolve("jk.toml"));
+    private static JkBuild parse(Path dir) throws Exception {
+        return JkBuildParser.parse(dir.resolve("jk.toml"));
     }
 
     private Path module(String name, boolean withMain) throws Exception {
@@ -104,42 +108,39 @@ class NativePlansTest {
         return dir;
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void failure_exit_code_maps_native_main_misconfig_to_usage() {
         // JK-2099: the workspace path dropped the old NativeVerb's Exit.USAGE mapping and
         // left failureExitCode dead — jk native --main no.Such.Class exited 1 instead of 64.
-        var plan = cc.jumpkick.run.BuildPlan.builder("native").build();
-        var usage = new cc.jumpkick.run.BuildPlanResult(
+        var plan = BuildPlan.builder("native").build();
+        var usage = new BuildPlanResult(
                 "native",
                 false,
                 Duration.ZERO,
                 List.of(),
                 List.of(),
-                List.of(new cc.jumpkick.run.BuildPlanResult.Diagnostic(
-                        "native-image", "native", "main class no.Such.Class not found")),
+                List.of(new BuildPlanResult.Diagnostic("native-image", "native", "main class no.Such.Class not found")),
                 false);
         org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, usage))
-                .isEqualTo(cc.jumpkick.model.command.Exit.USAGE);
-        var plain = new cc.jumpkick.run.BuildPlanResult(
-                "native", false, Duration.ZERO, List.of(), List.of(), List.of(), false);
+                .isEqualTo(Exit.USAGE);
+        var plain = new BuildPlanResult("native", false, Duration.ZERO, List.of(), List.of(), List.of(), false);
         org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, plain))
                 .isEqualTo(1);
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void failure_exit_code_maps_image_no_main_to_usage() {
         // JK-2100: workspace jk image lost the single path's no-main USAGE exit.
-        var plan = cc.jumpkick.run.BuildPlan.builder("image").build();
-        var noMain = new cc.jumpkick.run.BuildPlanResult(
+        var plan = BuildPlan.builder("image").build();
+        var noMain = new BuildPlanResult(
                 "image",
                 false,
                 Duration.ZERO,
                 List.of(),
                 List.of(),
-                List.of(new cc.jumpkick.run.BuildPlanResult.Diagnostic(
-                        "image-plan", "no-main", "no main class - pass --main")),
+                List.of(new BuildPlanResult.Diagnostic("image-plan", "no-main", "no main class - pass --main")),
                 false);
         org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, noMain))
-                .isEqualTo(cc.jumpkick.model.command.Exit.USAGE);
+                .isEqualTo(Exit.USAGE);
     }
 }

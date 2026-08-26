@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.util.AotManifest;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,7 +28,7 @@ class PluginAotRecordUseTest {
     Path tmp;
 
     private static PluginAot.CacheMeta meta(String tool, String key) {
-        PluginAot.JdkId id = new PluginAot.JdkId(Path.of("/opt/jdk"), cc.jumpkick.jdk.JdkVendor.TEMURIN, "25.0.3");
+        PluginAot.JdkId id = new PluginAot.JdkId(Path.of("/opt/jdk"), JdkVendor.TEMURIN, "25.0.3");
         return new PluginAot.CacheMeta(tool, key, id, "serialgc", "a.jar", List.of());
     }
 

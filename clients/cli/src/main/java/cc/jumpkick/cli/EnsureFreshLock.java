@@ -4,13 +4,18 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -75,8 +80,7 @@ public final class EnsureFreshLock {
      * command will use — dropping it made `jk outdated --repo-url …` on a lockless project
      * fail its freshen against the declared repos (JK-2178).
      */
-    public static int ensure(
-            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, java.net.URI repoUrl) {
+    public static int ensure(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, URI repoUrl) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
     }
 
@@ -88,7 +92,7 @@ public final class EnsureFreshLock {
      * turn their unresolvable-repo situations into hard failures (JK-2178).
      */
     public static void ensureBestEffort(
-            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, java.net.URI repoUrl) {
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, URI repoUrl) {
         int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
         if (code != Exit.SUCCESS) {
             CliOutput.err("‼ jk: lock freshen failed — continuing without jk-lock.toml");
@@ -102,9 +106,9 @@ public final class EnsureFreshLock {
             String wedgeCommand,
             Spinner spinner,
             boolean ownSpinner,
-            java.net.URI repoUrl) {
+            URI repoUrl) {
         Path dir = projectDir.toAbsolutePath().normalize();
-        if (!Files.isRegularFile(dir.resolve("jk.toml"))) {
+        if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
             return Exit.SUCCESS; // caller already validated project
         }
         if (!needsRefresh(dir)) {
@@ -125,8 +129,7 @@ public final class EnsureFreshLock {
 
             EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override
-                public BuildPlanListener onModuleStart(
-                        String moduleDir, String moduleCoord, List<cc.jumpkick.run.Task> steps) {
+                public BuildPlanListener onModuleStart(String moduleDir, String moduleCoord, List<Task> steps) {
                     return new BuildPlanListener() {};
                 }
             };
@@ -151,7 +154,7 @@ public final class EnsureFreshLock {
             }
             // The lock just changed on disk — memoized summaries (hasLock/lockJdk/lockStale)
             // are stale for the rest of this invocation (JK-2162).
-            cc.jumpkick.command.BuildCommand.forgetProjectInfo();
+            ProjectInfos.forget();
             return Exit.SUCCESS;
         } catch (Exception e) {
             return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);
@@ -165,7 +168,7 @@ public final class EnsureFreshLock {
     public static boolean needsRefresh(Path projectDir) {
         Path owner = lockOwnerOrSelf(projectDir);
         if (!Files.isRegularFile(LockPaths.lockFile(owner))) return true;
-        var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
+        var info = ProjectInfos.orNull(owner);
         return info == null || info.lockStale();
     }
 
@@ -200,9 +203,8 @@ public final class EnsureFreshLock {
     /** True when interactive AUTO mode (live spinners allowed). */
     public static boolean isInteractiveAuto(GlobalOptions global) {
         try {
-            return cc.jumpkick.cli.run.BuildPlanConsole.isInteractiveTerminal()
-                    && cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global)
-                            == cc.jumpkick.cli.run.BuildPlanConsole.Mode.AUTO;
+            return BuildPlanConsole.isInteractiveTerminal()
+                    && BuildPlanConsole.modeFor(global) == BuildPlanConsole.Mode.AUTO;
         } catch (RuntimeException e) {
             return false;
         }
@@ -212,9 +214,9 @@ public final class EnsureFreshLock {
     static String lockCoordLabel(Path projectDir) {
         try {
             Path owner = LockPaths.lockOwnerDir(projectDir);
-            Path toml = owner.resolve("jk.toml");
+            Path toml = owner.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return owner.getFileName().toString();
-            var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
+            var info = ProjectInfos.orNull(owner);
             if (info != null && info.error() == null) {
                 String g = info.group();
                 String n = info.name();

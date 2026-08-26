@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -141,18 +142,18 @@ public final class BuildGraph {
      * returned as given. On a cycle, remaining modules are appended in declaration order.
      */
     public static List<Path> orderModules(Map<Path, JkBuild> modulesByDir) {
-        return cc.jumpkick.config.ModuleOrder.orderModules(modulesByDir);
+        return ModuleOrder.orderModules(modulesByDir);
     }
 
     /** See {@link cc.jumpkick.config.ModuleOrder#modulePrereqs} — the one shared edge computation. */
     private static Set<Path> modulePrereqs(
             Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
-        return cc.jumpkick.config.ModuleOrder.modulePrereqs(moduleDir, m, dirByCoord, dirByName);
+        return ModuleOrder.modulePrereqs(moduleDir, m, dirByCoord, dirByName);
     }
 
     /** See {@link cc.jumpkick.config.ModuleOrder#kahnSort} — the one shared topo-sort. */
     private static List<Path> kahnSort(Collection<Path> nodes, Map<Path, Set<Path>> edges) {
-        return cc.jumpkick.config.ModuleOrder.kahnSort(nodes, edges);
+        return ModuleOrder.kahnSort(nodes, edges);
     }
 
     private static final class Builder {

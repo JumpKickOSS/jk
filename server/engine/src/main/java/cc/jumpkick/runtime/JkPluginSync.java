@@ -3,7 +3,11 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.File;
 import java.io.IOException;
@@ -42,10 +46,10 @@ public final class JkPluginSync {
     private JkPluginSync() {}
 
     public static Result ensureInCas(Cas cas, Observer obs) throws IOException, InterruptedException {
-        Path m2 = cc.jumpkick.repo.M2Dirs.localRepository();
+        Path m2 = M2Dirs.localRepository();
         Path cacheRoot = cas.root();
-        RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
-        RepoArtifactStore centralStore = new RepoArtifactStore(cacheRoot, "central");
+        RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, RepoArtifactResolver.JK_LOCAL);
+        RepoArtifactStore centralStore = new RepoArtifactStore(cacheRoot, RepositorySpec.CENTRAL);
         int present = 0;
         int fetched = 0;
         int missing = 0;
@@ -70,7 +74,7 @@ public final class JkPluginSync {
             }
 
             try {
-                String hex = cc.jumpkick.util.Hashing.sha256Hex(m2Jar);
+                String hex = Hashing.sha256Hex(m2Jar);
                 localStore.materialize(relPath, m2Jar, hex);
                 fetched++;
                 obs.fetched(w.artifactId());

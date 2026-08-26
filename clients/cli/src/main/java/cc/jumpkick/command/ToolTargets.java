@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.ToolCoordSpec;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.tool.ToolTarget;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -77,7 +78,7 @@ final class ToolTargets {
         // Validate the suffix now (it rides the wire verbatim).
         if (c.suffix() != null) {
             try {
-                cc.jumpkick.model.VersionSelector.parseFloating(c.suffix());
+                VersionSelector.parseFloating(c.suffix());
             } catch (IllegalArgumentException e) {
                 throw new TargetException(
                         "jk tool: bad version selector `@" + c.suffix() + "` on `" + c.name() + "`: " + e.getMessage());

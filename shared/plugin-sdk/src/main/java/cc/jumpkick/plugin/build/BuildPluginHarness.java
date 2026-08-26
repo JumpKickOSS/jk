@@ -286,7 +286,8 @@ public final class BuildPluginHarness {
             Map<String, Path> stepOutputs,
             Map<String, Path> extras,
             List<String> commandArgs,
-            Map<String, String> secrets) {
+            Map<String, String> secrets,
+            boolean offline) {
 
         static Spec read(Path file) throws IOException {
             String op = "";
@@ -312,6 +313,8 @@ public final class BuildPluginHarness {
             Map<String, Path> extras = new LinkedHashMap<>();
             List<String> commandArgs = new ArrayList<>();
             Map<String, String> secrets = new LinkedHashMap<>();
+            // Absent means offline: a worker launched without a stated policy must not reach out.
+            boolean offline = true;
 
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.isBlank()) continue;
@@ -382,6 +385,7 @@ public final class BuildPluginHarness {
                         secrets.put(
                                 String.valueOf(Jsonl.str(line, "key")),
                                 String.valueOf(Jsonl.str(line, "value")));
+                    case PluginProtocol.OFFLINE -> offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
                     default -> {
                         // unknown line — forward compatibility
                     }
@@ -392,7 +396,7 @@ public final class BuildPluginHarness {
                     new ProjectFacts(group, name, version, javaRelease, mainClass, nativeDeclared, kotlin, manifest);
             return new Spec(
                     op, stepName, config, facts, classesDir, moduleDir, scratch, javaHome, artifactPath, classpath,
-                    entries, stepOutputs, extras, commandArgs, secrets);
+                    entries, stepOutputs, extras, commandArgs, secrets, offline);
         }
     }
 
@@ -440,6 +444,11 @@ public final class BuildPluginHarness {
         }
 
         @Override
+        public boolean offline() {
+            return spec.offline();
+        }
+
+        @Override
         public Optional<Path> extra(String name) {
             return Optional.ofNullable(spec.extras().get(name));
         }
@@ -462,7 +471,7 @@ public final class BuildPluginHarness {
         }
 
         @Override
-        public cc.jumpkick.plugin.PluginConfig config() {
+        public PluginConfig config() {
             return spec.config();
         }
 
@@ -477,14 +486,36 @@ public final class BuildPluginHarness {
         }
 
         @Override
-        public java.util.Optional<Path> extra(String name) {
-            return java.util.Optional.ofNullable(spec.extras().get(name));
+        public Optional<Path> extra(String name) {
+            return Optional.ofNullable(spec.extras().get(name));
         }
 
         @Override
-        public java.util.Optional<Path> mainArtifact() {
-            return java.util.Optional.ofNullable(spec.artifactPath())
-                    .filter(java.nio.file.Files::isRegularFile);
+        public Optional<Path> mainArtifact() {
+            return Optional.ofNullable(spec.artifactPath())
+                    .filter(Files::isRegularFile);
+        }
+
+        /**
+         * Loud rather than defaulted: a command spec with no {@code java-home} line is an engine
+         * bug, and the wrong fallback ({@code System.getProperty("java.home")}) is invisible —
+         * it silently runs the tool on the engine's floor JDK. Same reasoning as the fail-closed
+         * {@code offline} default, opposite direction: there is no safe guess for a JDK.
+         */
+        @Override
+        public Path javaHome() {
+            Path home = spec.javaHome();
+            if (home == null) {
+                throw new IllegalStateException("this command's spec states no JDK — the engine writes it with"
+                        + " SpecWriter.javaHome(). A command body must not fall back to the worker JVM's own"
+                        + " java.home: that is the engine's floor JDK, not the project's pin.");
+            }
+            return home;
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override
@@ -547,6 +578,11 @@ public final class BuildPluginHarness {
         @Override
         public Path javaHome() {
             return spec.javaHome();
+        }
+
+        @Override
+        public boolean offline() {
+            return spec.offline();
         }
 
         @Override

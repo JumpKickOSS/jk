@@ -3,7 +3,9 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
@@ -83,7 +85,7 @@ class AggregateModuleListenerTest {
         live.error("compile-java", "javac", "A.java:1: error: boom");
         live.error("compile-java", "javac", "A.java:2: error: boom2");
         long pills = view.outputWindow().linesForDisplay(200).stream()
-                .map(cc.jumpkick.cli.TestAnsi::strip)
+                .map(TestAnsi::strip)
                 .filter(l -> l.contains("Failure") && l.contains("g:api"))
                 .count();
         assertThat(pills).isEqualTo(2);
@@ -100,7 +102,7 @@ class AggregateModuleListenerTest {
         grouped.error("compile-java", "javac", "A.java:2: error: boom2");
         long groupedPills = outBuf.stream()
                 .flatMap(b -> b.lines())
-                .map(cc.jumpkick.cli.TestAnsi::strip)
+                .map(TestAnsi::strip)
                 .filter(l -> l.contains("Failure") && l.contains("g:api"))
                 .count();
         assertThat(groupedPills).isEqualTo(1);
@@ -238,9 +240,8 @@ class AggregateModuleListenerTest {
         return Task.builder(name).label(label).ticks(1).execute(ctx -> {}).build();
     }
 
-    private static cc.jumpkick.run.BuildPlanResult result(boolean ok) {
-        return new cc.jumpkick.run.BuildPlanResult(
-                "build", ok, Duration.ZERO, List.of(), List.of(), List.of(), false, false);
+    private static BuildPlanResult result(boolean ok) {
+        return new BuildPlanResult("build", ok, Duration.ZERO, List.of(), List.of(), List.of(), false, false);
     }
 
     private static String strip(String s) {

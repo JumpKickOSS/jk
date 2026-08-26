@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.lock.Lockfile;
@@ -11,6 +12,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,8 @@ class OsvAuditorTest {
     private URI base;
     private final Map<String, byte[]> get = new HashMap<>();
     private final Map<String, byte[]> post = new HashMap<>();
+    private final List<String> postBodies = new ArrayList<>();
+    private final List<String> getPaths = new ArrayList<>();
 
     @BeforeEach
     void start() throws IOException {
@@ -32,8 +36,10 @@ class OsvAuditorTest {
             String path = exchange.getRequestURI().getPath();
             byte[] body;
             if ("GET".equals(exchange.getRequestMethod())) {
+                getPaths.add(path);
                 body = get.get(path);
             } else {
+                postBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
                 body = post.get(path);
             }
             if (body == null) {
@@ -54,50 +60,49 @@ class OsvAuditorTest {
         server.stop(0);
     }
 
+    /**
+     * Lockfile coordinates are four-part ({@code group:artifact:jar:}); OSV keys Maven packages on
+     * {@code group:artifact}. Sending the four-part form matched nothing, so every audit reported
+     * clean. Fixtures use the real lockfile shape so that cannot recur silently.
+     */
+    @Test
+    void osv_is_queried_with_the_two_part_coordinate_not_the_lockfile_name() throws Exception {
+        post.put("/v1/querybatch", "{\"results\":[{}]}".getBytes(StandardCharsets.UTF_8));
+
+        new OsvAuditor(osvClient()).audit(lockOf(artifact("com.android.tools.build:apksig:jar:", "9.3.1")));
+
+        assertThat(postBodies).hasSize(1);
+        assertThat(postBodies.getFirst())
+                .as("OSV must receive group:artifact")
+                .contains("\"name\":\"com.android.tools.build:apksig\"")
+                .doesNotContain("apksig:jar:");
+    }
+
     @Test
     void empty_lockfile_yields_empty_report() throws Exception {
-        Lockfile lock = Lockfile.empty("test");
-        AuditReport report = new OsvAuditor(osvClient()).audit(lock);
+        AuditReport report = new OsvAuditor(osvClient()).audit(Lockfile.empty("test"));
         assertThat(report.isEmpty()).isTrue();
     }
 
     @Test
     void osv_findings_become_severity_classified_report() throws Exception {
-        Lockfile lock = new Lockfile(
-                5,
-                "jk test",
-                "pubgrub-v1",
-                List.of(
-                        new Lockfile.Artifact(
-                                "com.fasterxml.jackson.core:jackson-databind",
-                                "2.18.0",
-                                "central+https://...",
-                                "sha256:abc",
-                                null,
-                                List.of(Scope.MAIN),
-                                List.of()),
-                        new Lockfile.Artifact(
-                                "com.example:safe",
-                                "1.0.0",
-                                "central+https://...",
-                                "sha256:def",
-                                null,
-                                List.of(Scope.MAIN),
-                                List.of())));
+        Lockfile lock = lockOf(
+                artifact("com.fasterxml.jackson.core:jackson-databind:jar:", "2.18.0"),
+                artifact("com.example:safe:jar:", "1.0.0"));
 
-        post.put("/v1/querybatch", ("""
+        post.put("/v1/querybatch", """
                 {"results":[
                   {"vulns":[{"id":"GHSA-aaaa-bbbb-cccc"}]},
                   {}
                 ]}
-                """).getBytes(StandardCharsets.UTF_8));
-        get.put("/v1/vulns/GHSA-aaaa-bbbb-cccc", ("""
+                """.getBytes(StandardCharsets.UTF_8));
+        get.put("/v1/vulns/GHSA-aaaa-bbbb-cccc", """
                 {
                   "id":"GHSA-aaaa-bbbb-cccc",
                   "summary":"Deserialization gadget",
                   "database_specific":{"severity":"HIGH"}
                 }
-                """).getBytes(StandardCharsets.UTF_8));
+                """.getBytes(StandardCharsets.UTF_8));
 
         AuditReport report = new OsvAuditor(osvClient()).audit(lock);
         assertThat(report.findings()).hasSize(1);
@@ -107,32 +112,69 @@ class OsvAuditorTest {
         assertThat(f.vulnId()).isEqualTo("GHSA-aaaa-bbbb-cccc");
         assertThat(f.severity()).isEqualTo(AuditReport.Severity.HIGH);
         assertThat(f.summary()).contains("Deserialization");
+        assertThat(report.renderMarkdown()).contains("**HIGH**").contains("GHSA-aaaa-bbbb-cccc");
+    }
 
-        String md = report.renderMarkdown();
-        assertThat(md).contains("**HIGH**").contains("GHSA-aaaa-bbbb-cccc");
+    /** GitHub publishes MODERATE where OSV's own scale says MEDIUM. It must not fall through. */
+    @Test
+    void moderate_is_the_github_spelling_of_medium() throws Exception {
+        AuditReport report = auditOne("""
+                {"id":"GHSA-mod","summary":"m","database_specific":{"severity":"MODERATE"}}
+                """);
+        assertThat(report.findings().getFirst().severity()).isEqualTo(AuditReport.Severity.MEDIUM);
+    }
+
+    /**
+     * A CVSS vector is not a label. Reading {@code severity[].score} as one classified every
+     * advisory as UNKNOWN; and because UNKNOWN did not satisfy any threshold, nothing gated. An
+     * unclassifiable advisory must still be reported at every threshold.
+     */
+    @Test
+    void a_cvss_vector_only_advisory_is_unknown_and_still_gates() throws Exception {
+        AuditReport report = auditOne("""
+                {
+                  "id":"CVE-2025-0001",
+                  "summary":"vector only",
+                  "severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]
+                }
+                """);
+        AuditReport.Finding f = report.findings().getFirst();
+        assertThat(f.severity()).isEqualTo(AuditReport.Severity.UNKNOWN);
+        assertThat(report.filterAtLeast(AuditReport.Severity.CRITICAL))
+                .as("an unclassified advisory fails closed")
+                .extracting(AuditReport.Finding::vulnId)
+                .containsExactly("CVE-2025-0001");
+    }
+
+    /** The vuln id is remote input; URI.resolve on it would otherwise retarget the host. */
+    @Test
+    void a_response_supplied_id_cannot_retarget_the_host() throws Exception {
+        post.put("/v1/querybatch", """
+                {"results":[{"vulns":[{"id":"//evil.example/x"}]}]}
+                """.getBytes(StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> new OsvAuditor(osvClient()).audit(lockOf(artifact("g:a:jar:", "1.0"))))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("malformed OSV vulnerability id");
+
+        assertThat(getPaths).as("no detail fetch may be attempted at all").isEmpty();
     }
 
     @Test
     void severity_threshold_filter_blocks_only_at_or_above() throws Exception {
-        Lockfile lock = new Lockfile(
-                5,
-                "jk test",
-                "pubgrub-v1",
-                List.of(
-                        new Lockfile.Artifact("g:a", "1.0", "s", "sha256:x", null, List.of(Scope.MAIN), List.of()),
-                        new Lockfile.Artifact("g:b", "1.0", "s", "sha256:y", null, List.of(Scope.MAIN), List.of())));
-        post.put("/v1/querybatch", ("""
+        Lockfile lock = lockOf(artifact("g:a:jar:", "1.0"), artifact("g:b:jar:", "1.0"));
+        post.put("/v1/querybatch", """
                 {"results":[
                   {"vulns":[{"id":"A"}]},
                   {"vulns":[{"id":"B"}]}
                 ]}
-                """).getBytes(StandardCharsets.UTF_8));
-        get.put("/v1/vulns/A", ("""
+                """.getBytes(StandardCharsets.UTF_8));
+        get.put("/v1/vulns/A", """
                 {"id":"A","summary":"low","database_specific":{"severity":"LOW"}}
-                """).getBytes(StandardCharsets.UTF_8));
-        get.put("/v1/vulns/B", ("""
+                """.getBytes(StandardCharsets.UTF_8));
+        get.put("/v1/vulns/B", """
                 {"id":"B","summary":"high","database_specific":{"severity":"HIGH"}}
-                """).getBytes(StandardCharsets.UTF_8));
+                """.getBytes(StandardCharsets.UTF_8));
 
         AuditReport report = new OsvAuditor(osvClient()).audit(lock);
         assertThat(report.filterAtLeast(AuditReport.Severity.HIGH))
@@ -141,6 +183,24 @@ class OsvAuditorTest {
         assertThat(report.filterAtLeast(AuditReport.Severity.LOW))
                 .extracting(AuditReport.Finding::vulnId)
                 .containsExactlyInAnyOrder("A", "B");
+    }
+
+    private AuditReport auditOne(String vulnJson) throws Exception {
+        String id = vulnJson.split("\"id\":\"")[1].split("\"")[0];
+        post.put(
+                "/v1/querybatch",
+                ("{\"results\":[{\"vulns\":[{\"id\":\"" + id + "\"}]}]}").getBytes(StandardCharsets.UTF_8));
+        get.put("/v1/vulns/" + id, vulnJson.getBytes(StandardCharsets.UTF_8));
+        return new OsvAuditor(osvClient()).audit(lockOf(artifact("g:a:jar:", "1.0")));
+    }
+
+    private static Lockfile.Artifact artifact(String name, String version) {
+        return new Lockfile.Artifact(
+                name, version, "central+https://...", "sha256:abc", null, List.of(Scope.MAIN), List.of());
+    }
+
+    private static Lockfile lockOf(Lockfile.Artifact... artifacts) {
+        return new Lockfile(5, "jk test", "pubgrub-v1", List.of(artifacts));
     }
 
     private OsvClient osvClient() {

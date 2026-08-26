@@ -3,12 +3,14 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.repo.RepoGroup;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,8 +23,8 @@ class WorkerLaunchClasspathTest {
 
     @BeforeEach
     void clearCaches() {
-        cc.jumpkick.repo.EffectivePomBuilder.clearProcessCache();
-        cc.jumpkick.repo.RepoGroup.clearProcessFetchCache();
+        EffectivePomBuilder.clearProcessCache();
+        RepoGroup.clearProcessFetchCache();
         PomRuntimeClasspath.clearResolveCacheForTests();
     }
 
@@ -35,6 +37,9 @@ class WorkerLaunchClasspathTest {
         Coordinate dep = Coordinate.of("org.example", "lib", "1.0");
         Path workspaceJar = tmp.resolve("target/plugins/host-worker/jk-host-worker-1.0.0.jar");
         Files.createDirectories(workspaceJar.getParent());
+        // A module output directory, not merely a path containing `target`: the compiled classes
+        // beside it are what BuildLayout.isBuildOutput anchors on.
+        Files.createDirectories(workspaceJar.getParent().resolve("classes").resolve("main"));
         Files.writeString(workspaceJar, "workspace-worker");
         put(host, MavenLayout.artifactPath(worker), "store-worker");
         put(host, MavenLayout.pomPath(worker), """
@@ -64,9 +69,9 @@ class WorkerLaunchClasspathTest {
 
         Path sdkClasses = tmp.resolve("target/shared/plugin-sdk/classes/main");
         Files.createDirectories(sdkClasses);
-        Path jsonlJar = tmp.resolve("target/shared/jsonl/lib/jk-jsonl-1.0.0.jar");
-        Files.createDirectories(jsonlJar.getParent());
-        Files.writeString(jsonlJar, "jsonl");
+        Path hostCodecJar = tmp.resolve("target/shared/host/lib/jk-host-1.0.0.jar");
+        Files.createDirectories(hostCodecJar.getParent());
+        Files.writeString(hostCodecJar, "host");
 
         String prevHome = System.getProperty("jk.env.JK_HOME");
         String prevHost = System.getProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
@@ -78,15 +83,15 @@ class WorkerLaunchClasspathTest {
             List<Path> cp = WorkerLaunchClasspath.paths(workspaceJar);
             Path workerAbs = workspaceJar.toAbsolutePath().normalize();
             Path sdkAbs = sdkClasses.toAbsolutePath().normalize();
-            Path jsonlAbs = jsonlJar.toAbsolutePath().normalize();
+            Path hostCodecAbs = hostCodecJar.toAbsolutePath().normalize();
             Path depAbs = depJar.toAbsolutePath().normalize();
             // JK-2326: codec dirs must precede the worker jar so a fresh classes/main wins over the
             // codec the jar vendors.
-            assertThat(cp).contains(workerAbs, sdkAbs, jsonlAbs, depAbs);
+            assertThat(cp).contains(workerAbs, sdkAbs, hostCodecAbs, depAbs);
             assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(workerAbs));
-            assertThat(cp.indexOf(jsonlAbs)).isLessThan(cp.indexOf(workerAbs));
+            assertThat(cp.indexOf(hostCodecAbs)).isLessThan(cp.indexOf(workerAbs));
             assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(depAbs));
-            assertThat(cp.indexOf(jsonlAbs)).isLessThan(cp.indexOf(depAbs));
+            assertThat(cp.indexOf(hostCodecAbs)).isLessThan(cp.indexOf(depAbs));
         } finally {
             if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
             else System.setProperty("jk.env.JK_HOME", prevHome);

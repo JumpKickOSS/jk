@@ -4,6 +4,9 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.Pill;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.Tree;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +57,7 @@ class ActivityCommandTest {
         assertThat(plain).contains("Cancel");
         assertThat(plain).contains("12 modules");
         var node = ActivityCommand.jobNode(cancelled, 10_000L, Theme.active(), 3);
-        assertThat(node.pill().look()).isEqualTo(cc.jumpkick.cli.tui.Pill.Look.CANCELLED);
+        assertThat(node.pill().look()).isEqualTo(Pill.Look.CANCELLED);
     }
 
     @Test
@@ -82,11 +85,11 @@ class ActivityCommandTest {
 
     @Test
     void tree_branches_are_indented() {
-        List<String> lines = new cc.jumpkick.cli.tui.Tree("Build Jobs")
-                .gap(cc.jumpkick.cli.tui.Tree.Gap.EACH)
-                .child(cc.jumpkick.cli.tui.Tree.node(cc.jumpkick.cli.tui.Pill.of("A")))
-                .child(cc.jumpkick.cli.tui.Tree.node(cc.jumpkick.cli.tui.Pill.of("B")))
-                .render(cc.jumpkick.cli.tui.RenderContext.current().withAnsi(false));
+        List<String> lines = new Tree("Build Jobs")
+                .gap(Tree.Gap.EACH)
+                .child(Tree.node(Pill.of("A")))
+                .child(Tree.node(Pill.of("B")))
+                .render(RenderContext.current().withAnsi(false));
         assertThat(lines).containsExactly("jk: = Build Jobs >", " |", " +-[A]", " |", " `-[B]");
     }
 
@@ -100,9 +103,8 @@ class ActivityCommandTest {
 
     @Test
     void title_is_menu_wedge() {
-        String plain = strip(new cc.jumpkick.cli.tui.Tree("Build Jobs")
-                .render(cc.jumpkick.cli.tui.RenderContext.current())
-                .getFirst());
+        String plain =
+                strip(new Tree("Build Jobs").render(RenderContext.current()).getFirst());
         assertThat(plain).contains("Build Jobs");
     }
 
@@ -148,13 +150,13 @@ class ActivityCommandTest {
     }
 
     /** Test adapter over the production {@code jobNode} path (no formatLine in production). */
-    private static String formatLine(String entry, long now, cc.jumpkick.cli.theme.Theme t) {
+    private static String formatLine(String entry, long now, Theme t) {
         return formatLine(entry, now, t, 1);
     }
 
-    private static String formatLine(String entry, long now, cc.jumpkick.cli.theme.Theme t, int buildNumberWidth) {
+    private static String formatLine(String entry, long now, Theme t, int buildNumberWidth) {
         var node = ActivityCommand.jobNode(entry, now, t, buildNumberWidth);
-        var ctx = cc.jumpkick.cli.tui.RenderContext.current();
+        var ctx = RenderContext.current();
         return node.pill().renderInline(ctx) + node.label().render(ctx);
     }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -162,25 +163,25 @@ class NewModuleTest {
 
     @Test
     void jdk_floor_uses_the_chosen_java_version() {
-        assertThat(NewCommand.jdkFloor(answers("lang", "java", "javaVersion", "25"), null))
+        assertThat(NewWizard.jdkFloor(answers("lang", "java", "javaVersion", "25"), null))
                 .isEqualTo(25);
-        assertThat(NewCommand.jdkFloor(answers("lang", "java", "javaVersion", "17"), null))
+        assertThat(NewWizard.jdkFloor(answers("lang", "java", "javaVersion", "17"), null))
                 .isEqualTo(17);
     }
 
     @Test
     void jdk_floor_is_unrestricted_for_kotlin() {
-        assertThat(NewCommand.jdkFloor(answers("lang", "kotlin"), null)).isZero();
+        assertThat(NewWizard.jdkFloor(answers("lang", "kotlin"), null)).isZero();
     }
 
     @Test
     void jdk_floor_defaults_to_latest_lts_when_unanswered() {
-        assertThat(NewCommand.jdkFloor(answers("lang", "java"), null)).isEqualTo(NewCommand.LATEST_LTS_MAJOR);
+        assertThat(NewWizard.jdkFloor(answers("lang", "java"), null)).isEqualTo(NewWizard.LATEST_LTS_MAJOR);
     }
 
-    private static cc.jumpkick.cli.tui.Answers answers(String... kv) {
+    private static Answers answers(String... kv) {
         var map = new HashMap<String, Object>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
-        return cc.jumpkick.cli.tui.Answers.of(map);
+        return Answers.of(map);
     }
 }

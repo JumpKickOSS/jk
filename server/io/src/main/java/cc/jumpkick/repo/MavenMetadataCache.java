@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -92,7 +93,7 @@ public final class MavenMetadataCache {
 
         // -F / withForceRevalidate (jk update) skip the TTL window. Unchanged indexes still
         // cost only a conditional GET (304); warm TTL hits never leave the disk.
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false) || forceRevalidate();
+        boolean force = SessionContext.current().config().forceOr(false) || forceRevalidate();
         if (!force && fresh(body)) {
             return Files.readAllBytes(body);
         }
@@ -108,7 +109,7 @@ public final class MavenMetadataCache {
             if (status == 200) {
                 store(body, meta, resp);
                 // A fresh index off the network — a 304 revalidation costs no payload, so isn't metered.
-                cc.jumpkick.config.SessionContext.current().io().remoteDown(body);
+                SessionContext.current().io().remoteDown(body);
                 return resp.body();
             }
             if (status == 404) {

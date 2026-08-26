@@ -110,7 +110,7 @@ public final class OfficialTemplatesFreshen {
         List<String> refs = new ArrayList<>();
         refs.add(officialRef(cfg));
         for (JkTemplatesConfig.Source source : cfg.sources()) {
-            refs.add(sourceRef(source));
+            refs.add(source.gitRef());
         }
         IOException first = null;
         for (String ref : refs) {
@@ -121,14 +121,6 @@ public final class OfficialTemplatesFreshen {
             }
         }
         if (first != null) throw first;
-    }
-
-    /** {@code url#rev} ref for a configured source (the same shape {@link #parse} reads). */
-    static String sourceRef(JkTemplatesConfig.Source source) {
-        return source.rev()
-                .filter(r -> !r.isBlank())
-                .map(r -> source.url() + "#" + r)
-                .orElse(source.url());
     }
 
     static void refreshRef(String ref, Path cacheRoot, Consumer<String> log) throws IOException {

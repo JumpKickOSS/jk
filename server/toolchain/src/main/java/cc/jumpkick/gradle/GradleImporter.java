@@ -3,11 +3,15 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.kotlin.KotlinResolver;
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -61,7 +65,7 @@ public final class GradleImporter {
     /** Gradle plugin id → import rule, from every installed manifest's [[import.gradle-plugin]]. */
     private static Map<String, PluginImportRule> pluginImportRules() {
         Map<String, PluginImportRule> rules = new LinkedHashMap<>();
-        for (var manifest : cc.jumpkick.plugin.manifest.PluginTableRegistry.manifests()) {
+        for (var manifest : PluginTableRegistry.manifests()) {
             for (var rule : manifest.gradleImports()) {
                 rules.put(
                         rule.id(), new PluginImportRule(manifest.id(), rule.versionTo(), rule.missingVersionWarning()));
@@ -78,9 +82,9 @@ public final class GradleImporter {
      * recognition-only (their construct is absorbed by another contribution, e.g. Boot's BOM
      * auto-import covering dependency-management).
      */
-    private static List<cc.jumpkick.model.PluginConfig> mapPluginTables(
+    private static List<PluginConfig> mapPluginTables(
             String pluginsBody, Map<String, PluginImportRule> rules, ImportReport.Builder report) {
-        List<cc.jumpkick.model.PluginConfig> out = new ArrayList<>();
+        List<PluginConfig> out = new ArrayList<>();
         for (Map.Entry<String, PluginImportRule> e : rules.entrySet()) {
             if (!pluginsBody.contains(e.getKey())) continue;
             PluginImportRule rule = e.getValue();
@@ -89,7 +93,7 @@ public final class GradleImporter {
                     "id\\s*\\(?\\s*[\"']" + Pattern.quote(e.getKey()) + "[\"']\\s*\\)?\\s*version\\s*" + STR);
             Matcher m = versionPattern.matcher(pluginsBody);
             if (m.find()) {
-                out.add(new cc.jumpkick.model.PluginConfig(
+                out.add(new PluginConfig(
                         rule.manifestId(), Map.of(rule.versionTo(), firstNonNull(m.group(1), m.group(2)))));
             } else if (rule.missingVersionWarning() != null) {
                 report.warning(rule.missingVersionWarning());
@@ -202,7 +206,7 @@ public final class GradleImporter {
         // `version`, which auto-imports the BOM so versionless starters stay versionless).
         // Applied-without-version (settings pluginManagement) can't be resolved from this file
         // alone -- the rule's warning asks the user to fill it in.
-        List<cc.jumpkick.model.PluginConfig> pluginConfigs = mapPluginTables(pluginsBody, importRules, report);
+        List<PluginConfig> pluginConfigs = mapPluginTables(pluginsBody, importRules, report);
 
         Map<Scope, List<Dependency>> deps = parseDependencies(stripped, catalog, report);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
@@ -211,7 +215,7 @@ public final class GradleImporter {
         // A Kotlin project sets `kotlin` (a version) and leaves `java` at 0 —
         // the two are mutually exclusive. javaRelease() falls back to jdk.
         int java = kotlin != null ? 0 : jdk;
-        JkBuild.Project project = JkBuild.Project.builder(group, defaultArtifact, version)
+        Project project = Project.builder(group, defaultArtifact, version)
                 .jdkMajor(jdk)
                 .java(java)
                 .kotlin(kotlin)
@@ -222,7 +226,7 @@ public final class GradleImporter {
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
                 .application(application);
-        for (cc.jumpkick.model.PluginConfig config : pluginConfigs) {
+        for (PluginConfig config : pluginConfigs) {
             builder.pluginConfig(config);
         }
         JkBuild jkBuild = builder.build();
@@ -491,7 +495,7 @@ public final class GradleImporter {
     private static Optional<String> shortNameFor(String groupArtifact) {
         if (groupArtifact == null || groupArtifact.isBlank()) return Optional.empty();
         try {
-            cc.jumpkick.library.LibraryCatalog catalog = cc.jumpkick.library.LibraryCatalog.layered();
+            LibraryCatalog catalog = LibraryCatalog.layered();
             List<String> hits = new ArrayList<>();
             for (String name : catalog.names()) {
                 var mod = catalog.lookup(name);

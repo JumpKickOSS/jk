@@ -225,7 +225,7 @@ agent **must** run:
 jk format
 ```
 
-`jk format` is Spotless + OpenRewrite over the **whole tree**, not just
+`jk format` is Spotless + a first-party FQCN shortener over the **whole tree**, not just
 files you touched. Trust its output. Long-hand FQCNs and similar agent
 noise are why this exists.
 

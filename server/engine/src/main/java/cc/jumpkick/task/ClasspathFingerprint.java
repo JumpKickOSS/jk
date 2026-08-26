@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -17,9 +18,12 @@ import java.util.TreeMap;
 /**
  * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local files use
  * raw content SHA ({@code file:…}); directories use a tree of the same. Packagers emit
- * byte-reproducible jars ({@code DeterministicJar}), so raw jar bytes are stable across no-op
+ * byte-reproducible jars ({@code DeterministicZip}), so raw jar bytes are stable across no-op
  * rebuilds and match CAS digests seeded by {@link FileHashMemo#rememberContent} after clean→restore.
  * Missing entries become a distinct {@code missing:} token.
+ *
+ * <p>Every walk here drops {@link BuildStamps#isStampFile stamp files}: build-host metadata that
+ * lives inside the classes tree, is not code, and whose content changes every build.
  */
 public final class ClasspathFingerprint {
 
@@ -48,8 +52,7 @@ public final class ClasspathFingerprint {
         for (Map.Entry<String, String> e : relPathToSha256.entrySet()) {
             String rel = e.getKey().replace('\\', '/');
             if (rel.isEmpty()) continue;
-            String base = rel.substring(rel.lastIndexOf('/') + 1);
-            if (isBuildMetadata(base)) continue;
+            if (BuildStamps.isStampFile(rel)) continue;
             if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
             if (e.getValue() == null || e.getValue().isBlank()) continue;
             files.add(rel + ":" + e.getValue());
@@ -71,8 +74,7 @@ public final class ClasspathFingerprint {
             for (Map.Entry<String, String> e : compileOutputs.entrySet()) {
                 String rel = e.getKey().replace('\\', '/');
                 if (rel.isEmpty()) continue;
-                String base = rel.substring(rel.lastIndexOf('/') + 1);
-                if (isBuildMetadata(base)) continue;
+                if (BuildStamps.isStampFile(rel)) continue;
                 if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
                 if (e.getValue() == null || e.getValue().isBlank()) continue;
                 digests.put(rel, e.getValue());
@@ -110,7 +112,7 @@ public final class ClasspathFingerprint {
             @Override
             public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) throws IOException {
                 if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
-                if (isBuildMetadata(f.getFileName().toString())) return FileVisitResult.CONTINUE;
+                if (BuildStamps.isStampFile(f.getFileName().toString())) return FileVisitResult.CONTINUE;
                 Path rel = root.relativize(f);
                 if (skipScratch && ActionCache.hasJkScratchSegment(rel)) return FileVisitResult.CONTINUE;
                 digests.put(
@@ -145,20 +147,5 @@ public final class ClasspathFingerprint {
         // worker fat jars).
         if (attrs.isRegularFile()) return "file:" + FileHashMemo.contentHash(abs, attrs);
         return "missing:" + abs;
-    }
-
-    /**
-     * jk's freshness/skip stamps ({@code.jstamp}, {@code.kstamp}, {@code.test-stamp}) — build-host
-     * metadata that lives inside the classes tree but is not code, and whose content changes every
-     * build. They must be excluded from a content fingerprint of a directory (the packagers already
-     * drop them from jars).
-     *
-     * <p>Note {@code [build.embed-sha]} outputs ({@code META-INF/jk-<worker>-sha256.txt}) are
-     * deliberately <em>not</em> excluded: now that the packagers build byte-reproducible jars, those
-     * embedded SHAs are stable across no-op rebuilds, and a genuine change to a worker jar
-     * <em>should</em> ripple through the embedded SHA into every module that pins it.
-     */
-    private static boolean isBuildMetadata(String name) {
-        return FreshnessStamp.isStampFile(name);
     }
 }

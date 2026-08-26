@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.surface;
 
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -42,18 +44,18 @@ public final class DynamicSurfaceIo {
         for (int i = 0; i < entries.size(); i++) {
             DynamicSurface.Entry e = entries.get(i);
             sb.append("    {\"kind\":")
-                    .append(quote(e.kind().name()))
+                    .append(Jsonl.quote(e.kind().name()))
                     .append(",\"name\":")
-                    .append(quote(e.name()))
+                    .append(Jsonl.quote(e.name()))
                     .append(",\"origin\":")
-                    .append(quote(e.origin()));
+                    .append(Jsonl.quote(e.origin()));
             if (!e.members().isEmpty()) {
                 sb.append(",\"members\":[");
                 boolean first = true;
                 for (String m : e.members()) {
                     if (!first) sb.append(',');
                     first = false;
-                    sb.append(quote(m));
+                    sb.append(Jsonl.quote(m));
                 }
                 sb.append(']');
             }
@@ -68,7 +70,7 @@ public final class DynamicSurfaceIo {
     /** Parse {@link #toJson} output (and tolerate extra whitespace). */
     @SuppressWarnings("unchecked")
     public static DynamicSurface fromJson(String json) {
-        Object root = Json.parse(json);
+        Object root = MiniJson.parse(json);
         if (!(root instanceof Map<?, ?> map)) return DynamicSurface.empty();
         Object entries = map.get("entries");
         if (!(entries instanceof List<?> list)) return DynamicSurface.empty();
@@ -160,21 +162,5 @@ public final class DynamicSurfaceIo {
 
     private static String str(Object o) {
         return o == null ? "" : String.valueOf(o);
-    }
-
-    private static String quote(String raw) {
-        StringBuilder sb = new StringBuilder("\"");
-        for (int i = 0; i < raw.length(); i++) {
-            char c = raw.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> sb.append(c);
-            }
-        }
-        return sb.append('"').toString();
     }
 }

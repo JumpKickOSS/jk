@@ -11,6 +11,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -85,13 +86,16 @@ public final class LockfileReader {
         }
         String generatedBy = requireString(result, "generated-by");
         String resolutionAlgorithm = requireString(result, "resolution-algorithm");
-        String jdk = result.getString("jdk"); // optional
+        // Toolchain pins live in [jdk] / [graal] tables (not the deleted top-level jdk = string).
+        Lockfile.JdkPin jdk = toPin(tableOrFail(result, "jdk", origin), "jdk", Lockfile.JdkPin::new);
+        Lockfile.GraalPin graal = toPin(tableOrFail(result, "graal", origin), "graal", Lockfile.GraalPin::new);
         // The jk floor: minimum jk able to run this lock. Legacy locks carried an artifact pin
         // (`jk = { version, sha256 }`); its version reads as the floor — it never blocks a newer
-        // jk, and the sha is ignored (a floor needs no engine artifact).
+        // jk, and the sha is ignored (a floor needs no engine artifact). Distinct from [jdk].
         String jkMin = result.getString("jk-min");
         if (jkMin == null || jkMin.isBlank()) {
-            org.tomlj.TomlTable jkTable = result.getTable("jk");
+            // Legacy fallback only — a non-table `jk` is simply no floor, not an error.
+            TomlTable jkTable = result.isTable("jk") ? result.getTable("jk") : null;
             jkMin = jkTable != null ? jkTable.getString("version") : null;
         }
         if (jkMin != null && jkMin.isBlank()) jkMin = null;
@@ -158,7 +162,6 @@ public final class LockfileReader {
                         group,
                         name,
                         ver,
-                        t.getString("jdk"),
                         java,
                         t.getString("kotlin"),
                         t.getString("groovy"),
@@ -166,8 +169,7 @@ public final class LockfileReader {
                         t.getString("description"),
                         t.getString("sources"),
                         m2,
-                        m2install,
-                        t.getString("layout")));
+                        m2install));
             }
         }
         String manifestsSha = result.getString("manifests-sha256"); // optional, additive v1
@@ -179,6 +181,7 @@ public final class LockfileReader {
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                graal,
                 kotlin,
                 scala,
                 artifacts,
@@ -187,7 +190,47 @@ public final class LockfileReader {
                 modules,
                 jkMin,
                 manifestsSha,
-                projectId);
+                projectId,
+                toNativeMetadata(tableOrFail(result, "native", origin)));
+    }
+
+    /**
+     * The table at {@code key}, or null when absent. A present non-table value (e.g. a lock written
+     * by the pre-{@code [jdk]} format's top-level {@code jdk = "<id>"} string) is the reader's
+     * normal clean diagnostic — not an unchecked {@code TomlInvalidTypeException} escaping to
+     * callers that only catch {@code IOException}.
+     */
+    private static TomlTable tableOrFail(TomlParseResult result, String key, String origin) {
+        if (result.isTable(key)) return result.getTable(key);
+        if (result.contains(key)) {
+            throw new IllegalArgumentException("jk-lock.toml in " + origin + ": `" + key + "` must be a [" + key
+                    + "] table — re-run `jk lock` to rewrite this lockfile");
+        }
+        return null;
+    }
+
+    /** A {@code [jdk]}/{@code [graal]} pin, or null when absent. Both fields required when present. */
+    private static <T> T toPin(TomlTable table, String section, BiFunction<String, String, T> factory) {
+        if (table == null) return null;
+        String vendor = table.getString("vendor");
+        String version = table.getString("version");
+        if (vendor == null || vendor.isBlank() || version == null || version.isBlank()) {
+            throw new IllegalArgumentException("[" + section + "] requires both vendor and version");
+        }
+        return factory.apply(vendor, version);
+    }
+
+    /**
+     * The {@code [native]} pin, or null when the lock predates it or no module declares {@code
+     * [native]}. A table with no {@code metadata-repository} is the same as no table: there is
+     * nothing to extract without a version, and the checksum alone pins nothing.
+     */
+    private static Lockfile.NativeMetadata toNativeMetadata(TomlTable table) {
+        if (table == null) return null;
+        String version = table.getString("metadata-repository");
+        if (version == null || version.isBlank()) return null;
+        String checksum = table.getString("checksum");
+        return new Lockfile.NativeMetadata(version, checksum == null || checksum.isBlank() ? null : checksum);
     }
 
     private static Lockfile.Artifact toArtifact(TomlTable table) {

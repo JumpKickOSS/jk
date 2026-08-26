@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import java.nio.file.Files;
@@ -127,7 +128,7 @@ class BuildPlannerGroovyStepTest {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         return BuildPlanner.fullPlan(in);
     }
 }

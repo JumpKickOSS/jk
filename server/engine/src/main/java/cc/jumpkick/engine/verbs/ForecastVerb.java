@@ -6,9 +6,14 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildService;
 import java.io.BufferedWriter;
@@ -16,7 +21,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 public final class ForecastVerb implements HostedVerb {
 
@@ -47,40 +51,36 @@ public final class ForecastVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                        Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "force", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(Jsonl.bool(requestLine, "offline", false))
+                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                        .withForce(Jsonl.bool(requestLine, "force", false));
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)
-                        .withCacheDir(cache);
-                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                        .withCacheDir(cache)
+                        // The forecast's run-tests key must equal the one the live build computes,
+                        // and [test] env is part of both. Resolving it here against the daemon's
+                        // environment and there against the caller's would make them disagree —
+                        // "tests up-to-date" for a suite whose environment actually changed.
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        // The request's toolchain selection belongs on it too: without this the SWITCH tier is
+                        // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                        .withToolchainSpecs(ProtoSession.jdkSpecOf(requestLine), ProtoSession.graalSpecOf(requestLine));
+                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 SessionContext.where(session, () -> {
                     BuildService.ResolvedGraph graph;
                     try {
                         graph = BuildService.resolveGraph(entryDir, entryBuild);
                     } catch (IOException e) {
                         host.sendQuiet(
-                                writer,
-                                ProtoReads.forecastAck(
-                                        List.of(), false, false, List.of(cc.jumpkick.util.Errors.text(e))));
+                                writer, ProtoReads.forecastAck(List.of(), false, false, List.of(Errors.text(e))));
                         return null;
                     }
                     if (graph.hasErrors()) {
@@ -92,20 +92,18 @@ public final class ForecastVerb implements HostedVerb {
                     // right after jk clean --force wiped it (JK-2205).
                     for (Path d : BuildService.forecastDirtyDirsReadOnly(graph, cache, skipTests, entryDir))
                         dirty.add(d.toString());
-                    boolean lockStale = BuildService.workspaceLockStale(
-                            entryDir, entryBuild, cc.jumpkick.lock.LockPaths.lockFile(entryDir));
+                    boolean lockStale =
+                            BuildService.workspaceLockStale(entryDir, entryBuild, LockPaths.lockFile(entryDir));
                     host.sendQuiet(writer, ProtoReads.forecastAck(dirty, lockStale, graph.isEmpty(), List.of()));
                     return null;
                 });
             } catch (Exception e) {
-                host.sendQuiet(
-                        writer,
-                        ProtoReads.forecastAck(List.of(), false, false, List.of(cc.jumpkick.util.Errors.text(e))));
+                host.sendQuiet(writer, ProtoReads.forecastAck(List.of(), false, false, List.of(Errors.text(e))));
             }
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

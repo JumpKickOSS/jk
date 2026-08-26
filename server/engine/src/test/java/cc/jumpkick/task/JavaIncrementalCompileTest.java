@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.compile.JavacFixture;
 import java.io.IOException;
 import java.net.URL;
@@ -347,7 +348,7 @@ class JavaIncrementalCompileTest {
         }
 
         JavaCompile.Prediction predict(List<Path> classpath, int release) throws IOException {
-            try (cc.jumpkick.compile.JavaCompilerHost.Scope ignored = cc.jumpkick.compile.JavaCompilerHost.open()) {
+            try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
                 return JavaCompile.predict(
                         "compile-main",
                         request(classpath, release),

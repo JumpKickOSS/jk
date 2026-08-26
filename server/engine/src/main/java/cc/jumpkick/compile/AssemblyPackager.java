@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicZip;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -43,14 +45,11 @@ public final class AssemblyPackager {
         Set<String> dirs = new HashSet<>();
         // Multi-entry META-INF files merged across inputs; TreeMap → deterministic.
         Map<String, ByteArrayOutputStream> merged = new TreeMap<>();
-        long epoch = request.timestampEpochSeconds();
+        DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
 
         try (OutputStream out = Files.newOutputStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
-            // Write the manifest ourselves with a fixed timestamp; the
-            // JarOutputStream(out, manifest) convenience constructor stamps it
-            // with the current time and churns the jar every build.
-            DeterministicJar.writeManifest(jos, manifest, epoch);
+            zip.writeManifest(jos, manifest);
             written.add("META-INF/MANIFEST.MF");
 
             // 1. Project classes + resources win.
@@ -59,16 +58,16 @@ public final class AssemblyPackager {
             for (Path file : files) {
                 String name = normalize(request.classesDir(), file);
                 if (name.equals("META-INF/MANIFEST.MF")) continue;
-                if (DeterministicJar.isBuildStamp(name)) continue; // freshness stamp, not jar content
+                if (BuildStamps.isStampFile(name)) continue; // freshness stamp, not jar content
                 if (isExcluded(name)) continue;
                 if (isMergeFile(name)) {
                     accumulate(merged, name, Files.readAllBytes(file));
                     continue;
                 }
                 if (written.add(name)) {
-                    DeterministicJar.writeParentDirs(jos, name, epoch, dirs);
+                    zip.writeParentDirs(jos, name, dirs);
                     // Streamed — a large bundled resource never has to fit in the heap.
-                    DeterministicJar.writeEntryStreaming(jos, name, Files.newInputStream(file), epoch);
+                    zip.writeEntryStreaming(jos, name, Files.newInputStream(file));
                 }
             }
 
@@ -90,9 +89,9 @@ public final class AssemblyPackager {
                             continue;
                         }
                         if (written.add(name)) {
-                            DeterministicJar.writeParentDirs(jos, name, epoch, dirs);
+                            zip.writeParentDirs(jos, name, dirs);
                             // Streamed entry-to-entry copy — never buffers a whole entry.
-                            DeterministicJar.writeEntryStreaming(jos, name, jf.getInputStream(e), epoch);
+                            zip.writeEntryStreaming(jos, name, jf.getInputStream(e));
                         }
                     }
                 }
@@ -100,16 +99,16 @@ public final class AssemblyPackager {
 
             // 3. Merged multi-entry META-INF files (services, Spring handlers, …).
             for (Map.Entry<String, ByteArrayOutputStream> e : merged.entrySet()) {
-                DeterministicJar.writeParentDirs(jos, e.getKey(), epoch, dirs);
-                DeterministicJar.writeEntry(jos, e.getKey(), e.getValue().toByteArray(), epoch);
+                zip.writeParentDirs(jos, e.getKey(), dirs);
+                zip.writeEntry(jos, e.getKey(), e.getValue().toByteArray());
                 written.add(e.getKey());
             }
 
             // 4. Generated entries (e.g. the CycloneDX SBOM); real content wins on collision.
             for (Map.Entry<String, byte[]> e : new TreeMap<>(request.extraEntries()).entrySet()) {
                 if (!written.add(e.getKey())) continue;
-                DeterministicJar.writeParentDirs(jos, e.getKey(), epoch, dirs);
-                DeterministicJar.writeEntry(jos, e.getKey(), e.getValue(), epoch);
+                zip.writeParentDirs(jos, e.getKey(), dirs);
+                zip.writeEntry(jos, e.getKey(), e.getValue());
             }
         }
         return request.outputJar();

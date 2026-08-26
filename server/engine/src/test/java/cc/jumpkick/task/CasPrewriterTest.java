@@ -4,15 +4,38 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.testing.Await;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class CasPrewriterTest {
+
+    /**
+     * The background poller's only externally observable effect: a two-poll-stable file is hashed
+     * and its blob copied into the CAS. Polling for the blob is what the three tests below used to
+     * approximate with {@code Thread.sleep(350)} — 3.5 poll intervals, which was simultaneously a
+     * guess about this machine and no assertion at all. Two of them ({@code
+     * finish_uses_latest_content_...}, {@code finish_rehashes_when_content_changes_...}) claim to
+     * exercise a rewrite <em>after</em> pre-processing, and would have passed unchanged if
+     * pre-processing had never happened, because {@code finish} content-hashes regardless. Waiting
+     * on the blob makes the precondition an assertion (JK-2446).
+     */
+    private static void awaitPreprocessed(Cas cas, String... contents) throws InterruptedException {
+        for (String content : contents) {
+            String hex = Hashing.sha256Hex(content.getBytes());
+            Await.until(
+                    Duration.ofSeconds(30),
+                    () -> Files.exists(cas.pathFor(hex)),
+                    () -> "the prewriter never ingested " + content + " (sha " + hex + ")");
+        }
+    }
 
     @Test
     void finish_picks_up_files_added_during_watching(@TempDir Path tempDir) throws Exception {
@@ -24,8 +47,7 @@ class CasPrewriterTest {
         try {
             Files.writeString(classes.resolve("A.class"), "AAAAAA");
             Files.writeString(classes.resolve("B.class"), "BBBBBB");
-            // Give the poller a couple of cycles to discover + settle them.
-            Thread.sleep(350);
+            awaitPreprocessed(cas, "AAAAAA", "BBBBBB");
         } finally {
             Map<String, String> outputs = prewriter.finish();
             assertThat(outputs).containsKeys("A.class", "B.class");
@@ -64,8 +86,7 @@ class CasPrewriterTest {
         try {
             Path file = classes.resolve("Mut.class");
             Files.writeString(file, "first-version");
-            // Let pre-processing happen.
-            Thread.sleep(350);
+            awaitPreprocessed(cas, "first-version");
             // Now mutate the file — the recorded snapshot will mismatch
             // current state, so finish should re-hash.
             Files.writeString(file, "second-version-longer");
@@ -81,14 +102,14 @@ class CasPrewriterTest {
         Files.createDirectories(classes);
         Cas cas = new Cas(tempDir.resolve("cas"));
         // Simulate left-over freshness stamps from a previous build.
-        Files.writeString(classes.resolve(FreshnessStamp.JAVA_STAMP), "stamp body");
-        Files.writeString(classes.resolve(FreshnessStamp.KOTLIN_STAMP), "stamp body");
+        Files.writeString(classes.resolve(BuildStamps.JAVA), "stamp body");
+        Files.writeString(classes.resolve(BuildStamps.KOTLIN), "stamp body");
 
         CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
         Map<String, String> outputs = prewriter.finish();
 
-        assertThat(outputs).doesNotContainKey(FreshnessStamp.JAVA_STAMP);
-        assertThat(outputs).doesNotContainKey(FreshnessStamp.KOTLIN_STAMP);
+        assertThat(outputs).doesNotContainKey(BuildStamps.JAVA);
+        assertThat(outputs).doesNotContainKey(BuildStamps.KOTLIN);
     }
 
     @Test
@@ -118,7 +139,7 @@ class CasPrewriterTest {
 
         CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
         try {
-            Thread.sleep(350); // poll settles first content
+            awaitPreprocessed(cas, "AAAAAA"); // the poller settled the first content
             Files.writeString(file, "BBBBBB");
             Files.setLastModifiedTime(file, mtime);
         } finally {

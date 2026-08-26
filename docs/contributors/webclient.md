@@ -7,12 +7,38 @@ the doc the shell's source files cite.
 
 ## Layout
 
+There is no bundler and no npm, but there is a module system: `index.html` loads exactly one
+script, `<script src="/app.js" type="module">`, and every other file is reached from it through a
+static `import`. The browser orders the graph, so a split here costs an `import` line and not a
+`<script>` tag. What it does cost is checked by `src/test/js/shell.test.mjs`: one entry point, no
+module the graph never reaches, and no name the in-DOM template calls that the root component has
+stopped providing.
+
 | File | Role |
 | --- | --- |
 | `index.html` | The shell: in-DOM Vue template, CDN pins, brand chrome |
-| `app.js` | Vue app + components (`<jk-icon>` inline SVG iconography, tabs, cards) |
+| `app.js` | The root component: auth, the SSE connection, the hash route, cross-view fetches |
 | `api.js` | **The only file that talks HTTP**: token bootstrap, fetch wrappers, SSE client |
+| `format.js` | One duration, one relative time, one byte size — every surface formats the same |
 | `fold.js` | Folds `/api/events` into activity cards — pure `(cards, event)` functions |
+| `outcome.js` | Derived state of a folded card: outcome badge, phase chain, module order |
+| `label.js` | Step detail and the colour segments of a Java type / member / JDK-download label |
+| `failure.js` | Diagnostics → the test and compile failure report models (CLI parity) |
+| `cards.js` | The Activity feed's per-card methods: progress, ETA, badge, diagnostics |
+| `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
+| `projects.js` | The Projects tab and Project page: history records grouped per project |
+| `wizard.js` | New Project and the workspace directory browser |
+| `icons.js` | `<jk-icon>`: the inline-SVG glyph set |
+| `phase.js` | `<phase-chain>`: the coarse plan-phase strip on a card |
+| `report.js` | `<fail-report>`: one failure body for the compact card and the module branch |
+| `chart.js` | `<build-bars>` and `<module-dep-graph>`: the two ECharts surfaces |
+| `code.js` | `<code-view>`: the `#project/<id>/files` pane |
+| `monaco.js` | Monaco and the preview CDNs: version pins, SRI hashes, AMD parking, editor options |
+| `preview.js` | The Preview half: markdown, mermaid, graphviz, asciidoc, d2, images |
+| `paths.js` | Workspace paths: extension → language, previewable kinds, markdown href resolution |
+| `route.js` | The hash router: `#project/<id>/files/<rel>?line=…` parsed and rendered |
+| `tree.js` | The file-tree model: flat paths → a directory-first render tree |
+| `tip.js` | The `data-tip` tooltip layer |
 | `style.css` | Chrome; JetBrains Mono via Google Fonts |
 
 ## Auth
@@ -48,7 +74,7 @@ Vue (and ECharts for history sparks **and** the Project-page module dependency g
 the CDN, **version-pinned with an SRI `integrity` hash** — a CDN compromise must not be able to
 script a page that can trigger builds. When bumping a pin, update the `integrity` hash in
 `index.html` in the same change. Preview-only libraries (marked, DOMPurify, mermaid, viz-js,
-Asciidoctor; D2 via dynamic ESM) are pinned in `code.js` and load **only** when Preview is used —
+Asciidoctor; D2 via dynamic ESM) are pinned in `monaco.js` and load **only** when Preview is used —
 same unpkg origin, never self-hosted. marked and DOMPurify load as **ESM** (`import()` from unpkg) so Preview never parks Monaco's AMD
 `define` (that race broke Monaco's on-demand markdown grammar: `define is not a function`).
 Mermaid / viz / asciidoctor still use classic UMD with a refcounted `define` park, and only when
@@ -56,7 +82,7 @@ those diagram kinds are needed. There is no bundler and no npm build step: the s
 static resources inside the engine jar.
 
 **Monaco is the one partial exception.** Its version is pinned and `loader.js` carries SRI
-(`MONACO_LOADER` in `code.js`), but the loader then fetches `editor.main.js`, `editor.main.css` and
+(`MONACO_LOADER` in `monaco.js`), but the loader then fetches `editor.main.js`, `editor.main.css` and
 the per-language chunks itself and has no way to pass an integrity hash down, so those bytes are
 CDN-trusted. It is also what widened the shell CSP (`StaticContent`): `blob:` in `script-src` plus
 `worker-src blob:` for the language workers it spawns from a generated Blob that `importScripts` the
@@ -166,11 +192,12 @@ carries `hoverMessage` when `?msg=` is present (compiler key/value details from 
 OSC-8 link) — the column mark is visual only so Monaco does not stack the same note twice.
 The editor reveals the position and opens that hover on landing. Monaco ships no
 Groovy or TOML grammar, so `.groovy` tokenizes as `java` and `.toml` as
-`ini` (`MONACO_LANG` in `code.js`); anything unknown falls back to `plaintext`. Highlighting is
+`ini` (`MONACO_LANG` in `monaco.js`); anything unknown falls back to `plaintext`. Highlighting is
 skipped above 200 KiB / 4000 lines, and when the CDN is unreachable; the file then renders as
 plain text with a gutter so `?line=` can still scroll (Save stays disabled in that branch).
 
-`code.js` is tested headlessly (`node --test` via `WebClientCodeTest`), same shape as `fold.js`.
+The files pane's helpers are tested headlessly (`node --test` via `WebClientJsTest`), same shape
+as `fold.js`.
 
 ## Project page: dependency graph (lazy)
 
@@ -232,11 +259,14 @@ server-side so unchanged free RAM does not repaint noise.
 ## Testing
 
 `fold.js` is browser-free on purpose — pure functions of `(cards, event)` — and is tested
-headlessly with `node --test` via the `WebClientFoldTest` JUnit wrapper (it stages `fold.js` as
-`fold.mjs` and passes the path in `JK_FOLD_MJS`):
+headlessly with `node --test`. One JUnit wrapper, `WebClientJsTest`, runs every
+`src/test/js/*.test.mjs`: it stages the SPA's modules in a `type:module` temp dir and hands each
+one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). Node is required — a missing `node` fails the
+build rather than skipping; opt out deliberately with `JK_WEB_JS_SKIP=1`:
 
 ```bash
 ./gradlew :web:test
 ```
 
-Server-side rendering/auth behavior is covered by `HttpEngineServerTest` in `server/engine`.
+Server-side rendering/auth behavior is covered by `HttpStaticContentTest` and `HttpApiAuthTest` in
+`server/engine` (both over the shared `HttpEngineServerHarness`).

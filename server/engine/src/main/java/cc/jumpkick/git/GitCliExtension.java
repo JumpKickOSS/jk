@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.git;
 
+import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -307,7 +308,7 @@ public final class GitCliExtension implements GitBackend {
 
         Process p;
         try {
-            p = cc.jumpkick.engine.JobWorkers.start(pb);
+            p = JobWorkers.start(pb);
         } catch (IOException e) {
             throw new IOException("failed to launch git: " + e.getMessage(), e);
         }

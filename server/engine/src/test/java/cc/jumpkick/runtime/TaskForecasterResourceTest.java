@@ -87,7 +87,7 @@ class TaskForecasterResourceTest {
         Files.writeString(module.resolve("src/main/resources/app.properties"), "a=2\n"); // source
 
         String raw = ClasspathFingerprint.entry(classes);
-        String projected = TaskForecaster.classesTokenProjectedAfterResourceCopy(module, false, layout, project);
+        String projected = PackagingKeys.classesTokenProjectedAfterResourceCopy(module, false, layout, project);
         assertThat(projected).isNotEqualTo(raw);
         // Projection equals fingerprinting classes after a faithful copy.
         Files.writeString(classes.resolve("app.properties"), "a=2\n");

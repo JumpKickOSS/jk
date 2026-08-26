@@ -88,10 +88,12 @@ gradle.sharedServices
 
 include(
     // shared/ — client-safe contracts + code (everything the native CLI can link)
-    ":jsonl",           // Jsonl / MiniJson / BoundedLineReader (JDK-17; S1 + S7 share only this)
-    ":jk-api",          // the domain + scheduler/command SPI contract (zero-dep, IO-free leaf)
+    ":host",            // the JDK-only leaf every jk process links: JSONL codec, Hashing,
+                        //   PathUtil, Errors, Os, and the Exit/command vocabulary (JDK-17;
+                        //   S1, S7 and the plugin SPI all share exactly this)
+    ":jk-api",          // the domain + scheduler SPI contract (zero-dep, IO-free leaf)
     ":plugin-sdk",      // the plugin SPI (JDK-17; published as jk-plugin-sdk)
-    ":core",            // config/lock/layout/catalog/deny + filesystem/hashing/XML util
+    ":core",            // config/lock/layout/catalog/deny + filesystem/XML util (needs tomlj)
     ":client-io",       // client I/O slice: http, forge auth, credential files, CAS read/link
     ":toolchain-jdk",   // client JDK/tool flow: catalog/installer/registry, launchers, exporters
     ":wire",            // the client<->engine wire contract (was :engine-api)
@@ -113,7 +115,6 @@ include(
     ":auditor",
     ":publisher",
     ":image-builder",
-    ":compat-bridge",
     ":formatter",
     ":spring-boot",
     ":grails",
@@ -125,7 +126,7 @@ include(
 )
 
 // shared/ — client-safe contracts + code
-project(":jsonl").projectDir         = file("shared/jsonl")
+project(":host").projectDir          = file("shared/host")
 project(":jk-api").projectDir        = file("shared/jk-api")
 project(":plugin-sdk").projectDir    = file("shared/plugin-sdk")
 project(":core").projectDir          = file("shared/core")
@@ -153,7 +154,6 @@ project(":java-compiler").projectDir  = file("plugins/java-compiler")
 project(":auditor").projectDir        = file("plugins/auditor")
 project(":publisher").projectDir      = file("plugins/publisher")
 project(":image-builder").projectDir  = file("plugins/image-builder")
-project(":compat-bridge").projectDir  = file("plugins/compat-bridge")
 project(":formatter").projectDir      = file("plugins/formatter")
 project(":spring-boot").projectDir    = file("plugins/spring-boot")
 project(":grails").projectDir         = file("plugins/grails")

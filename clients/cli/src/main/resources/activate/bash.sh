@@ -4,10 +4,6 @@
 export __JK_EXE=__JK_EXE__
 export __JK_SHELL=bash
 
-if [ -z "${__JK_ORIG_PATH:-}" ]; then
-    export __JK_ORIG_PATH="$PATH"
-fi
-
 _jk_hook() {
     local prev_status=$?
     eval "$(command "$__JK_EXE" hook-env -s bash)"

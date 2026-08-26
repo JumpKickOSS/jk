@@ -4,11 +4,14 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
@@ -36,16 +39,13 @@ public final class PluginDescriptorOps {
 
     private PluginDescriptorOps() {}
 
-    /** The manifest entry name at the root of a plugin jar. */
-    public static final String MANIFEST_ENTRY = "jk-plugin.toml";
-
     /**
      * Materialize every locked declaration's manifest that is missing from {@code moduleDir}'s
      * store. CAS-only — never touches the network (sync/lock own fetching). Returns true when
      * anything new was written, so callers can re-parse.
      */
     public static boolean ensureMaterialized(Path moduleDir, Path cache) {
-        Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lock = LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lock)) return false;
         Lockfile lockfile;
         try {
@@ -76,9 +76,9 @@ public final class PluginDescriptorOps {
     /** Extract {@code jar}'s root manifest into the store (atomic move over a temp file). */
     public static void materialize(Path moduleDir, String sha256Hex, Path jar) throws IOException {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
-            ZipEntry entry = zip.getEntry(MANIFEST_ENTRY);
+            ZipEntry entry = zip.getEntry(ManifestPaths.PLUGIN_MANIFEST);
             if (entry == null) {
-                throw new IOException(jar + " has no root " + MANIFEST_ENTRY + " — not a build plugin");
+                throw new IOException(jar + " has no root " + ManifestPaths.PLUGIN_MANIFEST + " — not a build plugin");
             }
             String text;
             try (InputStream in = zip.getInputStream(entry)) {
@@ -130,7 +130,7 @@ public final class PluginDescriptorOps {
 
     /** First-party / official / Central — the stores that answer nearly every pinned lookup. */
     private static final List<String> FIXED_PROBE_ORDER =
-            List.of(RepoArtifactResolver.JK_LOCAL, PluginJar.OFFICIAL_REPO, "central");
+            List.of(RepoArtifactResolver.JK_LOCAL, PluginJar.OFFICIAL_REPO, RepositorySpec.CENTRAL);
 
     /**
      * Every other {@code repos/<name>/} directory, so a user-declared remote (e.g. {@code local})

@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildEditor;
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -58,7 +62,7 @@ public final class EditOps {
             Files.writeString(file, updated, StandardCharsets.UTF_8);
             return new Result(true, null, detail);
         } catch (IOException | RuntimeException e) {
-            return new Result(false, cc.jumpkick.util.Errors.text(e));
+            return new Result(false, Errors.text(e));
         }
     }
 
@@ -67,8 +71,8 @@ public final class EditOps {
     /** Args: scope, library, group, artifact, version, filePath. Engine hashes and CAS-puts. */
     private static FileDep addFileDependency(String original, List<String> args) throws IOException {
         Path src = Path.of(args.get(5));
-        String sha256 = cc.jumpkick.util.Hashing.sha256Hex(src);
-        cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()).putFile(src, sha256);
+        String sha256 = Hashing.sha256Hex(src);
+        JkStores.cas(JkDirs.cache()).putFile(src, sha256);
         String toml = JkBuildEditor.addFileDependency(
                 original, Scope.fromCanonical(args.get(0)), args.get(1), args.get(2), args.get(3), args.get(4), sha256);
         return new FileDep(toml, sha256);

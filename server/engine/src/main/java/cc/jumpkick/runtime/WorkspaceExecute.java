@@ -2,16 +2,27 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Linking;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.run.SessionCancel;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,7 +66,7 @@ public final class WorkspaceExecute {
         for (Path moduleDir : moduleDirs) {
             Path normalDir = moduleDir.toAbsolutePath().normalize();
             if (normalDir.equals(wsRoot)) continue;
-            Path buildFile = moduleDir.resolve("jk.toml");
+            Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile)) continue;
             JkBuild build;
             try {
@@ -80,7 +91,7 @@ public final class WorkspaceExecute {
             for (Path art : arts) filenameCounts.merge(art.getFileName().toString(), 1L, Long::sum);
         }
         // Build the final src→linkDest map.
-        Path wsTarget = wsRoot.resolve("target");
+        Path wsTarget = wsRoot.resolve(BuildLayout.TARGET);
         Map<Path, Path> links = new LinkedHashMap<>();
         for (var entry : moduleArtifacts.entrySet()) {
             Path normalDir = entry.getKey();
@@ -112,18 +123,18 @@ public final class WorkspaceExecute {
      * {@code HeapPlan}/{@code PluginSlots} state sized for just itself.
      */
     public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
-        cc.jumpkick.model.JkBuild entryBuild;
+        JkBuild entryBuild;
         try {
-            entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
+            entryBuild = JkBuildParser.parse(req.entryDir().resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
         if (req.freshenLock()) {
-            Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(req.entryDir());
+            Path rootLock = LockPaths.lockFile(req.entryDir());
             boolean lockStale = WorkspaceLock.workspaceLockStale(req.entryDir(), entryBuild, rootLock);
             if (lockStale) {
                 // Countdown during lock: price lock + a coarse remaining-build prior so the TUI
@@ -154,7 +165,7 @@ public final class WorkspaceExecute {
         try {
             graph = BuildGraph.resolve(req.entryDir(), entryBuild);
         } catch (IOException e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -205,8 +216,7 @@ public final class WorkspaceExecute {
         // memory plan and the ETA below, so serial builds size heaps and estimate time as serial.
         if (req.maxModuleConcurrency() > 0) width = Math.min(width, req.maxModuleConcurrency());
         if (req.applyMemoryPlan()) {
-            JvmOptions.planAndApply(
-                    HeapPlan.requestedJvms(width, req.workers() > 0 ? req.workers() : 1, parallelTests, cap));
+            JvmOptions.planAndApply(HeapPlan.requestedJvms(width, effectiveWorkers(req), parallelTests, cap));
         }
 
         Set<Path> moduleDirs = new LinkedHashSet<>();
@@ -276,7 +286,7 @@ public final class WorkspaceExecute {
             try {
                 failed = ModuleOutputRestore.restoreAll(req.entryDir(), List.copyOf(restoreNeeded), req.cache());
             } catch (IOException e) {
-                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
                 listener.onWorkspaceFinish(r);
                 return r;
             }
@@ -393,7 +403,7 @@ public final class WorkspaceExecute {
         // still re-anchors the painted countdown mid-run).
         listener.onEtaEstimate(etaMs);
 
-        if (cc.jumpkick.run.SessionCancel.cancelled()) {
+        if (SessionCancel.cancelled()) {
             WorkspaceResult r = new WorkspaceResult(false, 1, List.of(), List.of(), true);
             listener.onWorkspaceFinish(r);
             return r;
@@ -430,14 +440,14 @@ public final class WorkspaceExecute {
                         return null;
                     },
                     req.maxModuleConcurrency(),
-                    cc.jumpkick.run.SessionCancel::cancelled);
+                    SessionCancel::cancelled);
         }
         Perf.end("ws-schedule-run", tsched);
         long executeWallMs = Math.max(0L, System.currentTimeMillis() - executeStartMs);
         // Session cancel (Ctrl-C / jk cancel / web) may finish modules with a non-success exit
         // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
         // cancelled rather than a generic failure.
-        boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
+        boolean cancelled = SessionCancel.cancelled();
         boolean ok = failure == null && !cancelled;
         if (ok) {
             // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
@@ -496,7 +506,7 @@ public final class WorkspaceExecute {
             Map<Path, ModulePlan> plans = new LinkedHashMap<>();
             int prepared = 0;
             for (BuildGraph.BuildUnit u : dirtyUnits) {
-                if (cc.jumpkick.run.SessionCancel.cancelled()) break;
+                if (SessionCancel.cancelled()) break;
                 ModulePlan p = prepareModule(u, req, moduleDirs, jarConsumed, true);
                 prepared++;
                 listener.onPreflight(
@@ -512,10 +522,10 @@ public final class WorkspaceExecute {
         Map<Path, ModulePlan> plans = new ConcurrentHashMap<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>(dirtyUnits.size());
         for (BuildGraph.BuildUnit u : dirtyUnits) {
-            if (cc.jumpkick.run.SessionCancel.cancelled()) break;
+            if (SessionCancel.cancelled()) break;
             futures.add(CompletableFuture.runAsync(
                     () -> {
-                        if (cc.jumpkick.run.SessionCancel.cancelled()) return;
+                        if (SessionCancel.cancelled()) return;
                         ModulePlan p = prepareModule(u, req, moduleDirs, jarConsumed, true);
                         if (p == null) throw new PrepareFailed(u.coord(), u.dir());
                         p.plan().addListener(timingsRecorder(p, timingSamples, hostSamples));
@@ -544,8 +554,7 @@ public final class WorkspaceExecute {
 
     /** Parallel prepare is on by default; set {@code JK_PREPARE_PARALLEL=false} to force serial. */
     private static boolean prepareParallelEnabled() {
-        String v = System.getenv("JK_PREPARE_PARALLEL");
-        return v == null || !v.equalsIgnoreCase("false");
+        return EnvValues.bool(System::getenv, "JK_PREPARE_PARALLEL").orElse(true);
     }
 
     /** Failed {@link #prepareModule} for a dirty unit — surfaces as exit 2 to the workspace caller. */
@@ -597,7 +606,7 @@ public final class WorkspaceExecute {
             Set<Path> jarConsumed,
             boolean forceRebuild) {
         Path dir = u.dir();
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) return null;
         BuildPlan plan = assemblePlan(u, req, moduleDirs, forceRebuild, jarConsumed);
         // Bar weight must be live estimatedTotalWeight for dirty prepares: shape-memo weights ignore
@@ -638,10 +647,8 @@ public final class WorkspaceExecute {
         if (spec == null || !spec.hasSelection()) return graph;
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) byDir.put(u.dir(), u.manifest());
-        var scopes = req.skipTests()
-                ? cc.jumpkick.config.ModuleOrder.PRODUCTION_SCOPES
-                : List.of(cc.jumpkick.model.Scope.values());
-        Set<Path> cone = cc.jumpkick.config.WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
+        var scopes = req.skipTests() ? ModuleOrder.PRODUCTION_SCOPES : List.of(Scope.values());
+        Set<Path> cone = WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
         return graph.restrict(cone);
     }
 
@@ -693,13 +700,7 @@ public final class WorkspaceExecute {
         boolean selected = !spec.hasSelection()
                 || spec.selectedModules().stream()
                         .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
-        // One request-knob decoration for every terminal branch — the PACKAGE branch applies the
-        // same set via inputsFor below. Native/image must honor --variant/profile/workers too.
-        UnaryOperator<BuildPlanner.Inputs> decorate = in -> in.withWorkerCount(req.workers() > 0 ? req.workers() : 1)
-                .withProfileName(req.profile())
-                .withProjectModules(moduleDirs)
-                .withVariant(req.variant(), req.clientEnv())
-                .withEphemeralActions(req.ephemeralActions());
+        UnaryOperator<BuildPlanner.Inputs> decorate = requestKnobs(req, moduleDirs);
         if (target == WorkspaceTarget.NATIVE) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
             boolean allowNative = selected && graal != null;
@@ -737,20 +738,9 @@ public final class WorkspaceExecute {
         }
         if (target == WorkspaceTarget.INSTALL) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
-            BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
-                            dir,
-                            req.cache(),
-                            req.workers() > 0 ? req.workers() : 1,
-                            req.jdksDir(),
-                            req.profile(),
-                            req.skipTests(),
-                            req.verbose(),
-                            moduleDirs,
-                            false)
-                    .withVariant(req.variant(), req.clientEnv())
-                    .withEphemeralActions(req.ephemeralActions());
+            BuildPlanner.Inputs inputs = moduleInputs(dir, req, moduleDirs, false);
             BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
-            BuildPlanner.appendDeclaredTails(b, inputs, graal, true);
+            PlannerTails.appendDeclaredTails(b, inputs, graal, true);
             Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
             InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
             return b.build();
@@ -759,21 +749,49 @@ public final class WorkspaceExecute {
         // its sibling JAR, not its classes dir (JK-2177).
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
         boolean testOnly = (target.testOnly() || req.testOnly()) && !consumed;
-        BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
+        BuildPlanner.Inputs inputs = moduleInputs(dir, req, moduleDirs, testOnly);
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
+        if (!testOnly) PlannerTails.appendDeclaredTails(b, inputs);
+        return b.build();
+    }
+
+    /**
+     * The one spelling of the request knobs every module plan must carry — workers (clamped),
+     * profile, project modules, variant + client env, ephemeral actions. Every terminal branch of
+     * {@link #assemblePlan} applies this operator (the PACKAGE/INSTALL path via
+     * {@link #moduleInputs}), so a branch cannot silently plan against a different manifest than
+     * its siblings. The single-plan verbs build the same set from the request line
+     * ({@code WorkspaceBuildVerb} and friends) — a different layer, not folded here.
+     */
+    static UnaryOperator<BuildPlanner.Inputs> requestKnobs(WorkspaceRequest req, Set<Path> moduleDirs) {
+        return in -> in.withWorkerCount(effectiveWorkers(req))
+                .withProfileName(req.profile())
+                .withProjectModules(moduleDirs)
+                .withVariant(req.variant(), req.clientEnv())
+                .withEphemeralActions(req.ephemeralActions());
+    }
+
+    /** Request workers with the {@code 0 = auto} spelling clamped to one planned worker. */
+    private static int effectiveWorkers(WorkspaceRequest req) {
+        return req.workers() > 0 ? req.workers() : 1;
+    }
+
+    /**
+     * One module's {@link BuildPlanner.Inputs} for the workspace walk — {@code inputsFor} plus
+     * {@link #requestKnobs}, so the knob set is applied by the type rather than restated here.
+     */
+    static BuildPlanner.Inputs moduleInputs(Path dir, WorkspaceRequest req, Set<Path> moduleDirs, boolean testOnly) {
+        return requestKnobs(req, moduleDirs)
+                .apply(TaskForecaster.inputsFor(
                         dir,
                         req.cache(),
-                        req.workers() > 0 ? req.workers() : 1,
+                        effectiveWorkers(req),
                         req.jdksDir(),
                         req.profile(),
                         req.skipTests(),
                         req.verbose(),
                         moduleDirs,
-                        testOnly)
-                .withVariant(req.variant(), req.clientEnv())
-                .withEphemeralActions(req.ephemeralActions());
-        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
-        if (!testOnly) BuildPlanner.appendDeclaredTails(b, inputs);
-        return b.build();
+                        testOnly));
     }
 
     /**
@@ -836,7 +854,7 @@ public final class WorkspaceExecute {
             // cache hit; never grow the bar mid-run.
             BuildPlanResult r = EffortWeights.withOverReserveTails(module.plan()::run);
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            boolean cancelled = r.userCancelled() || cc.jumpkick.run.SessionCancel.cancelled();
+            boolean cancelled = r.userCancelled() || SessionCancel.cancelled();
             // NativePlans owns the full failure mapping (native main-class misconfig → USAGE,
             // test failure → 4, else 1) so jk native --main bad exits 64 like the old verb did.
             int exit = r.success() && !cancelled ? 0 : NativePlans.failureExitCode(module.plan(), r);
@@ -851,7 +869,7 @@ public final class WorkspaceExecute {
             return o;
         } catch (RuntimeException e) {
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
+            boolean cancelled = SessionCancel.cancelled();
             ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), false, 1, ms, true, cancelled);
             listener.onModuleFinish(o);
             return o;
@@ -859,14 +877,14 @@ public final class WorkspaceExecute {
     }
 
     /** Fire {@code artifactsReady} once when all of the plan's artifact steps finish ok (JK-2210). */
-    static void watchArtifactSteps(cc.jumpkick.run.BuildPlan plan, Runnable artifactsReady) {
+    static void watchArtifactSteps(BuildPlan plan, Runnable artifactsReady) {
         Set<String> artifactSteps = new HashSet<>();
-        for (cc.jumpkick.run.Task step : plan.steps()) {
+        for (Task step : plan.steps()) {
             // compile-test is an artifact too: kind=tests siblings consume this module's
             // classes/test (WorkspaceClasspath testClassesDir), and it never waits on the suite.
-            if (cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(step.name())
-                    || cc.jumpkick.run.TaskNames.PACKAGE_ASSEMBLY.equals(step.name())
-                    || cc.jumpkick.run.TaskNames.COMPILE_TEST.equals(step.name())) {
+            if (TaskNames.PACKAGE_JAR.equals(step.name())
+                    || TaskNames.PACKAGE_ASSEMBLY.equals(step.name())
+                    || TaskNames.COMPILE_TEST.equals(step.name())) {
                 artifactSteps.add(step.name());
             }
         }
@@ -874,9 +892,9 @@ public final class WorkspaceExecute {
         AtomicInteger remaining = new AtomicInteger(artifactSteps.size());
         plan.addListener(new BuildPlanListener() {
             @Override
-            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
                 if (!artifactSteps.contains(step)) return;
-                if (status != cc.jumpkick.run.TaskStatus.SUCCESS && status != cc.jumpkick.run.TaskStatus.SKIPPED) {
+                if (status != TaskStatus.SUCCESS && status != TaskStatus.SKIPPED) {
                     return; // failed/cancelled artifact: stay unpublished
                 }
                 if (remaining.decrementAndGet() == 0) artifactsReady.run();

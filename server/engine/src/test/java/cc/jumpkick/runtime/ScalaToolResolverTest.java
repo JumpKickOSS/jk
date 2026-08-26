@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.resolver.VersionSelectors;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -65,22 +67,19 @@ class ScalaToolResolverTest {
     @Test
     void pick_scala_version_prefers_stable_highest() {
         VersionSet set = VersionSelectors.toVersionSet(VersionSelector.parseFloating("3"));
-        assertThat(LockPlans.pickScalaVersion(set, List.of("3.8.2", "3.8.4", "3.9.0-RC6", "2.13.16")))
+        assertThat(LockPipeline.pickVersion(set, List.of("3.8.2", "3.8.4", "3.9.0-RC6", "2.13.16")))
                 .isEqualTo("3.8.4");
-        assertThat(LockPlans.pickScalaVersion(set, List.of("3.8.4", "3.8.4"))).isEqualTo("3.8.4");
+        assertThat(LockPipeline.pickVersion(set, List.of("3.8.4", "3.8.4"))).isEqualTo("3.8.4");
     }
 
     @Test
     void exact_scala_selector_does_not_need_the_catalog() {
-        cc.jumpkick.model.JkBuild build =
-                cc.jumpkick.model.JkBuild.of(cc.jumpkick.model.JkBuild.Project.builder("com.example", "app", "1.0.0")
-                        .scala(VersionSelector.parse("=3.8.4"))
-                        .build());
-        assertThat(LockPlans.resolveScalaVersion(build, null)).isEqualTo("3.8.4");
-        cc.jumpkick.model.JkBuild javaOnly =
-                cc.jumpkick.model.JkBuild.of(cc.jumpkick.model.JkBuild.Project.builder("com.example", "app", "1.0.0")
-                        .java(25)
-                        .build());
-        assertThat(LockPlans.resolveScalaVersion(javaOnly, null)).isNull();
+        JkBuild build = JkBuild.of(Project.builder("com.example", "app", "1.0.0")
+                .scala(VersionSelector.parse("=3.8.4"))
+                .build());
+        assertThat(LockPipeline.resolveScalaVersion(build, null)).isEqualTo("3.8.4");
+        JkBuild javaOnly = JkBuild.of(
+                Project.builder("com.example", "app", "1.0.0").java(25).build());
+        assertThat(LockPipeline.resolveScalaVersion(javaOnly, null)).isNull();
     }
 }

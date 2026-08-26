@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -61,14 +63,14 @@ class TestStampWorkerJarsParityTest {
         writeMinimalJar(engineJar);
 
         JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
-        assertThat(BuildPlanner.needsNestedEngineIsolation(project)).isTrue();
+        assertThat(PlannerSupport.needsNestedEngineIsolation(project)).isTrue();
 
         // Confine host fallback to the empty tmp tree so a warm dev checkout cannot mask a
         // broken sibling-discovery path.
         BuildPlanner.hostEngineSearchOverride = tmp;
         Map<String, String> workers;
         try {
-            workers = BuildPlanner.testStampWorkerJars(cli, project);
+            workers = PlannerSupport.testStampWorkerJars(cli, project);
         } finally {
             BuildPlanner.hostEngineSearchOverride = null;
         }
@@ -77,7 +79,7 @@ class TestStampWorkerJarsParityTest {
         assertThat(Path.of(workers.get("jk.engine.jar")))
                 .as("the workspace sibling jar must win")
                 .isEqualTo(engineJar.normalize());
-        var extras = BuildPlanner.testStampExtras(cli, project);
+        var extras = PlannerSupport.testStampExtras(cli, project);
         assertThat(extras).anyMatch(s -> s.startsWith("sel:"));
         assertThat(extras).anyMatch(s -> s.startsWith("jk:"));
         assertThat(extras).anyMatch(s -> s.startsWith("worker:"));
@@ -88,14 +90,14 @@ class TestStampWorkerJarsParityTest {
         // Nested engine env must not point JK_CACHE_DIR / JK_STORE_DIR at the host trees.
         Path cli = tmp.resolve("clients/cli");
         Files.createDirectories(cli);
-        Map<String, String> env = BuildPlanner.nestedEngineTestEnv(cli);
+        Map<String, String> env = PlannerSupport.nestedEngineTestEnv(cli);
         assertThat(env).containsKey("JK_HOME");
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
         assertThat(env).doesNotContainKey("JK_CACHE_DIR");
         assertThat(env).doesNotContainKey("JK_STORE_DIR");
-        Path hostCache = cc.jumpkick.util.JkDirs.cache().toAbsolutePath().normalize();
-        Path hostStore = cc.jumpkick.util.JkDirs.store().toAbsolutePath().normalize();
+        Path hostCache = JkDirs.cache().toAbsolutePath().normalize();
+        Path hostStore = JkDirs.store().toAbsolutePath().normalize();
         Path jkHome = Path.of(env.get("JK_HOME")).toAbsolutePath().normalize();
         assertThat(jkHome).isAbsolute();
         assertThat(jkHome).isNotEqualTo(hostCache.getParent()); // not ambient product root
@@ -125,9 +127,9 @@ class TestStampWorkerJarsParityTest {
                 java = 25
                 """);
         JkBuild project = JkBuildParser.parse(lib.resolve("jk.toml"));
-        assertThat(BuildPlanner.needsNestedEngineIsolation(project)).isFalse();
-        assertThat(BuildPlanner.testStampWorkerJars(lib, project)).isEmpty();
-        var extras = BuildPlanner.testStampExtras(lib, project);
+        assertThat(PlannerSupport.needsNestedEngineIsolation(project)).isFalse();
+        assertThat(PlannerSupport.testStampWorkerJars(lib, project)).isEmpty();
+        var extras = PlannerSupport.testStampExtras(lib, project);
         assertThat(extras).noneMatch(s -> s.startsWith("worker:"));
     }
 
@@ -175,14 +177,14 @@ class TestStampWorkerJarsParityTest {
         // hand it to nested engine workers. The override also makes this
         // deterministic on warm developer trees, where the process/EngineInstall probes would
         // otherwise satisfy the assertion even if monorepo fallback broke.
-        String ver = cc.jumpkick.model.JkVersion.VERSION;
+        String ver = JkVersion.VERSION;
         Path seed = tmp.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar");
         Files.createDirectories(seed.getParent());
         writeMinimalJar(seed);
         BuildPlanner.hostEngineSearchOverride = tmp;
         try {
             JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
-            Map<String, String> workers = BuildPlanner.testStampWorkerJars(cli, project);
+            Map<String, String> workers = PlannerSupport.testStampWorkerJars(cli, project);
             // The monorepo product path must supply a jar so pure-jk nested isolation still
             // gets -Djk.engine.jar without a workspace *-all.jar.
             assertThat(workers)

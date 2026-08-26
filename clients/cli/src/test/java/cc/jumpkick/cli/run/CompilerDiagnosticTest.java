@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Width;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -22,7 +23,7 @@ class CompilerDiagnosticTest {
     }
 
     private static String plain(String rendered) {
-        return cc.jumpkick.terminal.Width.stripAnsi(rendered == null ? "" : rendered);
+        return Width.stripAnsi(rendered == null ? "" : rendered);
     }
 
     @Test

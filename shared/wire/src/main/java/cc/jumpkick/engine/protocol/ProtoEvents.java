@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.Redacted;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.util.List;
 
 /**
@@ -144,7 +149,7 @@ public final class ProtoEvents {
             double progressPercent) {
         String prog = Double.isNaN(progressPercent)
                 ? progressPercent(numerator, denominator)
-                : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progressPercent);
+                : WorkspaceProgressTracker.progressToken(progressPercent);
         return "{\"schema\":1,\"type\":\""
                 + EngineProtocol.WORKSPACE_PROGRESS
                 + "\",\"dir\":"
@@ -253,8 +258,7 @@ public final class ProtoEvents {
      * JSON token {@code null} when {@code denominator <= 0}.
      */
     static String progressPercent(long numerator, long denominator) {
-        return cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(
-                cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(numerator, denominator));
+        return WorkspaceProgressTracker.progressToken(WorkspaceProgressTracker.percentOf(numerator, denominator));
     }
 
     public static String progress(
@@ -326,23 +330,7 @@ public final class ProtoEvents {
     private static String diagnosticLike(
             String type, String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnosticLike(
-                type,
-                dir,
-                step,
-                code,
-                message,
-                test,
-                exceptionClass,
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                0,
-                0,
-                java.util.List.of(),
-                0);
+                type, dir, step, code, message, test, exceptionClass, "", "", "", "", "", "", 0, 0, List.of(), 0);
     }
 
     /**
@@ -379,7 +367,7 @@ public final class ProtoEvents {
                 "",
                 0,
                 0,
-                java.util.List.of(),
+                List.of(),
                 0);
     }
 
@@ -399,7 +387,7 @@ public final class ProtoEvents {
             String file,
             int line,
             int snippetStart,
-            java.util.List<String> snippet,
+            List<String> snippet,
             int worker) {
         StringBuilder b = new StringBuilder(256);
         b.append("{\"type\":")
@@ -416,8 +404,10 @@ public final class ProtoEvents {
         if (module != null && !module.isEmpty()) b.append(",\"module\":").append(Jsonl.quote(module));
         if (engine != null && !engine.isEmpty()) b.append(",\"engine\":").append(Jsonl.quote(engine));
         if (className != null && !className.isEmpty()) {
-            b.append(",\"testClass\":").append(Jsonl.quote(className));
-            b.append(",\"class\":").append(Jsonl.quote(className));
+            b.append(",\"")
+                    .append(EngineProtocol.TEST_CLASS_FIELD)
+                    .append("\":")
+                    .append(Jsonl.quote(className));
         }
         if (method != null && !method.isEmpty()) b.append(",\"method\":").append(Jsonl.quote(method));
         if (exceptionClass != null && !exceptionClass.isEmpty())
@@ -480,8 +470,7 @@ public final class ProtoEvents {
     }
 
     /** Full test-failure error line including optional source snippet. */
-    public static String errorLine(
-            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+    public static String errorLine(String dir, String step, String code, String message, TestFailureInfo failure) {
         if (failure == null) return errorLine(dir, step, code, message, "", "");
         return diagnosticLike(
                 EngineProtocol.ERROR_LINE,
@@ -534,8 +523,7 @@ public final class ProtoEvents {
                 stack);
     }
 
-    public static String planDiagnostic(
-            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+    public static String planDiagnostic(String dir, String step, String code, String message, TestFailureInfo failure) {
         if (failure == null) return planDiagnostic(dir, step, code, message, "", "");
         return diagnosticLike(
                 EngineProtocol.BUILDPLAN_DIAGNOSTIC,
@@ -601,10 +589,12 @@ public final class ProtoEvents {
 
     /**
      * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk test} run's counts
-     * (total/succeeded/failed/skipped) — absent (-1) for a plain {@code buildWorkspace} plan-finish.
-     * Bundled into the same message rather than a separate terminal one because the client must know
-     * these counts <em>before</em> dispatching this event to its console listener: the listener's own
-     * {@code planFinish} handler is what renders the "Passed N tests" summary line.
+     * as the one {@link TestSummary#WIRE_KEY} object — omitted entirely (rather than written as -1)
+     * for a plain {@code buildWorkspace} plan-finish, which is how the client tells "no test phase"
+     * from "zero tests ran". Bundled into the same message rather than a separate terminal one
+     * because the client must know these counts <em>before</em> dispatching this event to its
+     * console listener: the listener's own {@code planFinish} handler is what renders the
+     * "Passed N tests" summary line.
      */
     public static String planFinish(
             String dir, boolean success, long total, long succeeded, long failed, long skipped) {
@@ -629,15 +619,19 @@ public final class ProtoEvents {
                 + success
                 + ",\"buildOutcome\":"
                 + Jsonl.quote(buildOutcome)
-                + ",\"testTotal\":"
-                + total
-                + ",\"testSucceeded\":"
-                + succeeded
-                + ",\"testFailed\":"
-                + failed
-                + ",\"testSkipped\":"
-                + skipped
+                + testCounts(total, succeeded, failed, skipped)
                 + "}";
+    }
+
+    /**
+     * The one encoding of test counts on the wire: {@code ,"tests":{…}} when a test phase ran, the
+     * empty string when it did not. Every {@code plan-finish} flavour splices this — a second
+     * spelling cannot appear without deleting this method.
+     */
+    private static String testCounts(long total, long succeeded, long failed, long skipped) {
+        return total < 0
+                ? ""
+                : ",\"" + TestSummary.WIRE_KEY + "\":" + TestSummary.countsJson(total, succeeded, failed, skipped);
     }
 
     /**
@@ -793,11 +787,9 @@ public final class ProtoEvents {
     /**
      * Terminal for {@link EngineProtocol#PROVISION_REQUEST}. {@code bin} is the provisioned tool's launcher path
      * ({@code null} on failure); {@code source}/{@code version} feed the client's one-line
-     * "Maven X downloaded" note; {@code diag} is the worker's passthrough chatter, carried only when
-     * {@code exit != 0}.
+     * "Maven X downloaded" note; {@code error} carries the failure text when {@code exit != 0}.
      */
-    public static String provisionResult(
-            String bin, String version, String source, String error, int exit, String diag) {
+    public static String provisionResult(String bin, String version, String source, String error, int exit) {
         return "{\"type\":\""
                 + EngineProtocol.PROVISION_RESULT
                 + "\",\"bin\":"
@@ -810,31 +802,26 @@ public final class ProtoEvents {
                 + Jsonl.quote(error)
                 + ",\"exit\":"
                 + exit
-                + ",\"diag\":"
-                + Jsonl.quote(diag)
                 + "}";
     }
 
     /**
      * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk format} run's
-     * counts and the formatter worker's exit code ({@code jk format --check} exits non-zero when
-     * files need formatting — a legitimate outcome, not a plan failure, so it rides here rather
-     * than failing the plan). {@code total} of 0 means no sources were found.
+     * source total and the formatter worker's exit code ({@code jk format --check} exits non-zero
+     * when files need formatting — a legitimate outcome, not a plan failure, so it rides here
+     * rather than failing the plan). {@code total} of 0 means no sources were found. The
+     * changed/clean/errors tallies deliberately do not ride this event: the CLI tallies all five
+     * summary categories from the per-file
+     * {@code format-file} stream, and a second wire tally that cannot express the fifth category
+     * only invites a reader to trust the number that disagrees with what the CLI prints.
      */
-    public static String planFinishFormat(
-            String dir, boolean success, int changed, int clean, int errors, int total, int workerExit) {
+    public static String planFinishFormat(String dir, boolean success, int total, int workerExit) {
         return "{\"type\":\""
                 + EngineProtocol.BUILDPLAN_FINISH
                 + "\",\"kind\":\"format\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
                 + success
-                + ",\"formatChanged\":"
-                + changed
-                + ",\"formatClean\":"
-                + clean
-                + ",\"formatErrors\":"
-                + errors
                 + ",\"formatTotal\":"
                 + total
                 + ",\"formatWorkerExit\":"
@@ -908,10 +895,10 @@ public final class ProtoEvents {
     public static String planFinishImage(
             String dir,
             boolean success,
-            long testTotal,
-            long testSucceeded,
-            long testFailed,
-            long testSkipped,
+            long total,
+            long succeeded,
+            long failed,
+            long skipped,
             String ref,
             String tarball,
             String name,
@@ -923,14 +910,7 @@ public final class ProtoEvents {
                 + Jsonl.quote(dir)
                 + ",\"success\":"
                 + success
-                + ",\"testTotal\":"
-                + testTotal
-                + ",\"testSucceeded\":"
-                + testSucceeded
-                + ",\"testFailed\":"
-                + testFailed
-                + ",\"testSkipped\":"
-                + testSkipped
+                + testCounts(total, succeeded, failed, skipped)
                 + ",\"imageRef\":"
                 + Jsonl.quote(ref)
                 + ",\"imageTarball\":"
@@ -977,7 +957,7 @@ public final class ProtoEvents {
             long millis,
             boolean didWork,
             boolean cancelled,
-            cc.jumpkick.runtime.ModuleOutcome.Image image) {
+            ModuleOutcome.Image image) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\"type\":\"")
                 .append(EngineProtocol.MODULE_FINISH)
@@ -1006,15 +986,18 @@ public final class ProtoEvents {
         return sb.append('}').toString();
     }
 
-    public static String workspaceFinish(boolean success, int exitCode, List<String> errors) {
-        return workspaceFinish(success, exitCode, errors, false);
-    }
-
     /**
      * Workspace terminal. {@code cancelled} is additive so clients can settle as
      * "cancelled" rather than treating a user kill as a crash/disconnect.
+     *
+     * <p>{@code errors} is {@link Redacted}, not {@code String}, and that is load-bearing: these
+     * rows are raw worker output, {@code .env} values are secret by source, and this line reaches
+     * the user's terminal verbatim. Three of the four engine verbs that emit this event used to
+     * forget the masking call, which a {@code List<String>} parameter could not distinguish from
+     * the one that remembered (JK-2387). {@link cc.jumpkick.config.SecretRedactor#redactAll} is the
+     * only mint, so forgetting is now a compile error.
      */
-    public static String workspaceFinish(boolean success, int exitCode, List<String> errors, boolean cancelled) {
+    public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
         return "{\"type\":\""
                 + EngineProtocol.WORKSPACE_FINISH
                 + "\",\"success\":"
@@ -1022,7 +1005,7 @@ public final class ProtoEvents {
                 + ",\"exitCode\":"
                 + exitCode
                 + ",\"errors\":"
-                + EngineProtocol.quoteArray(errors)
+                + EngineProtocol.quoteArray(errors.stream().map(Redacted::text).toList())
                 + ",\"cancelled\":"
                 + cancelled
                 + "}";
@@ -1030,12 +1013,9 @@ public final class ProtoEvents {
 
     /**
      * Append {@code "cancelled":true|false} to a plan-finish (or similar) JSON object. Additive
-     * field for without churning every {@code planFinish*} overload.
+     * field, so the {@code planFinish*} overloads do not each grow one.
      */
     public static String withCancelled(String jsonLine, boolean cancelled) {
-        if (jsonLine == null || jsonLine.isEmpty()) return jsonLine;
-        int end = jsonLine.lastIndexOf('}');
-        if (end <= 0) return jsonLine;
-        return jsonLine.substring(0, end) + ",\"cancelled\":" + cancelled + "}";
+        return Jsonl.append(jsonLine, "\"cancelled\":" + cancelled);
     }
 }

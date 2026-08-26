@@ -70,8 +70,8 @@ public final class ForgeAuthConfig {
      */
     public static ForgeAuthConfig discover(Path startDir, boolean noConfig, Optional<Path> explicitConfigFile) {
         ForgeAuthConfig out = empty();
-        for (Path layer :
-                ConfigSources.discover(startDir, noConfig, explicitConfigFile).layers()) {
+        for (Path layer : ConfigSources.discover(startDir, noConfig, explicitConfigFile.orElse(null))
+                .layers()) {
             out = out.mergedWith(loadFrom(layer));
         }
         return out;

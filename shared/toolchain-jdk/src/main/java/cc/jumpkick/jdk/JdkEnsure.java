@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -8,6 +10,8 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import cc.jumpkick.config.BuildEnv;
+import java.util.function.UnaryOperator;
 
 /**
  * Resolve-or-install a project JDK for {@code jk sync} via {@link JdkResolution}. Missing pins
@@ -74,7 +78,7 @@ public final class JdkEnsure {
                 jdksDirOverride,
                 (build != null && build.project() != null) ? build.project().jdk() : null,
                 (build != null && build.project() != null) ? build.project().javaRelease() : 0,
-                lock != null ? lock.jdk() : null,
+                lock == null ? null : lock.jdk(),
                 warn,
                 allowInstall,
                 progress);
@@ -83,14 +87,14 @@ public final class JdkEnsure {
     /**
      * Scalar variant for thin-client callers holding an engine {@code ProjectInfo} rather than a
      * parsed model — {@code JdkEnsure} only ever read three values off the model: the project's
-     * {@code jdk} spec, its {@code java} release floor, and the lock's pinned install id.
+     * {@code jdk} spec, its {@code java} release floor, and the lock {@code [jdk]} pin.
      */
     public static Outcome ensure(
             Path projectDir,
             Path jdksDirOverride,
             String projectJdkSpec,
             int javaRelease,
-            String lockJdkId,
+            Lockfile.JdkPin lockJdk,
             Consumer<String> warn,
             boolean allowInstall)
             throws IOException, InterruptedException {
@@ -99,14 +103,14 @@ public final class JdkEnsure {
                 jdksDirOverride,
                 projectJdkSpec,
                 javaRelease,
-                lockJdkId,
+                lockJdk,
                 warn,
                 allowInstall,
                 JdkInstallListener.NO_OP);
     }
 
     /**
-     * As {@link #ensure(Path, Path, String, int, String, java.util.function.Consumer, boolean)}
+     * As {@link #ensure(Path, Path, String, int, Lockfile.JdkPin, java.util.function.Consumer, boolean)}
      * with a progress sink for a missing-JDK install (TUI {@code downloading}/{@code installing}
      * labels). Already-on-disk resolution does not call {@code progress}.
      */
@@ -115,7 +119,7 @@ public final class JdkEnsure {
             Path jdksDirOverride,
             String projectJdkSpec,
             int javaRelease,
-            String lockJdkId,
+            Lockfile.JdkPin lockJdk,
             Consumer<String> warn,
             boolean allowInstall,
             JdkInstallListener progress)
@@ -126,14 +130,19 @@ public final class JdkEnsure {
 
         // Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version /
         // jk-lock.toml / project.jdk / project.java-floor / default / env / PATH).
+        // The environment is the request's, never this process's: the engine is a daemon, so
+        // System.getenv here would answer from whichever shell started it (JK-1021).
+        UnaryOperator<String> env = projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
         JdkResolution.Request req = new JdkResolution.Request(
                 projectDir,
-                cc.jumpkick.config.SessionContext.current().jdkSpec(),
-                System.getenv("JK_JDK"),
-                (lockJdkId == null || lockJdkId.isEmpty()) ? null : lockJdkId,
+                SessionContext.current().jdkSpec(),
+                // null: the client folded JK_JDK into the switch tier before sending, and a
+                // read here would be the daemon's environment (JK-1021).
+                null,
+                lockJdk,
                 (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,
                 javaRelease,
-                System::getenv);
+                env::apply);
         JdkResolution.Resolved r = JdkResolution.resolve(req, registry, defaults, latestLts);
 
         if (r.jdk().isPresent()) {
@@ -185,7 +194,7 @@ public final class JdkEnsure {
             throws IOException, InterruptedException {
         if (!HostPlatform.supported()) {
             throw new IOException("host "
-                    + System.getProperty("os.name")
+                    + Os.name()
                     + "/"
                     + System.getProperty("os.arch")
                     + " is not covered by the JetBrains JDK feed (set JAVA_HOME explicitly)");

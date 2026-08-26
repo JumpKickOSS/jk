@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,7 +34,7 @@ public final class WorkspaceLoader {
         List<String> bad = new ArrayList<>();
         for (String module : root.workspace().modules()) {
             Path moduleDir = workspaceRoot.resolve(module).normalize();
-            Path moduleJkToml = moduleDir.resolve("jk.toml");
+            Path moduleJkToml = moduleDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(moduleJkToml)) {
                 bad.add(module);
                 continue;

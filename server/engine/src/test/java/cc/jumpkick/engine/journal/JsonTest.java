@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -131,17 +132,97 @@ class JsonTest {
     }
 
     @Test
-    void reads_an_older_record_that_predates_the_benefit_and_io_fields() {
-        // A pre-benefit record.json (no "benefit"/"io" keys) must still parse, both reading null.
-        String legacy = "{\"id\":\"old-1\",\"buildNumber\":7,\"schema\":2,\"kind\":\"build\","
+    void reads_a_record_without_the_additive_benefit_and_io_fields() {
+        // No "benefit"/"io" keys: both read null, and every other field still parses. The task
+        // rows are populated on purpose — an empty array would enter readSteps' loop zero times
+        // and assert nothing about how a task row is decoded.
+        String raw = "{\"id\":\"old-1\",\"buildNumber\":7,\"schema\":2,\"kind\":\"build\","
                 + "\"dir\":\"/p\",\"coord\":\"g:a\",\"startedAt\":0,\"finishedAt\":10,\"millis\":10,"
                 + "\"success\":true,\"cancelled\":false,\"exitCode\":0,\"jkVersion\":\"9\","
-                + "\"tests\":null,\"modules\":[],\"steps\":[],\"diagnostics\":[],"
+                + "\"tests\":null,"
+                + "\"modules\":[{\"coord\":\"g:a\",\"dir\":\"/p\",\"success\":true,\"exitCode\":0,"
+                + "\"millis\":10,\"tasks\":[{\"name\":\"jar\",\"stage\":\"package\",\"status\":\"SUCCESS\","
+                + "\"millis\":4}]}],"
+                + "\"tasks\":[{\"name\":\"compile-java\",\"stage\":\"compile\",\"status\":\"SUCCESS\","
+                + "\"millis\":6},{\"name\":\"run-tests\",\"stage\":\"test\",\"status\":\"FAIL\"}],"
+                + "\"diagnostics\":[],"
                 + "\"trigger\":\"cli\",\"commit\":\"deadbee\"}";
-        BuildRecord back = Json.read(legacy);
+        BuildRecord back = Json.read(raw);
         assertThat(back.id()).isEqualTo("old-1");
         assertThat(back.success()).isTrue();
         assertThat(back.benefit()).isNull();
         assertThat(back.io()).isNull();
+        assertThat(back.steps())
+                .extracting(BuildRecord.Task::name, BuildRecord.Task::stage, BuildRecord.Task::status)
+                .containsExactly(tuple("compile-java", "compile", "SUCCESS"), tuple("run-tests", "test", "FAIL"));
+        // Absent millis is unknown (-1), never 0 — 0 is the true-no-op the dashboard renders dashed.
+        assertThat(back.steps()).extracting(BuildRecord.Task::millis).containsExactly(6L, -1L);
+        assertThat(back.modules()).hasSize(1);
+        assertThat(back.modules().get(0).steps())
+                .extracting(BuildRecord.Task::name, BuildRecord.Task::stage)
+                .containsExactly(tuple("jar", "package"));
+    }
+
+    @Test
+    void writes_each_diagnostic_field_under_exactly_one_name_and_reads_it_back() {
+        BuildRecord.Diag diag = new BuildRecord.Diag(
+                "error",
+                "/proj",
+                "run-tests",
+                "test-failure",
+                "expected 1 but was 2",
+                "com.example.AppTest#adds",
+                "org.opentest4j.AssertionFailedError",
+                "com.example:app",
+                "junit",
+                "com.example.AppTest",
+                "adds()",
+                "at com.example.AppTest.adds(AppTest.java:12)");
+        BuildRecord original = record(List.of(diag));
+
+        String json = Json.write(original);
+
+        assertThat(countOf(json, "\"testClass\"")).isOne();
+        assertThat(json).doesNotContain("\"class\"").doesNotContain("\"throwable\"");
+        assertThat(countOf(json, "\"task\"")).isOne();
+        assertThat(countOf(json, "\"stack\"")).isOne();
+        assertThat(countOf(json, "\"exceptionClass\"")).isOne();
+
+        BuildRecord.Diag back = Json.read(json).diagnostics().get(0);
+        assertThat(back).isEqualTo(diag);
+    }
+
+    private static BuildRecord record(List<BuildRecord.Diag> diagnostics) {
+        return new BuildRecord(
+                "20260710T143022417-abcd",
+                1,
+                BuildRecord.SCHEMA,
+                "build",
+                "/proj",
+                "com.example:app",
+                null,
+                0,
+                10,
+                10,
+                false,
+                false,
+                1,
+                "9.9",
+                null,
+                List.of(),
+                List.of(new BuildRecord.Task("run-tests", "test", "FAIL", 10)),
+                diagnostics,
+                "cli",
+                "abc1234",
+                null,
+                false,
+                null,
+                0L);
+    }
+
+    private static int countOf(String haystack, String needle) {
+        int n = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) n++;
+        return n;
     }
 }

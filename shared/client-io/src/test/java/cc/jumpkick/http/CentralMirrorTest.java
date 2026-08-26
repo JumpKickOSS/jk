@@ -3,6 +3,7 @@ package cc.jumpkick.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.util.JkDirs;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -113,6 +114,15 @@ class CentralMirrorTest {
         off.noteRateLimited();
         assertThat(off.active()).isFalse();
         assertThat(off.route(CENTRAL)).isEqualTo(CENTRAL);
+    }
+
+    @Test
+    void the_window_has_exactly_one_owner_on_one_directory() {
+        // Both legs of a build act on this window, so two instances on two directories would leave the
+        // wholesale switch sticky for only one of them. One instance, one stamp, one fact.
+        assertThat(CentralMirror.standard()).isSameAs(CentralMirror.standard());
+        assertThat(CentralMirror.standard().stampFile())
+                .isEqualTo(JkDirs.cache().resolve("central-rate-limited.stamp"));
     }
 
     @Test

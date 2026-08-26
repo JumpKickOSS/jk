@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicZip;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -31,13 +33,8 @@ public final class JarPackager {
 
         try (OutputStream out = Files.newOutputStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
-            long epoch = request.timestampEpochSeconds();
-            // Write the manifest ourselves as the first entry with a fixed
-            // timestamp. The JarOutputStream(out, manifest) convenience
-            // constructor stamps the manifest with the *current* time, which is
-            // the one thing that makes an otherwise-identical jar churn every
-            // build (every other entry below is pinned to the fixed epoch).
-            DeterministicJar.writeManifest(jos, manifest, epoch);
+            DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
+            zip.writeManifest(jos, manifest);
 
             List<Path> files = collectFiles(request.inputDir());
             // Sort by relative path for deterministic entry order.
@@ -48,18 +45,18 @@ public final class JarPackager {
             for (Path file : files) {
                 String name = normalize(request.inputDir(), file);
                 if (name.equals("META-INF/MANIFEST.MF")) continue; // already written
-                if (DeterministicJar.isBuildStamp(name)) continue; // build-host artefact, not jar content
+                if (BuildStamps.isStampFile(name)) continue; // build-host artefact, not jar content
                 written.add(name);
-                DeterministicJar.writeParentDirs(jos, name, epoch, dirs);
-                DeterministicJar.writeEntry(jos, name, file, epoch);
+                zip.writeParentDirs(jos, name, dirs);
+                zip.writeEntry(jos, name, file);
             }
 
             // Generated entries (e.g. the CycloneDX SBOM) — sorted for reproducibility;
             // filesystem content wins on a path collision.
             for (Map.Entry<String, byte[]> e : new TreeMap<>(request.extraEntries()).entrySet()) {
                 if (written.contains(e.getKey())) continue;
-                DeterministicJar.writeParentDirs(jos, e.getKey(), epoch, dirs);
-                DeterministicJar.writeEntry(jos, e.getKey(), e.getValue(), epoch);
+                zip.writeParentDirs(jos, e.getKey(), dirs);
+                zip.writeEntry(jos, e.getKey(), e.getValue());
             }
         }
         return request.outputJar();

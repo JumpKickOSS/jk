@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.RepositoryToml.VarPolicy.STRICT;
+
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,9 +16,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Client-side line scanner for {@code [repositories]} (credentials must resolve client-side;
- * secrets never ride the wire). Exotic TOML → absent entry; {@code ${ENV}} is strict via
- * {@link RepositoryToml#interpolate}.
+ * Client-side line scanner for {@code [repositories]}. It exists because credentials must resolve
+ * on the client — secrets never ride the wire — and {@code checkCliNoParseTypes} keeps the full
+ * parser off the native image (JK-2151), so the CLI cannot reach
+ * {@link RepositoryToml#repositories}. Exotic TOML → absent entry, never a wrong value.
+ *
+ * <p>It is a second <em>substrate</em>, not a second reader: the meaning of a
+ * {@code token}/{@code username}/{@code password} triple comes from
+ * {@link RepositoryToml#credentialOf} and the {@code ${ENV}} rule from
+ * {@link RepositoryToml.VarPolicy#STRICT}, both shared with the tomlj reader.
  */
 public final class RepositoriesScan {
 
@@ -83,7 +92,7 @@ public final class RepositoriesScan {
                     String pw = null;
                     Matcher m = PAIR.matcher(rest);
                     while (m.find()) {
-                        String v = unescape(m.group(2));
+                        String v = MinimalToml.unquote('"' + m.group(2) + '"');
                         switch (m.group(1)) {
                             case "url" -> u = v;
                             case "token" -> t = v;
@@ -107,31 +116,13 @@ public final class RepositoriesScan {
     private static void commit(
             List<Repo> out, String name, String url, String token, String username, String password) {
         if (name == null || url == null || url.isBlank()) return;
-        Optional<RepoCredential> credential = Optional.empty();
-        String t = interp(token);
-        String u = interp(username);
-        if (t != null && !t.isBlank()) {
-            credential = Optional.of(new RepoCredential.Bearer(t));
-        } else if (u != null && !u.isBlank()) {
-            String p = interp(password);
-            credential = Optional.of(new RepoCredential.Basic(u, p == null ? "" : p));
-        }
-        out.add(new Repo(name, url, credential));
-    }
-
-    /** Strict {@code ${ENV}} interpolation, matching the full parser's publish semantics. */
-    private static String interp(String raw) {
-        return RepositoryToml.interpolate(raw, var -> {
-            String val = System.getenv(var);
-            if (val == null) {
-                throw new JkBuildParseException(
-                        "repository credential references unset environment variable ${" + var + "}");
-            }
-            return val;
-        });
-    }
-
-    private static String unescape(String s) {
-        return s.replace("\\\"", "\"").replace("\\\\", "\\");
+        String where = "repositories." + name;
+        out.add(new Repo(
+                name,
+                url,
+                RepositoryToml.credentialOf(
+                        RepositoryToml.interpolate(token, STRICT, where),
+                        RepositoryToml.interpolate(username, STRICT, where),
+                        RepositoryToml.interpolate(password, STRICT, where))));
     }
 }

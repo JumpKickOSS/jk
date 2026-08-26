@@ -4,10 +4,11 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.Width;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /** the shared list-command table renderer. */
@@ -28,9 +29,9 @@ class BoxTableRenderTest {
 
     @Test
     void header_cells_are_italic_when_ansi() {
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
+        if (!Theme.active().isAnsi()) return;
         String cell = Table.headerCell("Name");
-        assertThat(cell).isEqualTo(cc.jumpkick.cli.theme.Theme.colorize("Name", Style.EMPTY.italic()));
+        assertThat(cell).isEqualTo(Theme.colorize("Name", Style.EMPTY.italic()));
         // Full table: header row (index 2) carries italic; body does not restyle plain cells.
         List<String> out = Table.render("T", List.of("Name"), List.of(List.of("alpha")));
         assertThat(out.get(2)).contains(Table.headerCell("Name"));
@@ -49,7 +50,7 @@ class BoxTableRenderTest {
 
     /** Visible terminal columns of a line once ANSI chrome is stripped (wcwidth-aware). */
     private static int visibleColumns(String s) {
-        return cc.jumpkick.terminal.Width.columns(TestAnsi.strip(s));
+        return Width.columns(TestAnsi.strip(s));
     }
 
     private static void assertUniformWidth(List<String> out) {
@@ -69,7 +70,7 @@ class BoxTableRenderTest {
     void plain_mode_ellipsis_cells_stay_aligned() throws Exception {
         // PlainAscii expands … → ... at the print boundary; render must account for the
         // expanded width up front so rows with truncated cells keep the rails aligned.
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             List<String> out = Table.render(
                     "Build history",
                     List.of("Id", "Project"),
@@ -109,7 +110,7 @@ class BoxTableRenderTest {
     void no_ansi_output_is_pure_ascii_for_history_tasks_library_glyphs() throws Exception {
         // ⊛ (history cancelled), — (Tasks/Library-search titles + n/a durations), … (truncation)
         // must all be rewritten before the "ASCII-only" plain output leaves the renderer.
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             List<String> out = Table.render(
                     "Tasks — g:n (path)",
                     List.of("", "Id", "Took"),
@@ -121,16 +122,6 @@ class BoxTableRenderTest {
             assertUniformWidth(out);
             return null;
         });
-    }
-
-    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        cc.jumpkick.config.JkConfig noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
-        cc.jumpkick.config.Session original = cc.jumpkick.config.SessionContext.current();
-        try {
-            return cc.jumpkick.config.SessionContext.where(original.withConfig(noAnsi), body::get);
-        } finally {
-            cc.jumpkick.config.SessionContext.install(original);
-        }
     }
 
     @Test

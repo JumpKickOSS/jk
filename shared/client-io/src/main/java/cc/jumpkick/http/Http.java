@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -74,7 +75,7 @@ public final class Http {
 
     /** Visible for tests — lets the caller shrink the backoff schedule. */
     Http(HttpClient client, Duration[] backoffs) {
-        this(client, backoffs, CentralMirror.standard(cc.jumpkick.util.JkDirs.cache()));
+        this(client, backoffs, CentralMirror.standard());
     }
 
     /** Visible for tests — injects the Central failover so its window can be driven deterministically. */
@@ -280,11 +281,14 @@ public final class Http {
                 lastIo = e;
             }
         }
+        // SafeUri, not the URI: a repository declared as https://user:token@host/ would otherwise
+        // put its credential into every exhausted-retry message, which is journalled text.
+        String shown = SafeUri.forMessage(uri);
         if (lastIo != null) {
-            throw new IOException(verb + " " + uri + " failed after " + (backoffs.length + 1) + " attempts", lastIo);
+            throw new IOException(verb + " " + shown + " failed after " + (backoffs.length + 1) + " attempts", lastIo);
         }
         throw new IOException(
-                verb + " " + uri + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
+                verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
     }
 
     private static long jittered(Duration base) {
@@ -358,7 +362,7 @@ public final class Http {
      * calling Http entirely in offline mode or catch this and substitute a cache lookup.
      */
     private static void checkOffline(URI uri) throws OfflineException {
-        if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
+        if (SessionContext.current().config().offlineOr(false)) {
             throw new OfflineException(uri);
         }
     }

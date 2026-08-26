@@ -10,9 +10,6 @@ import java.util.Locale;
  */
 public enum EventType {
 
-    /** Emitted once at the start of a run. Payload: {@code {ts, engines:[...]}}. */
-    PLAN_STARTED,
-
     /**
      * A test or container is about to execute. Payload: {@code {id, display, parent, type, source}}.
      */
@@ -26,9 +23,6 @@ public enum EventType {
 
     /** A dynamic test was registered (e.g. {@code @TestFactory}). Payload: {@code {id, parent}}. */
     DYNAMIC_REGISTERED,
-
-    /** A test published a {@code ReportEntry}. Payload: {@code {id, entries:{}}}. */
-    REPORT,
 
     /**
      * Emitted once per top-level test class during discovery (one-shot, list-only, and parallel modes
@@ -63,7 +57,7 @@ public enum EventType {
      */
     PLAN_FINISHED;
 
-    /** Lowercase wire form, e.g. {@code "plan_started"}. */
+    /** Lowercase wire form, e.g. {@code "plan_finished"}. */
     public String wire() {
         return name().toLowerCase(Locale.ROOT);
     }

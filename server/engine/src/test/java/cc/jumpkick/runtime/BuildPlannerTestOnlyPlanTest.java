@@ -5,13 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Variants;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.util.Hashing;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,11 +60,8 @@ class BuildPlannerTestOnlyPlanTest {
         Path dir = pluginProject();
         // Mirror coreBuilder's parse: variant overlays fold into plugin configs BEFORE the
         // describe key is computed, so the seeded cache file must use the same effective build.
-        JkBuild build = cc.jumpkick.plugin.manifest.VariantApply.apply(
-                        JkBuildParser.reparse(dir.resolve("jk.toml")),
-                        dir,
-                        cc.jumpkick.model.Variants.Selection.parse(""),
-                        Map.of())
+        JkBuild build = VariantApply.apply(
+                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
                 .build();
         seedDescribeCache(
                 dir,
@@ -107,7 +107,7 @@ class BuildPlannerTestOnlyPlanTest {
 
         BuildPlanner.Inputs testOnly = inputs(dir, true, false);
         BuildPlan.Builder tb = BuildPlanner.coreBuilder(testOnly);
-        BuildPlanner.appendDeclaredTails(tb, testOnly);
+        PlannerTails.appendDeclaredTails(tb, testOnly);
         Set<String> testNames = tb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(testNames)
                 .as("test plan terminates at run-tests; no assembly tail, no package-jar")
@@ -116,7 +116,7 @@ class BuildPlannerTestOnlyPlanTest {
 
         BuildPlanner.Inputs compileOnly = inputs(dir, false, true);
         BuildPlan.Builder cb = BuildPlanner.coreBuilder(compileOnly);
-        BuildPlanner.appendDeclaredTails(cb, compileOnly);
+        PlannerTails.appendDeclaredTails(cb, compileOnly);
         Set<String> compileNames =
                 cb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(compileNames)
@@ -205,9 +205,9 @@ class BuildPlannerTestOnlyPlanTest {
                 java = 25
                 """);
         BuildPlanner.Inputs in = inputs(dir, false, false);
-        cc.jumpkick.run.BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
         // Tails keep the test branch in a full plan (JK-2211 terminal join).
-        BuildPlanner.appendDeclaredTails(b, in);
+        PlannerTails.appendDeclaredTails(b, in);
         var plan = b.build();
         var compileTest = plan.steps().stream()
                 .filter(s -> s.name().equals(TaskNames.COMPILE_TEST))
@@ -273,8 +273,8 @@ class BuildPlannerTestOnlyPlanTest {
         // Full plans need the tails: since JK-2211 run-tests is a terminal-join leaf, not a
         // packaging prerequisite, and a core-only build would prune the whole test branch.
         BuildPlanner.Inputs in = inputs(dir, testOnly, false);
-        cc.jumpkick.run.BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
-        if (!testOnly) BuildPlanner.appendDeclaredTails(b, in);
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
+        if (!testOnly) PlannerTails.appendDeclaredTails(b, in);
         return b.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
     }
 
@@ -294,7 +294,7 @@ class BuildPlannerTestOnlyPlanTest {
                 testOnly,
                 compileOnly,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
     }
 
     private static Path writePluginJar(Path jar) throws Exception {

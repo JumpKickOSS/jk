@@ -3,20 +3,21 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -40,7 +41,7 @@ final class PathSourceMaterializer {
 
     /** Directory names never contributing to the fingerprint (build outputs, VCS/tool metadata). */
     private static final Set<String> IGNORED_DIRS =
-            Set.of("build", "target", "out", ".git", ".gradle", ".idea", "node_modules");
+            Set.of("build", BuildLayout.TARGET, "out", ".git", ".gradle", ".idea", "node_modules");
 
     /** Outcome: the published coordinate and the {@code file://} repo. */
     record Materialized(String group, String artifact, String version, URI repoUrl) {
@@ -58,7 +59,7 @@ final class PathSourceMaterializer {
 
     /** Production wiring: caches under {@code $JK_CACHE_DIR}. */
     PathSourceMaterializer(Path lockRootDir, Cas cas, RepoGroup buildRepos, Path javaHome, String jkVersion) {
-        this(lockRootDir, JkDirs.cache().resolve("path-artifacts"), cas, buildRepos, javaHome, jkVersion);
+        this(lockRootDir, CacheTree.PATH_ARTIFACTS.under(JkDirs.cache()), cas, buildRepos, javaHome, jkVersion);
     }
 
     Materialized materialize(PathSource source) throws IOException, InterruptedException {
@@ -74,7 +75,7 @@ final class PathSourceMaterializer {
         Path repo = fpDir.resolve("repo");
         Path marker = fpDir.resolve("coordinate.txt");
 
-        boolean isJk = Files.isRegularFile(projectDir.resolve("jk.toml"));
+        boolean isJk = Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST));
 
         // Coordinate: read cheaply from a jk target's project identity; a foreign target reveals it only
         // after building (cached in the marker for a fingerprint hit).
@@ -82,15 +83,15 @@ final class PathSourceMaterializer {
         String artifact = null;
         String version = null;
         if (isJk) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve("jk.toml")));
+            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
             group = project.project().group();
             artifact = project.project().name();
             version = project.project().version();
         } else if (Files.isRegularFile(marker)) {
-            String[] gav = Files.readString(marker).strip().split(":", 3);
-            group = gav[0];
-            artifact = gav[1];
-            version = gav[2];
+            GitSourceMaterializer.Gav cached = GitSourceMaterializer.readCoordinateMarker(marker);
+            group = cached.group();
+            artifact = cached.artifact();
+            version = cached.version();
         }
 
         if (group != null
@@ -104,7 +105,9 @@ final class PathSourceMaterializer {
                 SourceProjectBuilder.build(projectDir, null, javaHome, cas, buildRepos, jkVersion);
         GitSourceMaterializer.installArtifact(
                 repo, built.group(), built.artifact(), built.version(), built.jar(), built.pomXml());
-        Files.writeString(marker, built.coordinate() + ":" + built.version());
+        if (!isJk) {
+            GitSourceMaterializer.writeCoordinateMarker(marker, built);
+        }
         return new Materialized(built.group(), built.artifact(), built.version(), repo.toUri());
     }
 
@@ -125,16 +128,16 @@ final class PathSourceMaterializer {
                 if (!Files.isRegularFile(p)) continue;
                 Path rel = projectDir.relativize(p);
                 if (isIgnored(rel)) continue;
-                lines.add(rel.toString().replace('\\', '/') + "\0" + Files.size(p) + "\0" + sha256File(p));
+                lines.add(rel.toString().replace('\\', '/') + "\0" + Files.size(p) + "\0" + Hashing.sha256Hex(p));
             }
         }
         lines.sort(null);
-        MessageDigest md = sha256();
+        MessageDigest md = Hashing.newSha256();
         for (String line : lines) {
             md.update(line.getBytes(StandardCharsets.UTF_8));
             md.update((byte) '\n');
         }
-        return HexFormat.of().formatHex(md.digest()).substring(0, 24);
+        return Hashing.hex(md.digest()).substring(0, 24);
     }
 
     private static boolean isIgnored(Path relativePath) {
@@ -144,25 +147,7 @@ final class PathSourceMaterializer {
         return false;
     }
 
-    private static String sha256File(Path file) throws IOException {
-        MessageDigest md = sha256();
-        try (InputStream in = Files.newInputStream(file)) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                md.update(buf, 0, n);
-            }
-        }
-        return HexFormat.of().formatHex(md.digest());
-    }
-
     private static String shortHash(String value) {
-        return HexFormat.of()
-                .formatHex(sha256().digest(value.getBytes(StandardCharsets.UTF_8)))
-                .substring(0, 16);
-    }
-
-    private static MessageDigest sha256() {
-        return Hashing.newSha256();
+        return Hashing.sha256Hex(value).substring(0, 16);
     }
 }

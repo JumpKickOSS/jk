@@ -6,9 +6,12 @@ import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.util.MinimalToml;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -47,7 +50,7 @@ public final class JkBuildRenderer {
         }
     }
 
-    private static void renderProject(StringBuilder sb, JkBuild.Project p) {
+    private static void renderProject(StringBuilder sb, Project p) {
         sb.append("group    = ").append(quote(p.group())).append('\n');
         sb.append("name     = ").append(quote(p.name())).append('\n');
         sb.append("version  = ").append(quote(p.version())).append('\n');
@@ -81,7 +84,7 @@ public final class JkBuildRenderer {
      * lives here.
      */
     private static void renderPluginTables(StringBuilder sb, JkBuild jkBuild) {
-        for (var manifest : cc.jumpkick.plugin.manifest.PluginTableRegistry.manifests()) {
+        for (var manifest : PluginTableRegistry.manifests()) {
             var config = jkBuild.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
             sb.append("\n[").append(manifest.table()).append("]\n");
@@ -147,6 +150,13 @@ public final class JkBuildRenderer {
         // silently re-parsed as "graalvm" and flipped the toolchain choice (JK-2098).
         if (nc.graal() != null && !nc.graal().equals("graalvm")) {
             sb.append("graal      = ").append(quote(nc.graal())).append('\n');
+        }
+        // Same rule as graal: the parser substitutes METADATA_REPOSITORY_DEFAULT for an omitted
+        // key, so eliding exactly that selector keeps a round-trip minimal without losing a
+        // deliberate pin — `=1.1.4` and `^1` both survive.
+        VersionSelector metadata = nc.metadataRepository();
+        if (metadata != null && !metadata.raw().equals(JkBuild.NativeConfig.METADATA_REPOSITORY_DEFAULT.raw())) {
+            sb.append("metadata-repository = ").append(quote(metadata.raw())).append('\n');
         }
     }
 
@@ -280,6 +290,6 @@ public final class JkBuildRenderer {
     }
 
     private static String quote(String s) {
-        return cc.jumpkick.util.MinimalToml.quote(s);
+        return MinimalToml.quote(s);
     }
 }

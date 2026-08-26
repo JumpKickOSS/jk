@@ -108,7 +108,9 @@ function runJk(args) {
   return new Promise((resolve) => {
     const child = spawn(bin, args, {
       cwd,
-      env: process.env,
+      // The OutputChannel is a parser/pane, not a terminal: jk keeps ANSI on pipes, so ask for
+      // plain text (same rationale as the IntelliJ client's NO_COLOR line).
+      env: { ...process.env, NO_COLOR: "1" },
       shell: false,
     });
     child.stdout.on("data", (buf) => output.append(buf.toString()));

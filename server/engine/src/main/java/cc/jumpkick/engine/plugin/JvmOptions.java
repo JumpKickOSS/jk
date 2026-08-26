@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import java.io.IOException;
 import java.io.InputStream;
@@ -97,11 +98,11 @@ public final class JvmOptions {
     private static PluginTuning tuning() {
         var session = SessionContext.current();
         PluginTuning t = session.jvm();
-        PluginTuning base = (t == null || t == PluginTuning.NONE) ? cc.jumpkick.config.PluginTunings.fromEnv() : t;
+        PluginTuning base = (t == null || t == PluginTuning.NONE) ? PluginTunings.fromEnv() : t;
         // The jk.toml [jvm] table overlays here, at fork time, engine-side (thin-client contract):
         // the session carries only the client's flag/env layers, so a client of any age gets
         // current-engine [jvm] interpretation.
-        return cc.jumpkick.config.PluginTunings.overlayProject(base, session.workingDir());
+        return PluginTunings.overlayProject(base, session.workingDir());
     }
 
     /**
@@ -225,6 +226,27 @@ public final class JvmOptions {
     /** The applied heap budget, or {@code null} if none (explicit tuning / not yet planned). */
     public static HeapPlan.Plan processHeapPlan() {
         return heapPlan;
+    }
+
+    /**
+     * Heap and CPU for a fork that is the <em>only</em> worker its command runs — append after
+     * {@link #batchFlags}, whose values these deliberately override (last flag wins on HotSpot).
+     * The process-wide plan is sized for {@code jobs} concurrent JVMs, so a command that forks one
+     * worker otherwise gets a twentieth of a twenty-core host. Empty when the user pinned memory.
+     */
+    public static List<String> soleWorkerFlags() {
+        PluginTuning s = tuning();
+        if (!autoHeapEnabled(s)) return List.of();
+        HeapPlan.Plan plan = HeapPlan.compute(MemoryProbe.probe().availableBytes(), 1);
+        List<String> out = new ArrayList<>();
+        out.add("-Xms" + HeapPlan.mib(plan.xmsBytes()) + "m");
+        out.add("-Xmx" + HeapPlan.mib(plan.xmxBytes()) + "m");
+        String gc = (s.gc() != null ? s.gc() : BATCH_DEFAULT_GC).toLowerCase(Locale.ROOT);
+        if (!gc.equals("none")) {
+            out.add("-XX:SoftMaxHeapSize=" + HeapPlan.mib(plan.softMaxBytes()) + "m");
+        }
+        out.add("-XX:ActiveProcessorCount=" + Math.max(1, Runtime.getRuntime().availableProcessors()));
+        return out;
     }
 
     /**

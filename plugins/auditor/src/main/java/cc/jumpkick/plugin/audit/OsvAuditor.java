@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.audit;
 
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -35,7 +36,10 @@ public final class OsvAuditor {
         List<OsvClient.Query> queries = new ArrayList<>();
         List<Lockfile.Artifact> pkgs = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
-            queries.add(new OsvClient.Query("Maven", pkg.name(), pkg.version()));
+            // Lockfile.Artifact.name is the four-part coordinate ("group:artifact:jar:"); OSV keys
+            // Maven packages on "group:artifact". Sending the four-part form matched nothing, so
+            // every audit reported clean. PackageId.ga() is the one owner of that projection.
+            queries.add(new OsvClient.Query("Maven", PackageId.parse(pkg.name()).ga(), pkg.version()));
             pkgs.add(pkg);
         }
         if (queries.isEmpty()) return new AuditReport(List.of());
@@ -74,7 +78,11 @@ public final class OsvAuditor {
                 for (String vulnId : results.get(i).vulnIds()) {
                     OsvClient.Vulnerability v = futures.get(vulnId).get();
                     findings.add(new AuditReport.Finding(
-                            pkg.name(), pkg.version(), vulnId, v.summary(), AuditReport.Severity.parse(v.severity())));
+                            PackageId.parse(pkg.name()).ga(),
+                            pkg.version(),
+                            vulnId,
+                            v.summary(),
+                            AuditReport.Severity.parse(v.severity())));
                 }
             }
         } catch (ExecutionException e) {

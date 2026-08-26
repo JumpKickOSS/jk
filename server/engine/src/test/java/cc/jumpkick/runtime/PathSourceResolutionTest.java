@@ -9,6 +9,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenRepo;
@@ -47,7 +48,7 @@ class PathSourceResolutionTest {
 
     /** A consuming project with a single path dependency on {@code ./lib}. */
     private static JkBuild consumer() {
-        JkBuild.Project project = new JkBuild.Project("com.example", "app", "0.1.0", 25);
+        Project project = new Project("com.example", "app", "0.1.0", 25);
         Dependency path = Dependency.pathByName("widgets", new PathSource("./lib"));
         JkBuild.Dependencies deps = new JkBuild.Dependencies(Map.of(Scope.MAIN, List.of(path)));
         return new JkBuild(project, deps);
@@ -90,8 +91,7 @@ class PathSourceResolutionTest {
         Cas cas = new Cas(tmp.resolve("cas"));
         RepoGroup baseRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
-        JkBuild plain =
-                new JkBuild(new JkBuild.Project("com.example", "app", "0.1.0", 25), new JkBuild.Dependencies(Map.of()));
+        JkBuild plain = new JkBuild(new Project("com.example", "app", "0.1.0", 25), new JkBuild.Dependencies(Map.of()));
 
         PathSourceResolution.Prepared prep = PathSourceResolution.prepare(
                 plain, baseRepos, cas, tmp, Path.of(System.getProperty("java.home")), "test");

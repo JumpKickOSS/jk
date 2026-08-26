@@ -2,7 +2,6 @@
 package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.testing.MainSources;
 import cc.jumpkick.model.command.CliCommand;
@@ -13,7 +12,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -56,9 +54,7 @@ class ScriptModeAllowlistTest {
 
     @Test
     void no_command_begins_its_own_envelope() throws IOException {
-        Optional<Path> mainOpt = MainSources.locate();
-        assumeTrue(mainOpt.isPresent(), "cli main sources not adjacent to test classpath — skip scan");
-        Path main = mainOpt.get();
+        Path main = MainSources.locate();
         Pattern anti = Pattern.compile("CliOutput\\.beginCommand\\(");
         Path dispatch = main.resolve("cc/jumpkick/cli/CommandDispatch.java");
         List<String> offenders = new ArrayList<>();

@@ -2,11 +2,13 @@
 package cc.jumpkick.mvn;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.PomParseException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -15,6 +17,39 @@ import org.junit.jupiter.api.io.TempDir;
 
 /** Multi-module POM import: sibling edges and test-jar → kind=tests. */
 class PomImporterTest {
+
+    /**
+     * An imported {@code pom.xml} is someone else's file — a downloaded archive, a shared drive, a
+     * repo just cloned. The importer reads it through the same hardened parser as everything else,
+     * so a DOCTYPE is rejected and the entity it declares is never fetched.
+     */
+    @Test
+    void a_pom_with_a_system_entity_is_rejected_not_resolved(@TempDir Path root) throws Exception {
+        Path secret = root.resolve("secret.txt");
+        Files.writeString(secret, "TOP_SECRET_VALUE");
+
+        Path pom = root.resolve("pom.xml");
+        Files.writeString(pom, """
+                <?xml version="1.0" encoding="utf-8"?>
+                <!DOCTYPE project [ <!ENTITY leak SYSTEM "file://%s"> ]>
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>&leak;</artifactId>
+                  <version>1.0.0</version>
+                </project>
+                """.formatted(secret.toAbsolutePath()));
+
+        assertThatThrownBy(() -> PomImporter.importFrom(pom))
+                .as("the DOCTYPE is refused outright, not merely the reference to what it declares")
+                .hasMessageContaining("DOCTYPE")
+                .hasMessageNotContaining("TOP_SECRET_VALUE")
+                .isInstanceOf(PomParseException.class);
+        assertThatThrownBy(() -> PomImporter.importWorkspace(pom))
+                .hasMessageContaining("DOCTYPE")
+                .hasMessageNotContaining("TOP_SECRET_VALUE")
+                .isInstanceOf(PomParseException.class);
+    }
 
     @Test
     void multi_module_rewrites_siblings_and_test_jars(@TempDir Path root) throws Exception {

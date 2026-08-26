@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.EngineTransport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -20,8 +24,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * One-shot JSONL I/O against a live engine socket. Long-lived plan streams use
- * {@link #protocolReader} on their own connection.
+ * JSONL I/O against a live engine socket. {@link #exchange} is the one-shot form (write a line,
+ * read the single reply); {@link #stream} is the framing every request-then-read-a-stream verb
+ * shares — ensure an engine, connect, write exactly one request line, hand the reader to the
+ * caller's decoder, close.
+ *
+ * <p>That framing was written out nine times inside the old {@code EngineBuildListenerAdapter}
+ * alone, and twice more in each of {@link EnginePluginAdapter} and {@link EngineResolveAdapter}
+ * (JK-2436). Thirteen copies of "ensure, connect, write, read" is thirteen chances for one of them
+ * to skip the ensure or leak the channel; it exists once now.
  */
 public final class EngineWire {
 
@@ -29,6 +40,33 @@ public final class EngineWire {
     static final int SOCKET_TIMEOUT_MILLIS = 2_000;
 
     private EngineWire() {}
+
+    /**
+     * Reads one request's reply off {@code reader}. {@code ch} is the same connection, for the
+     * job pumps that half-close their write side while waiting for {@code job-finish}.
+     */
+    @FunctionalInterface
+    interface Reply<T> {
+        T read(BufferedReader reader, SocketChannel ch) throws IOException;
+    }
+
+    /**
+     * Ensure a live version-matched engine, open a fresh connection, write {@code requestLine} as
+     * one JSONL line, and let {@code reply} read the answer to its terminal. The connection closes
+     * when this returns, however it returns.
+     */
+    static <T> T stream(EnginePaths.Paths paths, String requestLine, Reply<T> reply) throws IOException {
+        EngineSpawn.ensure(paths, Jk.VERSION);
+        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader = protocolReader(ch);
+            writer.write(requestLine);
+            writer.write('\n');
+            writer.flush();
+            return reply.read(reader, ch);
+        }
+    }
 
     /**
      * The client-side protocol reader: line-capped, and idle-timed so a dead engine surfaces as
@@ -55,22 +93,21 @@ public final class EngineWire {
                 }
             }
         }
-        return new cc.jumpkick.jsonl.BoundedLineReader(
+        return new BoundedLineReader(
                 new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, idleMs);
     }
 
     /**
-     * Package-visible: {@link EngineBuildListenerAdapter} opens its own long-lived connection. On
+     * Package-visible: {@link #stream} opens a fresh long-lived connection per request. On
      * the loopback-TCP transport (Windows — see {@link cc.jumpkick.engine.EngineTransport}), {@code
      * socket} holds the port number (not a real socket path) and this also sends the required
      * {@link EngineProtocol#AUTH} line before returning, so every caller authenticates transparently
      * without needing its own knowledge of the transport.
      */
     static SocketChannel connect(Path socket) throws IOException {
-        if (cc.jumpkick.engine.EngineTransport.useLoopbackTcp()) {
+        if (EngineTransport.useLoopbackTcp()) {
             int port = Integer.parseInt(Files.readString(socket).trim());
-            String token = Files.readString(cc.jumpkick.engine.EnginePaths.tokenFor(socket))
-                    .trim();
+            String token = Files.readString(EnginePaths.tokenFor(socket)).trim();
             SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             BufferedWriter authWriter =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));

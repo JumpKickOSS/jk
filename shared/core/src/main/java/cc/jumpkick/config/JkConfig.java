@@ -3,48 +3,63 @@ package cc.jumpkick.config;
 
 import java.nio.file.Path;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Optional;
+import lombok.With;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Immutable CLI-wide settings (color, offline, quiet, …) after merging file layers and env.
- * Empty {@link Optional} means unset — use the built-in default. CLI flags are applied by the
- * caller after {@link JkConfigLoader#load}.
+ * {@code null} means unset — use the built-in default, which the {@code …Or(fallback)} readers
+ * below supply. CLI flags are applied by the caller after {@link JkConfigLoader#load}.
+ *
+ * <p>The components are {@code @Nullable T}, not {@code Optional<T>}: a record component is a field
+ * plus an accessor, and the house rule is that {@code Optional} is a return type only. Twelve
+ * {@code Optional} components cost twelve heap objects per config — one is built per file layer,
+ * per env read and per CLI overlay — and, more to the point, they defeat {@link With}: a generated
+ * wither takes the component's type, so every caller would have to box a value it already has.
+ * Single-field copies are all {@code @With}-generated; a caller that wants the layered value asks
+ * one of the {@code …Or} readers instead of unwrapping by hand.
  */
 public record JkConfig(
-        Optional<ColorChoice> color,
-        Optional<Boolean> offline,
+        @With @Nullable ColorChoice color,
+        @With @Nullable Boolean offline,
         /**
          * Bypass build caches without re-fetching locked deps. Implied by {@code force}.
          */
-        Optional<Boolean> rebuild,
-        Optional<Boolean> noProgress,
-        Optional<Boolean> quiet,
-        Optional<Boolean> verbose,
-        Optional<Path> directory,
+        @With @Nullable Boolean rebuild,
+        @With @Nullable Boolean noProgress,
+        @With @Nullable Boolean quiet,
+        @With @Nullable Boolean verbose,
+        @With @Nullable Path directory,
         /** Bypass all caching for this invocation (recompile, re-resolve, rerun tests). */
-        Optional<Boolean> force,
+        @With @Nullable Boolean force,
         /**
          * Disable all ANSI (color and attributes). Distinct from {@code --color never}, which
          * strips color only.
          */
-        Optional<Boolean> noAnsi,
+        @With @Nullable Boolean noAnsi,
+        /**
+         * Emit ANSI even where the environment would suppress it ({@code TERM=dumb}, {@code CI}).
+         * {@code config.force-ansi} / {@code JK_FORCE_ANSI}. {@code noAnsi} still wins when both
+         * are set: turning ANSI off is the safer direction to honor.
+         */
+        @With @Nullable Boolean forceAnsi,
         /**
          * Disable OSC capabilities (window title, taskbar progress, desktop notifications).
          * {@code --no-osc} / {@code config.no-osc} / {@code JK_NO_OSC}.
          */
-        Optional<Boolean> noOsc,
+        @With @Nullable Boolean noOsc,
         /**
          * Desktop notification policy for long builds ({@code config.notify} /
          * {@code --notify}/{@code --no-notify} / {@code JK_NOTIFY}).
          */
-        Optional<NotifyChoice> notifyPolicy,
+        @With @Nullable NotifyChoice notifyPolicy,
         /**
          * Open the live-plan process-output peek by default ({@code config.build-output} /
          * {@code JK_BUILD_OUTPUT}). Default {@code false}: hidden until Ctrl-O or a failed
          * tool/worker force-show.
          */
-        Optional<Boolean> buildOutput) {
+        @With @Nullable Boolean buildOutput) {
 
     public enum ColorChoice {
         AUTO,
@@ -83,197 +98,9 @@ public record JkConfig(
         }
     }
 
-    public JkConfig {
-        Objects.requireNonNull(color, "color");
-        Objects.requireNonNull(offline, "offline");
-        Objects.requireNonNull(noProgress, "noProgress");
-        Objects.requireNonNull(quiet, "quiet");
-        Objects.requireNonNull(verbose, "verbose");
-        Objects.requireNonNull(directory, "directory");
-        Objects.requireNonNull(force, "force");
-        Objects.requireNonNull(noAnsi, "noAnsi");
-        Objects.requireNonNull(noOsc, "noOsc");
-        Objects.requireNonNull(notifyPolicy, "notifyPolicy");
-        Objects.requireNonNull(buildOutput, "buildOutput");
-    }
-
     /** Empty config — every setting unset. Used as the seed before layers merge. */
     public static JkConfig empty() {
-        return new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
-    }
-
-    // --- withers: one-field copies so callers (tests especially) never restate the
-    // 12-positional-Optional constructor. ---
-
-    public JkConfig withColor(Optional<ColorChoice> v) {
-        return new JkConfig(
-                v,
-                offline,
-                rebuild,
-                noProgress,
-                quiet,
-                verbose,
-                directory,
-                force,
-                noAnsi,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withOffline(Optional<Boolean> v) {
-        return new JkConfig(
-                color,
-                v,
-                rebuild,
-                noProgress,
-                quiet,
-                verbose,
-                directory,
-                force,
-                noAnsi,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withRebuild(Optional<Boolean> v) {
-        return new JkConfig(
-                color,
-                offline,
-                v,
-                noProgress,
-                quiet,
-                verbose,
-                directory,
-                force,
-                noAnsi,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withNoProgress(Optional<Boolean> v) {
-        return new JkConfig(
-                color, offline, rebuild, v, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy, buildOutput);
-    }
-
-    public JkConfig withQuiet(Optional<Boolean> v) {
-        return new JkConfig(
-                color,
-                offline,
-                rebuild,
-                noProgress,
-                v,
-                verbose,
-                directory,
-                force,
-                noAnsi,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withVerbose(Optional<Boolean> v) {
-        return new JkConfig(
-                color,
-                offline,
-                rebuild,
-                noProgress,
-                quiet,
-                v,
-                directory,
-                force,
-                noAnsi,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withDirectory(Optional<Path> v) {
-        return new JkConfig(
-                color,
-                offline,
-                rebuild,
-                noProgress,
-                quiet,
-                verbose,
-                v,
-                force,
-                noAnsi,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withForce(Optional<Boolean> v) {
-        return new JkConfig(
-                color,
-                offline,
-                rebuild,
-                noProgress,
-                quiet,
-                verbose,
-                directory,
-                v,
-                noAnsi,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withNoAnsi(Optional<Boolean> v) {
-        return new JkConfig(
-                color,
-                offline,
-                rebuild,
-                noProgress,
-                quiet,
-                verbose,
-                directory,
-                force,
-                v,
-                noOsc,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withNoOsc(Optional<Boolean> v) {
-        return new JkConfig(
-                color,
-                offline,
-                rebuild,
-                noProgress,
-                quiet,
-                verbose,
-                directory,
-                force,
-                noAnsi,
-                v,
-                notifyPolicy,
-                buildOutput);
-    }
-
-    public JkConfig withNotifyPolicy(Optional<NotifyChoice> v) {
-        return new JkConfig(
-                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, v, buildOutput);
-    }
-
-    public JkConfig withBuildOutput(Optional<Boolean> v) {
-        return new JkConfig(
-                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy, v);
+        return new JkConfig(null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -282,70 +109,89 @@ public record JkConfig(
      */
     public JkConfig mergedWith(JkConfig over) {
         return new JkConfig(
-                over.color.or(() -> this.color),
-                over.offline.or(() -> this.offline),
-                over.rebuild.or(() -> this.rebuild),
-                over.noProgress.or(() -> this.noProgress),
-                over.quiet.or(() -> this.quiet),
-                over.verbose.or(() -> this.verbose),
-                over.directory.or(() -> this.directory),
-                over.force.or(() -> this.force),
-                over.noAnsi.or(() -> this.noAnsi),
-                over.noOsc.or(() -> this.noOsc),
-                over.notifyPolicy.or(() -> this.notifyPolicy),
-                over.buildOutput.or(() -> this.buildOutput));
+                set(over.color, color),
+                set(over.offline, offline),
+                set(over.rebuild, rebuild),
+                set(over.noProgress, noProgress),
+                set(over.quiet, quiet),
+                set(over.verbose, verbose),
+                set(over.directory, directory),
+                set(over.force, force),
+                set(over.noAnsi, noAnsi),
+                set(over.forceAnsi, forceAnsi),
+                set(over.noOsc, noOsc),
+                set(over.notifyPolicy, notifyPolicy),
+                set(over.buildOutput, buildOutput));
+    }
+
+    /** {@code over} when it is set, else {@code under}. Both may be unset. */
+    private static <T> @Nullable T set(@Nullable T over, @Nullable T under) {
+        return over != null ? over : under;
     }
 
     /** Convenience: color with a fallback when empty. */
     public ColorChoice colorOr(ColorChoice fallback) {
-        return color.orElse(fallback);
+        return color != null ? color : fallback;
     }
 
     public boolean offlineOr(boolean fallback) {
-        return offline.orElse(fallback);
+        return offline != null ? offline : fallback;
     }
 
     /** True when {@code -F}/{@code --force} / {@code JK_FORCE} was set for this invocation. */
     public boolean forceOr(boolean fallback) {
-        return force.orElse(fallback);
+        return force != null ? force : fallback;
     }
 
     /**
-     * True when this build must bypass jk's own caches ({@code force} implies it). NOT
-     * {@code force.or(() -> rebuild)}: {@code Optional.or} short-circuits on PRESENCE, and wire
-     * decodes materialize {@code force} as {@code Optional.of(false)} — which silently masked a
-     * present-and-true {@code rebuild}.
+     * True when this build must bypass jk's own caches ({@code force} implies it). NOT "the first of
+     * {@code force}, {@code rebuild} that is set": wire decodes materialize {@code force} as an
+     * explicit {@code false}, which silently masked a set-and-true {@code rebuild}. Either being
+     * true is true; only both being unset defers to {@code fallback}.
      */
     public boolean rebuildOr(boolean fallback) {
-        if (force.isEmpty() && rebuild.isEmpty()) return fallback;
-        return force.orElse(false) || rebuild.orElse(false);
+        if (force == null && rebuild == null) return fallback;
+        return Boolean.TRUE.equals(force) || Boolean.TRUE.equals(rebuild);
     }
 
     /** True when {@code --no-ansi} was set — all ANSI sequences suppressed, ASCII only. */
     public boolean noAnsiOr(boolean fallback) {
-        return noAnsi.orElse(fallback);
+        return noAnsi != null ? noAnsi : fallback;
+    }
+
+    /**
+     * True when ANSI was forced on — outranks the {@code TERM=dumb}/{@code CI} suppressors, so a
+     * test (or a user in CI) can pin the mode instead of inheriting it.
+     */
+    public boolean forceAnsiOr(boolean fallback) {
+        return forceAnsi != null ? forceAnsi : fallback;
     }
 
     /** True when {@code --no-osc} was set — no window title, taskbar progress, or notifications. */
     public boolean noOscOr(boolean fallback) {
-        return noOsc.orElse(fallback);
+        return noOsc != null ? noOsc : fallback;
     }
 
     public boolean noProgressOr(boolean fallback) {
-        return noProgress.orElse(fallback);
+        return noProgress != null ? noProgress : fallback;
     }
 
     public boolean quietOr(boolean fallback) {
-        return quiet.orElse(fallback);
+        return quiet != null ? quiet : fallback;
     }
 
     public boolean verboseOr(boolean fallback) {
-        return verbose.orElse(fallback);
+        return verbose != null ? verbose : fallback;
+    }
+
+    /** The {@code -C}/{@code --directory} / {@code config.directory} root, or {@code fallback}. */
+    public Path directoryOr(Path fallback) {
+        return directory != null ? directory : fallback;
     }
 
     /** Notify policy with fallback (default {@link NotifyChoice#AUTO}). */
     public NotifyChoice notifyOr(NotifyChoice fallback) {
-        return notifyPolicy.orElse(fallback);
+        return notifyPolicy != null ? notifyPolicy : fallback;
     }
 
     /**
@@ -353,6 +199,6 @@ public record JkConfig(
      * {@code JK_BUILD_OUTPUT}). Default {@code false}.
      */
     public boolean buildOutputOr(boolean fallback) {
-        return buildOutput.orElse(fallback);
+        return buildOutput != null ? buildOutput : fallback;
     }
 }

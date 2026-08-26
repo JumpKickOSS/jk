@@ -13,7 +13,7 @@ class ProjectInfoRoundTripTest {
 
     @Test
     void encode_decode_is_a_fixed_point_for_the_new_fields() {
-        String line = "{\"type\":\"project-info\""
+        String line = "{\"type\":\"" + EngineProtocol.PROJECT_INFO_ACK + "\""
                 + ",\"group\":\"com.example\",\"name\":\"app\",\"version\":\"1.2.3\""
                 + ",\"jdk\":\"temurin-25\",\"javaRelease\":25"
                 + ",\"workspaceRoot\":true,\"workspaceRootDir\":\"/ws\""
@@ -39,7 +39,12 @@ class ProjectInfoRoundTripTest {
                 + ",\"scala\":true,\"scalaVersion\":\"3.8.4\""
                 + "}";
         ProjectInfo first = ProjectInfo.decode(line);
-        ProjectInfo second = ProjectInfo.decode(first.encode());
+        String reEncoded = first.encode();
+        // The fixture is a real wire line: the discriminator it carries is the one the engine
+        // writes, so the re-encoded form is byte-comparable on that key rather than merely
+        // "decodes to the same record".
+        assertThat(EngineProtocol.typeOf(reEncoded)).isEqualTo(EngineProtocol.PROJECT_INFO_ACK);
+        ProjectInfo second = ProjectInfo.decode(reEncoded);
         assertThat(second).isEqualTo(first);
         // Spot-check the values actually landed (a decoder that defaults everything would
         // pass the fixed-point test trivially).

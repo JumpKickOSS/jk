@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -79,17 +80,15 @@ public final class TaskForecast {
         public static boolean isBookkeepingStep(String stepName) {
             if (stepName == null) return true;
             return switch (stepName) {
-                case "parse-build",
-                        "ensure-jdk",
-                        "resolve-deps",
-                        "write-stamp",
-                        "write-stamp-kotlin",
-                        "write-stamp-groovy",
-                        "build-logic-before-compile",
-                        "build-logic-after-compile",
-                        "build-logic-before-package",
-                        "embed-sha",
-                        "sync-ide" -> true;
+                case TaskNames.PARSE_BUILD,
+                        TaskNames.ENSURE_JDK,
+                        TaskNames.RESOLVE_DEPS,
+                        TaskNames.WRITE_STAMP,
+                        TaskNames.WRITE_STAMP_KOTLIN,
+                        TaskNames.WRITE_STAMP_GROOVY,
+                        TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                        TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> true;
                 default -> false;
             };
         }

@@ -2,23 +2,26 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
+import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkToolUninstaller;
-import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -39,7 +42,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -79,9 +81,7 @@ public final class JdkUninstallCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     @Override
@@ -133,7 +133,7 @@ public final class JdkUninstallCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.argument = in.positionals().isEmpty() ? null : in.positionals().get(0);
         this.assumeYes = in.isSet("yes");
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.global = GlobalOptions.from(in);
 
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
@@ -145,7 +145,7 @@ public final class JdkUninstallCommand implements CliCommand {
             return runSingle(registry, defaults);
         }
         if (!isInteractiveTerminalSession()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "stdin is not a TTY — pass a spec "
                             + "(e.g. `jk jdk uninstall temurin-21.0.5`) or run interactively.");
@@ -164,7 +164,7 @@ public final class JdkUninstallCommand implements CliCommand {
         String source = slash < 0 ? null : argument.substring(0, slash);
         String spec = slash < 0 ? argument : argument.substring(slash + 1);
         if (slash == 0 || slash == argument.length() - 1) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "argument must be `<spec>` or `<source>/<spec>` " + "(got `"
                             + argument
@@ -179,7 +179,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 return Exit.USAGE;
             }
             if (!KNOWN_SOURCES.contains(source)) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                CommandWedge.printFail(
                         "JDK",
                         "unknown source `" + source
                                 + "` "
@@ -191,16 +191,15 @@ public final class JdkUninstallCommand implements CliCommand {
             }
         }
         // Keyword specs (lts, stable, latest) → resolve to best installed match.
-        if (cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)) {
+        if (JdkKeywords.isKeyword(spec)) {
             var hits = source != null
                     ? registry.listHits().stream()
                             .filter(h -> source.equals(h.source()))
                             .toList()
                     : registry.listHits();
-            var kw = cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, hits);
+            var kw = JdkKeywords.bestInstalledMatch(spec, hits);
             if (kw.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "JDK", "no installed JDK matches `" + spec + "` (try `jk jdk list`).");
+                CommandWedge.printFail("JDK", "no installed JDK matches `" + spec + "` (try `jk jdk list`).");
                 return 1;
             }
             spec = JdkRegistry.identifierFor(kw.get().home());
@@ -213,7 +212,7 @@ public final class JdkUninstallCommand implements CliCommand {
             String where = source != null
                     ? "no `" + source + "` install matches `" + spec + "`"
                     : "no install matches `" + spec + "`";
-            cc.jumpkick.cli.tui.CommandWedge.printFail("JDK", where + " (try `jk jdk list`).");
+            CommandWedge.printFail("JDK", where + " (try `jk jdk list`).");
             return 1;
         }
 
@@ -244,7 +243,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 .filter(h -> !UNINSTALL_FORBIDDEN_SOURCES.contains(h.source()))
                 .toList();
         if (installed.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "no removable JDKs installed " + "(system- and IDE-managed installs aren't removable here).");
             return 0;
@@ -266,7 +265,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 // stdin reader thread that macOS won't let us interrupt; the
                 // wizard's finally already restored terminal attributes.
                 Wizard.printCancellation(terminal, "JDK uninstall canceled");
-                Runtime.getRuntime().halt(130); // 128 + SIGINT
+                Runtime.getRuntime().halt(Exit.INTERRUPTED);
                 throw new AssertionError("unreachable");
             }
             JdkHit victim = outcome.get();
@@ -378,7 +377,7 @@ public final class JdkUninstallCommand implements CliCommand {
             throw e;
         }
         CommandWedge.envelopeStart();
-        CliOutput.out(JdkRender.removed(hit.source(), identifier, cc.jumpkick.config.GlobalConfig.nerdFont()));
+        CliOutput.out(JdkRender.removed(hit.source(), identifier, GlobalConfig.nerdFont()));
     }
 
     /**
@@ -461,15 +460,7 @@ public final class JdkUninstallCommand implements CliCommand {
         boolean graalRemoved = victims.stream()
                 .anyMatch(v -> JdkRegistry.identifierFor(v.home()).equals(graalDefault.get()));
         if (!graalRemoved) return;
-        Optional<JdkHit> next = registry.listHits().stream()
-                .filter(h -> h.vendor() == JdkVendor.ORACLE_GRAALVM || h.vendor() == JdkVendor.GRAALVM_CE)
-                .min(Comparator.comparingInt((JdkHit h) -> {
-                            int i = JdkVendor.GRAAL_PREFERENCE.indexOf(h.vendor());
-                            return i >= 0 ? i : Integer.MAX_VALUE;
-                        })
-                        .thenComparing(
-                                h -> h.version() == null ? "" : JdkSelector.versionKey(h.version()),
-                                Comparator.reverseOrder()));
+        Optional<JdkHit> next = DefaultGraalPolicy.choose(registry.listHits());
         if (next.isEmpty()) {
             defaults.clearGraal();
             CliOutput.out(Theme.colorize(
@@ -493,6 +484,6 @@ public final class JdkUninstallCommand implements CliCommand {
     }
 
     private static boolean isInteractiveTerminalSession() {
-        return cc.jumpkick.cli.tui.Interactivity.canPrompt();
+        return Interactivity.canPrompt();
     }
 }

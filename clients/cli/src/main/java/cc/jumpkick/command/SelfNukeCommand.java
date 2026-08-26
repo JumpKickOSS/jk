@@ -11,12 +11,12 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -69,6 +69,11 @@ public final class SelfNukeCommand implements CliCommand {
      * One display/delete row for the confirm table. {@code delegated} rows are wiped by the shared
      * {@code jk cache nuke} / {@code jk storage nuke} code paths rather than by this command's own
      * recursive delete, so {@link #run} skips them when walking the path rows.
+     *
+     * <p>Delegated or not, every row prints under <strong>Path to Delete</strong> and every row's
+     * path is <em>gone as a directory</em> when the command finishes. The two shared nukes each
+     * spent a release emptying their root instead of removing it (JK-2455 for the cache, JK-2500
+     * for the store), which is the same table saying "delete" and meaning "empty".
      */
     record PurgeRow(Path path, String what, Target target, boolean delegated) {}
 
@@ -152,21 +157,8 @@ public final class SelfNukeCommand implements CliCommand {
             return 1;
         }
 
-        if (!dryRun && (selected.contains(Target.STATE) || wantData)) {
-            try {
-                for (EngineFleet.StopResult r : EngineFleet.stopAll(true)) {
-                    if (r.outcome() == EngineFleet.Outcome.SURVIVED) {
-                        Theme t = Theme.active();
-                        CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
-                                + " Engine pid "
-                                + r.member().pid()
-                                + " did not stop; nuking around it may leave it orphaned.");
-                    }
-                }
-            } catch (RuntimeException ignored) {
-                // best-effort
-            }
-        }
+        boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantData);
+        if (enginesStopped) stopFleet();
 
         int exit = Exit.SUCCESS;
         // Settle order: Storage → Cache → Self, with a blank between back-to-back wedges so
@@ -176,10 +168,15 @@ public final class SelfNukeCommand implements CliCommand {
             int s = StorageCommand.runNuke(dryRun, true);
             if (s != 0) exit = s;
         }
+        // `jk storage nuke` performs its delete engine-side: the wipe-store request calls
+        // ensureRunning and the engine it boots is still there when it returns. Everything below
+        // this line assumes a stopped fleet — the cache wipe skips the hosted purge on that
+        // assumption, and the STATE rows are about to delete the sockets and AOT cache that
+        // engine holds open, which it would then write straight back. Take it down again.
+        if (enginesStopped && wantData) stopFleet();
         if (wantCache) {
             // Engines were stopped above for STATE/STORE — the hosted purge would boot a fresh
             // one only for the STATE rows below to delete its state dir out from under it.
-            boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantData);
             settleGap();
             int c = CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, true, enginesStopped);
             if (c != 0) exit = c;
@@ -233,6 +230,27 @@ public final class SelfNukeCommand implements CliCommand {
     /** Blank line before a settle when this command prints wedges back-to-back. */
     private static void settleGap() {
         CliOutput.out();
+    }
+
+    /**
+     * Stop every engine of this home, naming any that refuses. Best-effort — a nuke does not fail
+     * because process enumeration did — but it is called at <em>every</em> point where a running
+     * engine would undo work this command is about to report as done, not only once up front.
+     */
+    private static void stopFleet() {
+        try {
+            for (EngineFleet.StopResult r : EngineFleet.stopAll(true)) {
+                if (r.outcome() == EngineFleet.Outcome.SURVIVED) {
+                    Theme t = Theme.active();
+                    CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
+                            + " Engine pid "
+                            + r.member().pid()
+                            + " did not stop; nuking around it may leave it orphaned.");
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
     }
 
     /** Parse stackable target flags; default {@code --all} when none named. */
@@ -291,9 +309,9 @@ public final class SelfNukeCommand implements CliCommand {
      * Data-root nuke: the artifact store plus every <em>other</em> child of {@code <data>}
      * ({@code JK_DATA_DIR}; default {@code ~/.local/share/jk}, or {@code $JK_HOME/data}). The store
      * is normally a child of that root, but is scheduled explicitly because {@code JK_STORE_DIR}
-     * can relocate it out of the data root, and because it is wiped whole-tree
-     * — including {@code store/lib} — by the engine-hosted {@code jk storage nuke} path, which the
-     * {@link #addRow} guards would otherwise refuse.
+     * can relocate it out of the data root, and because it is removed whole-tree — the root
+     * itself, {@code store/lib} included — by the engine-hosted {@code jk storage nuke} path,
+     * which the {@link #addRow} guards would otherwise refuse.
      *
      * <p>The remaining children do go through those guards, so the live engine jar
      * ({@code <data>/lib}) and the forge/repo credential stores survive.

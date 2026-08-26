@@ -4,15 +4,17 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.UncheckedIOException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
@@ -23,7 +25,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -31,6 +32,7 @@ import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * A newer engine takes over by atomically repointing the endpoint, the predecessor yields its
@@ -40,7 +42,9 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class EngineTakeoverTest {
 
-    private final List<Path> tempDirs = new ArrayList<>();
+    @RegisterExtension
+    final ShortTempDirs tempDirs = new ShortTempDirs("jkt-");
+
     private final List<Throwable> serverFailures = Collections.synchronizedList(new ArrayList<>());
 
     /** An {@link EngineServer} on its own thread; {@code done} opens when {@code run()} returns. */
@@ -61,40 +65,15 @@ class EngineTakeoverTest {
         return new Running(t, done);
     }
 
-    private Path shortTempDir() throws IOException {
-        // Prefer /tmp: macOS TMPDIR under /var/folders overflows UDS sun_path (~104 bytes).
-        Path root =
-                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
-        Path dir = Files.createTempDirectory(root, "jkt-");
-        tempDirs.add(dir);
-        return dir;
-    }
-
     @AfterEach
-    void cleanupTempDirs() {
-        cc.jumpkick.engine.plugin.JvmOptions.resetSharedPlanForTests();
-        for (Path dir : tempDirs) {
-            try (var walk = Files.walk(dir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                    }
-                });
-            } catch (IOException | UncheckedIOException ignored) {
-            }
-        }
+    void resetSharedWorkerHeapPlan() {
+        JvmOptions.resetSharedPlanForTests();
     }
 
+    /** {@link Await#until} with the server's own failures in the timeout message: a dead server
+     * otherwise reads as a mystery poll timeout. */
     private void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) {
-                throw new AssertionError(
-                        "condition not met within " + timeout + "; server failures: " + serverFailures);
-            }
-            Thread.sleep(10);
-        }
+        Await.until(timeout, condition, () -> "server failures: " + serverFailures);
     }
 
     private static String helloVersion(Path socket) {
@@ -139,7 +118,7 @@ class EngineTakeoverTest {
      */
     @Test
     void same_version_different_build_id_takes_over_instead_of_losing() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer stale = new EngineServer(p, JkEngineConfig.DEFAULTS, null, "1.0.0-SNAPSHOT", "aaaaaaaaaaaa", null);
@@ -165,7 +144,7 @@ class EngineTakeoverTest {
 
     @Test
     void newer_engine_takes_over_and_the_displaced_one_drains() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
@@ -196,7 +175,7 @@ class EngineTakeoverTest {
 
     @Test
     void pid_file_mismatch_drains_a_ghost_engine() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
@@ -219,7 +198,7 @@ class EngineTakeoverTest {
 
     @Test
     void drain_closes_the_listener_while_a_plan_is_in_flight() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
@@ -249,7 +228,7 @@ class EngineTakeoverTest {
 
     @Test
     void displaced_engine_reports_drain_status_to_the_successor() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
@@ -277,7 +256,7 @@ class EngineTakeoverTest {
 
     @Test
     void displacement_watchdog_drains_an_engine_the_endpoint_no_longer_names() throws Exception {
-        Path state = shortTempDir();
+        Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);

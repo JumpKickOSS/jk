@@ -5,15 +5,19 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.runtime.ExplainReport;
+import cc.jumpkick.runtime.TaskForecast;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
-import java.util.Optional;
 
 public final class ExplainVerb implements HostedVerb {
 
@@ -44,8 +48,7 @@ public final class ExplainVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String entryDirStr = Jsonl.str(requestLine, "dir");
@@ -59,36 +62,28 @@ public final class ExplainVerb implements HostedVerb {
                 boolean offline = Jsonl.bool(requestLine, "offline", false);
                 boolean verbose = Jsonl.bool(requestLine, "verbose", false);
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(offline),
-                        Optional.of(rebuild),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(verbose),
-                        Optional.empty(),
-                        Optional.of(force),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(offline)
+                        .withRebuild(rebuild)
+                        .withVerbose(verbose)
+                        .withForce(force);
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache);
-                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
+                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                String etaJdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
                 int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
                 int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
                 if (maxModuleConcurrency <= 0 && Jsonl.bool(requestLine, "serial", false)) {
                     maxModuleConcurrency = 1;
                 }
-                cc.jumpkick.runtime.ExplainReport report = cc.jumpkick.runtime.ExplainReport.compute(
+                ExplainReport report = ExplainReport.compute(
                         entryDir,
                         entryBuild,
                         cache,
                         session,
-                        new cc.jumpkick.runtime.ExplainReport.Knobs(
+                        new ExplainReport.Knobs(
                                 etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
                                 Jsonl.str(requestLine, "profile"),
                                 workers,
@@ -103,9 +98,9 @@ public final class ExplainVerb implements HostedVerb {
                         host.sendQuiet(writer, host.requestFailedLine(entryDir.toString(), err));
                     }
                     host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
-                    return null;
+                    return JobOutcome.declined();
                 }
-                for (cc.jumpkick.runtime.TaskForecast.Module m : plan.modules()) {
+                for (TaskForecast.Module m : plan.modules()) {
                     String dir = m.dir().toString();
                     host.sendQuiet(
                             writer,
@@ -116,7 +111,7 @@ public final class ExplainVerb implements HostedVerb {
                                     m.testCount(),
                                     m.producesJar(),
                                     m.producesImage()));
-                    for (cc.jumpkick.runtime.TaskForecast.Task p : m.steps()) {
+                    for (TaskForecast.Task p : m.steps()) {
                         host.sendQuiet(
                                 writer,
                                 ProtoReads.explainStep(dir, p.name(), p.status().name(), p.text(), p.key()));
@@ -143,6 +138,6 @@ public final class ExplainVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

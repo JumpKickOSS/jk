@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.config.EffectiveUserConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.LockFloor;
+import cc.jumpkick.engine.jobs.JobEnvelope;
+import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.verbs.MetricsVerb;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.runtime.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -32,33 +42,17 @@ final class HttpReadApi {
     private final Path logFile;
     private final Supplier<StatusSnapshot> status;
     private final EngineHttpJobs jobs;
-    private final Supplier<List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
+    private final Supplier<List<BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
     private final Supplier<String> url;
 
     void handleStatus(HttpExchange exchange) throws IOException {
         StatusSnapshot s = status.get();
         String served = url.get();
-        String body = JsonOut.object()
-                .put("version", s.version())
-                .put("pid", s.pid())
-                .put("startedAt", s.startedAtMillis())
-                .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
-                .put("activeRequests", s.activeRequests())
-                .put("activeBuildPlans", s.activeBuildPlans())
-                .put("peakActiveRequests", s.peakActiveRequests())
-                .put("peakActiveBuildPlans", s.peakActiveBuildPlans())
-                .put("heapUsedBytes", s.heapUsedBytes())
-                .put("heapCommittedBytes", s.heapCommittedBytes())
-                .put("heapMaxBytes", s.heapMaxBytes())
-                .put("rssBytes", s.rssBytes())
-                .put("aotTrainingPid", s.aotTrainingPid())
-                .put("cores", s.cores())
-                .put("totalMemoryBytes", s.totalMemoryBytes())
-                .put("availableMemoryBytes", s.availableMemoryBytes())
-                .put("systemCpuLoad", s.systemCpuLoad())
-                .put("systemLoadAverage", s.systemLoadAverage())
-                .put("engineEpoch", s.engineEpoch())
+        // Vitals come from StatusSnapshot.toJson() — the one serializer, shared with the SSE
+        // `status` frame. Only the fields below it are REST-only: URLs and config limits that do
+        // not change on a 2s tick and so never ride the live stream.
+        String body = s.toJson()
                 .put("httpUrl", served)
                 .put("mcpUrl", config.mcp().enabled() && served != null ? served.replaceAll("/+$", "") + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
@@ -76,7 +70,7 @@ final class HttpReadApi {
      */
     void handleConfig(HttpExchange exchange) throws IOException {
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (cc.jumpkick.config.EffectiveUserConfig.Row r : cc.jumpkick.config.EffectiveUserConfig.rows()) {
+        for (EffectiveUserConfig.Row r : EffectiveUserConfig.rows()) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("key", r.key());
             m.put("default", r.defaultValue());
@@ -85,9 +79,9 @@ final class HttpReadApi {
             rows.add(m);
         }
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("path", cc.jumpkick.config.EffectiveUserConfig.configPath().toString());
+        body.put("path", EffectiveUserConfig.configPath().toString());
         body.put("rows", rows);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -146,9 +140,7 @@ final class HttpReadApi {
                 HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         Path dir;
         try {
-            dir = requested == null || requested.isBlank()
-                    ? cc.jumpkick.util.PathUtil.userHome()
-                    : cc.jumpkick.util.PathUtil.resolveUserPath(requested);
+            dir = requested == null || requested.isBlank() ? PathUtil.userHome() : PathUtil.resolveUserPath(requested);
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -183,7 +175,7 @@ final class HttpReadApi {
                 JsonOut.object()
                         .put("dir", dir.toString())
                         .put("parent", parent != null ? parent.toString() : null)
-                        .put("hasJkToml", Files.isRegularFile(dir.resolve("jk.toml")))
+                        .put("hasJkToml", Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST)))
                         .put("truncated", truncated)
                         .putStrings("dirs", subdirs)
                         .toString());
@@ -196,15 +188,13 @@ final class HttpReadApi {
         String dirFilter =
                 HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
-        for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
+        for (BuildMetrics.Entry e : metrics.get()) {
             // Same base-dir filter semantics as the wire metrics verb (project rows fold dir#dN).
-            if (dirFilter != null
-                    && !e.dir().isEmpty()
-                    && !cc.jumpkick.runtime.BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+            if (dirFilter != null && !e.dir().isEmpty() && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
                 continue;
             }
             if (body.length() > 1) body.append(',');
-            body.append(cc.jumpkick.engine.verbs.MetricsVerb.metricsFields(JsonOut.object(), e));
+            body.append(MetricsVerb.metricsFields(JsonOut.object(), e));
         }
         HttpEngineServer.sendJson(exchange, 200, body.append(']').toString());
     }
@@ -222,7 +212,7 @@ final class HttpReadApi {
     void handleBuild(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
+        String dir = Jsonl.str(body, "dir");
         if (dir == null || dir.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -230,11 +220,11 @@ final class HttpReadApi {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
-        String kind = cc.jumpkick.jsonl.Jsonl.str(body, "kind");
+        String kind = Jsonl.str(body, "kind");
         long requestId;
         try {
-            requestId = jobs.trigger(cc.jumpkick.engine.jobs.JobSpec.of(kind, dir));
-        } catch (cc.jumpkick.engine.jobs.JobEnvelope.AlreadyRunning e) {
+            requestId = jobs.trigger(JobSpec.of(kind, dir));
+        } catch (JobEnvelope.AlreadyRunning e) {
             HttpEngineServer.sendJson(
                     exchange,
                     409,
@@ -243,7 +233,7 @@ final class HttpReadApi {
                             .put("jid", e.jid())
                             .toString());
             return;
-        } catch (cc.jumpkick.engine.LockFloor.LockFloorRefused e) {
+        } catch (LockFloor.LockFloorRefused e) {
             HttpEngineServer.sendJson(
                     exchange,
                     409,
@@ -279,9 +269,9 @@ final class HttpReadApi {
     void handleCancel(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        long jid = cc.jumpkick.jsonl.Jsonl.longValue(body, "jid", -1);
+        long jid = Jsonl.longValue(body, "jid", -1);
         if (jid < 0) {
-            String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
+            String dir = Jsonl.str(body, "dir");
             if (dir != null && !dir.isBlank()) {
                 int n = jobs.cancelDir(dir);
                 HttpEngineServer.sendJson(

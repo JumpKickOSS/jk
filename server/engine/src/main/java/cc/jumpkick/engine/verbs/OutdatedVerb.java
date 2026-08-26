@@ -5,12 +5,15 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.OutdatedReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.OutdatedPlans;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.Optional;
 
 public final class OutdatedVerb implements HostedVerb {
 
@@ -41,43 +44,31 @@ public final class OutdatedVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.OutdatedReport report;
+            OutdatedReport report;
             try {
                 Path dir = Path.of(Jsonl.str(requestLine, "dir"));
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
                 String repoUrl = Jsonl.str(requestLine, "repoUrl");
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                        Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "force", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(Jsonl.bool(requestLine, "offline", false))
+                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                        .withForce(Jsonl.bool(requestLine, "force", false));
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(dir)
                         .withCacheDir(cache);
                 report = SessionContext.where(
-                        session,
-                        () -> cc.jumpkick.runtime.OutdatedPlans.compute(
-                                dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
+                        session, () -> OutdatedPlans.compute(dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
             } catch (Exception e) {
-                report = cc.jumpkick.engine.protocol.OutdatedReport.error(cc.jumpkick.util.Errors.text(e));
+                report = OutdatedReport.error(Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

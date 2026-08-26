@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,7 +20,7 @@ import java.util.stream.Stream;
 public final class IntellijJdkTable {
 
     private static final IntellijJdkTable SHARED = new IntellijJdkTable(
-            defaultVendorRoots(System::getenv, System.getProperty("os.name", ""), System.getProperty("user.home", "")),
+            defaultVendorRoots(System::getenv, Os.name(), System.getProperty("user.home", "")),
             System.getProperty("user.home", ""));
 
     /** Process-wide instance backed by the host's real IDE config directories. */

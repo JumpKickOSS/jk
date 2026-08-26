@@ -4,8 +4,8 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.MinimalToml;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;

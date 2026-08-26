@@ -3,8 +3,11 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
+import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.Opt;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -21,7 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 class TestSelectionResolveTest {
 
     /** TestCommand's options plus the global mixin so {@code -C <dir>} parses like a real run. */
-    private static final cc.jumpkick.model.command.Command CMD = new cc.jumpkick.model.command.Command() {
+    private static final Command CMD = new Command() {
         @Override
         public String name() {
             return "test";
@@ -33,9 +36,9 @@ class TestSelectionResolveTest {
         }
 
         @Override
-        public List<cc.jumpkick.model.command.Opt> options() {
+        public List<Opt> options() {
             var opts = new ArrayList<>(new TestCommand().options());
-            opts.addAll(cc.jumpkick.cli.GlobalOptions.globalOpts());
+            opts.addAll(GlobalOptions.globalOpts());
             return opts;
         }
     };

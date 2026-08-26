@@ -2,6 +2,8 @@
 package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.tui.PlainAscii;
+import cc.jumpkick.terminal.Terminals;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
@@ -46,10 +48,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <h2>Handing the terminal to a child</h2>
  *
- * <p>An {@code inheritIO} exec gives the child the real stdout, and the leading blank is already
- * printed by then so the child's first line is separated from jk's chrome. The <em>trailing</em>
- * blank would land after the child's own output, in the caller's redirect: commands call {@link
- * #skipTrailingBlank()} at the handoff to suppress it.
+ * <p>{@link #handOffTerminal(ProcessBuilder)} is the one handoff: it restores the terminal out of
+ * jk's own mode and starts the child on inherited stdio. The leading blank is already printed by
+ * then, so the child's first line is separated from jk's chrome. The <em>trailing</em> blank would
+ * land after the child's own output, in the caller's redirect — commands whose child has the last
+ * word also call {@link #skipTrailingBlank()}; the ones that keep printing afterwards do not.
  */
 public final class CliOutput {
 
@@ -138,6 +141,26 @@ public final class CliOutput {
      */
     public static void skipTrailingBlank() {
         TRAILING_BLANK_SKIPPED.set(true);
+    }
+
+    /**
+     * Hand this terminal to a child and start it: take the terminal out of whatever mode jk put it
+     * in, then {@code inheritIO().start()}. The <strong>one</strong> handoff — the two steps are a
+     * pair and were being spelled separately at ten sites, three of which
+     * ({@code jk gradle}, {@code jk mvn}, {@code jk self update}'s engine takeover) forgot the
+     * restore, so an interactive child inherited jk's raw mode and its own line editing did not
+     * work.
+     *
+     * <p>{@link #skipTrailingBlank()} is deliberately <em>not</em> folded in, even though four call
+     * sites pair it with the handoff verbatim. It answers a different question — whether jk prints
+     * again after the child — and two callers do: {@code AppWatchLoop} keeps reporting restarts, and
+     * {@code jk self update} announces the takeover once the new engine is up. Folding it in would
+     * silently drop their closing blank. Call it at the handoff when the child's output is the last
+     * thing on this terminal.
+     */
+    public static Process handOffTerminal(ProcessBuilder pb) throws IOException {
+        Terminals.restoreForChild();
+        return pb.inheritIO().start();
     }
 
     /**

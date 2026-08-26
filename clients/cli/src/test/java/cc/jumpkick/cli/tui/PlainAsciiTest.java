@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -44,7 +45,7 @@ class PlainAsciiTest {
     @Test
     void apply_is_identity_under_ansi() throws Exception {
         // Only assert when the suite is actually in ANSI mode.
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
+        if (!Theme.active().isAnsi()) return;
         assertThat(PlainAscii.apply("Locking…")).isEqualTo("Locking…");
     }
 

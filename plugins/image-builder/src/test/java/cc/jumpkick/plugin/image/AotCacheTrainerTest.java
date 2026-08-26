@@ -3,12 +3,18 @@ package cc.jumpkick.plugin.image;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.image.ImageConfig;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The decisions the trainer makes without needing a container runtime. */
 class AotCacheTrainerTest {
@@ -96,20 +102,6 @@ class AotCacheTrainerTest {
         assertThat(AotCacheTrainer.qualify("localhost:5000/x:1")).isEqualTo("localhost:5000/x:1");
     }
 
-    /** The four refusals the JVM emits, all of them only under -Xlog:aot. */
-    @Test
-    void a_refused_cache_is_recognised_from_the_aot_log() {
-        assertThat(AotCacheTrainer.refusal("[0.004s][error  ][aot] shared class paths mismatch"))
-                .contains("shared class paths mismatch");
-        assertThat(AotCacheTrainer.refusal("[0.003s][warning][aot] The AOT cache was created by a"
-                        + " different version or build of HotSpot"))
-                .contains("different version");
-        assertThat(AotCacheTrainer.refusal("[0.004s][error][aot] Unable to map shared spaces"))
-                .contains("Unable to map");
-        assertThat(AotCacheTrainer.refusal("[0.003s][error][aot] Loading static archive failed."))
-                .contains("failed");
-    }
-
     /**
      * The fast path runs the image's JVM on the host, so it needs a host that can execute it. A
      * linux-amd64 JRE runs on a linux-amd64 host and nowhere else, and a multi-arch image has no
@@ -117,9 +109,7 @@ class AotCacheTrainerTest {
      */
     @Test
     void the_host_can_only_run_a_matching_linux_platform() {
-        boolean linuxAmd64 =
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")
-                        && List.of("amd64", "x86_64").contains(System.getProperty("os.arch", ""));
+        boolean linuxAmd64 = Os.isLinux() && List.of("amd64", "x86_64").contains(System.getProperty("os.arch", ""));
         assertThat(BaseJre.hostCanExecute(List.of("linux/amd64"))).isEqualTo(linuxAmd64);
         assertThat(BaseJre.hostCanExecute(List.of())).isEqualTo(linuxAmd64); // default is linux/amd64
         assertThat(BaseJre.hostCanExecute(List.of("linux/s390x"))).isFalse();
@@ -129,10 +119,33 @@ class AotCacheTrainerTest {
                 .isFalse();
     }
 
+    /**
+     * Where the image's JVM is looked for. The extracted tree is 50–200 MB and is shared by every
+     * module built on the same base, so it belongs under jk's cache root — the only place {@code
+     * CacheTree.BASE_JRE}'s bound reaches. It used to be written under the module's build output,
+     * where nothing reclaims it and the next {@code jk clean} deletes it.
+     *
+     * <p>Proven by the {@code .extracted} marker, which {@link BaseJre} touches on use: only a
+     * lookup rooted at the cache root can find this one. The reference is digest-pinned and the
+     * tree already exists, so the found path never reaches the registry — a lookup anywhere else
+     * would, and comes back empty.
+     */
     @Test
-    void a_cache_that_maps_reports_no_refusal() {
-        assertThat(AotCacheTrainer.refusal("[0.008s][info][class,path] Archived app classpath validation: passed\n"
-                        + "[0.004s][info][aot] Opened AOT cache app.aot."))
-                .isNull();
+    void the_base_jre_is_taken_from_the_cache_root(@TempDir Path cacheRoot) throws Exception {
+        String base = "example.invalid/jre@sha256:" + "a".repeat(64);
+        Path marker = cacheRoot
+                .resolve("base-jre")
+                .resolve(HexFormat.of()
+                        .formatHex(MessageDigest.getInstance("SHA-256").digest(base.getBytes(StandardCharsets.UTF_8))))
+                .resolve(".extracted");
+        Files.createDirectories(marker.getParent());
+        Files.writeString(marker, base + "\nsha256:cafe\n");
+        Files.setLastModifiedTime(marker, FileTime.fromMillis(0));
+
+        AotCacheTrainer.localBaseJre(plan(null), base, cacheRoot, RegistryAuth.NONE, msg -> {});
+
+        assertThat(Files.getLastModifiedTime(marker).toMillis() > 0)
+                .as("the tree under the cache root is the one the trainer used")
+                .isEqualTo(BaseJre.hostCanExecute(plan(null).config().platforms()));
     }
 }

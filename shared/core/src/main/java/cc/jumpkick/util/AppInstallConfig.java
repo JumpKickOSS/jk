@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,12 +26,11 @@ import java.util.regex.Pattern;
  */
 public final class AppInstallConfig {
 
-    public static final String FILE_NAME = "config.toml";
     public static final String PROP_PREFIX = "jk-config.";
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([A-Za-z0-9._-]+)}");
     private static final Pattern KEY_LINE =
-            Pattern.compile("(?m)^([A-Za-z0-9._-]+)\\s*=\\s*\"((?:\\\\.|[^\"])*)\"\\s*$");
+            Pattern.compile("(?m)^([A-Za-z0-9._-]+)\\s*=\\s*(\"(?:\\\\.|[^\"])*\")\\s*$");
 
     private AppInstallConfig() {}
 
@@ -42,7 +42,7 @@ public final class AppInstallConfig {
     public static Path path(JkDirs dirs, String binName) {
         Objects.requireNonNull(dirs, "dirs");
         String bin = requireBin(binName);
-        return dirs.configDir().resolve(bin).resolve(FILE_NAME);
+        return dirs.configDir().resolve(bin).resolve(ManifestPaths.CONFIG);
     }
 
     /** Read string keys from the install config; empty map when missing/unreadable. */
@@ -126,7 +126,7 @@ public final class AppInstallConfig {
         if (body == null || body.isBlank()) return out;
         Matcher m = KEY_LINE.matcher(body);
         while (m.find()) {
-            out.put(m.group(1), unescape(m.group(2)));
+            out.put(m.group(1), MinimalToml.unquote(m.group(2)));
         }
         return out;
     }
@@ -136,7 +136,10 @@ public final class AppInstallConfig {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> e : keys.entrySet()) {
             if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) continue;
-            sb.append(e.getKey()).append(" = \"").append(escape(e.getValue())).append("\"\n");
+            sb.append(e.getKey())
+                    .append(" = ")
+                    .append(MinimalToml.quote(e.getValue()))
+                    .append('\n');
         }
         return sb.toString();
     }
@@ -161,22 +164,5 @@ public final class AppInstallConfig {
             throw new IllegalArgumentException("invalid bin name: " + binName);
         }
         return binName;
-    }
-
-    private static String escape(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private static String unescape(String s) {
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '\\' && i + 1 < s.length()) {
-                sb.append(s.charAt(++i));
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
     }
 }

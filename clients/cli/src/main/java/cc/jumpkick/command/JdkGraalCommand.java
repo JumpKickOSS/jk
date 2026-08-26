@@ -2,12 +2,15 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -15,7 +18,6 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,8 +41,7 @@ public final class JdkGraalCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     @Override
@@ -55,14 +56,14 @@ public final class JdkGraalCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         String spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 
         List<JdkHit> graals =
-                registry.listHits().stream().filter(JdkGraalCommand::isGraal).toList();
+                registry.listHits().stream().filter(DefaultGraalPolicy::isGraal).toList();
         if (graals.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "no GraalVM JDK installed — install one with "
                             + "`jk jdk install native` (or `jk jdk install graalvm-25`).");
@@ -71,14 +72,13 @@ public final class JdkGraalCommand implements CliCommand {
 
         JdkHit chosen;
         if (spec == null || spec.isBlank()) {
-            chosen = graals.stream().sorted(byGraalPreference()).findFirst().orElseThrow();
+            chosen = DefaultGraalPolicy.choose(graals).orElseThrow();
         } else {
-            Optional<JdkHit> match = cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)
-                    ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, graals)
-                    : registry.findHitBySpec(spec).filter(JdkGraalCommand::isGraal);
+            Optional<JdkHit> match = JdkKeywords.isKeyword(spec)
+                    ? JdkKeywords.bestInstalledMatch(spec, graals)
+                    : registry.findHitBySpec(spec).filter(DefaultGraalPolicy::isGraal);
             if (match.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "JDK", "no installed GraalVM matches `" + spec + "` (try `jk jdk list`).");
+                CommandWedge.printFail("JDK", "no installed GraalVM matches `" + spec + "` (try `jk jdk list`).");
                 return 1;
             }
             chosen = match.get();
@@ -96,23 +96,8 @@ public final class JdkGraalCommand implements CliCommand {
         return 0;
     }
 
-    static boolean isGraal(JdkHit h) {
-        return h.vendor() == JdkVendor.ORACLE_GRAALVM || h.vendor() == JdkVendor.GRAALVM_CE;
-    }
-
-    /** Oracle GraalVM before GraalVM CE; newer version first within a flavour. */
-    private static Comparator<JdkHit> byGraalPreference() {
-        return Comparator.comparingInt((JdkHit h) -> {
-                    int i = JdkVendor.GRAAL_PREFERENCE.indexOf(h.vendor());
-                    return i >= 0 ? i : Integer.MAX_VALUE;
-                })
-                .thenComparing(
-                        h -> h.version() == null ? "" : cc.jumpkick.jdk.JdkSelector.versionKey(h.version()),
-                        Comparator.reverseOrder());
-    }
-
     private static String display(JdkHit hit) {
-        Integer major = JdkDefaultCommand.majorOf(hit.version());
+        Integer major = JdkKeywords.leadingMajor(hit.version());
         String name = hit.vendor().displayName();
         return major != null ? name + " " + major : name + " " + hit.version();
     }

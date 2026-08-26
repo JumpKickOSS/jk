@@ -1,15 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.CacheRetention;
+import cc.jumpkick.task.CacheRoots;
+import cc.jumpkick.task.CasSweep;
+import cc.jumpkick.task.TmpGc;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,7 +65,7 @@ public final class CachePlans {
                 .execute(ctx -> {
                     // Drop retired engine jars and parked PATH binaries.
                     try {
-                        var pruned = cc.jumpkick.cache.EngineInstall.current().gc();
+                        var pruned = EngineInstall.current().gc();
                         if (!pruned.isEmpty()) {
                             ctx.warn("prune", "retired " + pruned.size() + " displaced jk install file(s)");
                         }
@@ -66,30 +78,28 @@ public final class CachePlans {
                     long totalBytes = 0;
 
                     // Cache-tier CAS temps under <cacheRoot>/sha256/
-                    TempSweep cacheTemps = sweepCasTemps(root.resolve("sha256"), dryRun);
+                    TempSweep cacheTemps = sweepCasTemps(CacheTree.CACHE_CAS.under(root), dryRun);
                     totalFiles += cacheTemps.files();
                     totalBytes += cacheTemps.bytes();
 
                     var timingsReport = StepTimings.prune(
                             root,
-                            StepTimings.Limits.resolve(cc.jumpkick.util.JkDirs.userConfigFile(), System::getenv),
+                            StepTimings.Limits.resolve(JkDirs.userConfigFile(), System::getenv),
                             System.currentTimeMillis(),
                             dryRun);
                     totalFiles += timingsReport.evictedByAge() + timingsReport.evictedBySize();
 
                     if (includeJkTmp) {
-                        var tmpReport = cc.jumpkick.task.TmpGc.sweep(
-                                cc.jumpkick.util.JkDirs.tmp(), cc.jumpkick.task.TmpGc.DEFAULT_TTL, dryRun);
+                        var tmpReport = TmpGc.sweep(JkDirs.tmp(), TmpGc.DEFAULT_TTL, dryRun);
                         totalFiles += tmpReport.deleted();
                         totalBytes += tmpReport.freedBytes();
                     }
 
                     // Reclaim unreferenced payloads before the budget prune: garbage the sweep frees
                     // is a shortfall the prune then does not have to cover by evicting live entries.
-                    var cacheCas = cc.jumpkick.cache.JkStores.cacheCas(root);
-                    var cacheLive = cc.jumpkick.task.CacheRoots.collect(
-                            cacheCas, root.resolve("actions"), root.resolve("tools"));
-                    var cacheSweep = cc.jumpkick.task.CasSweep.sweep(cacheCas, cacheLive, dryRun);
+                    var cacheCas = JkStores.cacheCas(root);
+                    var cacheLive = CacheRoots.collect(cacheCas, CacheTree.ACTIONS.under(root), root.resolve("tools"));
+                    var cacheSweep = CasSweep.sweep(cacheCas, cacheLive, dryRun);
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
 
@@ -97,8 +107,7 @@ public final class CachePlans {
                     // name. The sweep's victims are still on disk in a dry run, so hand them over:
                     // without that the action prune counts the same blob twice and dry-run totals
                     // diverge.
-                    var retention =
-                            cc.jumpkick.task.CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun);
+                    var retention = CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun);
                     totalFiles += retention.deletedFiles();
                     totalBytes += retention.freedBytes();
                     ctx.put(FINAL_ACTION_BYTES, retention.finalActionBytes());
@@ -108,8 +117,7 @@ public final class CachePlans {
                                 "reclaimed unrecognised cache entries: "
                                         + String.join(", ", retention.unknownEntries()));
                     }
-                    long actionBudget =
-                            cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
+                    long actionBudget = JkCacheConfig.resolve().maxCacheSizeBytes();
                     if (actionBudget > 0 && retention.finalActionBytes() > actionBudget) {
                         ctx.warn(
                                 "prune",
@@ -125,10 +133,9 @@ public final class CachePlans {
     }
 
     /**
-     * Build the purge plan: wipe the entire cache tier under {@code root} ({@code actions/},
-     * {@code format-stamps/}, cache {@code sha256/}). Artifact store trees ({@code repos/}, store
-     * CAS) are never under this root in the ambient layout; hermetic collocated {@code repos/} is
-     * kept.
+     * Build the purge plan: empty the cache root at an idle boundary. The artifact store is never
+     * a child of this root — {@code JkStores} resolves it from {@code JK_STORE_DIR} whatever the
+     * cache dir is — so there is nothing under here a nuke has to step around.
      */
     public static BuildPlan purgeBuildPlan(Path root) {
         Task purgeStep = Task.builder("purge")
@@ -141,15 +148,24 @@ public final class CachePlans {
     }
 
     /**
-     * Delete every bounded cache tier under {@code root}. Driven off {@link
-     * cc.jumpkick.task.CacheTier} so a new tier cannot be added to the retention table and then
-     * silently survive {@code jk cache nuke}.
+     * Empty the cache root: every entry, whether or not {@link CacheTree} names it. Totality is
+     * the point — the retention sweep already reclaims unrecognised top-level entries, so a nuke
+     * that spared what a prune takes would be the weaker of the two commands.
+     *
+     * <p>Two things survive here and neither is an exception to that: {@code root} itself, and the
+     * {@link CacheTree#PRUNE_LOCK} file the caller holds open for the length of this pass
+     * ({@code CacheMaintenanceLocks}) — a directory containing an open file cannot be removed on
+     * every platform jk targets. Removing the root is the client's last step, once no process
+     * holds anything under it; see {@code CacheCommand.removeCacheRoot}.
      */
     public static void purgeActionCache(Path root) throws IOException {
-        for (var tier : cc.jumpkick.task.CacheTier.purgeable()) {
-            Path dir = root.resolve(tier.entry());
-            if (Files.isDirectory(dir)) deleteContents(dir);
-            else Files.deleteIfExists(dir);
+        if (!Files.isDirectory(root)) return;
+        Path held = CacheTree.PRUNE_LOCK.under(root);
+        try (var entries = Files.list(root)) {
+            for (Path entry : entries.toList()) {
+                if (entry.equals(held)) continue;
+                PathUtil.deleteRecursivelyOrThrow(entry);
+            }
         }
     }
 
@@ -183,13 +199,13 @@ public final class CachePlans {
         long totalFiles = 0;
         long totalBytes = 0;
 
-        TempSweep temps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "sha256"), dryRun);
+        TempSweep temps = sweepCasTemps(JkStores.resolve(root, "sha256"), dryRun);
         totalFiles += temps.files();
         totalBytes += temps.bytes();
 
         // Reclaim leaked .put-*.tmp download temps under the Maven-layout store too — mirror=false
         // fetches (metadata / file:// POMs) return the temp and never delete it.
-        TempSweep repoTemps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "repos"), dryRun);
+        TempSweep repoTemps = sweepCasTemps(JkStores.resolve(root, "repos"), dryRun);
         totalFiles += repoTemps.files();
         totalBytes += repoTemps.bytes();
 
@@ -209,7 +225,7 @@ public final class CachePlans {
                     ctx.label(dryRun ? "Inspecting build cache…" : "Clearing build cache…");
                     long[] acc = {0L, 0L}; // {files, bytes}
                     List<Path> allModuleDirs = resolveModuleDirs(projectDir);
-                    Path actionsDir = cacheRoot.resolve("actions");
+                    Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
                     if (Files.isDirectory(actionsDir)) {
                         List<Path> moduleDirs = allModuleDirs;
                         Set<String> tags = tagsFor(moduleDirs);
@@ -218,7 +234,7 @@ public final class CachePlans {
                         Set<String> deletedTaskIds = new LinkedHashSet<>();
 
                         // 1) key records: match by qualified-task tag, or by an INPUT path under a module dir.
-                        Path keysDir = actionsDir.resolve("keys");
+                        Path keysDir = ActionTree.KEYS.under(actionsDir);
                         if (Files.isDirectory(keysDir)) {
                             try (var stream = Files.list(keysDir)) {
                                 for (Path key : (Iterable<Path>) stream::iterator) {
@@ -237,14 +253,16 @@ public final class CachePlans {
                         }
 
                         // 2) task pointers + incremental state, keyed by the same qualified-task id.
-                        deleteQualified(actionsDir.resolve("tasks"), tags, deletedTaskIds, dryRun, acc);
-                        deleteQualified(actionsDir.resolve("incremental-java"), tags, deletedTaskIds, dryRun, acc);
-                        deleteQualified(actionsDir.resolve("incremental-kotlin"), tags, deletedTaskIds, dryRun, acc);
+                        deleteQualified(ActionTree.TASKS.under(actionsDir), tags, deletedTaskIds, dryRun, acc);
+                        for (Path tree : ActionTree.incrementalUnder(actionsDir)) {
+                            deleteQualified(tree, tags, deletedTaskIds, dryRun, acc);
+                        }
                     }
                     // 3) preflight memos — their "clean" conclusions were derived from the
                     // action keys just deleted; a surviving memo turns clear into a no-op.
                     for (Path m : allModuleDirs) {
-                        Path preflight = m.resolve("target").resolve(".jk").resolve("preflight");
+                        Path preflight =
+                                m.resolve(BuildLayout.TARGET).resolve(".jk").resolve("preflight");
                         if (!Files.isDirectory(preflight)) continue;
                         try (var files = Files.list(preflight)) {
                             for (Path f : (Iterable<Path>) files::iterator) {
@@ -276,7 +294,7 @@ public final class CachePlans {
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         dirs.add(here);
         try {
-            JkBuild manifest = JkBuildParser.parse(here.resolve("jk.toml"));
+            JkBuild manifest = JkBuildParser.parse(here.resolve(ManifestPaths.MANIFEST));
             Path wsRoot = manifest.isWorkspaceRoot()
                     ? here
                     : WorkspaceLocator.findRoot(here).orElse(null);
@@ -287,7 +305,8 @@ public final class CachePlans {
                     wsRoot = wsRoot.toAbsolutePath().normalize();
                 }
                 dirs.add(wsRoot);
-                JkBuild root = wsRoot.equals(here) ? manifest : JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                JkBuild root =
+                        wsRoot.equals(here) ? manifest : JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
                 for (String module : root.workspaceOpt().map(Workspace::modules).orElse(List.of())) {
                     Path mod = wsRoot.resolve(module).normalize();
                     try {
@@ -310,7 +329,7 @@ public final class CachePlans {
         for (Path dir : moduleDirs) {
             JkBuild project;
             try {
-                project = JkBuildParser.parse(dir.resolve("jk.toml"));
+                project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             } catch (Exception e) {
                 continue; // no/invalid manifest here — nothing to tag
             }
@@ -397,20 +416,6 @@ public final class CachePlans {
                     acc[0]++;
                 }
             }
-        }
-    }
-
-    /** Recursively delete everything under {@code root}, keeping {@code root} itself. */
-    public static void deleteContents(Path root) throws IOException {
-        try (var stream = Files.walk(root)) {
-            stream.sorted(Comparator.reverseOrder())
-                    .filter(p -> !p.equals(root))
-                    .forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (IOException ignored) {
-                        }
-                    });
         }
     }
 

@@ -4,8 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -106,7 +107,7 @@ class CachePlansTempSweepTest {
     /** The tier split is the contract: a plain prune must not reach into the artifact store. */
     @Test
     void plain_prune_leaves_store_temps_to_repo_prune(@TempDir Path root) throws Exception {
-        Path storeTemp = cc.jumpkick.cache.JkStores.resolve(root, "sha256").resolve("ab/.put-jk1531");
+        Path storeTemp = JkStores.resolve(root, "sha256").resolve("ab/.put-jk1531");
         seed(storeTemp, "partial");
         try {
             CachePlans.pruneBuildPlan(root, false, false).run();

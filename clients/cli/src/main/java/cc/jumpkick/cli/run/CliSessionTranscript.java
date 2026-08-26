@@ -2,7 +2,11 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.cli.engine.WireStream;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -38,16 +42,22 @@ public final class CliSessionTranscript {
      */
     public static final int SCHEMA = 1;
 
-    /** @deprecated details live under project runs; kept for tests that assert the constant. */
-    @Deprecated
-    public static final String REL_ROOT = "state/builds/projects";
-
     public static final String FILE_NAME = "details.jsonl";
 
     private static final String ENV = "JK_CLI_DETAILS";
 
     /** Active session for dual-write; cleared on finish. */
     private static volatile CliSessionTranscript active;
+
+    static {
+        // The wire pump announces every engine job-start; whichever transcript is active at that
+        // moment binds to the journal run. Registered here (loaded on first open) so the engine
+        // package never names this one.
+        WireStream.onJobStart((jid, buildNumber, detailsPath, etaMs) -> {
+            CliSessionTranscript session = active;
+            if (session != null) session.bindJob(jid, buildNumber, detailsPath, etaMs);
+        });
+    }
 
     private final Path projectDir;
     private final Instant started;
@@ -106,7 +116,9 @@ public final class CliSessionTranscript {
 
     static boolean disabled() {
         String env = System.getenv(ENV);
-        return env != null && (env.isBlank() || "off".equalsIgnoreCase(env) || "0".equals(env));
+        // Blank is this switch's own "off"; otherwise the jk-wide truth set decides.
+        return env != null
+                && (env.isBlank() || EnvValues.parseBool(env).filter(on -> !on).isPresent());
     }
 
     public Path file() {
@@ -188,7 +200,7 @@ public final class CliSessionTranscript {
 
     private static String coordOf(Path dir) {
         try {
-            Path toml = dir.resolve("jk.toml");
+            Path toml = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return "unknown:unknown";
             String text = Files.readString(toml, StandardCharsets.UTF_8);
             String group = null, name = null;
@@ -360,7 +372,7 @@ public final class CliSessionTranscript {
                 announceWritten(p);
                 Path results = session.projectDir() == null
                         ? null
-                        : session.projectDir().resolve("target").resolve("jk-results.md");
+                        : session.projectDir().resolve(BuildLayout.TARGET).resolve("jk-results.md");
                 if (results != null && Files.isRegularFile(results)) {
                     System.err.println("Results: " + results);
                 }

@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.engine.http.HttpLive;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,8 +32,8 @@ import org.jspecify.annotations.Nullable;
  * Thread-safe collector of one build's outcome, folded from {@link
  * cc.jumpkick.runtime.WorkspaceBuildListener}/{@link cc.jumpkick.run.BuildPlanListener} callbacks
  * that fire on scheduler/worker threads, then frozen into a {@link BuildRecord} at request-finish.
- * Success is taken from the runner's terminal result when set, else derived (no failed module/plan
- * and not cancelled).
+ * Success is the body's own verdict when it ruled ({@link #stamp}); otherwise it is derived from
+ * the rows the run left behind — no failed module or plan, not cancelled, and at least one row.
  */
 public final class BuildAccumulator {
     private final String kind;
@@ -43,7 +50,7 @@ public final class BuildAccumulator {
      * This run's byte accounting. Opened as the ambient ledger on the runner thread, so every
      * session the request builds meters into it (see {@link cc.jumpkick.task.IoLedger}).
      */
-    private final cc.jumpkick.task.IoLedger io = new cc.jumpkick.task.IoLedger();
+    private final IoLedger io = new IoLedger();
 
     // Plain lists under their own monitor (snapshot to iterate): CopyOnWriteArrayList copied the
     // whole backing array per append — O(n²) array churn for a build with many modules or
@@ -63,6 +70,11 @@ public final class BuildAccumulator {
     private int droppedDiagnostics;
     private volatile BuildRecord.Tests tests;
     private volatile boolean anyFailure;
+    // Whether this run recorded anything it can be judged on: a module outcome, a finished plan,
+    // a finished step, a test summary. A started-but-unfinished step is not one — it is exactly
+    // what an abandoned run leaves behind. A body that declines to rule leaves the verdict to
+    // these; with none of them "no failure seen" is not evidence of success, it is silence.
+    private volatile boolean anyFact;
     private volatile boolean userCancelled;
     private volatile @Nullable String cancelReason;
     private volatile @Nullable Boolean success;
@@ -114,7 +126,7 @@ public final class BuildAccumulator {
         this.kind = kind;
         this.dir = dir;
         this.coord = coord;
-        this.projectId = cc.jumpkick.runtime.ProjectIds.idOf(dir);
+        this.projectId = ProjectIds.idOf(dir);
         this.trigger = trigger;
         this.timeline = timeline;
         this.rebuild = rebuild;
@@ -135,7 +147,7 @@ public final class BuildAccumulator {
         return journalId;
     }
 
-    public cc.jumpkick.task.IoLedger io() {
+    public IoLedger io() {
         return io;
     }
 
@@ -148,18 +160,18 @@ public final class BuildAccumulator {
         return Boolean.TRUE.equals(success);
     }
 
-    /** True when the runner already stamped success or failure via {@link #setOutcome}. */
+    /** True when the runner already stamped success or failure via {@link #stamp}. */
     public boolean hasOutcome() {
         return success != null;
     }
 
     /**
-     * Outcome for SSE {@code request-finish} — same default as {@link #toRecord}: explicit
-     * stamp when set, else not-failed and not cancelled.
+     * Outcome for SSE {@code request-finish} — same rule as {@link #toRecord}: the body's stamp
+     * when it ruled, else not-cancelled, no failure recorded, and at least one fact to say so.
      */
     public boolean effectiveSuccess(boolean cancelled) {
         if (cancelled) return false;
-        return success != null ? success : !anyFailure;
+        return success != null ? success : (!anyFailure && anyFact);
     }
 
     /**
@@ -174,8 +186,8 @@ public final class BuildAccumulator {
 
     /**
      * Stamp cancel immediately so a force-killed runner still journals as cancelled, not success.
-     * No-op once {@link #setOutcome} ran. For a non-{@code explicit} signal (socket EOF), also a
-     * no-op once a module/plan reported failure ({@code anyFailure}): the client often closes
+     * No-op once {@link #stamp} recorded a verdict. For a non-{@code explicit} signal (socket
+     * EOF), also a no-op once a module/plan reported failure ({@code anyFailure}): the client often closes
      * the socket the instant it reads a terminal failure, and that EOF must not re-label a
      * test/compile failure as cancelled. An {@code explicit} signal (BUILD_CANCEL, dashboard
      * cancel, wall deadline) is not that race — a genuine abort after a module failure still
@@ -222,10 +234,38 @@ public final class BuildAccumulator {
         return cancelReason;
     }
 
+    /**
+     * The row for a throw that escaped the job body. The envelope's catch stamps a failed verdict
+     * alongside it, so the record names the exception instead of deriving green from whatever
+     * clean rows the body recorded before it died.
+     */
+    public void addEscapedThrow(Throwable t) {
+        addDiag(new BuildRecord.Diag(
+                "error",
+                "",
+                null,
+                "escaped-throw",
+                t.getMessage() == null ? t.getClass().getName() : t.getMessage(),
+                null,
+                t.getClass().getName(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                0,
+                List.of(),
+                0));
+    }
+
     public void addModule(ModuleOutcome o) {
         synchronized (modules) {
             modules.add(o);
         }
+        anyFact = true;
         if (!o.success()) anyFailure = true;
     }
 
@@ -276,6 +316,36 @@ public final class BuildAccumulator {
         }
     }
 
+    /**
+     * The row that says "I do not know" in the only vocabulary the record has. A journal entry
+     * carries a verdict and a cancel bit and nothing in between, so a run that produced neither
+     * says so in its diagnostics rather than picking a side silently.
+     */
+    private static List<BuildRecord.Diag> withNoVerdictRow(List<BuildRecord.Diag> diags) {
+        List<BuildRecord.Diag> out = new ArrayList<>(diags);
+        out.add(new BuildRecord.Diag(
+                "error",
+                "",
+                null,
+                "no-verdict",
+                "the job produced no result: it recorded no module, plan, step or test row and "
+                        + "returned no verdict, so this run is not known to have succeeded",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                0,
+                List.of(),
+                0));
+        return out;
+    }
+
     private List<ModuleOutcome> moduleSnapshot() {
         synchronized (modules) {
             return new ArrayList<>(modules);
@@ -300,6 +370,7 @@ public final class BuildAccumulator {
 
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis) {
+        anyFact = true;
         stepsByDir
                 .computeIfAbsent(dir == null ? "" : dir, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
                 .put(step, new BuildRecord.Task(step, phase, status, millis));
@@ -325,12 +396,12 @@ public final class BuildAccumulator {
      * rows exist, top-level tasks are the single-plan chain (including {@code RUN}).
      */
     public MidFlight midFlight() {
-        List<cc.jumpkick.engine.http.HttpLive.Module> moduleList = new ArrayList<>();
+        List<HttpLive.Module> moduleList = new ArrayList<>();
         Set<String> covered = new HashSet<>();
         for (ModuleOutcome o : moduleSnapshot()) {
             String mdir = o.dir() == null ? "" : o.dir().toString();
             covered.add(mdir);
-            moduleList.add(new cc.jumpkick.engine.http.HttpLive.Module(
+            moduleList.add(new HttpLive.Module(
                     mdir,
                     o.coord(),
                     /* finished */ true,
@@ -342,23 +413,22 @@ public final class BuildAccumulator {
         for (String d : stepsByDir.keySet()) {
             if (covered.contains(d)) continue;
             if (d.isEmpty()) continue; // single-plan top-level bucket
-            moduleList.add(new cc.jumpkick.engine.http.HttpLive.Module(
+            moduleList.add(new HttpLive.Module(
                     d, null, /* finished */ false, false, 0L, /* didWork n/a */ true, liveTasks(stepsFor(d))));
         }
-        List<cc.jumpkick.engine.http.HttpLive.Task> top = moduleList.isEmpty() ? liveTasks(stepsFor("")) : List.of();
+        List<HttpLive.Task> top = moduleList.isEmpty() ? liveTasks(stepsFor("")) : List.of();
         return new MidFlight(moduleList, top);
     }
 
-    private static List<cc.jumpkick.engine.http.HttpLive.Task> liveTasks(List<BuildRecord.Task> steps) {
-        List<cc.jumpkick.engine.http.HttpLive.Task> out = new ArrayList<>(steps.size());
+    private static List<HttpLive.Task> liveTasks(List<BuildRecord.Task> steps) {
+        List<HttpLive.Task> out = new ArrayList<>(steps.size());
         for (BuildRecord.Task s : steps) {
-            out.add(new cc.jumpkick.engine.http.HttpLive.Task(s.name(), s.stage(), s.status(), s.millis()));
+            out.add(new HttpLive.Task(s.name(), s.stage(), s.status(), s.millis()));
         }
         return out;
     }
 
-    public record MidFlight(
-            List<cc.jumpkick.engine.http.HttpLive.Module> modules, List<cc.jumpkick.engine.http.HttpLive.Task> tasks) {
+    public record MidFlight(List<HttpLive.Module> modules, List<HttpLive.Task> tasks) {
         public MidFlight {
             modules = modules == null ? List.of() : List.copyOf(modules);
             tasks = tasks == null ? List.of() : List.copyOf(tasks);
@@ -390,6 +460,7 @@ public final class BuildAccumulator {
 
     /** Diagnostics + failure flag from a finished plan (steps come from {@link #addTask}). */
     public void addBuildPlan(String dir, BuildPlanResult result) {
+        anyFact = true;
         String d0 = dir == null ? "" : dir;
         // Prefer the plan's own dir for.env lookup; fall back to the run's entry dir.
         String redactDir = (dir != null && !dir.isBlank()) ? dir : this.dir;
@@ -494,6 +565,7 @@ public final class BuildAccumulator {
      */
     public synchronized void addTests(TestSummary t) {
         if (t == null) return;
+        anyFact = true;
         tests = tests == null
                 ? new BuildRecord.Tests(t.total(), t.succeeded(), t.failed(), t.skipped())
                 : new BuildRecord.Tests(
@@ -503,7 +575,24 @@ public final class BuildAccumulator {
                         tests.skipped() + t.skipped());
     }
 
-    public void setOutcome(boolean ok, int exit) {
+    /**
+     * Fold in the body's verdict — the one place a {@link JobOutcome} reaches the journal.
+     *
+     * <p>{@link JobOutcome.Declined} deliberately stamps nothing: the run's own rows are the
+     * verdict, and {@link #toRecord} refuses to read an empty set of them as success.
+     */
+    public void stamp(JobOutcome outcome) {
+        // Cancelled records only that the body stopped for a cancel; which cancel it was — user,
+        // deadline, or a socket race the engine must not believe — stays the cancel stamps' call.
+        switch (outcome) {
+            case JobOutcome.Succeeded ignored -> setOutcome(true, Exit.SUCCESS);
+            case JobOutcome.Failed failed -> setOutcome(false, failed.exitCode());
+            case JobOutcome.Cancelled ignored -> setOutcome(false, Exit.FAILURE);
+            case JobOutcome.Declined ignored -> {}
+        }
+    }
+
+    private void setOutcome(boolean ok, int exit) {
         this.success = ok;
         this.exitCode = exit;
         if (!ok) anyFailure = true;
@@ -535,13 +624,24 @@ public final class BuildAccumulator {
             String jkVersion,
             String commit,
             CacheBenefit.Result benefit) {
-        boolean ok = success != null ? success : (!anyFailure && !cancelled);
-        int exit = success != null ? exitCode : (ok ? 0 : 1);
+        // A body that declined to rule leaves the verdict to its rows. With no rows and no cancel
+        // there is nothing to derive from, and "no failure recorded" is the same silence a body
+        // that died before its first row leaves behind — so that run is written down as a failure
+        // the user can act on, with a diagnostic saying the job produced no result at all.
+        boolean noVerdict = success == null && !anyFact && !cancelled;
+        boolean ok = success != null ? success : (!anyFailure && !cancelled && !noVerdict);
         // cancelToken / late markUserCancelled also trip on the benign end-of-request EOF (the
         // client closes the socket as soon as it reads the terminal). Trust a stamped outcome:
         // success is never cancelled; an explicit failure is cancelled only when the user/deadline
         // stamp was set (not merely cancelled=true from cooperative fail-fast / EOF race).
         boolean cancelledEffective = resolveCancelledFlag(success, userCancelled, cancelled);
+        // One derivation, cancelled arm first: a row labelled cancelled carries the code every
+        // shell already means by an interrupt, so `$?` and `jk history` agree about the same run.
+        // Until JK-2485 every cancel wrote FAILURE and read back as an ordinary failed build; the
+        // exit of work that stopped before it could rule is not evidence of anything else.
+        int exit = cancelledEffective
+                ? Exit.INTERRUPTED
+                : success != null ? exitCode : (ok ? Exit.SUCCESS : (noVerdict ? Exit.SOFTWARE : Exit.FAILURE));
         // Each workspace module carries its own step chain (keyed by its dir); a single-plan
         // build has no module rows, so its steps live in the record's top-level list (the ""
         // bucket). This is exactly the two shapes the dashboard renders (per-module vs compact).
@@ -559,7 +659,7 @@ public final class BuildAccumulator {
                         benefit.savedMillis(),
                         benefit.coveredSkips(),
                         benefit.totalSkips());
-        cc.jumpkick.task.IoLedger.Totals bytes = io.totals();
+        IoLedger.Totals bytes = io.totals();
         BuildRecord.Io ioRow = bytes.isEmpty()
                 ? null
                 : new BuildRecord.Io(bytes.remoteUp(), bytes.remoteDown(), bytes.localUp(), bytes.localDown());
@@ -581,7 +681,7 @@ public final class BuildAccumulator {
                 tests,
                 moduleList,
                 topSteps,
-                diagSnapshot(),
+                noVerdict ? withNoVerdictRow(diagSnapshot()) : diagSnapshot(),
                 trigger,
                 commit,
                 benefitRow,
@@ -601,10 +701,10 @@ public final class BuildAccumulator {
             if (dir != null && !dir.isBlank()) {
                 root = Path.of(dir);
             } else {
-                root = cc.jumpkick.config.SessionContext.current().workingDir();
+                root = SessionContext.current().workingDir();
             }
             if (root == null) return text;
-            return cc.jumpkick.config.BuildEnv.secretsFor(root).redact(text);
+            return BuildEnv.secretsFor(root).redact(text);
         } catch (RuntimeException e) {
             return text;
         }

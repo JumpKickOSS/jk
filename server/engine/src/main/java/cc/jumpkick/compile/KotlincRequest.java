@@ -8,7 +8,8 @@ import java.util.Objects;
 import lombok.Builder;
 
 /**
- * Input to {@link KotlincDriver} (forks {@code jk-kotlin-compiler} / Build Tools API).
+ * Input to {@link WorkerCompileDriver}'s Kotlin arm (forks {@code jk-kotlin-compiler} / Build
+ * Tools API).
  * {@code workerClasspath} is the plugin jar + BTA closure; a null {@code workingDir} is a full
  * compile. Compiler plugins must use {@link Plugin}, not raw {@code -Xplugin} in
  * {@code extraArgs} (BTA ignores those).

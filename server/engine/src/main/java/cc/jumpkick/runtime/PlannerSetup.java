@@ -2,12 +2,17 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerSupport.contributedProvidedClasspath;
+import static cc.jumpkick.runtime.PlannerSupport.lockModules;
+import static cc.jumpkick.runtime.PlannerSupport.unresolvedProcessorDeps;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkInstallListener;
@@ -15,10 +20,15 @@ import cc.jumpkick.jdk.JdkProgressLabel;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Variants;
+import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.resolver.CacheSync;
+import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -35,7 +45,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
- * Parse / sync-deps / ensure-jdk steps for {@link BuildPlanner#coreBuilder}.
+ * Parse / resolve-deps / ensure-jdk steps for {@link BuildPlanner#coreBuilder}.
  */
 public final class PlannerSetup {
 
@@ -78,10 +88,10 @@ public final class PlannerSetup {
                         // Same override the plan was built from (jk assemble --fat/--minified).
                         // Plan construction and step bodies must read one effective config, or a
                         // task gets scheduled against a config its body cannot see.
-                        project = cc.jumpkick.plugin.manifest.VariantApply.apply(
+                        project = VariantApply.apply(
                                         applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session()),
                                         in.dir(),
-                                        cc.jumpkick.model.Variants.Selection.parse(in.variant()),
+                                        Variants.Selection.parse(in.variant()),
                                         in.clientEnv())
                                 .build();
                     } catch (RuntimeException e) {
@@ -118,10 +128,10 @@ public final class PlannerSetup {
                                 in.lockFile(),
                                 in.cache(),
                                 null,
-                                cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                                BuildIdentity.cacheKeyVersion(),
                                 List.of(),
                                 true,
-                                cc.jumpkick.resolver.ResolveObserver.NOOP,
+                                ResolveObserver.NOOP,
                                 ctx::output);
                         ctx.put(LOCKFILE, updated != null ? updated : existing);
                     } else {
@@ -138,10 +148,9 @@ public final class PlannerSetup {
                     // JAVA_HOME is published in ensure-jdk, not here.
                     ctx.put(
                             JAVAC_ARGS,
-                            cc.jumpkick.compile.JavacLint.effectiveArgs(
+                            JavacLint.effectiveArgs(
                                     project.build().lint(),
-                                    cc.jumpkick.plugin.manifest.PluginContributions.javacArgs(
-                                            project, in.dir(), lockModules(lock)),
+                                    PluginContributions.javacArgs(project, in.dir(), lockModules(lock)),
                                     profile == null ? List.of() : profile.javacArgs()));
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
@@ -152,40 +161,23 @@ public final class PlannerSetup {
                         javaMainSrcs = javaMainSrcRef.get();
                     }
                     List<Path> kotlinMainSrcs = kotlinMainSrcRef.get();
-                    if (kotlinMainSrcs == null) {
-                        kotlinMainSrcs = CompileSupport.collectKotlinSources(in.dir(), compact);
-                        kotlinMainSrcRef.compareAndSet(null, kotlinMainSrcs);
-                        kotlinMainSrcs = kotlinMainSrcRef.get();
-                    }
                     List<Path> groovyMainSrcs = groovyMainSrcRef.get();
-                    if (groovyMainSrcs == null) {
-                        groovyMainSrcs = CompileSupport.collectGroovySources(in.dir(), compact);
-                        groovyMainSrcRef.compareAndSet(null, groovyMainSrcs);
-                        groovyMainSrcs = groovyMainSrcRef.get();
-                    }
                     // [build] extra-src roots (variant overlays folded in by VariantApply) and
                     // plugin-contributed source roots ([[contribute.source-roots]] — grails-app/…)
                     // join the source set here — the tick suppliers' pre-walk never saw them.
-                    List<Path> extraSrcDirs = new ArrayList<>(CompileSupport.extraSrcDirs(project, in.dir()));
-                    for (var root : cc.jumpkick.plugin.manifest.PluginContributions.sourceRoots(project, in.dir())) {
-                        if (!root.resource()) extraSrcDirs.add(in.dir().resolve(root.dir()));
-                    }
-                    List<Path> scalaMainSrcs = CompileSupport.collectScalaSources(in.dir(), compact);
-                    if (!extraSrcDirs.isEmpty()) {
-                        javaMainSrcs = CompileSupport.withExtraSources(javaMainSrcs, extraSrcDirs, ".java");
-                        kotlinMainSrcs = CompileSupport.withExtraSources(kotlinMainSrcs, extraSrcDirs, ".kt");
-                        groovyMainSrcs = CompileSupport.withExtraSources(groovyMainSrcs, extraSrcDirs, ".groovy");
-                        scalaMainSrcs = CompileSupport.withExtraSources(scalaMainSrcs, extraSrcDirs, ".scala");
-                        javaMainSrcRef.set(javaMainSrcs);
-                        kotlinMainSrcRef.set(kotlinMainSrcs);
-                        groovyMainSrcRef.set(groovyMainSrcs);
-                    }
-                    if (!scalaMainSrcs.isEmpty()) {
-                        List<Path> withScala = new ArrayList<>(javaMainSrcs);
-                        withScala.addAll(scalaMainSrcs);
-                        javaMainSrcs = withScala;
-                        javaMainSrcRef.set(javaMainSrcs);
-                    }
+                    // Each union is derived by PlannerCompile, not here: `jk explain` has to
+                    // reproduce these lists exactly to gate and key the compile steps, and a
+                    // second copy of the fold is a drift the parity guard cannot see (JK-2479).
+                    javaMainSrcs = PlannerCompile.javaAndScalaSources(project, in.dir(), compact, javaMainSrcs);
+                    javaMainSrcRef.set(javaMainSrcs);
+                    kotlinMainSrcs = kotlinMainSrcs == null
+                            ? PlannerCompile.mainKotlinSources(project, in.dir(), compact)
+                            : PlannerCompile.mainKotlinSources(project, in.dir(), kotlinMainSrcs);
+                    groovyMainSrcs = groovyMainSrcs == null
+                            ? PlannerCompile.mainGroovySources(project, in.dir(), compact)
+                            : PlannerCompile.mainGroovySources(project, in.dir(), groovyMainSrcs);
+                    kotlinMainSrcRef.set(kotlinMainSrcs);
+                    groovyMainSrcRef.set(groovyMainSrcs);
                     ctx.put(JAVA_SOURCES, javaMainSrcs);
                     ctx.put(KOTLIN_SOURCES, kotlinMainSrcs);
                     ctx.put(GROOVY_SOURCES, groovyMainSrcs);
@@ -396,7 +388,7 @@ public final class PlannerSetup {
                         ctx.put(
                                 JAVA_HOME,
                                 outcome.jdk()
-                                        .map(cc.jumpkick.jdk.InstalledJdk::home)
+                                        .map(InstalledJdk::home)
                                         .orElseGet(() -> JavaHomes.resolveJavaHome(in.dir())));
                         // Already on disk / locked — no download work this run.
                         if (outcome.source() != JdkEnsure.Source.INSTALLED) ctx.cached();

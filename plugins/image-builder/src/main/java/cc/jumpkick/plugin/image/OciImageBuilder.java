@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.image.ImageConfig;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -32,7 +35,8 @@ import java.util.Optional;
  * <p>The spec is line-oriented ({@code MAIN_JAR /abs/app.jar}, {@code BASE …}, {@code TARBALL …},
  * {@code DEP_JAR …}, …); the reply is {@value #PREFIX}-prefixed JSONL, terminating in
  * {@code {"t":"result","ok":true,"ref":"…"}} (or {@code "tarball"}), {@code {"t":"result",
- * "ok":false,"error":"…"}} on failure. Exit 0 success, 1 build/push error, 2 bad arguments.
+ * "ok":false,"error":"…"}} on failure. Exit codes are {@link Exit}: 0 success, 1 build/push
+ * error, {@link Exit#USAGE} bad command line, {@link Exit#NO_INPUT} unreadable spec.
  */
 public final class OciImageBuilder implements Plugin, ImageExtension {
 
@@ -47,19 +51,19 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
     public int run(List<String> args, ProtocolWriter out) {
         if (args.isEmpty()) {
             System.err.println("jk-image-runner: expected spec file path");
-            return 2;
+            return Exit.USAGE;
         }
         Path specFile = Path.of(args.get(0));
         if (!Files.isRegularFile(specFile)) {
             System.err.println("jk-image-builder: spec file not found: " + specFile);
-            return 2;
+            return Exit.NO_INPUT;
         }
         PluginSpec spec;
         try {
             spec = PluginSpec.read(specFile);
         } catch (IOException e) {
             System.err.println("jk-image-builder: could not read spec: " + e.getMessage());
-            return 2;
+            return Exit.NO_INPUT;
         }
 
         try {
@@ -102,6 +106,15 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         String dockerExecutable = c.stringOpt("dockerExecutable").orElse(null);
         boolean aotCache = c.bool("aotCache").orElse(false);
 
+        // Every mode — tarball, daemon load, push — starts by pulling a base image through Jib,
+        // which has no notion of jk's --offline and revalidates a mutable tag whatever the local
+        // cache holds. The engine's own digest pin already refuses offline (BaseImageDigest), so
+        // refusing here keeps the two halves of an image build saying the same thing.
+        if (ctx.offline()) {
+            throw new IOException(Errors.offlineRefusal((base == null ? "the default base image" : base)
+                    + (registry == null ? "" : " (and the push to " + registry + ")")));
+        }
+
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
         List<Path> depJars = new ArrayList<>();
         List<Path> snapshotJars = new ArrayList<>();
@@ -113,6 +126,9 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             if (e.fileName() != null && !e.fileName().isBlank()) jarNames.put(e.jar(), e.fileName());
         }
         Path classesDir = ctx.classesDir().orElse(null);
+        // jk's cache root. Required: an AOT build extracts the base image's JRE here, and the
+        // engine's bound for CacheTree.BASE_JRE is the only thing that bounds that tree.
+        Path cacheRoot = Path.of(c.string("jkCache"));
         String appDir = c.stringOpt("appDir").orElse(null);
         String appJar = c.stringOpt("appJar").orElse(null);
 
@@ -142,24 +158,55 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 appDir == null ? null : Path.of(appDir),
                 appJar);
 
+        String ref = config.targetReference(artifact, version);
         Optional<String> tarball = c.stringOpt("tarball");
+        boolean pushing =
+                tarball.isEmpty() && !"daemon".equals(c.stringOpt("mode").orElse(null));
+        // Every mode pulls the base image, so every mode needs the pull credential; only a push
+        // needs the second one. Handing `ref` over in tarball/daemon mode would claim a registry
+        // is contacted when none is.
+        RegistryAuth auth =
+                RegistryAuth.of(credential(ctx, "base"), credential(ctx, "push"), base, pushing ? ref : null);
+
         if (tarball.isPresent()) {
             Path tarballPath = Path.of(tarball.get());
             ctx.label("building OCI tarball");
             if (tarballPath.getParent() != null) Files.createDirectories(tarballPath.getParent());
-            ImageBuilder.writeToTarball(plan, tarballPath);
+            ImageBuilder.writeToTarball(plan, tarballPath, cacheRoot, auth);
             return ImageResult.tarball(tarballPath);
         }
-        String ref = config.targetReference(artifact, version);
-        if ("daemon".equals(c.stringOpt("mode").orElse(null))) {
+        if (!pushing) {
             String exe = dockerExecutable != null ? dockerExecutable : "docker";
             ctx.label("loading " + ref + " into " + exe);
-            ImageBuilder.loadToLocalDaemon(plan, dockerExecutable != null ? Path.of(dockerExecutable) : null);
+            ImageBuilder.loadToLocalDaemon(
+                    plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, cacheRoot, auth);
             return ImageResult.loaded(ref);
         }
         ctx.label("pushing " + ref);
-        ImageBuilder.pushToRegistry(plan);
+        ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
         return ImageResult.pushed(ref);
+    }
+
+    /**
+     * The credential the engine resolved for one registry, rebuilt from the spec's {@code secret}
+     * lines under {@code prefix} ({@code base} for the pull, {@code push} for the target). Same
+     * shape {@code jk-publisher} reads its repository credential in — one credential vocabulary,
+     * one resolution order, and the value never appears on this worker's command line.
+     */
+    static RepoCredential credential(ImageContext ctx, String prefix) {
+        String kind = ctx.config().stringOpt(prefix + "AuthType").orElse("anonymous");
+        return switch (kind) {
+            case "basic" ->
+                new RepoCredential.Basic(
+                        ctx.secret(prefix + "User").orElse(""),
+                        ctx.secret(prefix + "Pass").orElse(""));
+            case "bearer" ->
+                ctx.secret(prefix + "Token")
+                        .filter(t -> !t.isBlank())
+                        .<RepoCredential>map(RepoCredential.Bearer::new)
+                        .orElse(RepoCredential.ANONYMOUS);
+            default -> RepoCredential.ANONYMOUS;
+        };
     }
 
     private static Map<String, String> splitPairs(List<String> pairs) {
@@ -199,6 +246,11 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         }
 
         @Override
+        public boolean offline() {
+            return spec.offline();
+        }
+
+        @Override
         public Path javaHome() {
             return spec.javaHome();
         }
@@ -206,6 +258,11 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         @Override
         public Optional<Path> classesDir() {
             return Optional.ofNullable(spec.classesDir());
+        }
+
+        @Override
+        public Optional<String> secret(String key) {
+            return spec.secret(key);
         }
 
         @Override

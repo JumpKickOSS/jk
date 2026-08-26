@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.cli.engine.TimelineOpts;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.Jobs;
+import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.PluginTunings;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Global flags that apply to every {@code jk} subcommand. Populated from a parsed {@link
@@ -111,10 +119,7 @@ public final class GlobalOptions {
     public Path workingDir() {
         Path raw = directory;
         if (raw == null) {
-            raw = cc.jumpkick.config.SessionContext.current()
-                    .config()
-                    .directory()
-                    .orElse(Path.of(""));
+            raw = SessionContext.current().config().directoryOr(Path.of(""));
         }
         // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
         // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir
@@ -149,8 +154,8 @@ public final class GlobalOptions {
      * layer. {@code gc} / {@code string-dedup} are left unset here — those come from env / {@code
      * jk.toml}; the CLI exposes only the two most common knobs.
      */
-    public cc.jumpkick.config.PluginTuning jvmCli() {
-        return new cc.jumpkick.config.PluginTuning(maxRamPercent, null, null, jvmArgs);
+    public PluginTuning jvmCli() {
+        return new PluginTuning(maxRamPercent, null, null, jvmArgs);
     }
 
     /**
@@ -161,7 +166,7 @@ public final class GlobalOptions {
      */
     public static GlobalOptions from(Invocation in) {
         // Session already holds file+env layers (and any early CLI overlays from Jk.applyCliOverrides).
-        JkConfig cfg = cc.jumpkick.config.SessionContext.current().config();
+        JkConfig cfg = SessionContext.current().config();
 
         GlobalOptions g = new GlobalOptions();
         // Boolean flags: CLI set wins; otherwise inherit true from config/env when present.
@@ -171,10 +176,10 @@ public final class GlobalOptions {
         g.offline = in.isSet("offline") || cfg.offlineOr(false);
         g.yes = in.isSet("yes");
         // Confirm prompts read this for the rest of the command.
-        cc.jumpkick.cli.tui.Confirm.setAssumeYes(g.yes);
+        Confirm.setAssumeYes(g.yes);
         g.force = in.isSet("force") || cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
-        g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
+        g.rebuild = in.isSet("redo") || Boolean.TRUE.equals(cfg.rebuild());
         g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false);
         // Progress is independent of --no-ansi: plain multi-line chrome still runs
         // unless --no-progress / quiet / json mute it.
@@ -191,25 +196,23 @@ public final class GlobalOptions {
         g.noTimeline = in.isSet("no-timeline");
         // Re-fold CLI/config OSC+notify into the session so mid-run readers see the same policy.
         // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
-        JkConfig cliOverlay = new JkConfig(
-                Optional.empty(),
-                // offline + rebuild ride the overlay too: the engine reads them off the
-                // session wire, and Jk.applyCliOverrides only catches exact tokens — a bundled
-                // `-rq` or abbreviated `--red` / `--offl` lands here, in the parsed Invocation.
-                g.offline ? Optional.of(true) : Optional.empty(),
-                g.rebuild ? Optional.of(true) : Optional.empty(),
-                g.noProgress ? Optional.of(true) : Optional.empty(),
-                g.quiet ? Optional.of(true) : Optional.empty(),
-                g.verbose ? Optional.of(true) : Optional.empty(),
-                Optional.empty(),
-                g.force ? Optional.of(true) : Optional.empty(),
-                g.noAnsi ? Optional.of(true) : Optional.empty(),
-                g.noOsc ? Optional.of(true) : Optional.empty(),
-                Optional.of(g.notify),
-                Optional.empty()); // build-output: config/env only (no CLI flag)
-        cc.jumpkick.config.SessionContext.installConfig(cfg.mergedWith(cliOverlay));
+        // offline + rebuild ride the overlay too: the engine reads them off the session wire, and
+        // Jk.applyCliOverrides only catches exact tokens — a bundled `-rq` or abbreviated `--red` /
+        // `--offl` lands here, in the parsed Invocation. `directory` and `build-output` are absent
+        // on purpose: the first is not a config layer and the second is config/env only.
+        JkConfig cliOverlay = JkConfig.empty()
+                .withOffline(flag(g.offline))
+                .withRebuild(flag(g.rebuild))
+                .withNoProgress(flag(g.noProgress))
+                .withQuiet(flag(g.quiet))
+                .withVerbose(flag(g.verbose))
+                .withForce(flag(g.force))
+                .withNoAnsi(flag(g.noAnsi))
+                .withNoOsc(flag(g.noOsc))
+                .withNotifyPolicy(g.notify);
+        SessionContext.installConfig(cfg.mergedWith(cliOverlay));
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
-        cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(g.noTimeline);
+        TimelineOpts.setNoTimeline(g.noTimeline);
         g.output = in.value("output").orElse(null);
         g.configFile = in.value("config-file").map(Path::of).orElse(null);
         g.noConfig = in.isSet("no-config");
@@ -241,10 +244,16 @@ public final class GlobalOptions {
         // / static channels. Only the flag/env layers resolve here — the jk.toml [jvm] table is
         // engine-read at worker-fork time (thin client; keeps tomlj off the client). The working
         // dir rides along so the in-process seam overlays the same project's table.
-        cc.jumpkick.config.SessionContext.install(cc.jumpkick.config.SessionContext.current()
-                .withToolchainSpecs(g.jdk, g.graal)
+        // The environment spellings fold in here, where this process really is the caller's shell.
+        // JdkResolution walks SWITCH then JK_ENV with nothing between them, so "switch, else env"
+        // resolves to exactly what the two-tier walk resolves to — and it means the engine needs one
+        // field, not two, to see the caller's choice at all (JK-1021).
+        SessionContext.install(SessionContext.current()
+                .withToolchainSpecs(
+                        firstNonBlank(g.jdk, System.getenv("JK_JDK")),
+                        firstNonBlank(g.graal, System.getenv("JK_GRAAL")))
                 .withWorkingDir(g.workingDir())
-                .withJvm(cc.jumpkick.config.PluginTunings.resolveClient(g.jvmCli())));
+                .withJvm(PluginTunings.resolveClient(g.jvmCli())));
         return g;
     }
 
@@ -291,7 +300,20 @@ public final class GlobalOptions {
      * cores. Always ≥ 1.
      */
     public int jobsEffective() {
-        return cc.jumpkick.config.Jobs.resolve(
-                Optional.ofNullable(jobs), cc.jumpkick.config.JkEngineConfig.resolve(), System::getenv);
+        return Jobs.resolve(Optional.ofNullable(jobs), JkEngineConfig.resolve(), System::getenv);
+    }
+
+    /**
+     * A CLI switch as a config layer value: set means {@code true}, unset means <em>unset</em>. Never
+     * an explicit {@code false} — that would out-rank the file layer this overlay sits on top of.
+     */
+    private static @Nullable Boolean flag(boolean set) {
+        return set ? Boolean.TRUE : null;
+    }
+
+    /** First non-blank of {@code a}, {@code b}, or {@code null} — the flag beats the environment. */
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        return (b != null && !b.isBlank()) ? b : null;
     }
 }

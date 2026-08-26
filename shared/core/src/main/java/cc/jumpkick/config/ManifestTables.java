@@ -3,14 +3,12 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
 
-import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -22,8 +20,6 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.Workspace.WorkspaceDependency;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -33,8 +29,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
@@ -186,49 +182,15 @@ public final class ManifestTables {
         return attrs;
     }
 
+    /**
+     * {@code [repositories]} — strict: a manifest that lies about a repository is a build error.
+     * {@code ${VAR}} is left unexpanded on purpose, so a parsed manifest never carries a secret;
+     * the credential resolver expands it. One reader with {@link RepositoryToml.OnBad#REJECT};
+     * {@link GlobalConfig#repositories()} is the same reader with the other policy.
+     */
     static List<RepositorySpec> parseRepositories(TomlTable root) {
-        TomlTable repos = root.getTable("repositories");
-        if (repos == null) return List.of();
-        List<RepositorySpec> result = new ArrayList<>(repos.size());
-        for (String name : repos.keySet()) {
-            if (RepositorySpec.JK_LOCAL.equals(name)) {
-                throw new JkBuildParseException(
-                        "repositories.jk-local is reserved for JumpKick's first-party install store"
-                                + " (repos/jk-local); pick another repository name");
-            }
-            Object value = repos.get(name);
-            String url;
-            Optional<RepoCredential> credential = Optional.empty();
-            Optional<ObjectStoreConfig> objectStore = Optional.empty();
-            List<String> groups = List.of();
-            if (value instanceof String s) {
-                url = s;
-            } else if (value instanceof TomlTable t) {
-                String u = t.getString("url");
-                if (u == null) {
-                    throw new JkBuildParseException("repositories." + name + " requires a string `url` field");
-                }
-                url = u;
-                // Left unexpanded on purpose: ${VAR} in a credential or object-store value is expanded at
-                // the credential resolver, not here, so a parsed manifest never carries a secret.
-                credential = RepositoryToml.credential(t, UnaryOperator.identity());
-                objectStore = RepositoryToml.objectStore(t, UnaryOperator.identity());
-                try {
-                    groups = RepositoryToml.groups(t, "repositories." + name);
-                } catch (IllegalArgumentException e) {
-                    throw new JkBuildParseException(e.getMessage(), e);
-                }
-            } else {
-                throw new JkBuildParseException(
-                        "repositories." + name + " must be a URL string or an inline table with `url`");
-            }
-            try {
-                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore, groups));
-            } catch (IllegalArgumentException e) {
-                throw new JkBuildParseException("repositories." + name + " has malformed URL: " + url, e);
-            }
-        }
-        return result;
+        return RepositoryToml.repositories(
+                root.getTable("repositories"), RepositoryToml.VarPolicy.DEFER, RepositoryToml.OnBad.REJECT);
     }
 
     /**
@@ -274,24 +236,15 @@ public final class ManifestTables {
 
     /**
      * {@code [test] include-tags} / {@code exclude-tags} — baseline tag filters when no profile or
-     * CLI overrides apply. Empty lists when the table/key is absent.
+     * CLI overrides apply. Empty lists when the table/key is absent. Reached through
+     * {@link JkBuildParser#parseTestTags(Path)}, which owns the read.
      */
-    public static JkBuildParser.TestTomlTags parseTestTags(Path buildFile) {
-        if (buildFile == null || !Files.isRegularFile(buildFile)) {
-            return JkBuildParser.TestTomlTags.EMPTY;
-        }
-        try {
-            String toml = Files.readString(buildFile);
-            TomlParseResult result = Toml.parse(toml);
-            if (result.hasErrors()) return JkBuildParser.TestTomlTags.EMPTY;
-            TomlTable test = result.getTable("test");
-            if (test == null) return JkBuildParser.TestTomlTags.EMPTY;
-            return new JkBuildParser.TestTomlTags(
-                    optionalStringList(test, "include-tags", "test.include-tags"),
-                    optionalStringList(test, "exclude-tags", "test.exclude-tags"));
-        } catch (Exception e) {
-            return JkBuildParser.TestTomlTags.EMPTY;
-        }
+    static JkBuildParser.TestTomlTags parseTestTags(TomlTable root) {
+        TomlTable test = root.getTable("test");
+        if (test == null) return JkBuildParser.TestTomlTags.EMPTY;
+        return new JkBuildParser.TestTomlTags(
+                optionalStringList(test, "include-tags", "test.include-tags"),
+                optionalStringList(test, "exclude-tags", "test.exclude-tags"));
     }
 
     static Features parseFeatures(TomlTable root) {
@@ -450,8 +403,10 @@ public final class ManifestTables {
         if (application.isBoolean(key)) return Boolean.TRUE.equals(application.getBoolean(key));
         String raw = application.isString(key) ? application.getString(key) : null;
         String value = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
-        if (value.equals("true") || value.equals("on")) return true;
-        if (value.equals("false") || value.equals("off") || value.equals("none")) return false;
+        // "none" is this key's own extra spelling for off; everything else is the jk-wide truth set.
+        if (value.equals("none")) return false;
+        Optional<Boolean> flag = EnvValues.parseBool(value);
+        if (flag.isPresent()) return flag.get();
         if (value.equals("shrink") || value.equals("shrunk") || value.equals("r8")) {
             throw new JkBuildParseException("[application]." + key + " is a boolean, not \"" + raw
                     + "\" — artifacts are additive: set `minified = true` for an R8 jar (it builds"
@@ -482,10 +437,10 @@ public final class ManifestTables {
      * not ask for one. Saying so is better than building the table's rules into nothing.
      */
     static Map<String, PluginConfig> ensureMinifiedPluginConfigured(
-            Optional<JkBuild.Application> application,
+            JkBuild.@Nullable Application application,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installed) {
-        boolean minified = application.isPresent() && application.get().minified();
+        boolean minified = application != null && application.minified();
         if (!minified) {
             if (pluginConfigs.containsKey("minified")) {
                 throw new JkBuildParseException("[minified] configures the minified jar, but no minified jar is"

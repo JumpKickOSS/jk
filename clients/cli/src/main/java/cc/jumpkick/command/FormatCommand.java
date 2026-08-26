@@ -4,12 +4,21 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.config.FormatStyles;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -23,13 +32,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * {@code jk format} — format Java/Kotlin sources (Spotless worker, engine-hosted). Defaults:
- * Palantir + ktfmt KOTLINLANG (4-space / 120-col); Java also runs importOrder + removeUnusedImports
- * before the style step (each toggleable); {@code --check} exits non-zero if unformatted.
+ * {@code jk format} — format Java, Kotlin, Groovy, and Scala (Spotless worker, engine-hosted).
+ * Defaults: Palantir + ktfmt KOTLINLANG (4-space / 120-col); Java also runs importOrder +
+ * removeUnusedImports before the style step (each toggleable); {@code --check} exits non-zero if
+ * unformatted.
  */
 public final class FormatCommand implements CliCommand {
 
@@ -40,7 +49,7 @@ public final class FormatCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Format Java/Kotlin source code";
+        return "Format Java, Kotlin, Groovy, and Scala source";
     }
 
     @Override
@@ -55,12 +64,25 @@ public final class FormatCommand implements CliCommand {
                 Opt.flag("Sort imports (default on).", "--import-order"),
                 Opt.flag("Skip import sorting.", "--no-import-order"),
                 Opt.flag("Remove unused imports (default on).", "--remove-unused-imports"),
-                Opt.flag("Keep unused imports.", "--no-remove-unused-imports"),
-                Opt.value("<file>", "OpenRewrite YAML config for recipes", "--rewrite-config"));
+                Opt.flag("Keep unused imports.", "--no-remove-unused-imports"));
     }
 
+    /**
+     * What {@code jk format} returns when the <em>plan</em> failed — the format did not run to
+     * completion. A worker that died mid-run is a plan failure: the engine reconciles its per-file
+     * count against the file total.
+     *
+     * <p>Deliberately not {@code 1}: {@code 1} is {@code --check}'s drift code, and a script that
+     * cannot tell "your files need formatting" from "the formatter died" is exactly the conflation
+     * {@link Exit} exists to end. Deliberately not the worker's own exit either — a raw {@code 139}
+     * from a SIGSEGV or {@code 137} from an OOM-kill is outside jk's vocabulary, and the engine
+     * refuses to publish one on a successful plan, so {@code o.workerExit()} below is only ever
+     * reached with a {@code 0} or a {@code 1}.
+     */
+    static final int PLAN_FAILED = Exit.SOFTWARE;
+
     /** A format run's summary — the same fields whichever transport ran the plan. */
-    private record Outcome(BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
+    private record Outcome(BuildPlanResult result, int total, int workerExit) {}
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
@@ -68,15 +90,14 @@ public final class FormatCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         boolean check = in.isSet("check");
         Path projectDir = global.workingDir();
-        Path buildFile = projectDir.resolve("jk.toml");
+        Path buildFile = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
+            CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
-        cc.jumpkick.engine.protocol.ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
+        ProjectInfo build = ProjectInfos.orNull(projectDir);
         if (build == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Format", "could not read the project summary (is the engine reachable?)");
+            CommandWedge.printFail("Format", "could not read the project summary (is the engine reachable?)");
             return Exit.CONFIG;
         }
 
@@ -85,11 +106,6 @@ public final class FormatCommand implements CliCommand {
         Boolean cliImportOrder = triFlag(in, "import-order", "no-import-order", "JK_FORMAT_IMPORT_ORDER");
         Boolean cliRemoveUnused =
                 triFlag(in, "remove-unused-imports", "no-remove-unused-imports", "JK_FORMAT_REMOVE_UNUSED_IMPORTS");
-        // --rewrite-config / env var
-        Path rewriteConfig = in.value("rewrite-config")
-                .or(() -> Optional.ofNullable(System.getenv("JK_FORMAT_REWRITE_CONFIG")))
-                .map(Path::of)
-                .orElse(null);
 
         FormatStyles.Resolved styles;
         try {
@@ -100,7 +116,7 @@ public final class FormatCommand implements CliCommand {
                     cliOptimize,
                     cliImportOrder,
                     cliRemoveUnused,
-                    new cc.jumpkick.model.JkBuild.FormatConfig(
+                    new JkBuild.FormatConfig(
                             emptyToNull(build.formatStyle()),
                             emptyToNull(build.formatJava()),
                             emptyToNull(build.formatKotlin()),
@@ -108,13 +124,10 @@ public final class FormatCommand implements CliCommand {
                             build.formatImportOrder(),
                             build.formatRemoveUnusedImports()));
         } catch (IllegalArgumentException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Format", e.getMessage());
+            CommandWedge.printFail("Format", e.getMessage());
             return Exit.USAGE;
         }
-        // Supplying --rewrite-config implicitly enables optimize-imports when neither
-        // flag nor env var said otherwise (so the OpenRewrite plan actually runs).
-        boolean optimizeImports = styles.optimizeImports()
-                || (rewriteConfig != null && cliOptimize == null && envBool("JK_FORMAT_OPTIMIZE_IMPORTS") == null);
+        boolean optimizeImports = styles.optimizeImports();
 
         Path cache = JkDirs.cache();
         boolean animate =
@@ -163,32 +176,30 @@ public final class FormatCommand implements CliCommand {
                         optimizeImports,
                         styles.importOrder(),
                         styles.removeUnusedImports(),
-                        rewriteConfig,
                         global,
                         observer,
                         chatterListener(global, line -> CliOutput.err("  [formatter] " + line)));
             } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Format", e.getMessage());
+                CommandWedge.printFail("Format", e.getMessage());
                 return Exit.SOFTWARE;
             }
             if (!o.result().success()) {
                 for (BuildPlanResult.Diagnostic d : o.result().errors()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Format", d.message());
+                    CommandWedge.printFail("Format", d.message());
                 }
-                return 1;
+                return PLAN_FAILED;
             }
             if (o.total() == 0) {
-                if (!global.outputIsJson())
-                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
+                if (!global.outputIsJson()) CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
                 return 0;
             }
             if (!global.outputIsJson()) {
                 String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
                 Summary summary = summarize(check, counts[0], counts[1], counts[2], took);
                 if (summary.failed()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Format", summary.body());
+                    CommandWedge.printFail("Format", summary.body());
                 } else {
-                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", summary.body());
+                    CommandWedge.printOk("Format", summary.body());
                 }
             }
             return o.workerExit();
@@ -225,7 +236,6 @@ public final class FormatCommand implements CliCommand {
                         optimizeImports,
                         styles.importOrder(),
                         styles.removeUnusedImports(),
-                        rewriteConfig,
                         global,
                         observer,
                         chatterListener(global, line -> cm.writeAbove("  [formatter] " + line)));
@@ -238,7 +248,7 @@ public final class FormatCommand implements CliCommand {
                     cm.writeAbove(Theme.colorize("  error", Theme.active().error()) + "  " + d.message());
                 }
                 cm.finishBuildPlanFailure("format failed");
-                return 1;
+                return PLAN_FAILED;
             }
             if (o.total() == 0) {
                 cm.stepDone("", "fmt", true, "Formatting files…");
@@ -282,16 +292,15 @@ public final class FormatCommand implements CliCommand {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
-            Path rewriteConfig,
             GlobalOptions global,
             HostedEvents.FileObserver observer,
             BuildPlanListener listener)
             throws IOException {
 
-        var session = cc.jumpkick.config.SessionContext.current();
-        var outcome = cc.jumpkick.cli.engine.EngineClient.runFormat(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineRequests.FormatRequest(
+        var session = SessionContext.current();
+        var outcome = EngineClient.runFormat(
+                EnginePaths.current(),
+                new EngineRequests.FormatRequest(
                         projectDir,
                         cache,
                         check,
@@ -300,18 +309,11 @@ public final class FormatCommand implements CliCommand {
                         optimizeImports,
                         importOrder,
                         removeUnusedImports,
-                        rewriteConfig,
                         session.offline(),
                         global.verbose),
                 steps -> listener,
                 observer);
-        return new Outcome(
-                outcome.result(),
-                outcome.changed(),
-                outcome.clean(),
-                outcome.errors(),
-                outcome.total(),
-                outcome.workerExit());
+        return new Outcome(outcome.result(), outcome.total(), outcome.workerExit());
     }
 
     /**
@@ -354,8 +356,8 @@ public final class FormatCommand implements CliCommand {
         }
         if (check) {
             return new Summary(
-                    changed + " file" + (changed == 1 ? "" : "s") + " unformatted, " + clean
-                            + " already clean — run `jk format` " + took,
+                    changed + " file" + (changed == 1 ? "" : "s") + " unformatted, " + clean + " already clean"
+                            + " — run `jk format` " + took,
                     true);
         }
         return new Summary(

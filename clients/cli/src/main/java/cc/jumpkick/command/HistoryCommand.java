@@ -3,16 +3,20 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -139,8 +143,8 @@ public final class HistoryCommand extends GroupCommand {
                         saved,
                         note));
             }
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            for (String line : cc.jumpkick.cli.tui.Table.render(
+            CommandWedge.envelopeStart();
+            for (String line : Table.render(
                     "Build history", List.of("", "Id", "Project", "Kind", "Took", "When", "Saved", "Notes"), rows)) {
                 CliOutput.out(line);
             }
@@ -177,7 +181,7 @@ public final class HistoryCommand extends GroupCommand {
         public int run(Invocation in) throws Exception {
             if (in.positionals().isEmpty()) {
                 CliOutput.err("usage: jk history show <id>");
-                return 2;
+                return Exit.USAGE;
             }
             String id = in.positionals().get(0);
             List<String> lines = EngineClient.historyShow(EnginePaths.current(), id);
@@ -191,8 +195,8 @@ public final class HistoryCommand extends GroupCommand {
             }
             boolean success = Jsonl.bool(record, "success", false);
             boolean cancelled = Jsonl.bool(record, "cancelled", false);
-            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Build " + Jsonl.str(record, "id")));
+            CommandWedge.envelopeStart();
+            CliOutput.out(CommandWedge.menu("Build " + Jsonl.str(record, "id")));
             CliOutput.out(glyph(success, cancelled) + " " + Jsonl.str(record, "id"));
             CliOutput.out("  status:   " + outcome(success, cancelled) + " (exit "
                     + Jsonl.longValue(record, "exitCode", 0) + ")");
@@ -212,12 +216,10 @@ public final class HistoryCommand extends GroupCommand {
             }
             String jk = Jsonl.str(record, "jkVersion");
             if (jk != null) CliOutput.out("  jk:       " + jk);
-            long testsTotal = Jsonl.longValue(record, "testsTotal", -1);
-            if (testsTotal >= 0) {
-                CliOutput.out("  tests:    " + testsTotal + " total, "
-                        + Jsonl.longValue(record, "testsSucceeded", 0) + " passed, "
-                        + Jsonl.longValue(record, "testsFailed", 0) + " failed, "
-                        + Jsonl.longValue(record, "testsSkipped", 0) + " skipped");
+            TestSummary tests = TestSummary.readCounts(record);
+            if (tests != null) {
+                CliOutput.out("  tests:    " + tests.total() + " total, " + tests.succeeded() + " passed, "
+                        + tests.failed() + " failed, " + tests.skipped() + " skipped");
             }
 
             printRows(
@@ -241,7 +243,7 @@ public final class HistoryCommand extends GroupCommand {
                         .append("] ");
                 appendIf(b, Jsonl.str(d, "task"), ": ");
                 // Enriched identity: Class.method [wN] beats the legacy glued test label.
-                String cls = Jsonl.topStr(d, "class");
+                String cls = Jsonl.topStr(d, EngineProtocol.TEST_CLASS_FIELD);
                 String method = Jsonl.topStr(d, "method");
                 if (cls != null && !cls.isBlank()) {
                     String simple = cls.substring(cls.lastIndexOf('.') + 1);
@@ -296,11 +298,11 @@ public final class HistoryCommand extends GroupCommand {
         public int run(Invocation in) throws Exception {
             if (in.positionals().isEmpty()) {
                 CliOutput.err("usage: jk history rm <id>");
-                return 2;
+                return Exit.USAGE;
             }
             String id = in.positionals().get(0);
             if (EngineClient.historyDelete(EnginePaths.current(), id)) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("History", "Deleted build " + id);
+                CommandWedge.printOk("History", "Deleted build " + id);
                 return 0;
             }
             CliOutput.err("No such build: " + id);

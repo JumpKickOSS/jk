@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -150,7 +151,7 @@ class TableAppendTest {
 
     private static final class ThemeAnsi {
         static boolean ansi() {
-            return cc.jumpkick.cli.theme.Theme.active().isAnsi();
+            return Theme.active().isAnsi();
         }
     }
 }

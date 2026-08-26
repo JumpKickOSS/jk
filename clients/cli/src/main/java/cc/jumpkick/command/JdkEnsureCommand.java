@@ -2,10 +2,15 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JdkDownloadBar;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -52,8 +57,7 @@ public final class JdkEnsureCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
                         .hide(),
                 Opt.value("<file>", "Override the catalog cache path (for tests).", "--cache-file")
@@ -77,13 +81,12 @@ public final class JdkEnsureCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile =
-                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheFile = in.value("cache-file").map(CliPaths::abs).orElse(null);
 
         if (spec == null || spec.isBlank()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK",
                     "a <spec> is required "
                             + "(e.g. `jk jdk ensure 25`, `jk jdk ensure 25.0.3`, `jk jdk ensure lts`).");
@@ -173,7 +176,7 @@ public final class JdkEnsureCommand implements CliCommand {
         Optional<JdkCatalog.Entry> entry = JdkKeywords.resolveToMajorSpec(catalog, "lts", os, arch)
                 .flatMap(majorSpec -> JdkSelector.select(catalog, JdkSpec.parse(majorSpec), os, arch));
         if (entry.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK", "no JDK matches " + spec + " and no LTS JDK is available for " + os + "/" + arch + ".");
             return 1;
         }
@@ -215,8 +218,7 @@ public final class JdkEnsureCommand implements CliCommand {
         String label = label(entry);
         long total = entry.archiveSize();
         InstalledJdk installed;
-        try (cc.jumpkick.cli.tui.JdkDownloadBar pb =
-                cc.jumpkick.cli.tui.JdkDownloadBar.show(CliOutput.stdout(), label)) {
+        try (JdkDownloadBar pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
             installed = installer.install(entry, bytes -> pb.update(bytes, total));
             pb.finish();
         }
@@ -268,9 +270,9 @@ public final class JdkEnsureCommand implements CliCommand {
 
     private boolean hostSupported() {
         if (HostPlatform.supported()) return true;
-        cc.jumpkick.cli.tui.CommandWedge.printFail(
+        CommandWedge.printFail(
                 "JDK",
-                "host " + System.getProperty("os.name")
+                "host " + Os.name()
                         + "/"
                         + System.getProperty("os.arch")
                         + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");
@@ -278,7 +280,7 @@ public final class JdkEnsureCommand implements CliCommand {
     }
 
     private JdkCatalog fetchCatalog() throws IOException, InterruptedException {
-        boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean refresh = SessionContext.current().config().forceOr(false);
         JdkCatalogClient client = (feedUrl != null
                         ? new JdkCatalogClient(
                                 new Http(),

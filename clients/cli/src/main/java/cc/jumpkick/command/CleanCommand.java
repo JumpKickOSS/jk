@@ -2,7 +2,12 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
@@ -10,18 +15,20 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * {@code jk clean}: remove per-module {@code target/} ({@code --keep-artifacts} keeps final jars).
@@ -45,15 +52,14 @@ public final class CleanCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Delete only build/ intermediates; keep artifacts.", "--keep-artifacts"),
-                cc.jumpkick.cli.CommonOpts.cacheDir());
+                CommonOpts.cacheDir());
     }
 
     @Override
     public int run(Invocation in) throws IOException {
         boolean keepArtifacts = in.isSet("keep-artifacts");
         boolean force = GlobalOptions.from(in).force;
-        Path cacheDirOverride =
-                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        Path cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         Path dir = GlobalOptions.from(in).workingDir();
         Path workspaceRoot = resolveWorkspaceRoot(dir);
         List<String> warnings = new ArrayList<>();
@@ -104,8 +110,8 @@ public final class CleanCommand implements CliCommand {
     static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
             throws IOException {
         for (Path projectDir : projectDirs) {
-            Path layoutTarget = cc.jumpkick.layout.BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
-            Path legacyTarget = projectDir.resolve("target");
+            Path layoutTarget = BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
+            Path legacyTarget = projectDir.resolve(BuildLayout.TARGET);
             boolean distinct = !layoutTarget.equals(legacyTarget);
             if (!keepArtifacts) {
                 deleteRecursively(layoutTarget, stats);
@@ -126,9 +132,9 @@ public final class CleanCommand implements CliCommand {
     private static List<Path> collectProjectDirs(Path workspaceRoot, List<String> warnings) {
         List<Path> dirs = new ArrayList<>();
         dirs.add(workspaceRoot);
-        Path rootToml = workspaceRoot.resolve("jk.toml");
+        Path rootToml = workspaceRoot.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(rootToml)) return dirs;
-        var info = BuildCommand.projectInfoOrNull(workspaceRoot);
+        var info = ProjectInfos.orNull(workspaceRoot);
         if (info != null && info.workspaceRoot()) {
             for (Path moduleDir : resolveModuleDirs(workspaceRoot, info.moduleDirs(), warnings)) {
                 if (Files.isDirectory(moduleDir)) dirs.add(moduleDir);
@@ -162,7 +168,7 @@ public final class CleanCommand implements CliCommand {
 
     /** Invalidate this project's (+ workspace's) action-cache entries for {@code --force}. */
     private static int clearProjectActionCache(Path projectDir, Path cacheDirOverride) {
-        if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
+        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
             // Not a project dir: nothing project-scoped to clear; the file clean already ran.
             return 0;
         }
@@ -177,67 +183,43 @@ public final class CleanCommand implements CliCommand {
         Path root = CacheCommand.resolveCacheRoot(cacheDirOverride);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(new GlobalOptions());
 
-        var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
+        var summary = new EngineRequests.CacheMaintSummary[1];
         ConsoleSpec spec = CacheCommand.clearSpec(
                 false,
                 () -> summary[0] != null ? summary[0].files() : 0L,
                 () -> summary[0] != null ? summary[0].bytes() : 0L);
         try {
-            var result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
-                            "clear", root, false, false, projectDir),
+            var result = EngineClient.runCacheMaintenance(
+                    EnginePaths.current(),
+                    new EngineRequests.CacheMaintRequest("clear", root, false, false, projectDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,
                     summary);
             return result.success() ? 0 : 1;
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Clean", e.getMessage());
-            return cc.jumpkick.model.command.Exit.SOFTWARE;
+            CommandWedge.printFail("Clean", e.getMessage());
+            return Exit.SOFTWARE;
         }
     }
 
     /**
-     * Delete {@code root} depth-first. Retries a few times when the tree is racing the engine
-     * (e.g. {@code target/.jk/preflight} rewritten mid-walk) so {@code jk clean} does not exit 1
-     * on a transient {@link java.nio.file.DirectoryNotEmptyException}.
+     * Delete {@code root} depth-first, folding what went into {@code stats}. One shared
+     * implementation ({@link cc.jumpkick.host.PathUtil#deleteRecursivelyOrThrow(Path,
+     * cc.jumpkick.host.PathUtil.Removed)}) rather than a clean-local copy: this used to retry the
+     * walk on {@link
+     * java.nio.file.DirectoryNotEmptyException}, papering over an engine that was still writing
+     * {@code target/.jk/preflight} and {@code target/jk-results.md} after telling the client the
+     * build was over. The client now waits for {@code job-finish} before returning, so there is no
+     * writer left to race and a not-empty directory is a real failure again (JK-2451).
      */
     static void deleteRecursively(Path root, long[] stats) throws IOException {
-        if (!Files.exists(root)) return;
-        IOException last = null;
-        for (int attempt = 0; attempt < 4; attempt++) {
-            if (attempt > 0) {
-                // Brief pause so a concurrent preflight/memo write can finish before we re-walk.
-                try {
-                    Thread.sleep(25L * attempt);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw last;
-                }
-            }
-            try {
-                try (Stream<Path> stream = Files.walk(root)) {
-                    stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                        try {
-                            long size = Files.isRegularFile(p) ? Files.size(p) : -1;
-                            // Count only after a successful delete — a failed attempt must not
-                            // inflate the stats across retry walks.
-                            if (Files.deleteIfExists(p) && size >= 0) {
-                                stats[0]++;
-                                stats[1] += size;
-                            }
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
-                        }
-                    });
-                }
-                return;
-            } catch (UncheckedIOException e) {
-                last = e.getCause() instanceof IOException io ? io : new IOException(e);
-            } catch (IOException e) {
-                last = e;
-            }
+        var tally = new PathUtil.Removed();
+        try {
+            PathUtil.deleteRecursivelyOrThrow(root, tally);
+        } finally {
+            // Whatever it managed to remove is removed, failure or not — the report must match disk.
+            stats[0] += tally.files();
+            stats[1] += tally.bytes();
         }
-        throw last;
     }
 }

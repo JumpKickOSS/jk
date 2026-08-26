@@ -2,6 +2,8 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Classpaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -9,7 +11,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 /**
  * Cache-prune cadence: {@code .last-pruned} bookkeeping consulted by the engine's idle-boundary
@@ -24,9 +25,6 @@ import java.util.regex.Pattern;
  * under pressure no matter how often it runs.
  */
 public final class CachePruneScheduler {
-
-    /** Sentinel filename written after each successful prune. */
-    public static final String LAST_PRUNED_FILE = ".last-pruned";
 
     /** Share of the action budget above which the last prune counts as leaving pressure behind. */
     static final double PRESSURE_FRACTION = 0.9;
@@ -70,7 +68,7 @@ public final class CachePruneScheduler {
      * and the caller's answer to that is to prune now and write a fresh one.
      */
     public static Optional<Stamp> read(Path cacheRoot) {
-        Path stamp = cacheRoot.resolve(LAST_PRUNED_FILE);
+        Path stamp = CacheTree.LAST_PRUNED.under(cacheRoot);
         String[] fields;
         try {
             fields = Files.readString(stamp, StandardCharsets.UTF_8).trim().split("\\s+");
@@ -95,7 +93,7 @@ public final class CachePruneScheduler {
     public static void write(Path cacheRoot, long nowMillis, long finalActionBytes) {
         try {
             Files.writeString(
-                    cacheRoot.resolve(LAST_PRUNED_FILE),
+                    CacheTree.LAST_PRUNED.under(cacheRoot),
                     nowMillis + " " + finalActionBytes + "\n",
                     StandardCharsets.UTF_8);
         } catch (IOException ignored) {
@@ -147,13 +145,10 @@ public final class CachePruneScheduler {
      * Package-visible for tests.
      */
     static Optional<String> resolveFromJvmInstallLayout(String classPath) {
-        if (classPath == null || classPath.isBlank()) return Optional.empty();
-        String sep = System.getProperty("path.separator", ":");
-        for (String entry : classPath.split(Pattern.quote(sep))) {
-            if (entry.isBlank()) continue;
+        for (Path entry : Classpaths.split(classPath)) {
             Path p;
             try {
-                p = Path.of(entry).toAbsolutePath().normalize();
+                p = entry.toAbsolutePath().normalize();
             } catch (RuntimeException ignored) {
                 continue;
             }

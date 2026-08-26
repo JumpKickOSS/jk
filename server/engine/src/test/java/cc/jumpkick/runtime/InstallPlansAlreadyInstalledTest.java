@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.MavenLayout;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +23,7 @@ class InstallPlansAlreadyInstalledTest {
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = JkBuild.builder(JkBuild.Project.builder("cc.jumpkick", "jk-foo", "1.0")
+        JkBuild project = JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
                         .jdkMajor(25)
                         .java(25)
                         .m2install(false)
@@ -58,7 +59,7 @@ class InstallPlansAlreadyInstalledTest {
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = JkBuild.builder(JkBuild.Project.builder("cc.jumpkick", "jk-foo", "1.0")
+        JkBuild project = JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
                         .jdkMajor(25)
                         .java(25)
                         .m2install(false)

@@ -6,9 +6,12 @@ import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.testing.SysProps;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.Attributes;
@@ -17,7 +20,6 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -29,16 +31,8 @@ import org.junit.jupiter.api.io.TempDir;
  * RunCommandTest} when {@code jk run} stopped interpreting file arguments.
  */
 @Tag("integration")
+@SysProps.TempRoots("jk.m2.local")
 class ToolRunCommandTest {
-
-    // These tests drive the real fetch plan against a mock Maven server; fetched
-    // artifacts mirror into the Maven local repo. Point that at a throwaway dir (see
-    // M2Dirs) so stub artifacts never overwrite the developer's real ~/.m2 — the
-    // fixture reuses real coordinates (junit-jupiter et al).
-    @BeforeAll
-    static void isolateM2(@TempDir Path m2) {
-        System.setProperty("jk.m2.local", m2.toString());
-    }
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
@@ -554,10 +548,12 @@ class ToolRunCommandTest {
         Path scriptCache = tempDir.resolve("home/script-cache");
         Path hashDir = Files.list(scriptCache).findFirst().orElseThrow();
         Path classFile = hashDir.resolve("classes/Cached.class");
-        long firstMtime = Files.getLastModifiedTime(classFile).toMillis();
+        // Backdate the class file a clear minute, so ANY recompile moves its mtime. The
+        // `Thread.sleep(50)` this replaces was betting 50ms exceeds the filesystem's mtime
+        // granularity — a fact about the machine, not about the cache (JK-2446).
+        long firstMtime = backdate(classFile);
 
         // Re-run without --force-recompile; classes should not be rewritten.
-        Thread.sleep(50);
         int secondExit = run(
                 "tool",
                 "run",
@@ -588,9 +584,8 @@ class ToolRunCommandTest {
                 script.toString());
         Path scriptCache = tempDir.resolve("home/script-cache");
         Path classFile = Files.list(scriptCache).findFirst().orElseThrow().resolve("classes/Forced.class");
-        long firstMtime = Files.getLastModifiedTime(classFile).toMillis();
+        long firstMtime = backdate(classFile);
 
-        Thread.sleep(50);
         run(
                 "tool",
                 "run",
@@ -625,146 +620,17 @@ class ToolRunCommandTest {
         assertThat(exit).isEqualTo(1);
     }
 
-    @Test
-    void runs_a_self_contained_jar(@TempDir Path tempDir) throws Exception {
-        // Build a tiny runnable jar with Main-Class set.
-        Path jar = buildExitJar(tempDir, "RunMe", /* exitCode= */ 0);
-
-        int exit = run(
-                "tool",
-                "run",
-                "--cache-dir",
-                tempDir.resolve("home/cache").toString(),
-                "--state-dir",
-                tempDir.resolve("home").toString(),
-                jar.toString());
-        assertThat(exit).isEqualTo(0);
-    }
-
-    @Test
-    void jar_exit_code_is_propagated(@TempDir Path tempDir) throws Exception {
-        Path jar = buildExitJar(tempDir, "RunMe", /* exitCode= */ 7);
-
-        int exit = run(
-                "tool",
-                "run",
-                "--cache-dir",
-                tempDir.resolve("home/cache").toString(),
-                "--state-dir",
-                tempDir.resolve("home").toString(),
-                jar.toString());
-        assertThat(exit).isEqualTo(7);
-    }
-
-    @Test
-    void jar_args_are_forwarded(@TempDir Path tempDir) throws Exception {
-        Path jar = buildArgCountJar(tempDir, "Echo");
-
-        int exit = run(
-                "tool",
-                "run",
-                "--cache-dir",
-                tempDir.resolve("home/cache").toString(),
-                "--state-dir",
-                tempDir.resolve("home").toString(),
-                jar.toString(),
-                "one",
-                "two");
-        assertThat(exit).isEqualTo(2);
-    }
-
-    @Test
-    void jar_without_main_class_returns_data_error(@TempDir Path tempDir) throws Exception {
-        // Jar with no Main-Class attribute → EX_DATAERR.
-        Path jar = tempDir.resolve("no-main.jar");
-        Manifest mf = new Manifest();
-        mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        try (var fos = Files.newOutputStream(jar);
-                JarOutputStream jos = new JarOutputStream(fos, mf)) {
-            jos.putNextEntry(new ZipEntry("placeholder.txt"));
-            jos.write("hi".getBytes(StandardCharsets.UTF_8));
-            jos.closeEntry();
-        }
-        int exit = run(
-                "tool",
-                "run",
-                "--cache-dir",
-                tempDir.resolve("home/cache").toString(),
-                "--state-dir",
-                tempDir.resolve("home").toString(),
-                jar.toString());
-        assertThat(exit).isEqualTo(65);
-    }
-
-    @Test
-    void jar_not_found_returns_no_input(@TempDir Path tempDir) {
-        int exit = run(
-                "tool",
-                "run",
-                "--cache-dir",
-                tempDir.resolve("home/cache").toString(),
-                "--state-dir",
-                tempDir.resolve("home").toString(),
-                tempDir.resolve("missing.jar").toString());
-        assertThat(exit).isEqualTo(66);
-    }
+    // --- helpers -----------------------------------------------------------
 
     /**
-     * Build a runnable jar whose {@code Main-Class} calls {@code System.exit(exitCode)}. Used by .jar
-     * mode integration tests.
+     * Stamp {@code file} a clear minute into the past and return that mtime, so a later rewrite is
+     * detectable regardless of the filesystem's timestamp granularity.
      */
-    private static Path buildExitJar(Path tempDir, String className, int exitCode) throws Exception {
-        Path src = tempDir.resolve(className + ".java");
-        Files.writeString(
-                src,
-                "public class "
-                        + className
-                        + " { public static void main(String[] a) { System.exit("
-                        + exitCode
-                        + "); } }\n");
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        int rc = compiler.run(null, null, null, src.toString());
-        if (rc != 0) throw new IllegalStateException("compile of " + src + " failed");
-        Path classFile = src.resolveSibling(className + ".class");
-
-        Path jar = tempDir.resolve(className.toLowerCase() + ".jar");
-        Manifest mf = new Manifest();
-        mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        mf.getMainAttributes().put(Attributes.Name.MAIN_CLASS, className);
-        try (var fos = Files.newOutputStream(jar);
-                JarOutputStream jos = new JarOutputStream(fos, mf)) {
-            jos.putNextEntry(new ZipEntry(className + ".class"));
-            jos.write(Files.readAllBytes(classFile));
-            jos.closeEntry();
-        }
-        return jar;
+    private static long backdate(Path file) throws IOException {
+        long past = System.currentTimeMillis() - 60_000L;
+        Files.setLastModifiedTime(file, FileTime.fromMillis(past));
+        return Files.getLastModifiedTime(file).toMillis();
     }
-
-    /** Jar whose main exits with {@code args.length} — for testing arg forwarding. */
-    private static Path buildArgCountJar(Path tempDir, String className) throws Exception {
-        Path src = tempDir.resolve(className + ".java");
-        Files.writeString(
-                src,
-                "public class " + className + " { public static void main(String[] a) { System.exit(a.length); } }\n");
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        int rc = compiler.run(null, null, null, src.toString());
-        if (rc != 0) throw new IllegalStateException("compile of " + src + " failed");
-        Path classFile = src.resolveSibling(className + ".class");
-
-        Path jar = tempDir.resolve(className.toLowerCase() + ".jar");
-        Manifest mf = new Manifest();
-        mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        mf.getMainAttributes().put(Attributes.Name.MAIN_CLASS, className);
-        try (var fos = Files.newOutputStream(jar);
-                JarOutputStream jos = new JarOutputStream(fos, mf)) {
-            jos.putNextEntry(new ZipEntry(className + ".class"));
-            jos.write(Files.readAllBytes(classFile));
-            jos.closeEntry();
-        }
-        return jar;
-    }
-
-    // --- helpers -----------------------------------------------------------
 
     /**
      * Build a jar containing {@code com.example.Greeter} with an {@code exitCode()} method returning

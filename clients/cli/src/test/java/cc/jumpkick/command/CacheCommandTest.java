@@ -4,8 +4,22 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.http.CacheSnapshot;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.task.ActionKey;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,7 +47,7 @@ class CacheCommandTest {
     @Test
     void dir_prints_store_root() {
         String stdout = Capture.stdout(() -> run("storage", "dir"));
-        assertThat(stdout.trim()).isEqualTo(cc.jumpkick.cache.JkStores.store().toString());
+        assertThat(stdout.trim()).isEqualTo(JkStores.store().toString());
     }
 
     /**
@@ -44,7 +58,7 @@ class CacheCommandTest {
     /** An absent store says so rather than rendering a table of zeros. */
     @Test
     void storage_usage_reports_an_absent_store() throws Exception {
-        Path store = cc.jumpkick.cache.JkStores.store();
+        Path store = JkStores.store();
         if (Files.isDirectory(store)) return; // the shared harness store already has content
         String plain = TestAnsi.strip(Capture.stdout(() -> run("storage", "usage")));
         assertThat(plain).contains("not yet created");
@@ -93,7 +107,6 @@ class CacheCommandTest {
         writeBlob(
                 cache.resolve("actions/keys/test-key"),
                 "TASK run-tests@mod\nKEY test-key\nOUTPUT 3 tests.total\n".getBytes(StandardCharsets.UTF_8));
-        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[128]);
         writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[0]);
         // Outside the budget denominator: hash-memo has its own retention and the prune cannot
         // touch it, so it must not inflate the Total the Utilization bar is measured against.
@@ -119,6 +132,138 @@ class CacheCommandTest {
         assertThat(plain).containsPattern("Total\\s+│\\s*5\\s");
     }
 
+    /**
+     * {@code jk status}'s "Size on Disk" is the cache root, so a tier nobody thought to list is in
+     * it. The hand-written list this replaced named the action index, the cache CAS and
+     * {@code format-stamps} and stopped, which dropped {@code hash-memo} and (before JK-2476 moved
+     * it to the store) {@code graal-reachability} — a sixth of the live dogfood cache — out of the
+     * one number a user reads to decide whether to prune.
+     */
+    @Test
+    void cache_size_counts_the_tiers_a_hand_written_list_forgot(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
+        writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[2048]);
+        writeBlob(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo1"), new byte[4096]);
+        writeBlob(CacheTree.TOOL_SRC.under(cache).resolve("deadhash/tool.jar"), new byte[8192]);
+
+        CacheCommand.SectionStats s = CacheCommand.sectionStats(cache);
+
+        assertThat(s.root().bytes()).isEqualTo(1024 + 2048 + 4096 + 8192);
+        assertThat(s.root().files()).isEqualTo(4);
+        // The two rows printed beside the size still name their own tiers, not the whole root.
+        assertThat(s.cacheCas().files()).isEqualTo(1);
+        assertThat(s.actionKeys().files()).isEqualTo(1);
+    }
+
+    /**
+     * "Actions Cached" is a count of <em>cached actions</em>, and {@code actions/} holds three
+     * populations, not one. The live dogfood cache read <strong>315</strong> under that heading
+     * with <strong>123</strong> actions cached: 123 key records, 106 task pointers and 86 files of
+     * Zinc analysis. A key record is one file per action and the other two are per-task
+     * bookkeeping, so the sum describes nothing — it is not "actions", not "tasks", not "files
+     * worth keeping", and it moves when an unrelated tier grows.
+     *
+     * <p>This is the assertion whose absence let 315 ship. JK-2488 knowingly left the number as the
+     * whole-tree count because the {@code keys} directory had no owner to count off; {@link
+     * ActionTree} is that owner.
+     */
+    @Test
+    void actions_cached_counts_cached_actions_not_every_file_under_actions(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        Path actions = CacheTree.ACTIONS.under(cache);
+        for (String key : List.of("aaa", "bbb", "ccc")) {
+            writeBlob(ActionTree.KEYS.under(actions).resolve(key), new byte[64]);
+        }
+        // Bookkeeping beside the key records, deliberately outnumbering them the way it does on a
+        // real cache: five task pointers and a seven-file Zinc tree.
+        for (String task : List.of("t1", "t2", "t3", "t4", "t5")) {
+            writeBlob(ActionTree.TASKS.under(actions).resolve(task), new byte[8]);
+        }
+        for (int i = 0; i < 7; i++) {
+            writeBlob(
+                    ActionTree.INCREMENTAL_JAVA
+                            .under(actions)
+                            .resolve("compile-main")
+                            .resolve("analysis-" + i),
+                    new byte[16]);
+        }
+
+        CacheCommand.SectionStats s = CacheCommand.sectionStats(cache);
+
+        assertThat(s.actionKeys().files())
+                .as("three actions are cached; the tree holds fifteen files")
+                .isEqualTo(3);
+        assertThat(CacheCommand.statsOf(actions).files())
+                .as("the whole-tree count this used to print, kept here so the two cannot be confused")
+                .isEqualTo(15);
+    }
+
+    /**
+     * {@code GET /api/cache}'s {@code totalBytes} and {@code jk status}'s "Size on Disk" are two
+     * readers of one fact, so they have to return one number. They did not: the CLI moved to a
+     * single walk of the cache root in JK-2488 while {@code CacheSnapshot} kept summing five named
+     * section fields — three cache tiers plus the artifact store's CAS and {@code repos/}. That sum
+     * is wrong in both directions at once. It counts store bytes a nuke leaves, and it misses every
+     * cache tier nobody added to the list; on the fixture below that is {@code hash-memo} and a
+     * whole untracked directory the retention sweep would reclaim.
+     */
+    @Test
+    void the_cache_api_and_jk_status_agree_on_size_on_disk(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(ActionTree.KEYS.under(CacheTree.ACTIONS.under(cache)).resolve("task1"), new byte[1024]);
+        writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[2048]);
+        // Named by no section field on the snapshot — the old sum dropped both outright.
+        writeBlob(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo1"), new byte[4096]);
+        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
+        // Store bytes survive a nuke, so a figure under a "Cache" heading must not carry them.
+        Path storeBlob = JkStores.store().resolve("sha256/aa/bb/jk2509-store-blob");
+        writeBlob(storeBlob, new byte[65_536]);
+        try {
+            CacheCommand.SectionStats status = CacheCommand.sectionStats(cache);
+            CacheSnapshot api = CacheSnapshot.capture(cache);
+
+            assertThat(api.totalBytes()).isEqualTo(status.root().bytes());
+            assertThat(api.totalCount()).isEqualTo(status.root().files());
+            assertThat(api.totalBytes()).isEqualTo(1024 + 2048 + 4096 + 256);
+            assertThat(api.artifactStorageBytes())
+                    .as("the store keeps its own figure; that is what a combined reader wanted")
+                    .isGreaterThanOrEqualTo(65_536);
+        } finally {
+            Files.deleteIfExists(storeBlob);
+        }
+    }
+
+    /**
+     * The size {@code jk status} shows and the size {@code jk cache nuke} promises to free are one
+     * walk of one directory. They were two: status summed the artifact store's CAS and {@code
+     * repos/} together with three cache tiers, so the figure under the "Cache" heading counted
+     * bytes a nuke leaves and missed bytes it takes.
+     */
+    @Test
+    void cache_size_is_exactly_what_a_nuke_would_remove(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
+        writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[2048]);
+        writeBlob(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo1"), new byte[4096]);
+        // Named by no tier constant: the retention sweep reclaims it and the nuke takes the whole
+        // root, so the size the user was shown has to have counted it too.
+        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
+        // Store bytes survive a nuke, so they must not be in a number the nuke screen repeats.
+        Path storeBlob = JkStores.store().resolve("sha256/aa/bb/jk2488-store-blob");
+        writeBlob(storeBlob, new byte[65_536]);
+        try {
+            CacheCommand.Stats nuke = CacheCommand.CacheNukeCommand.cacheRootStats(cache);
+            CacheCommand.SectionStats status = CacheCommand.sectionStats(cache);
+
+            assertThat(status.root().bytes()).isEqualTo(nuke.bytes());
+            assertThat(status.root().files()).isEqualTo(nuke.files());
+            assertThat(status.root().bytes()).isEqualTo(1024 + 2048 + 4096 + 256);
+        } finally {
+            Files.deleteIfExists(storeBlob);
+        }
+    }
+
     @Test
     void clean_reclaims_cache_tier_temps_and_leaves_the_store_alone(@TempDir Path tempDir) throws Exception {
         // post-split, plain `jk cache clean` is CACHE-tier only. Its temp janitor runs
@@ -130,7 +275,7 @@ class CacheCommandTest {
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[256]);
         Path fresh = writeBlob(cache.resolve("actions/keys/new"), new byte[256]);
         Path cacheTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[128]);
-        Path storeCas = cc.jumpkick.cache.JkStores.resolve(cache, "sha256");
+        Path storeCas = JkStores.resolve(cache, "sha256");
         Path storeTmp = writeBlob(storeCas.resolve("ab/cd/.put-jk1531.tmp"), new byte[128]);
         try {
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
@@ -159,26 +304,80 @@ class CacheCommandTest {
         assertThat(stdout).contains("Dry run: would remove");
     }
 
+    /**
+     * {@code rm -rf} on the path the confirm screen prints. The root goes, not just the tiers
+     * under it — an empty skeleton, or a surviving root holding what the tier table does not name,
+     * is the directory the user was told would be deleted still sitting there. The artifact store
+     * is unaffected either way: it resolves from {@code JK_STORE_DIR}, never under this root.
+     */
     @Test
-    void purge_wipes_cache_tier_but_keeps_repos_and_runs(@TempDir Path tempDir) throws Exception {
+    void purge_removes_the_cache_root_including_trees_the_tier_table_does_not_name(@TempDir Path tempDir)
+            throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Cache CAS (sha256/) is cache-tier; repos/ and runs/ stay when collocated under --cache-dir.
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        Path storeJar = JkStores.store().resolve("repos/central/com/example/kept/1.0/kept-1.0.jar");
+        writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
+        writeBlob(CacheTree.FORMAT_STAMPS.under(cache).resolve("ab/stamp1"), new byte[128]);
+        writeBlob(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo1"), new byte[2048]);
+        writeBlob(CacheTree.PROJECTS.under(cache).resolve("proj1"), new byte[64]);
+        // Not in the tier table at all — the old three-tree wipe and the tier-driven one both
+        // walked straight past these, and the stats gate would call a root holding only them empty.
         writeBlob(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"), new byte[512]);
         writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
-        writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
-        writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[128]);
+        writeBlob(cache.resolve(".last-pruned"), new byte[16]);
+        writeBlob(storeJar, new byte[128]);
+        try {
+            String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
+
+            assertThat(stdout).contains("Nuked");
+            assertThat(cache).doesNotExist();
+            assertThat(storeJar).exists();
+        } finally {
+            Files.deleteIfExists(storeJar);
+        }
+    }
+
+    /**
+     * The nuke leaves the engine up on purpose — JK-1773 built the local fallback so a cache purge
+     * would never boot or bounce one — so the root has to stay gone with an engine still running.
+     * It did not: the shared maintenance lock created the cache tree unconditionally, to have
+     * somewhere to put {@code .prune.lock}, and the next pass through it minted the directory
+     * back. Not only cache passes: {@code jk repo refresh} works entirely on the artifact store
+     * and merely borrows that lock, which is what this drives — a maintenance cycle the engine
+     * really performs, rather than a sleep waiting for the 12 h one.
+     */
+    @Test
+    void a_live_engine_does_not_put_the_cache_root_back_after_a_nuke(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
+        writeBlob(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"), new byte[512]);
+
+        assertThat(run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"))
+                .isZero();
+        assertThat(cache).doesNotExist();
+        assertThat(EngineFleet.listThisHome())
+                .as("the nuke must not have stopped the fleet — asserting against a dead engine proves nothing")
+                .isNotEmpty();
+
+        // Store-side maintenance on that same live engine; it locks on the cache root.
+        Capture.stdout(() -> run("repo", "refresh", "com.example:absent:1.0", "--cache-dir", cache.toString()));
+
+        assertThat(cache)
+                .as("the engine's next maintenance pass recreated the directory the nuke removed")
+                .doesNotExist();
+    }
+
+    /** A root left holding only empty tier directories is still a directory the nuke promised. */
+    @Test
+    void purge_removes_an_empty_cache_root(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        Files.createDirectories(CacheTree.ACTIONS.under(cache).resolve("keys"));
+        Files.createDirectories(CacheTree.CACHE_CAS.under(cache));
 
         String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
 
-        assertThat(stdout).contains("Nuked");
-        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
-        assertThat(Files.exists(cache.resolve("format-stamps/ab/stamp1"))).isFalse();
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
-        assertThat(Files.exists(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar")))
-                .isTrue();
-        assertThat(Files.exists(cache.resolve("runs/build-1.jsonl"))).isTrue();
-        assertThat(Files.exists(cache)).isTrue();
+        assertThat(TestAnsi.strip(stdout)).contains("empty cache directory");
+        assertThat(cache).doesNotExist();
     }
 
     @Test
@@ -300,7 +499,7 @@ class CacheCommandTest {
         // here. Structural shape only; the hard-link no-double-count arithmetic is covered
         // hermetically by DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
         // The store has to exist for there to be a table at all — an absent store reports itself.
-        writeBlob(cc.jumpkick.cache.JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
+        writeBlob(JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
 
         String plain = TestAnsi.strip(Capture.stdout(() -> run("storage", "usage")));
         assertThat(plain).contains("Artifact Storage");
@@ -334,9 +533,8 @@ class CacheCommandTest {
     private static String classesTag(Path projectDir) throws Exception {
         // BuildCommand realpaths the module root before hashing tags — match that form.
         Path norm = projectDir.toRealPath();
-        cc.jumpkick.model.JkBuild jb = cc.jumpkick.config.JkBuildParser.parse(norm.resolve("jk.toml"));
-        return cc.jumpkick.task.ActionKey.taskTag(
-                cc.jumpkick.layout.BuildLayout.of(norm, jb).classesDir());
+        JkBuild jb = JkBuildParser.parse(norm.resolve("jk.toml"));
+        return ActionKey.taskTag(BuildLayout.of(norm, jb).classesDir());
     }
 
     /** Write an action record ({@code keys/<key>}) plus its {@code tasks/<taskId>} pointer. */
@@ -359,7 +557,7 @@ class CacheCommandTest {
     /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks (JK-2179). */
     @org.junit.jupiter.api.AfterEach
     void scrubSeededRepoArtifacts() {
-        Path repos = cc.jumpkick.cache.JkStores.store().resolve("repos");
+        Path repos = JkStores.store().resolve("repos");
         for (String rel : SEEDED_PATHS) {
             Path f = repos.resolve("central").resolve(rel);
             try {
@@ -376,17 +574,14 @@ class CacheCommandTest {
     private static void seedRepo(Path cache, String group, String artifact, String version) {
         try {
             byte[] bytes = (group + ":" + artifact + ":" + version).getBytes(StandardCharsets.UTF_8);
-            cc.jumpkick.cache.Cas cas = new cc.jumpkick.cache.Cas(cache);
+            Cas cas = new Cas(cache);
             Path blob = cas.put(bytes);
-            var coord = cc.jumpkick.model.Coordinate.of(group, artifact, version);
-            SEEDED_PATHS.add(cc.jumpkick.repo.MavenLayout.artifactPath(coord));
+            var coord = Coordinate.of(group, artifact, version);
+            SEEDED_PATHS.add(MavenLayout.artifactPath(coord));
             // repos/ lives under the STORE root — where MavenRepo writes (JK-2176); the old
             // cache-rooted seed only matched the pre-fix search's wrong walk root.
-            cc.jumpkick.repo.RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")
-                    .materialize(
-                            cc.jumpkick.repo.MavenLayout.artifactPath(coord),
-                            blob,
-                            cc.jumpkick.util.Hashing.sha256Hex(bytes));
+            RepoArtifactStore.forRepoName(JkStores.store(), "central")
+                    .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

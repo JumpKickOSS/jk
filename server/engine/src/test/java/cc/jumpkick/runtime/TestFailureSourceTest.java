@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -191,15 +193,16 @@ class TestFailureSourceTest {
                     void g() { int u = 6; }
                 }
                 """);
-        var f = new cc.jumpkick.run.TestSummary.Failure(
+        var f = new TestFailureInfo(
+                "g:a",
+                "",
+                "demo.ZTest",
                 "d()",
                 "org.opentest4j.AssertionFailedError",
                 "expected: <1> but was: <2>",
-                "org.opentest4j.AssertionFailedError: expected: <1> but was: <2>\n" + "\tat demo.ZTest.d(ZTest.java:7)",
-                "g:a",
-                "demo.ZTest",
-                0);
-        var lines = TestSupport.renderFailures(new cc.jumpkick.run.TestSummary(1, 0, 1, 0, List.of(f)), mod);
+                "org.opentest4j.AssertionFailedError: expected: <1> but was: <2>\n"
+                        + "\tat demo.ZTest.d(ZTest.java:7)");
+        var lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)), mod);
         String text = String.join("\n", lines);
         assertThat(text).contains("@@source ");
         assertThat(text).contains("AssertionFailedError thrown at line 7");

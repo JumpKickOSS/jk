@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
@@ -59,24 +61,28 @@ final class VariantSelection {
     static String install(Invocation in, Path projectDir) {
         String selector = selector(in);
         Map<String, String> clientEnv = resolveClientEnv(projectDir);
-        cc.jumpkick.config.SessionContext.install(
-                cc.jumpkick.config.SessionContext.current().withVariant(selector, clientEnv));
+        SessionContext.install(SessionContext.current().withVariant(selector, clientEnv));
         return selector;
     }
 
     /**
-     * The {@code env:}-indirected values plugin configs reference (signing credentials), resolved
-     * CLIENT-side — the engine's environment belongs to whichever invocation spawned it. The
-     * engine names the vars (ProjectInfo.envRefs); only those set here ride the request.
+     * The environment this invocation contributes, resolved CLIENT-side — the engine is a daemon
+     * and its own environment belongs to whichever invocation spawned it, possibly days ago.
+     *
+     * <p>Two sources. The engine names what the manifest declared ({@code ProjectInfo.envRefs}:
+     * {@code env:} indirections and {@code [test] env}), and only those are shipped — a declared
+     * variable is one that can enter an action key. {@link ClientEnvForward} adds the short list
+     * that describes the machine rather than the build, which no manifest could have named.
      */
     static Map<String, String> resolveClientEnv(Path projectDir) {
-        var info = BuildCommand.projectInfoOrNull(projectDir);
-        if (info == null || info.envRefs().isEmpty()) return Map.of();
-        Map<String, String> resolved = new LinkedHashMap<>();
+        // The machine-shaped ones first, so a declared reference to the same name overrides them.
+        Map<String, String> resolved = new LinkedHashMap<>(ClientEnvForward.resolve());
+        var info = ProjectInfos.orNull(projectDir);
+        if (info == null) return Map.copyOf(resolved);
         for (String name : info.envRefs()) {
             String v = System.getenv(name);
             if (v != null) resolved.put(name, v);
         }
-        return resolved;
+        return Map.copyOf(resolved);
     }
 }

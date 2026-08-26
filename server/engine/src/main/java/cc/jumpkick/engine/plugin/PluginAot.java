@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AotManifest;
+import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,15 +46,6 @@ public final class PluginAot {
      */
     static volatile long trainingTimeoutMillis = TimeUnit.SECONDS.toMillis(120);
 
-    /**
-     * A sticky {@code .noaot} marker older than this is treated as absent at read time and
-     * removed, giving the key a fresh training attempt. Failures within the window still back
-     * off (no retry storm); without an expiry, the sole key of a tool that once failed would
-     * never retrain — {@link #sweepTool}'s orphan sweep only runs from a <em>successful</em>
-     * train of a sibling key.
-     */
-    static final long NOAOT_RETRY_MILLIS = 7L * 24 * 60 * 60 * 1_000;
-
     /** A claim file older than this is a crashed trainer's leftover — reclaimable. */
     private static final long CLAIM_STALE_MILLIS = 10 * 60 * 1_000;
 
@@ -85,12 +79,12 @@ public final class PluginAot {
     }
 
     static boolean enabled() {
-        return cc.jumpkick.util.AotSettings.workerAotEnabled();
+        return AotSettings.workerAotEnabled();
     }
 
     /** Train-on-miss for workers; see {@link cc.jumpkick.util.AotSettings#trainingEnabled()}. */
     static boolean trainingEnabled() {
-        return cc.jumpkick.util.AotSettings.trainingEnabled();
+        return AotSettings.trainingEnabled();
     }
 
     /** Where plugin AOT caches live: {@code <state>/aot/}. */
@@ -123,13 +117,13 @@ public final class PluginAot {
             String cacheKey = key(id, gc, workerClasspath);
             Path cache = cacheFile(prefix, cacheKey);
             CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, batch);
-            if (usableCache(cache)) {
+            if (AotCacheFiles.usable(cache)) {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
                 recordUse(cache, meta);
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
-            deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
-            if (eligible(id) && trainingEnabled() && !noAotBlocked(cache)) {
+            AotCacheFiles.deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
+            if (eligible(id) && trainingEnabled() && !AotCacheFiles.blocked(cache)) {
                 trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer, meta);
             }
         } catch (RuntimeException e) {
@@ -230,20 +224,20 @@ public final class PluginAot {
             if (force) {
                 try {
                     Files.deleteIfExists(cache);
-                    Files.deleteIfExists(noaotMarker(cache));
+                    Files.deleteIfExists(AotCacheFiles.marker(cache));
                 } catch (IOException ignored) {
                 }
-            } else if (usableCache(cache)) {
+            } else if (AotCacheFiles.usable(cache)) {
                 touch(cache);
                 recordUse(cache, meta);
                 return true;
             } else {
-                deleteIfEmpty(cache); // truncated leftover: retrain below
+                AotCacheFiles.deleteIfEmpty(cache); // truncated leftover: retrain below
             }
-            if (!trainingEnabled() || noAotBlocked(cache)) return false;
+            if (!trainingEnabled() || AotCacheFiles.blocked(cache)) return false;
             String what = prefix + " worker (" + id.vendor() + " " + id.version() + ")";
             trainBlocking(what, cache, trainer, Math.max(1_000L, timeoutMs), meta);
-            return usableCache(cache);
+            return AotCacheFiles.usable(cache);
         } catch (RuntimeException e) {
             return false;
         }
@@ -254,38 +248,15 @@ public final class PluginAot {
         if (cache == null) return false;
         long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
         while (System.currentTimeMillis() < deadline) {
-            if (usableCache(cache)) return true;
+            if (AotCacheFiles.usable(cache)) return true;
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return usableCache(cache);
+                return AotCacheFiles.usable(cache);
             }
         }
-        return usableCache(cache);
-    }
-
-    /**
-     * The one definition of "cache present": a non-empty regular file. Zero-byte leftovers
-     * (disk-full truncation, interrupted copy) count as missing everywhere, or the warmup gate
-     * ({@code HostWarmup.needsWorkerAot}) and the train paths disagree forever.
-     */
-    public static boolean usableCache(Path cache) {
-        try {
-            return cache != null && Files.isRegularFile(cache) && Files.size(cache) > 0;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private static void deleteIfEmpty(Path cache) {
-        try {
-            if (cache != null && Files.isRegularFile(cache) && Files.size(cache) == 0) {
-                Files.deleteIfExists(cache);
-            }
-        } catch (IOException ignored) {
-            // best-effort
-        }
+        return AotCacheFiles.usable(cache);
     }
 
     // ---- keying ---------------------------------------------------------------------------
@@ -477,7 +448,7 @@ public final class PluginAot {
             deleteQuietly(tmp);
             deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // interrupted recording
             if (!keepClaim) deleteQuietly(claim);
-            if (scratch != null) deleteRecursivelyQuietly(scratch);
+            if (scratch != null) PathUtil.deleteRecursively(scratch);
             TRAINING.remove(cache);
         }
     }
@@ -488,7 +459,10 @@ public final class PluginAot {
      * anything — cache or orphaned {@code .noaot} failure marker — untouched for
      * {@link #UNUSED_TTL_MILLIS}. Several keys are legitimately live at once (different toolchain
      * JDKs, Kotlin versions, GC pins); expiring a stale {@code .noaot} also gives a once-failed key
-     * a fresh training attempt. Engine caches ({@code engine-<version>-…}) share this directory but
+     * a fresh training attempt. It is not the expiry that key can rely on, though — this sweep only
+     * runs from a <em>successful</em> train of a sibling, so a tool whose sole key failed retrains
+     * because {@link AotCacheFiles#blocked} expires the marker at read time.
+     * Engine caches ({@code engine-<version>-…}) share this directory but
      * are version-lifecycle-owned (EngineClient sweep + EngineInstall.gc) — never touched here.
      *
      * <p>Names are {@code <tool>-<jk-version>-<16hex>.aot}; the pool is one product version of one
@@ -508,7 +482,7 @@ public final class PluginAot {
             for (Path p : entries) {
                 String n = p.getFileName().toString();
                 if (n.endsWith(".aot")) primaries.add(p);
-                else if (n.endsWith(".aot.noaot")) markers.add(p);
+                else if (AotCacheFiles.isMarker(n)) markers.add(p);
             }
         } catch (IOException ignored) {
             return; // opportunistic: a leftover cache costs disk, not correctness
@@ -521,14 +495,13 @@ public final class PluginAot {
             if (i >= KEEP_PER_TOOL || now - mtime(p) > UNUSED_TTL_MILLIS) {
                 removed.add(p.getFileName().toString());
                 deleteQuietly(p);
-                deleteQuietly(noaotMarker(p));
+                deleteQuietly(AotCacheFiles.marker(p));
                 deleteQuietly(p.resolveSibling(p.getFileName() + ".config"));
             }
         }
         for (Path m : markers) {
-            Path primary = m.resolveSibling(m.getFileName()
-                    .toString()
-                    .substring(0, m.getFileName().toString().length() - ".noaot".length()));
+            Path primary =
+                    m.resolveSibling(AotCacheFiles.cacheOf(m.getFileName().toString()));
             if (!Files.exists(primary) && now - mtime(m) > UNUSED_TTL_MILLIS) {
                 removed.add(primary.getFileName().toString());
                 deleteQuietly(m);
@@ -559,38 +532,13 @@ public final class PluginAot {
         }
     }
 
-    /** Sticky "training failed for this key" marker sibling (skip retrain-on-miss until cleared). */
-    public static Path noaotMarker(Path cache) {
-        return cache.resolveSibling(cache.getFileName() + ".noaot");
-    }
-
-    /**
-     * Is training for {@code cache} blocked by its {@code .noaot} marker? Markers older than
-     * {@link #NOAOT_RETRY_MILLIS} are expired at read time — deleted, and the key retrains. The
-     * sweep-side expiry ({@link #sweepTool}) only runs from a successful sibling train, so a
-     * tool whose sole key failed would otherwise never retry.
-     */
-    static boolean noAotBlocked(Path cache) {
-        Path marker = noaotMarker(cache);
-        try {
-            if (!Files.exists(marker)) return false;
-            long age = System.currentTimeMillis()
-                    - Files.getLastModifiedTime(marker).toMillis();
-            if (age <= NOAOT_RETRY_MILLIS) return true;
-            deleteQuietly(marker); // expired: one bad day must not disable AOT forever
-            return false;
-        } catch (IOException e) {
-            return true; // unreadable marker: skip training, never fail the build
-        }
-    }
-
     private static void markNoAot(Path cache) {
         markNoAot(cache, null);
     }
 
     private static void markNoAot(Path cache, CacheMeta meta) {
         try {
-            Files.createFile(noaotMarker(cache));
+            Files.createFile(AotCacheFiles.marker(cache));
         } catch (IOException ignored) {
             // best-effort; worst case the next compile retries training
         }
@@ -703,14 +651,6 @@ public final class PluginAot {
     private static void deleteQuietly(Path p) {
         try {
             Files.deleteIfExists(p);
-        } catch (IOException ignored) {
-            // best-effort
-        }
-    }
-
-    private static void deleteRecursivelyQuietly(Path root) {
-        try (var walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(PluginAot::deleteQuietly);
         } catch (IOException ignored) {
             // best-effort
         }

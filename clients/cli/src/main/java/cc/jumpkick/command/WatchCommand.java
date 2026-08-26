@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.watch.AppWatchLoop;
 import cc.jumpkick.cli.watch.SourceWatch;
 import cc.jumpkick.model.command.Arity;
@@ -45,9 +48,8 @@ public final class WatchCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new ArrayList<>(List.of(
-                cc.jumpkick.cli.CommonOpts.cacheDir(),
-                Opt.value("<dir>", "Override the JDK install directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.cacheDir(),
+                CommonOpts.jdksDir(),
                 Opt.value(
                         "<ms>",
                         "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
@@ -67,9 +69,8 @@ public final class WatchCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
-        Path cacheOverride =
-                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path cacheOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         VariantSelection.install(in, global.workingDir());
 
         List<String> positionals = in.positionals();
@@ -77,7 +78,7 @@ public final class WatchCommand implements CliCommand {
         List<String> rest;
         if (positionals.isEmpty()) {
             // Bare `jk watch` needs a verb. (`jk dev` always injects `run` via DevCommand.)
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Watch", "expected a verb — compile, test, build, or run (tip: `jk dev` = watch run)");
             return Exit.USAGE;
         }
@@ -86,8 +87,7 @@ public final class WatchCommand implements CliCommand {
             verb = first;
             rest = positionals.size() > 1 ? positionals.subList(1, positionals.size()) : List.of();
         } else {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Watch", "unknown verb `" + first + "` (use compile, test, build, or run)");
+            CommandWedge.printFail("Watch", "unknown verb `" + first + "` (use compile, test, build, or run)");
             return Exit.USAGE;
         }
 
@@ -107,7 +107,7 @@ public final class WatchCommand implements CliCommand {
                     })
                     .orElse(SourceWatch.DEBOUNCE_MILLIS);
         } catch (NumberFormatException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Watch", "invalid --debounce-ms (use an integer 0..60000)");
+            CommandWedge.printFail("Watch", "invalid --debounce-ms (use an integer 0..60000)");
             return Exit.USAGE;
         }
 
@@ -117,8 +117,7 @@ public final class WatchCommand implements CliCommand {
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
             default -> {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Watch", "unknown verb `" + verb + "` (use compile, test, build, or run)");
+                CommandWedge.printFail("Watch", "unknown verb `" + verb + "` (use compile, test, build, or run)");
                 yield Exit.USAGE;
             }
         };
@@ -127,29 +126,28 @@ public final class WatchCommand implements CliCommand {
     private static int verbLoop(String verb, Path projectDir, GlobalOptions global, long debounceMs) throws Exception {
         int code = runVerb(verb);
         if (code != 0) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Watch", "initial " + verb + " failed (exit " + code + "); watching anyway");
+            CommandWedge.printFail("Watch", "initial " + verb + " failed (exit " + code + "); watching anyway");
         }
 
         List<Path> roots = SourceWatch.defaultRoots(projectDir);
         if (roots.isEmpty()) roots = List.of(projectDir);
 
-        cc.jumpkick.cli.tui.CommandWedge.printWorking(
+        CommandWedge.printWorking(
                 "Watch", verb + " on change (src/, test/src/, jk.toml; debounce " + debounceMs + "ms). Ctrl-C stops.");
 
         try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs)) {
             while (true) {
                 watch.awaitChange();
-                cc.jumpkick.cli.tui.CommandWedge.printWorking("Watch", "change detected — " + verb);
+                CommandWedge.printWorking("Watch", "change detected — " + verb);
                 code = runVerb(verb);
                 if (code != 0) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Watch", verb + " failed (exit " + code + ")");
+                    CommandWedge.printFail("Watch", verb + " failed (exit " + code + ")");
                 }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Watch", "interrupted");
-            return 130;
+            CommandWedge.printFail("Watch", "interrupted");
+            return Exit.INTERRUPTED;
         }
     }
 

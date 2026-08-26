@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.surface;
 
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -9,9 +10,9 @@ import java.util.Set;
 /**
  * A {@link DynamicSurface} as GraalVM's unified {@code reachability-metadata.json}.
  *
- * <p>Written by hand rather than through a JSON library: this module is dependency-free so the
- * shrink worker and the native-image driver can both link it, and the schema is a handful of
- * arrays of flat objects.
+ * <p>The document is assembled here rather than through a tree writer because Graal's schema is a
+ * handful of arrays of flat objects and the on-disk layout is stable; every string in it is
+ * escaped by {@link Jsonl#quote}, the one JSON escaper.
  *
  * <p>{@link DynamicSurface.Kind#GENERIC_REFLECTION} produces nothing. It exists because R8 drops
  * a class's generic signature unless the class is kept; Graal retains signatures without being
@@ -36,7 +37,7 @@ public final class ReachabilityMetadataEmitter {
                 case SERIALIZATION_TYPE -> serialization.add(serializationObject(entry));
                 // GraalVM's unified schema: resources are a flat glob array, and a proxy is a
                 // reflection entry with a map-shaped type.
-                case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
+                case RESOURCE -> resources.add("{\"glob\":" + Jsonl.quote(entry.name()) + "}");
                 case PROXY_INTERFACE -> reflection.add(proxyObject(entry.name()));
                 // The unified schema has no regex resource form and no excludes; both ride in the
                 // split-format resource-config.json from emitResourceConfig.
@@ -67,8 +68,8 @@ public final class ReachabilityMetadataEmitter {
         List<String> excludes = new ArrayList<>();
         for (DynamicSurface.Entry entry : surface.entries()) {
             switch (entry.kind()) {
-                case RESOURCE_PATTERN -> includes.add("{\"pattern\":" + quote(entry.name()) + "}");
-                case RESOURCE_EXCLUDE_PATTERN -> excludes.add("{\"pattern\":" + quote(entry.name()) + "}");
+                case RESOURCE_PATTERN -> includes.add("{\"pattern\":" + Jsonl.quote(entry.name()) + "}");
+                case RESOURCE_EXCLUDE_PATTERN -> excludes.add("{\"pattern\":" + Jsonl.quote(entry.name()) + "}");
                 default -> {}
             }
         }
@@ -87,7 +88,7 @@ public final class ReachabilityMetadataEmitter {
         StringBuilder interfaces = new StringBuilder();
         for (String iface : name.split(",")) {
             if (interfaces.length() > 0) interfaces.append(',');
-            interfaces.append(quote(iface));
+            interfaces.append(Jsonl.quote(iface));
         }
         return "{\"type\":{\"proxy\":[" + interfaces + "]}}";
     }
@@ -100,16 +101,16 @@ public final class ReachabilityMetadataEmitter {
     private static String serializationObject(DynamicSurface.Entry entry) {
         for (String member : entry.members()) {
             if (member.startsWith("c:")) {
-                return "{\"type\":" + quote(entry.name()) + ",\"customTargetConstructorClass\":"
-                        + quote(member.substring(2)) + "}";
+                return "{\"type\":" + Jsonl.quote(entry.name()) + ",\"customTargetConstructorClass\":"
+                        + Jsonl.quote(member.substring(2)) + "}";
             }
         }
         return typeObject(entry.name(), false);
     }
 
     private static String typeObject(String name, boolean allDeclared) {
-        if (!allDeclared) return "{\"type\":" + quote(name) + "}";
-        return "{\"type\":" + quote(name) + ",\"allDeclaredFields\":true,\"allDeclaredMethods\":true,"
+        if (!allDeclared) return "{\"type\":" + Jsonl.quote(name) + "}";
+        return "{\"type\":" + Jsonl.quote(name) + ",\"allDeclaredFields\":true,\"allDeclaredMethods\":true,"
                 + "\"allDeclaredConstructors\":true}";
     }
 
@@ -134,7 +135,7 @@ public final class ReachabilityMetadataEmitter {
                 methods.add(member);
             }
         }
-        StringBuilder sb = new StringBuilder("{\"type\":").append(quote(entry.name()));
+        StringBuilder sb = new StringBuilder("{\"type\":").append(Jsonl.quote(entry.name()));
         appendMembers(sb, "fields", fields);
         appendMembers(sb, "methods", methods);
         return sb.append('}').toString();
@@ -147,35 +148,13 @@ public final class ReachabilityMetadataEmitter {
         for (String name : names) {
             if (!first) sb.append(',');
             first = false;
-            sb.append("{\"name\":").append(quote(name)).append('}');
+            sb.append("{\"name\":").append(Jsonl.quote(name)).append('}');
         }
         sb.append(']');
     }
 
     private static void addArray(List<String> sections, String key, List<String> values) {
         if (values.isEmpty()) return;
-        sections.add("  " + quote(key) + ": [\n    " + String.join(",\n    ", values) + "\n  ]");
-    }
-
-    private static String quote(String raw) {
-        StringBuilder sb = new StringBuilder("\"");
-        for (int i = 0; i < raw.length(); i++) {
-            char c = raw.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.append('"').toString();
+        sections.add("  " + Jsonl.quote(key) + ": [\n    " + String.join(",\n    ", values) + "\n  ]");
     }
 }

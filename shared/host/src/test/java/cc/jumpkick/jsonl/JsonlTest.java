@@ -1,0 +1,177 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.jsonl;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
+
+class JsonlTest {
+
+    @Test
+    void readsStringIntBoolFields() {
+        String json = "{\"t\":\"diag\",\"sev\":\"ERROR\",\"count\":42,\"ok\":true}";
+        assertThat(Jsonl.str(json, "t")).isEqualTo("diag");
+        assertThat(Jsonl.str(json, "sev")).isEqualTo("ERROR");
+        assertThat(Jsonl.intValue(json, "count", -1)).isEqualTo(42);
+        assertThat(Jsonl.bool(json, "ok", false)).isTrue();
+    }
+
+    @Test
+    void missingFieldsFallBackToDefaults() {
+        String json = "{\"t\":\"result\"}";
+        assertThat(Jsonl.str(json, "absent")).isNull();
+        assertThat(Jsonl.intValue(json, "absent", 7)).isEqualTo(7);
+        assertThat(Jsonl.bool(json, "absent", true)).isTrue();
+        assertThat(Jsonl.has(json, "t")).isTrue();
+        assertThat(Jsonl.has(json, "absent")).isFalse();
+        assertThat(Jsonl.strArray(json, "absent")).isEmpty();
+    }
+
+    @Test
+    void readsNegativeIntegers() {
+        assertThat(Jsonl.intValue("{\"d\":-15}", "d", 0)).isEqualTo(-15);
+        assertThat(Jsonl.intValue("{\"d\":-}", "d", 99)).isEqualTo(99);
+    }
+
+    @Test
+    void unescapesStringEscapeSequences() {
+        String json = "{\"msg\":\"line1\\nline2\\ttab \\\"q\\\" \\\\slash\"}";
+        assertThat(Jsonl.str(json, "msg")).isEqualTo("line1\nline2\ttab \"q\" \\slash");
+    }
+
+    @Test
+    void readsStringArrays() {
+        String json = "{\"src\":[\"a.java\",\"b.java\",\"c.java\"]}";
+        assertThat(Jsonl.strArray(json, "src")).containsExactly("a.java", "b.java", "c.java");
+        assertThat(Jsonl.strArray("{\"src\":[]}", "src")).isEmpty();
+    }
+
+    @Test
+    void stringArrayElementsMayContainClosingBrackets() {
+        // Regression: a value that itself contains ']' (a scaffolded jk.toml carries TOML tables
+        // like "[project]") must not truncate the array at that inner bracket.
+        String json = "{\"contents\":[\"[project]\\nname = 1\",\"x\"]}";
+        assertThat(Jsonl.strArray(json, "contents")).containsExactly("[project]\nname = 1", "x");
+    }
+
+    @Test
+    void stringArrayRoundTripsMultilineBracketedValues() {
+        // Multi-line TOML with [tables], quotes, and tabs, packed by quote() into an array
+        // and read back by strArray().
+        String toml = "[project]\nname = \"demo\"\n\n[spring-boot]\nversion = \"4.1.0\"\n\tindented";
+        String array = "[" + Jsonl.quote(toml) + "," + Jsonl.quote("second") + "]";
+        assertThat(Jsonl.strArray("{\"paramValues\":" + array + "}", "paramValues"))
+                .containsExactly(toml, "second");
+    }
+
+    @Test
+    void extractsNestedObjects() {
+        String json = "{\"id\":\"1\",\"throwable\":{\"class\":\"E\",\"message\":\"boom {x}\"}}";
+        String nested = Jsonl.nested(json, "throwable");
+        assertThat(nested).isEqualTo("{\"class\":\"E\",\"message\":\"boom {x}\"}");
+        assertThat(Jsonl.str(nested, "class")).isEqualTo("E");
+        assertThat(Jsonl.str(nested, "message")).isEqualTo("boom {x}");
+        // Nested throwable.class must not be read as the top-level test class.
+        assertThat(Jsonl.topStr(json, "class")).isNull();
+        assertThat(Jsonl.str(json, "class")).isEqualTo("E");
+        String withClass = "{\"class\":\"pkg.Foo\",\"throwable\":{\"class\":\"AssertionError\",\"message\":\"x\"}}";
+        assertThat(Jsonl.topStr(withClass, "class")).isEqualTo("pkg.Foo");
+        assertThat(Jsonl.topStr(withClass, "testClass")).isNull();
+    }
+
+    @Test
+    void quoteEscapesAndRoundTripsThroughStr() {
+        String raw = "he said \"hi\"\n\tand \\ left";
+        String quoted = Jsonl.quote(raw);
+        assertThat(quoted).startsWith("\"").endsWith("\"");
+        // Embed the quoted literal as a field value and read it back out.
+        assertThat(Jsonl.str("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
+    }
+
+    @Test
+    void quoteEscapesControlCharsAsUnicode() {
+        assertThat(Jsonl.quote("\u0001")).isEqualTo("\"\\u0001\"");
+    }
+
+    @Test
+    void controlCharsRoundTripThroughEveryStringReader() {
+        // quote() emits \\uXXXX for control chars; every decoder must read them back —
+        // an assertion message with ESC or a vertical tab crosses worker → engine → CLI intact.
+        String raw = "esc \u001b vt \u000b bell \u0007 end";
+        String quoted = Jsonl.quote(raw);
+        assertThat(quoted).contains("\\u001b").contains("\\u000b").contains("\\u0007");
+
+        assertThat(Jsonl.str("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
+        assertThat(Jsonl.topStr("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
+        assertThat(Jsonl.strArray("{\"a\":[" + quoted + "]}", "a")).containsExactly(raw);
+        assertThat(Jsonl.strMap("{\"m\":{\"k\":" + quoted + "}}", "m")).containsEntry("k", raw);
+
+        // Re-encoding the decoded value is stable (no double-escaping across hops).
+        assertThat(Jsonl.quote(Jsonl.str("{\"v\":" + quoted + "}", "v"))).isEqualTo(quoted);
+    }
+
+    @Test
+    void malformedUnicodeEscapesAreKeptLiterally() {
+        assertThat(Jsonl.str("{\"v\":\"a\\uzzzz b\"}", "v")).isEqualTo("a\\uzzzz b");
+        assertThat(Jsonl.str("{\"v\":\"tail\\u12\"}", "v")).isEqualTo("tail\\u12");
+        // Signed "hex" is malformed too: Integer.parseInt would accept it and decode
+        // garbage while eating four chars.
+        assertThat(Jsonl.str("{\"v\":\"a\\u-123 b\"}", "v")).isEqualTo("a\\u-123 b");
+        assertThat(Jsonl.str("{\"v\":\"a\\u+0AB b\"}", "v")).isEqualTo("a\\u+0AB b");
+    }
+
+    @Test
+    void quoteEncodesNullAsBareJsonNull() {
+        assertThat(Jsonl.quote(null)).isEqualTo("null");
+        // "field":null is read back as an absent string by str().
+        assertThat(Jsonl.str("{\"e\":" + Jsonl.quote(null) + "}", "e")).isNull();
+    }
+
+    @Test
+    void appendSplicesFieldsBeforeTheClosingBrace() {
+        assertThat(Jsonl.append("{\"a\":1}", "\"b\":2")).isEqualTo("{\"a\":1,\"b\":2}");
+        assertThat(Jsonl.append("{\"a\":1}", "\"b\":2,\"c\":\"x\"")).isEqualTo("{\"a\":1,\"b\":2,\"c\":\"x\"}");
+        // Round trip through the readers, not just the text: the result is parseable JSON.
+        String line = Jsonl.append(Jsonl.append("{\"type\":\"ping\"}", "\"jid\":7"), "\"cancelled\":true");
+        assertThat(Jsonl.str(line, "type")).isEqualTo("ping");
+        assertThat(Jsonl.intValue(line, "jid", -1)).isEqualTo(7);
+        assertThat(Jsonl.bool(line, "cancelled", false)).isTrue();
+    }
+
+    /**
+     * The empty object is the case every hand-rolled brace chop got wrong: a constant comma
+     * separator turns {@code {}} into the unparseable {@code {,"b":2}}. The separator is a
+     * function of the object, so it belongs to the splicer.
+     */
+    @Test
+    void appendToAnEmptyObjectDoesNotEmitALeadingComma() {
+        assertThat(Jsonl.append("{}", "\"b\":2")).isEqualTo("{\"b\":2}");
+        assertThat(Jsonl.intValue(Jsonl.append("{}", "\"b\":2"), "b", -1)).isEqualTo(2);
+    }
+
+    /** A blank fragment is a no-op so a caller can splice unconditionally — byte-identical. */
+    @Test
+    void appendWithNothingToAddReturnsTheObjectUnchanged() {
+        assertThat(Jsonl.append("{\"a\":1}", null)).isEqualTo("{\"a\":1}");
+        assertThat(Jsonl.append("{\"a\":1}", "")).isEqualTo("{\"a\":1}");
+        assertThat(Jsonl.append("{\"a\":1}", "   ")).isEqualTo("{\"a\":1}");
+    }
+
+    /**
+     * One policy for a malformed object. The three call sites this replaced had three: throw,
+     * return the input unchanged, and splice at whatever the last {@code }} happened to be — so
+     * the same mistake was loud in one place and silent in another.
+     */
+    @Test
+    void appendRejectsAnythingThatIsNotAnEncodedObject() {
+        assertThatThrownBy(() -> Jsonl.append("not-json", "\"b\":2")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Jsonl.append(null, "\"b\":2")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Jsonl.append("", "\"b\":2")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Jsonl.append("{\"a\":1}trailing", "\"b\":2"))
+                .isInstanceOf(IllegalArgumentException.class);
+        // Validated even when there is nothing to add: "that is not an object" is a programming
+        // error either way, and a no-op that swallows it hides the bug until the next caller.
+        assertThatThrownBy(() -> Jsonl.append("not-json", null)).isInstanceOf(IllegalArgumentException.class);
+    }
+}

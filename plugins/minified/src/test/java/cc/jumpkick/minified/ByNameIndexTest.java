@@ -3,6 +3,8 @@ package cc.jumpkick.minified;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.surface.DynamicSurface;
+import cc.jumpkick.surface.KeepRuleEmitter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -116,9 +118,9 @@ class ByNameIndexTest {
         var surface = ByNameIndex.surface(List.of("com.acme.A", "com.acme.B"));
 
         assertThat(surface.entries())
-                .allMatch(e -> e.kind() == cc.jumpkick.surface.DynamicSurface.Kind.SERVICE_IMPLEMENTATION)
+                .allMatch(e -> e.kind() == DynamicSurface.Kind.SERVICE_IMPLEMENTATION)
                 .allMatch(e -> e.origin().equals("index"));
-        assertThat(cc.jumpkick.surface.KeepRuleEmitter.emit(surface))
+        assertThat(KeepRuleEmitter.emit(surface))
                 .contains("-keep class com.acme.A { *; }")
                 .contains("-keep class com.acme.B { *; }");
     }

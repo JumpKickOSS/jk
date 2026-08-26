@@ -2,7 +2,12 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -57,13 +62,13 @@ public final class LibrarySearchCommand implements CliCommand {
         Integer limit = in.value("limit").map(Integer::parseInt).orElse(null);
         this.showLayer = in.isSet("show-layer");
         this.groupByLayer = in.isSet("group-by-layer");
-        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
         CatalogReadAck ack;
         try {
-            ack = cc.jumpkick.cli.engine.EngineClient.catalogRead(
-                    cc.jumpkick.engine.EnginePaths.current(),
+            ack = EngineClient.catalogRead(
+                    EnginePaths.current(),
                     global.workingDir(),
                     cacheDir != null ? cacheDir : JkDirs.cache(),
                     "search",
@@ -72,12 +77,12 @@ public final class LibrarySearchCommand implements CliCommand {
                     true,
                     false);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
+            CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
             return 1;
         }
         for (String w : ack.warnings()) CliOutput.stderr().println(w);
         if (ack.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", ack.error());
+            CommandWedge.printFail("Library", ack.error());
             return 1;
         }
 
@@ -124,8 +129,8 @@ public final class LibrarySearchCommand implements CliCommand {
             cells.add(String.join(", ", h.cached()));
             rows.add(cells);
         }
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        for (String line : cc.jumpkick.cli.tui.Table.render(title, headers, rows)) {
+        CommandWedge.envelopeStart();
+        for (String line : Table.render(title, headers, rows)) {
             CliOutput.out(line);
         }
     }

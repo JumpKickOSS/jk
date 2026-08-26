@@ -3,20 +3,24 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -35,17 +39,15 @@ import org.junit.jupiter.api.io.TempDir;
  * under build/ so repeat runs are warm.
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class KspRoomHiltTest {
 
     @Test
-    @Disabled("Same Hilt GeneratesRootInputPropagatedData failure as HiltTransformTest under "
-            + "KSP; Room side is fine once Hilt processing completes. Disabled until the "
-            + "Android Hilt processor classpath is fixed.")
     void room_and_hilt_generate_via_ksp_and_the_app_builds(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);
         acceptLicenses();
@@ -113,12 +115,11 @@ class KspRoomHiltTest {
     }
 
     private static void acceptLicenses() throws Exception {
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-34")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
     }

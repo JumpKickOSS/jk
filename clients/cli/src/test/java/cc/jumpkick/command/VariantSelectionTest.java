@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CommandDispatch;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Command;
@@ -69,7 +70,7 @@ class VariantSelectionTest {
     void tool_with_flag_is_declared_repeatable() {
         // Tool run/install mount the same --with grammar; drop .repeat() and multi-deps silently fail.
         boolean found = false;
-        for (CliCommand cmd : cc.jumpkick.cli.CommandDispatch.commands()) {
+        for (CliCommand cmd : CommandDispatch.commands()) {
             found |= declaresRepeatableWith(cmd);
         }
         assertThat(found)

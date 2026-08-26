@@ -1,11 +1,17 @@
 name = "jk-plugin-sdk"
-description = "Plugin SPI; JSONL codec is jk-jsonl"
+description = "Plugin SPI; codec and host primitives are jk-host"
 # Workers load on user JVMs (JDK 17+); stay on release 17.
 java = 17
 
 [dependencies]
-jk-jsonl.workspace = true
+jk-host.workspace = true
 
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[test]
+# Shared test primitives live here, not in src/test/java: they compile with the test tier
+# (so a sibling reaches them through `kind = "tests"`) and never enter a main jar.
+# Gradle spells the same fact as a `testFixtures` source set.
+extra-src = ["src/testFixtures/java"]

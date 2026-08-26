@@ -81,7 +81,7 @@ class JkManagerTreeTest {
         // ERASE_DISPLAY_TO_END — otherwise the first two columns (the spinner glyph)
         // of the top line survive.
         String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(raw).contains("\r" + cc.jumpkick.terminal.Ansi.ERASE_DISPLAY_TO_END);
+        assertThat(raw).contains("\r" + Ansi.ERASE_DISPLAY_TO_END);
     }
 
     @Test
@@ -182,14 +182,14 @@ class JkManagerTreeTest {
         int cols = 60;
         // Paint uses rowColumnBudget (terminal width − 1) so the trailing … is not lost to
         // DEC auto-wrap on the last column.
-        int paintCols = JkManagerColor.rowColumnBudget(cols);
+        int paintCols = RenderContext.rowColumnBudget(cols);
         for (String line : cm.renderBuildPlanLines(cols, 0)) {
-            assertThat(RenderContext.visibleWidth(JkManager.truncateVisible(line, paintCols)))
+            assertThat(RenderContext.visibleWidth(RenderContext.truncateVisible(line, paintCols)))
                     .isLessThanOrEqualTo(paintCols);
         }
         // Truncation adds an ellipsis rather than wrapping.
         String painted =
-                JkManager.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), paintCols);
+                RenderContext.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), paintCols);
         assertThat(TestAnsi.strip(painted)).contains("…");
         assertThat(TestAnsi.strip(painted)).endsWith("…");
     }
@@ -200,7 +200,7 @@ class JkManagerTreeTest {
         // and force a full rewrite so a long test name is not left clipped.
         var savedProbe = Size.probe;
         try {
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.probe = () -> new Size.Window(24, 40);
             Size.reset();
 
             var buf = new ByteArrayOutputStream();
@@ -221,7 +221,7 @@ class JkManagerTreeTest {
             assertThat(narrow).doesNotContain(longName);
 
             // Same as the SIGWINCH handler: drop the cache; next paint pays one re-probe.
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 160);
+            Size.probe = () -> new Size.Window(24, 160);
             Size.reset();
             buf.reset();
             cm.tick();
@@ -264,7 +264,7 @@ class JkManagerTreeTest {
         // the reflow estimate overshoots into (and erases) completed output above the region.
         var savedProbe = Size.probe;
         try {
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 80);
+            Size.probe = () -> new Size.Window(24, 80);
             Size.reset();
             var buf = new ByteArrayOutputStream();
             var cm = new JkManager(stream(buf), true, true, 80);
@@ -277,7 +277,7 @@ class JkManagerTreeTest {
             cm.tick();
             int drawn = cm.view.renderBuildPlanLines(80, 0).size();
 
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.probe = () -> new Size.Window(24, 40);
             Size.reset();
             buf.reset();
 
@@ -287,14 +287,14 @@ class JkManagerTreeTest {
             assertThat(clipped).contains(Ansi.cursorUp(drawn));
 
             // Reflowing terminal: same shrink climbs the (larger) estimated physical height.
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 80);
+            Size.probe = () -> new Size.Window(24, 80);
             Size.reset();
             TerminalReflow.force(true);
             cm.tick(); // repaint at 80 again
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.probe = () -> new Size.Window(24, 40);
             Size.reset();
             List<String> last = cm.view.renderBuildPlanLines(80, 0);
-            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            int estimate = Math.max(TerminalReflow.physicalRows(last, 80, 40), last.size());
             buf.reset();
             cm.tick();
             assertThat(buf.toString(StandardCharsets.UTF_8)).contains(Ansi.cursorUp(estimate));
@@ -311,7 +311,7 @@ class JkManagerTreeTest {
         // must run first so no orphan rows survive above the emitted line.
         var savedProbe = Size.probe;
         try {
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 80);
+            Size.probe = () -> new Size.Window(24, 80);
             Size.reset();
             var buf = new ByteArrayOutputStream();
             var cm = new JkManager(stream(buf), true, true, 80);
@@ -324,10 +324,10 @@ class JkManagerTreeTest {
             cm.tick();
             List<String> last = cm.view.renderBuildPlanLines(80, 0);
 
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.probe = () -> new Size.Window(24, 40);
             Size.reset();
             TerminalReflow.force(true);
-            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            int estimate = Math.max(TerminalReflow.physicalRows(last, 80, 40), last.size());
             buf.reset();
             // Hidden write only buffers; open the pane so paint runs under the new column budget.
             cm.view.writeAbove("WARN something happened");
@@ -361,10 +361,10 @@ class JkManagerTreeTest {
             cm.stepRunning("cc.jumpkick:jk-cli", "compile", "compile");
             cm.stepMessage("cc.jumpkick:jk-cli", "compile", "compiling 42 sources");
 
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 200);
+            Size.probe = () -> new Size.Window(24, 200);
             Size.reset();
             List<String> sampled = cm.renderBuildPlanLines(120, 4_000);
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 30);
+            Size.probe = () -> new Size.Window(24, 30);
             Size.reset();
             assertThat(cm.renderBuildPlanLines(120, 4_000)).isEqualTo(sampled);
         } finally {
@@ -377,23 +377,69 @@ class JkManagerTreeTest {
     void physical_rows_after_reflow_grows_when_columns_shrink() {
         // A line painted ~79 cols wide reflows to 2 physical rows at 40 cols.
         String wide = "x".repeat(79);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 80, 40)).isEqualTo(2);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide, wide), 80, 40))
-                .isEqualTo(4);
+        assertThat(TerminalReflow.physicalRows(List.of(wide), 80, 40)).isEqualTo(2);
+        assertThat(TerminalReflow.physicalRows(List.of(wide, wide), 80, 40)).isEqualTo(4);
         // Widen / same width: still one physical row per logical line.
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 40, 80)).isEqualTo(1);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(""), 80, 40)).isEqualTo(1);
-        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(), 80, 40)).isZero();
+        assertThat(TerminalReflow.physicalRows(List.of(wide), 40, 80)).isEqualTo(1);
+        assertThat(TerminalReflow.physicalRows(List.of(""), 80, 40)).isEqualTo(1);
+        assertThat(TerminalReflow.physicalRows(List.of(), 80, 40)).isZero();
     }
 
     @Test
     void paint_on_column_shrink_wipes_reflowed_physical_rows_before_repaint() {
-        // Shrink reflows long painted lines onto extra physical rows. cursorUp(logical) then
-        // undershoots and the next header stacks under the orphan. Wipe must cursor-up by the
-        // reflow estimate (≥ logical) and erase before painting the narrower region.
+        // Rewrapping terminal: shrink reflows long painted lines onto extra physical rows.
+        // cursorUp(logical) undershoots and the next header stacks under the orphan, so the wipe
+        // climbs the reflow estimate (>= logical) and erases before painting the narrower region.
+        Shrink s = shrinkFrame(true);
+        int expectedUp = Math.max(
+                TerminalReflow.physicalRows(s.painted(), 120, 50), s.painted().size());
+
+        assertThat(s.raw()).contains(Ansi.cursorUp(expectedUp));
+        assertThat(s.raw()).contains("\r" + Ansi.ERASE_DISPLAY_TO_END);
+        // Only one Build header in the post-shrink frame (not a stacked orphan + new paint).
+        assertThat(TestAnsi.strip(s.raw())
+                        .lines()
+                        .filter(l -> l.contains("Build"))
+                        .count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void paint_on_column_shrink_climbs_only_logical_rows_on_a_clipping_terminal() {
+        // xterm, the linux console and screen keep exactly one physical row per logical line.
+        // Climbing the reflow estimate there overshoots into completed output above the region,
+        // which ERASE_DISPLAY_TO_END would then destroy — so the climb stays logical.
+        Shrink s = shrinkFrame(false);
+        int physical = TerminalReflow.physicalRows(s.painted(), 120, 50);
+
+        assertThat(s.raw()).contains(Ansi.cursorUp(s.painted().size()));
+        if (physical > s.painted().size()) {
+            assertThat(s.raw())
+                    .describedAs("a clipping terminal must not get the reflow climb")
+                    .doesNotContain(Ansi.cursorUp(physical));
+        }
+        assertThat(s.raw()).contains("\r" + Ansi.ERASE_DISPLAY_TO_END);
+        assertThat(TestAnsi.strip(s.raw())
+                        .lines()
+                        .filter(l -> l.contains("Build"))
+                        .count())
+                .isEqualTo(1);
+    }
+
+    /** The post-shrink frame, plus the lines that had been painted at the wider size. */
+    private record Shrink(String raw, List<String> painted) {}
+
+    /**
+     * One 120-to-50 column shrink, with both process-wide answers the wipe consults pinned: the
+     * terminal size and whether the terminal rewraps. {@code reflows()} memoizes a read of ambient
+     * env — {@code TERM_PROGRAM}, {@code VTE_VERSION} and friends, which the test tier does not pin
+     * — so a test that leaves it alone asserts whatever the developer's terminal happens to do.
+     */
+    private static Shrink shrinkFrame(boolean rewrapping) {
         var savedProbe = Size.probe;
         try {
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 120);
+            TerminalReflow.force(rewrapping);
+            Size.probe = () -> new Size.Window(24, 120);
             Size.reset();
 
             var buf = new ByteArrayOutputStream();
@@ -406,27 +452,19 @@ class JkManagerTreeTest {
             cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "[5/8] Inlining methods...");
             cm.tick();
 
-            List<String> painted = cm.lastLines;
+            List<String> painted = List.copyOf(cm.lastLines);
             assertThat(painted).isNotEmpty();
-            int expectedUp = Math.max(JkManagerView.physicalRowsAfterReflow(painted, 120, 50), painted.size());
 
-            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 50);
+            Size.probe = () -> new Size.Window(24, 50);
             Size.reset();
             buf.reset();
             cm.tick();
-
             assertThat(cm.width()).isEqualTo(50);
-            String raw = buf.toString(StandardCharsets.UTF_8);
-            // Wipe path: cursor-up by physical reflow rows, then erase-display-to-end, then paint.
-            assertThat(raw).contains(cc.jumpkick.terminal.Ansi.cursorUp(expectedUp));
-            assertThat(raw).contains("\r" + cc.jumpkick.terminal.Ansi.ERASE_DISPLAY_TO_END);
-            // Only one Build header in the post-shrink frame (not a stacked orphan + new paint).
-            String visible = TestAnsi.strip(raw);
-            long buildHeaders = visible.lines().filter(l -> l.contains("Build")).count();
-            assertThat(buildHeaders).isEqualTo(1);
+            return new Shrink(buf.toString(StandardCharsets.UTF_8), painted);
         } finally {
             Size.probe = savedProbe;
             Size.reset();
+            TerminalReflow.reset();
         }
     }
 }

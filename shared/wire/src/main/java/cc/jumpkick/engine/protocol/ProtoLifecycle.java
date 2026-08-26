@@ -380,6 +380,14 @@ public final class ProtoLifecycle {
         return b.append('}').toString();
     }
 
+    /**
+     * {@link EngineProtocol#JOB_FINISH}: the job is over and the engine has written everything it
+     * is going to write under the project's {@code target/}.
+     */
+    public static String jobFinish(long jid) {
+        return "{\"type\":\"" + EngineProtocol.JOB_FINISH + "\",\"jid\":" + jid + "}";
+    }
+
     /** {@link EngineProtocol#CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
     public static String cancelRequest(long jid) {
         return "{\"type\":\"" + EngineProtocol.CANCEL_REQUEST + "\",\"jid\":" + jid + "}";

@@ -4,8 +4,14 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.util.List;
@@ -45,11 +51,11 @@ public final class LockVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.lockRequest(
+    public String decodeJob(JobSpec spec) {
+        return ProtoSession.withTrigger(
+                ProtoJobs.lockRequest(
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        JkDirs.cache().toString(),
                         List.of(),
                         false,
                         false,
@@ -62,8 +68,7 @@ public final class LockVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             List<String> features = Jsonl.strArray(requestLine, "features");
             boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
@@ -71,25 +76,24 @@ public final class LockVerb implements HostedVerb {
             boolean conservative = Jsonl.bool(requestLine, "conservative", false);
             Session session = host.resolveSession(requestLine, cancelToken, false);
             URI repoUrl = repoUrlOf(requestLine);
-            SessionContext.where(session, () -> {
-                LockCascade.run(
-                        host,
-                        session.workingDir(),
-                        session.cacheDir(),
-                        repoUrl,
-                        features,
-                        withDefaults,
-                        sources,
-                        false,
-                        null,
-                        conservative,
-                        writer);
-                return null;
-            });
+            return SessionContext.where(
+                    session,
+                    () -> LockCascade.run(
+                            host,
+                            session.workingDir(),
+                            session.cacheDir(),
+                            repoUrl,
+                            features,
+                            withDefaults,
+                            sources,
+                            false,
+                            null,
+                            conservative,
+                            writer));
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 
     static @org.jspecify.annotations.Nullable URI repoUrlOf(String requestLine) {

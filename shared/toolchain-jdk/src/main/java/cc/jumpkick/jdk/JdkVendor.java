@@ -69,9 +69,16 @@ public enum JdkVendor {
 
     /** Vendor + product, joined for display (e.g. {@code "Eclipse Temurin"}). */
     public String displayName() {
-        // Avoid awkward duplication when vendor already ends with the product word
+        // Prefer vendor alone when it already carries the product family name
         // (e.g. "GraalVM Community" + "GraalVM CE" → "GraalVM Community").
-        if (vendor.toLowerCase(Locale.ROOT).startsWith(product.toLowerCase(Locale.ROOT))) {
+        String v = vendor.toLowerCase(Locale.ROOT);
+        String p = product.toLowerCase(Locale.ROOT);
+        if (v.startsWith(p)) {
+            return vendor;
+        }
+        int space = product.indexOf(' ');
+        String family = space < 0 ? p : product.substring(0, space).toLowerCase(Locale.ROOT);
+        if (v.startsWith(family) && v.length() > family.length()) {
             return vendor;
         }
         return vendor + " " + product;
@@ -222,6 +229,7 @@ public enum JdkVendor {
             case "Ubuntu" -> UBUNTU;
             case "Homebrew" -> HOMEBREW;
             case "Oracle Corporation" -> ORACLE_OPENJDK; // refined below if GraalVM markers present
+            case "GraalVM Community" -> GRAALVM_CE;
             default -> UNKNOWN;
         };
     }

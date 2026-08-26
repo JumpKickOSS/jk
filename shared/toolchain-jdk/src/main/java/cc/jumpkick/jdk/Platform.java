@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,7 +19,7 @@ public final class Platform {
     }
 
     public static String currentOperatingSystem() {
-        return mapOperatingSystem(System.getProperty("os.name"));
+        return mapOperatingSystem(Os.name());
     }
 
     public static String currentArchiveType() {

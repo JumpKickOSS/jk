@@ -8,7 +8,9 @@ import java.util.Objects;
 import lombok.Builder;
 
 /**
- * Input to {@link GroovycDriver} (forks {@code jk-groovy-compiler}). {@code workerClasspath} is
+ * Input to {@link WorkerCompileDriver}'s Groovy arm (forks {@code jk-groovy-compiler}). Unlike
+ * {@link KotlincRequest} there is no {@code javaHome}: groovyc takes no project JDK.
+ * {@code workerClasspath} is
  * the plugin jar + Groovy runtime. {@code sources} may mix {@code .groovy} and {@code .java} —
  * any Java (also via {@code javaSourceRoots}) selects joint mode: stubs land in {@code stubsOut}
  * (null ⇒ not retained) and javac class output is discarded under {@code workDir} (null ⇒ worker

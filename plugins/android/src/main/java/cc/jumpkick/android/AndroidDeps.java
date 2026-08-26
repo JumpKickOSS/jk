@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,7 +10,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -18,8 +18,9 @@ import java.util.zip.ZipFile;
 /**
  * The Android view of the module's runtime entries: every dependency whose artifact is an AAR
  * container (a remote androidx library or a workspace {@code [android] library} sibling), in
- * classpath order — the deterministic merge order for resources and manifests (app last, so the
- * app wins; matching AGP's precedence).
+ * classpath order — the deterministic merge order for resources, assets and native libs. One
+ * precedence rule everywhere, matching AGP's: among AARs the earlier classpath entry wins, and the
+ * module's own files beat every AAR.
  */
 final class AndroidDeps {
 
@@ -66,16 +67,17 @@ final class AndroidDeps {
     }
 
     /**
-     * The merged {@code assets/} view: AAR dependencies in classpath order, the module's own
-     * {@code assets/} written last so the app wins a path conflict (AGP's precedence). Keys are
-     * asset-relative paths ({@code /}-separated).
+     * The merged {@code assets/} view: the module's own {@code assets/} collected first, then AAR
+     * dependencies in classpath order — the first writer wins, so the app beats every AAR and an
+     * earlier AAR beats a later one (AGP's precedence). Keys are asset-relative paths
+     * ({@code /}-separated).
      */
     static Map<String, Path> mergedAssets(PackageIo io) throws IOException {
         Map<String, Path> out = new LinkedHashMap<>();
+        collectTree(androidFile(io.moduleDir(), "assets"), out);
         for (Aar aar : aars(io.runtimeEntries())) {
             collectTree(aar.container().resolve("assets"), out);
         }
-        collectTree(androidFile(io.moduleDir(), "assets"), out);
         return out;
     }
 
@@ -100,20 +102,19 @@ final class AndroidDeps {
         return out;
     }
 
+    /** Collect {@code root}'s files under relative keys — the first writer of a key wins. */
     private static void collectTree(Path root, Map<String, Path> out) throws IOException {
         if (!Files.isDirectory(root)) return;
         try (var walk = Files.walk(root)) {
             walk.filter(Files::isRegularFile).sorted().forEach(f -> {
-                out.put(root.relativize(f).toString().replace('\\', '/'), f);
+                out.putIfAbsent(root.relativize(f).toString().replace('\\', '/'), f);
             });
         }
     }
 
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into {@code destDir}. */
     static Path extractAapt2(Path aapt2Jar, Path destDir) throws IOException {
-        boolean windows =
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        String binaryName = windows ? "aapt2.exe" : "aapt2";
+        String binaryName = Os.isWindows() ? "aapt2.exe" : "aapt2";
         Path out = Files.createDirectories(destDir).resolve(binaryName);
         try (ZipFile zip = new ZipFile(aapt2Jar.toFile())) {
             var entry = zip.getEntry(binaryName);

@@ -18,7 +18,9 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.WorkModel;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -71,7 +73,7 @@ public final class EngineListeners {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a == null) return;
         a.flushTimeline().ifPresent(path -> {
-            if (writer != null) EngineServer.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
+            if (writer != null) WireWriter.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
         });
     }
 
@@ -91,7 +93,7 @@ public final class EngineListeners {
             }
 
             @Override
-            public void workModel(cc.jumpkick.runtime.WorkModel model) {
+            public void workModel(WorkModel model) {
                 if (rid <= 0) return;
                 sessions.remaining(rid, model.toRemainingWork());
                 sessions.tracker(rid).seedWall(model.R0(), model.costs().size());
@@ -137,10 +139,8 @@ public final class EngineListeners {
             }
 
             @Override
-            public void testsFrom(cc.jumpkick.run.BuildPlan plan) {
-                journal.accTests(
-                        rid,
-                        plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
+            public void testsFrom(BuildPlan plan) {
+                journal.accTests(rid, plan.get(BuildPlanner.TEST_RESULT).orElse(null));
             }
         };
     }
@@ -185,14 +185,10 @@ public final class EngineListeners {
     static String encodePlanFinish(String dir, @Nullable BuildPlan realBuildPlan, BuildPlanResult result) {
         TestSummary testResult = realBuildPlan == null
                 ? null
-                : realBuildPlan
-                        .get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                        .orElse(null);
+                : realBuildPlan.get(BuildPlanner.TEST_RESULT).orElse(null);
         String buildOutcome = realBuildPlan == null
                 ? null
-                : realBuildPlan
-                        .get(cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME)
-                        .orElse(null);
+                : realBuildPlan.get(BuildPlanner.BUILD_OUTCOME).orElse(null);
         boolean cancelled = result.userCancelled();
         if (testResult == null && buildOutcome == null) {
             return ProtoEvents.planFinish(dir, result.success(), cancelled);

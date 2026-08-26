@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.PluginReply;
@@ -35,7 +36,7 @@ public final class JavaIncrementalCompiler implements Plugin {
         }
         if (args.size() != 1) {
             System.err.println("usage: jk-java-compiler <spec-file>|@<spec-file>|--pull");
-            return 2;
+            return Exit.USAGE;
         }
         String specArg = args.get(0);
         String spec = specArg.startsWith("@") ? specArg.substring(1) : specArg;
@@ -61,7 +62,7 @@ public final class JavaIncrementalCompiler implements Plugin {
             String spec = space < 0 ? "" : cmd.substring(space + 1).trim();
             if (spec.isEmpty()) {
                 out.emit(PluginReply.error("usage", "COMPILE|PLAN <spec-file>"));
-                worst = Math.max(worst, 2);
+                worst = Math.max(worst, Exit.USAGE);
                 continue;
             }
             int code =
@@ -70,11 +71,11 @@ public final class JavaIncrementalCompiler implements Plugin {
                         case "PLAN" -> planSpec(Path.of(spec), out);
                         default -> {
                             out.emit(PluginReply.error("unknown", op));
-                            yield 2;
+                            yield Exit.USAGE;
                         }
                     };
             // Keep the worst (highest) exit code: a later compile error (1) must not overwrite an
-            // earlier usage/unknown error (2) — JK-2316.
+            // earlier usage/unknown error (Exit.USAGE) — JK-2316.
             worst = Math.max(worst, code);
         }
     }

@@ -6,22 +6,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -31,31 +28,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class PubGrubResolverTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @Test
     void bom_pin_overrides_lower_bare_on_transitive_edge(@TempDir Path tempDir) throws Exception {
@@ -119,12 +93,7 @@ class PubGrubResolverTest {
         assertThat(mediated.modules().get("com.foo:leaf:jar:").version()).isEqualTo("2.0");
 
         Resolution strict = new PubGrubResolver(
-                        repos,
-                        bom,
-                        Map.of(),
-                        KmpRedirects.NONE,
-                        cc.jumpkick.model.PlatformPolicy.ENFORCED,
-                        cc.jumpkick.model.UnmappedPolicy.STRICT)
+                        repos, bom, Map.of(), KmpRedirects.NONE, PlatformPolicy.ENFORCED, UnmappedPolicy.STRICT)
                 .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
         assertThat(strict.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
     }
@@ -286,18 +255,18 @@ class PubGrubResolverTest {
 
     private RepoGroup repoGroup(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
-        return RepoGroup.of(new MavenRepo("local", base, new Http(), cas));
+        return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), cas));
     }
 
     @SuppressWarnings("unused")
     private MavenPackageSource newSource(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
-        MavenRepo repo = new MavenRepo("local", base, new Http(), cas);
+        MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
         return new MavenPackageSource(repo, new EffectivePomBuilder(repo));
     }
 
     private void servePath(String path, String body) {
-        served.put(path, body.getBytes(StandardCharsets.UTF_8));
+        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
     }
 
     private void servePom(String group, String artifact, String version, String body) {

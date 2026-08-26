@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -121,7 +123,7 @@ public final class EngineMaintenance implements AutoCloseable {
         // Callers re-resolve JkCacheConfig / HostWarmup.enabled / templates each use.
         // Invalidate calibration memo so a changed probe policy can re-read host-metrics.
         try {
-            cc.jumpkick.runtime.Calibration.invalidateMemo();
+            Calibration.invalidateMemo();
         } catch (Throwable ignored) {
         }
         log.accept(message);
@@ -145,7 +147,7 @@ public final class EngineMaintenance implements AutoCloseable {
     void runMaintenanceCycle() {
         if (closed.get()) return;
         feeds.refreshFeedsQuietly();
-        cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(log);
+        OfficialTemplatesFreshen.refreshQuiet(log);
         try {
             onMaintenanceDue.run();
         } catch (Throwable ignored) {

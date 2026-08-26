@@ -25,7 +25,9 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 the action cache. `--force` also invalidates this project’s action-cache entries.
 
 Everything under a cache root — including its `sha256/` blob pool — is cache tier:
-cleaned with `jk cache clean` and wiped by `jk cache nuke`.
+cleaned with `jk cache clean` and wiped by `jk cache nuke`. A nuke removes the root
+directory too: `jk cache nuke` and `jk self nuke --cache` are `rm -rf $JK_CACHE_DIR`,
+not an emptied skeleton. The next build recreates what it needs.
 
 ## Hygiene
 

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -10,6 +15,7 @@ import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,18 +25,24 @@ import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Optional Now-in-Android workspace sweep. Builds every module under a local NiA clone that
  * carries a {@code jk.toml} and prints a pass/fail inventory — exploration harness, not CI.
  *
  * <p>Set {@code JK_NIA_ROOT} to the clone path and {@code JK_NIA_SCRATCH=1} to enable.
+ *
+ * <p>The assertions here can only be exercised on a machine with the NiA clone: no gate sets the
+ * enabling variables, so proving the sweep goes red on a broken module means running it there with
+ * a module forced to fail. In-gate, this class is compile-checked only.
  */
 @EnabledIfEnvironmentVariable(
         named = "JK_NIA_SCRATCH",
         matches = "1",
         disabledReason = "optional NiA marathon; export JK_NIA_SCRATCH=1 and JK_NIA_ROOT=/path/to/nowinandroid")
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class NiaScratchTest {
 
     private static final Path NIA = Path.of(System.getenv().getOrDefault("JK_NIA_ROOT", "/tmp/nowinandroid"));
@@ -39,7 +51,7 @@ class NiaScratchTest {
     void sweep_all_jk_modules() throws Exception {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
         acceptLicenses();
 
         // Dependency order comes from the root [workspace] modules list — a plain walk sorts
@@ -51,10 +63,12 @@ class NiaScratchTest {
             if (Files.isRegularFile(dir.resolve("jk.toml"))) modules.add(dir);
         }
         System.out.println("NIA-SWEEP: " + modules.size() + " module(s)");
+        List<String> failures = new ArrayList<>();
         for (Path module : modules) {
             String name = NIA.relativize(module).toString();
             try {
                 String failure = buildOne(module);
+                if (failure != null) failures.add(name + " — " + failure);
                 System.out.println(failure == null ? "NIA-PASS: " + name : "NIA-FAIL: " + name + " — " + failure);
                 if (failure != null && Files.isDirectory(module.resolve("target"))) {
                     try (var walk = Files.walk(module.resolve("target"), 4)) {
@@ -63,9 +77,16 @@ class NiaScratchTest {
                     }
                 }
             } catch (Throwable t) {
+                failures.add(name + " — threw " + t);
                 System.out.println("NIA-FAIL: " + name + " — threw " + t);
             }
         }
+        assertThat(modules)
+                .as("no jk modules under %s — check JK_NIA_ROOT points at a locked NiA clone", NIA)
+                .isNotEmpty();
+        assertThat(failures)
+                .as("%d of %d NiA module(s) failed:%n%s", failures.size(), modules.size(), String.join("\n", failures))
+                .isEmpty();
     }
 
     /** The release finish: jk build --release of :app → R8 full mode + a signed AAB. */
@@ -74,7 +95,7 @@ class NiaScratchTest {
         Path module = NIA.resolve("app");
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
         acceptLicenses();
 
         Path keystore = Path.of(System.getProperty("user.dir"), "build", "nia-release.jks");
@@ -112,6 +133,7 @@ class NiaScratchTest {
                 LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         System.out.println("NIA-RELEASE lock: " + lockResult.errors());
+        assertThat(lockResult.errors()).as("app lock").isEmpty();
 
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                         module,
@@ -140,10 +162,19 @@ class NiaScratchTest {
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         System.out.println("NIA-RELEASE diags: " + result.errors());
         System.out.println("NIA-RELEASE success: " + result.success());
+        List<Path> artifacts;
         try (var walk = Files.walk(module.resolve("target"))) {
-            walk.filter(p -> p.toString().endsWith(".aab") || p.toString().endsWith(".apk"))
-                    .forEach(p -> System.out.println("NIA-RELEASE artifact: " + module.relativize(p)));
+            artifacts = walk.filter(
+                            p -> p.toString().endsWith(".aab") || p.toString().endsWith(".apk"))
+                    .toList();
         }
+        artifacts.forEach(p -> System.out.println("NIA-RELEASE artifact: " + module.relativize(p)));
+        assertThat(result.success())
+                .as("release build of :app, diags %s", result.errors())
+                .isTrue();
+        assertThat(artifacts)
+                .as("signed AAB under %s", module.resolve("target"))
+                .anyMatch(p -> p.toString().endsWith(".aab"));
     }
 
     /** Null on success, else the first diagnostic. */
@@ -196,12 +227,11 @@ class NiaScratchTest {
     }
 
     private static void acceptLicenses() throws Exception {
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-34")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
     }

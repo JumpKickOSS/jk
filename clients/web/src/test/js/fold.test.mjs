@@ -1,43 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0
-// Headless tests for the dashboard's event-folding logic (docs/webclient.md). Run by
-// WebClientFoldTest via `node --test`, which copies fold.js to fold.mjs and passes its path in
-// JK_FOLD_MJS (fold.js's .js extension would be treated as CommonJS by a bare node import).
+// Headless tests for the dashboard's event-folding layer (docs/contributors/webclient.md). Run by
+// WebClientJsTest via `node --test`, which stages the SPA's modules in a type:module dir (a bare
+// .js import would be CommonJS) and passes the directory in JK_APP_DIR.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+
+const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
 
 const {
   foldEvent,
-  outcomeOf,
-  moduleSummary,
-  phaseChainOf,
   seedFromHistory,
+  historyCard,
   startAnchor,
   ioLines,
-  fmtBytes,
-  fmtStepMillis,
   stepTimingLabel,
-  detailForDisplay,
-  liveStepDetail,
-  detailSegments,
-  looksLikeJavaMember,
-  orderedModules,
   MAX_CARDS,
   MAX_OUTPUT_LINES,
   normalizeDiagnostic,
-  testFailureReport,
-  stackFrameLines,
-  isTestFailureDiag,
-  isCompilerDiag,
-  parseCompilerBlock,
-  compilerFailureReports,
-  snippetWindow,
-  parseAssertJMessage,
-  shortTestLabel,
+} = await spa('fold.js');
+const { moduleSummary, orderedModules, outcomeOf, phaseChainOf } = await spa('outcome.js');
+const { fmtBytes, fmtDuration } = await spa('format.js');
+const {
+  detailForDisplay,
+  detailSegments,
+  liveStepDetail,
+  looksLikeJavaMember,
   shortDisplayLabel,
+  shortTestLabel,
   simpleTypeName,
   simplifyMethodParams,
-} = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+} = await spa('label.js');
+const {
+  compilerFailureReports,
+  isCompilerDiag,
+  isTestFailureDiag,
+  parseAssertJMessage,
+  parseCompilerBlock,
+  snippetWindow,
+  stackFrameLines,
+  testFailureReport,
+} = await spa('failure.js');
 
 const historyRecord = (id, dir, extra = {}) => ({
   id,
@@ -50,7 +54,7 @@ const historyRecord = (id, dir, extra = {}) => ({
   cancelled: false,
   success: true,
   modules: [],
-  steps: [],
+  tasks: [],
   diagnostics: [],
   ...extra,
 });
@@ -282,28 +286,28 @@ test('a step-start without a phase stores an empty phase', () => {
 });
 
 test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK-1519)', async () => {
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
   foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
   // The journal record carries ENGINE time — 10s of clock skew vs the browser receipt stamps.
   seedFromHistory(cards, [
     { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', finishedAt: 110_400, startedAt: 110_000,
-      success: true, millis: 400, modules: [], steps: [], diagnostics: [] },
+      success: true, millis: 400, modules: [], tasks: [], diagnostics: [] },
   ]);
   assert.equal(cards.length, 1); // no duplicate h:r6 card
   assert.equal(cards[0].historyId, 'r6');
 });
 
 test('a stale running stub does not flip a finished live card back to running (JK-1519)', async () => {
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
   foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
   // Reconcile raced the journal write: the record still says running.
   seedFromHistory(cards, [
     { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', running: true, startedAt: 110_000,
-      modules: [], steps: [], diagnostics: [] },
+      modules: [], tasks: [], diagnostics: [] },
   ]);
   const live = cards.find((c) => c.id === 1);
   assert.equal(live.state, 'finished'); // untouched by the stale stub
@@ -312,19 +316,19 @@ test('a stale running stub does not flip a finished live card back to running (J
 });
 
 test('history backfill maps per-module steps; single-project synthesizes one module', async () => {
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   // workspace record: modules carry their own steps, and each diagnostic attaches to its module dir
   const ws = [];
   seedFromHistory(ws, [{
     id: 'w1', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 5000, success: false,
     modules: [
-      { coord: 'g:core', dir: '/w/core', success: true, millis: 100, steps: [{ name: 'compile', status: 'SUCCESS' }] },
-      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, steps: [{ name: 'test', status: 'FAIL' }] },
+      { coord: 'g:core', dir: '/w/core', success: true, millis: 100, tasks: [{ name: 'compile', status: 'SUCCESS' }] },
+      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, tasks: [{ name: 'test', status: 'FAIL' }] },
     ],
-    steps: [],
+    tasks: [],
     diagnostics: [
-      { severity: 'error', dir: '/w/api', step: 'test', message: 'boom', test: 'it()', exceptionClass: '' },
-      { severity: 'warning', dir: '/w/core', step: 'lint', message: 'unused import' },
+      { severity: 'error', dir: '/w/api', task: 'test', message: 'boom', test: 'it()', exceptionClass: '' },
+      { severity: 'warning', dir: '/w/core', task: 'lint', message: 'unused import' },
     ],
   }]);
   assert.equal(ws[0].modules.length, 2);
@@ -334,12 +338,12 @@ test('history backfill maps per-module steps; single-project synthesizes one mod
   assert.equal(wcore.diagnostics.length, 0); // the warning is dropped, not shown as failure output
   assert.equal(wapi.diagnostics.length, 1);
   assert.equal(wapi.diagnostics[0].message, 'boom');
-  // single-project record: no modules, steps at top level → synthesize one module owning the errors
+  // single-project record: no modules, tasks at top level → synthesize one module owning the errors
   const sp = [];
   seedFromHistory(sp, [{
     id: 's1', kind: 'build', dir: '/p', coord: 'g:p', finishedAt: 6000, success: false,
-    modules: [], steps: [{ name: 'compile-java', status: 'FAIL' }],
-    diagnostics: [{ severity: 'error', dir: '', step: 'compile-java', message: 'cannot find symbol' }],
+    modules: [], tasks: [{ name: 'compile-java', status: 'FAIL' }],
+    diagnostics: [{ severity: 'error', dir: '', task: 'compile-java', message: 'cannot find symbol' }],
   }]);
   assert.equal(sp[0].modules.length, 1);
   assert.deepEqual(sp[0].modules[0].steps.map((p) => p.name + ':' + p.state), ['compile-java:failed']);
@@ -347,23 +351,69 @@ test('history backfill maps per-module steps; single-project synthesizes one mod
   assert.equal(sp[0].modules[0].diagnostics[0].message, 'cannot find symbol');
 });
 
+test('history seeding reads the journal vocabulary: tasks / stage / task / testClass / stack', () => {
+  const cards = [];
+  seedFromHistory(cards, [historyRecord('h-vocab', '/w', {
+    success: false,
+    modules: [{
+      coord: 'g:core', dir: '/w/core', finished: true, success: false, millis: 90,
+      tasks: [{ name: 'run-tests', stage: 'test', status: 'FAIL', millis: 90 }],
+    }],
+    diagnostics: [{
+      severity: 'error', dir: '/w/core', task: 'run-tests', code: 'test-failure',
+      message: 'expected 1 but was 2', testClass: 'core.T', method: 'adds()',
+      stack: 'at core.T.adds(T.java:3)',
+    }],
+  })]);
+  const mod = cards[0].modules[0];
+  assert.deepEqual(mod.steps.map((s) => s.name + '/' + s.phase + '/' + s.state), ['run-tests/test/failed']);
+  assert.equal(mod.state, 'failed');
+  assert.equal(mod.diagnostics[0].step, 'run-tests');
+  assert.equal(mod.diagnostics[0].className, 'core.T');
+  assert.equal(mod.diagnostics[0].stack, 'at core.T.adds(T.java:3)');
+});
+
+test('one name per journal field: the retired spellings are not read back', () => {
+  // The engine writes tasks/stage/task/testClass/stack and nothing else, so the fold keeps exactly
+  // one reader per journal field. A record spelled the other way yields nothing rather than being
+  // tolerated — re-adding a fallback in fold.js turns this red.
+  const cards = [];
+  seedFromHistory(cards, [historyRecord('h-retired', '/w', {
+    success: false,
+    modules: [{
+      coord: 'g:core', dir: '/w/core', finished: true, success: false, millis: 90,
+      steps: [{ name: 'run-tests', group: 'test', phase: 'test', status: 'FAIL', millis: 90 }],
+    }],
+    diagnostics: [{
+      severity: 'error', dir: '/w/core', step: 'run-tests', code: 'test-failure',
+      message: 'expected 1 but was 2', className: 'core.T',
+      throwable: { stack: 'at core.T.adds(T.java:3)' },
+    }],
+  })]);
+  const mod = cards[0].modules[0];
+  assert.deepEqual(mod.steps, []);
+  assert.equal(mod.diagnostics[0].step, '');
+  assert.equal(mod.diagnostics[0].className, '');
+  assert.equal(mod.diagnostics[0].stack, '');
+});
+
 test('history seeding keeps a FAILED-step module failed inside a cancelled record', async () => {
   // JK-2094: module A fails compile (FAIL step journaled), the rest of the workspace is
   // cancelled → rec.cancelled=true. Live painted A failed; the reload seed graying A out to
   // 'cancelled' desynced the two and dropped A from the failure details. FAIL steps win, same
   // precedence as outcomeOf.
-  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   seedFromHistory(cards, [{
     id: 'c1', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 5000, success: false,
     cancelled: true,
     modules: [
       { coord: 'g:a', dir: '/w/a', finished: true, success: false, millis: 90,
-        steps: [{ name: 'compile-java', status: 'FAIL' }] },
+        tasks: [{ name: 'compile-java', status: 'FAIL' }] },
       { coord: 'g:b', dir: '/w/b', finished: true, success: false, cancelled: true, millis: 10,
-        steps: [{ name: 'compile-java', status: 'CANCELLED' }] },
+        tasks: [{ name: 'compile-java', status: 'CANCELLED' }] },
     ],
-    steps: [], diagnostics: [],
+    tasks: [], diagnostics: [],
   }]);
   const a = cards[0].modules.find((m) => m.dir === '/w/a');
   const b = cards[0].modules.find((m) => m.dir === '/w/b');
@@ -374,25 +424,24 @@ test('history seeding keeps a FAILED-step module failed inside a cancelled recor
 test('workspace history replay applies the per-kind diagnostic ceilings', async () => {
   // JK-1947: the single-project path was bounded (JK-1881) but the workspace path streamed a
   // pathological record's diagnostics into the card unbounded.
-  const mod = await import(pathToFileURL(process.env.JK_FOLD_MJS));
-  const { seedFromHistory, MAX_TEST_FAILURE_DIAGNOSTICS, MAX_DIAGNOSTICS } = mod;
+  const { seedFromHistory, MAX_TEST_FAILURE_DIAGNOSTICS, MAX_DIAGNOSTICS } = await spa('fold.js');
   const diagnostics = [];
   for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
     diagnostics.push({
-      severity: 'error', dir: '/w/api', step: 'test', code: 'test-failure', message: 'assert ' + i,
+      severity: 'error', dir: '/w/api', task: 'test', code: 'test-failure', message: 'assert ' + i,
       test: 'case' + i + '()', exceptionClass: 'org.opentest4j.AssertionFailedError',
     });
   }
   for (let i = 0; i < MAX_DIAGNOSTICS + 5; i++) {
-    diagnostics.push({ severity: 'error', dir: '/w/api', step: 'compile-java', message: 'err ' + i });
+    diagnostics.push({ severity: 'error', dir: '/w/api', task: 'compile-java', message: 'err ' + i });
   }
   const ws = [];
   seedFromHistory(ws, [{
     id: 'w2', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 7000, success: false,
     modules: [
-      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, steps: [{ name: 'test', status: 'FAIL' }] },
+      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, tasks: [{ name: 'test', status: 'FAIL' }] },
     ],
-    steps: [],
+    tasks: [],
     diagnostics,
   }]);
   const api = ws[0].modules.find((m) => m.dir === '/w/api');
@@ -412,7 +461,7 @@ test('output keeps a bounded tail and clears on finish', () => {
 });
 
 test('diagnostics attach to their module by dir, survive finish, and are capped per module', async () => {
-  const { MAX_DIAGNOSTICS } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { MAX_DIAGNOSTICS } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
@@ -445,7 +494,7 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
         task: 'run-tests',
         code: 'test-failure',
         message: 'fail ' + i,
-        class: 'T',
+        testClass: 'T',
         method: 'm' + i + '()',
       },
     });
@@ -454,7 +503,7 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
 });
 
 test('test-failure diagnostics are bounded by their own ceiling (JK-1881)', async () => {
-  const { MAX_TEST_FAILURE_DIAGNOSTICS } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { MAX_TEST_FAILURE_DIAGNOSTICS } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
@@ -466,7 +515,7 @@ test('test-failure diagnostics are bounded by their own ceiling (JK-1881)', asyn
         task: 'run-tests',
         code: 'test-failure',
         message: 'fail ' + i,
-        class: 'T',
+        testClass: 'T',
         method: 'm' + i + '()',
       },
     });
@@ -897,7 +946,7 @@ test('mid-build refresh: history stub rebinds on workspace-progress and finishes
 
   foldEvent(cards, {
     type: 'task-start',
-    data: { jid: 99, dir: '/w/a', task: 'compile-java', phase: 'compile' },
+    data: { jid: 99, dir: '/w/a', task: 'compile-java', stage: 'compile' },
   });
   assert.equal(cards[0].modules[0].steps[0].name, 'compile-java');
   assert.equal(cards[0].modules[0].steps[0].state, 'running');
@@ -954,7 +1003,7 @@ test('seedFromHistory respects MAX_CARDS', () => {
 });
 
 test('weight progress aggregates numerator/denominator across modules', async () => {
-  const { weightNumerator, weightDenominator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { weightNumerator, weightDenominator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'plan', data: { jid: 1, weight: 300 } });
@@ -966,7 +1015,7 @@ test('weight progress aggregates numerator/denominator across modules', async ()
 });
 
 test('weight denominator falls back to summed module dens when no plan (single build)', async () => {
-  const { weightDenominator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { weightDenominator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'progress', data: { jid: 1, dir: '', numerator: 4, denominator: 12 } });
@@ -974,7 +1023,7 @@ test('weight denominator falls back to summed module dens when no plan (single b
 });
 
 test('plan-progress updates latest per dir (no double count on repeat)', async () => {
-  const { weightNumerator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { weightNumerator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'progress', data: { jid: 1, dir: '/w/a', numerator: 10, denominator: 100 } });
@@ -993,7 +1042,7 @@ test('eta is captured and cleared on finish', () => {
 });
 
 test('etaTotalMillis anchors remaining work at the emission time, not request-start (JK-1517)', async () => {
-  const { etaTotalMillis } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { etaTotalMillis } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w'), at: 1000 });
   // 10s into the run (slow lock/prepare), the engine projects 30s of REMAINING work.
@@ -1134,7 +1183,7 @@ test('history seed preserves per-step millis for tooltips', () => {
   const cards = [];
   seedFromHistory(cards, [
     historyRecord('h1', '/w', {
-      steps: [
+      tasks: [
         { name: 'ensure-jdk', stage: 'resolve', status: 'SUCCESS', millis: 360 },
         { name: 'resolve-deps', stage: 'resolve', status: 'SUCCESS', millis: 1200 },
       ],
@@ -1147,13 +1196,14 @@ test('history seed preserves per-step millis for tooltips', () => {
   assert.equal(stepTimingLabel(steps[1]), 'resolve-deps (1.2s)');
 });
 
-test('fmtStepMillis is compact for tooltips', () => {
-  assert.equal(fmtStepMillis(null), '');
-  assert.equal(fmtStepMillis(0), '0ms');
-  assert.equal(fmtStepMillis(360), '360ms');
-  assert.equal(fmtStepMillis(1200), '1.2s');
-  assert.equal(fmtStepMillis(12_000), '12s');
-  assert.equal(fmtStepMillis(65_000), '1m 5s');
+test('the compact duration face is what the step chain shows', () => {
+  const compact = (ms) => fmtDuration(ms, { compact: true });
+  assert.equal(compact(null), '');
+  assert.equal(compact(0), '0ms');
+  assert.equal(compact(360), '360ms');
+  assert.equal(compact(1200), '1.2s');
+  assert.equal(compact(12_000), '12s');
+  assert.equal(compact(65_000), '1m 05s');
   assert.equal(stepTimingLabel({ name: 'compile-tests', millis: 212 }), 'compile-tests (212ms)');
   assert.equal(stepTimingLabel({ name: 'compile-tests', millis: null }), 'compile-tests');
 });
@@ -1323,9 +1373,9 @@ test('FAIL steps beat a cancelled bit on the card (test failure must not read as
           success: false,
           exitCode: 4,
           millis: 100,
-          steps: [
-            { name: 'compile-java', status: 'SUCCESS', phase: 'compile' },
-            { name: 'run-tests', status: 'FAIL', phase: 'test' },
+          tasks: [
+            { name: 'compile-java', status: 'SUCCESS', stage: 'compile' },
+            { name: 'run-tests', status: 'FAIL', stage: 'test' },
           ],
         },
       ],
@@ -1333,7 +1383,7 @@ test('FAIL steps beat a cancelled bit on the card (test failure must not read as
         {
           severity: 'error',
           dir: '/w/core',
-          step: 'run-tests',
+          task: 'run-tests',
           code: 'test-failure',
           message: 'expected 1 but was 90',
         },
@@ -1372,9 +1422,9 @@ test('cancelled without FAIL steps still reads as cancelled', () => {
           success: false,
           exitCode: 1,
           millis: 50,
-          steps: [
-            { name: 'compile-java', status: 'SUCCESS', phase: 'compile' },
-            { name: 'run-tests', status: 'CANCELLED', phase: 'test' },
+          tasks: [
+            { name: 'compile-java', status: 'SUCCESS', stage: 'compile' },
+            { name: 'run-tests', status: 'CANCELLED', stage: 'test' },
           ],
         },
       ],
@@ -1391,7 +1441,7 @@ test('normalizeDiagnostic keeps snippet / identity fields for test failures', ()
     code: 'test-failure',
     message: '[dogfood] expected: "42"\n but was: "41"',
     module: 'cc.jumpkick:jk-engine',
-    class: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+    testClass: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
     method: 'deliberately_fails_to_show_source_snippet()',
     exceptionClass: 'org.opentest4j.AssertionFailedError',
     file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
@@ -1491,7 +1541,7 @@ test('testFailureReport builds CLI-shaped model with snippet rows and error line
     code: 'test-failure',
     message: '[dogfood: hello]\nexpected: "42"\n but was: "41"',
     module: 'cc.jumpkick:jk-engine',
-    class: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+    testClass: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
     method: 'deliberately_fails_to_show_source_snippet()',
     exceptionClass: 'org.opentest4j.AssertionFailedError',
     file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
@@ -1536,7 +1586,7 @@ test('testFailureReport falls back to stack frames when snippet is missing', () 
   const d = normalizeDiagnostic({
     code: 'test-failure',
     message: 'boom',
-    class: 'pkg.FooTest',
+    testClass: 'pkg.FooTest',
     method: 'bar()',
     exceptionClass: 'java.lang.AssertionError',
     stack: 'java.lang.AssertionError: boom\n\tat pkg.FooTest.bar(FooTest.java:4)\n\tat java.base/java.lang.Thread.run(Thread.java:1)\n',
@@ -1564,7 +1614,7 @@ test('live diagnostic event folds snippet fields onto the module', () => {
       code: 'test-failure',
       message: 'expected: 1\nbut was: 2',
       module: 'g:a',
-      class: 'pkg.FooTest',
+      testClass: 'pkg.FooTest',
       method: 'bar()',
       exceptionClass: 'org.opentest4j.AssertionFailedError',
       file: 'src/test/java/pkg/FooTest.java',
@@ -1598,7 +1648,7 @@ test('history seed keeps test-failure snippet for Activity backfill', () => {
           success: false,
           exitCode: 4,
           millis: 100,
-          steps: [{ name: 'run-tests', status: 'FAIL', phase: 'test' }],
+          tasks: [{ name: 'run-tests', status: 'FAIL', stage: 'test' }],
         },
       ],
       diagnostics: [
@@ -1609,7 +1659,7 @@ test('history seed keeps test-failure snippet for Activity backfill', () => {
           code: 'test-failure',
           message: 'expected: x\nbut was: y',
           module: 'g:core',
-          class: 'core.T',
+          testClass: 'core.T',
           method: 'm()',
           exceptionClass: 'AssertionFailedError',
           file: 'src/test/java/core/T.java',

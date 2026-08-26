@@ -3,9 +3,9 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Os;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -53,8 +53,7 @@ class MemoryProbeTest {
 
     @Test
     void linux_available_tracks_memavailable_not_memfree() throws Exception {
-        Assumptions.assumeTrue(
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux"));
+        Assumptions.assumeTrue(Os.isLinux());
         Path meminfoPath = Path.of("/proc/meminfo");
         Assumptions.assumeTrue(Files.isReadable(meminfoPath));
         String meminfo = Files.readString(meminfoPath);
@@ -80,8 +79,7 @@ class MemoryProbeTest {
 
     @Test
     void macos_reports_reclaimable_memory_not_just_idle_pages() {
-        Assumptions.assumeTrue(
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac"));
+        Assumptions.assumeTrue(Os.isDarwin());
         // Regression check for the bug this class's host_statistics64 read fixes:
         // com.sun.management's free-memory figure alone counts only truly-idle pages, not the
         // inactive/purgeable pages macOS's VM keeps stocked with reclaimable file cache — on a

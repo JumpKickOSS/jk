@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.host.Errors;
 import java.io.IOException;
 import java.net.URI;
 
@@ -15,6 +16,6 @@ import java.net.URI;
 public final class OfflineException extends IOException {
 
     public OfflineException(URI uri) {
-        super("offline: refusing outbound request to " + uri + " (drop --offline / unset JK_OFFLINE to allow network)");
+        super(Errors.offlineRefusal(SafeUri.forMessage(uri)));
     }
 }

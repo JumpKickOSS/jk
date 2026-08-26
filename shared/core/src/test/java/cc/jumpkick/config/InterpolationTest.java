@@ -56,7 +56,7 @@ class InterpolationTest {
     void test_env_values_may_interpolate() {
         assertThatCode(() -> parse(PROJECT + """
                         [test]
-                        env = { TOKEN = "${CI_TOKEN}", HOME_DIR = "${target}/h" }
+                        env = [{ TOKEN = "${CI_TOKEN}", HOME_DIR = "${target}/h" }]
                         """)).doesNotThrowAnyException();
     }
 
@@ -174,13 +174,27 @@ class InterpolationTest {
     @Test
     void whitelist_matching_is_exact_about_depth_and_names() {
         assertThat(Interpolation.allowed("repositories.r.username")).isTrue();
-        assertThat(Interpolation.allowed("test.env.ANYTHING")).isTrue();
         // Not a credential field.
         assertThat(Interpolation.allowed("repositories.r.url")).isFalse();
         // Right leaf name, wrong place.
         assertThat(Interpolation.allowed("build.username")).isFalse();
-        // An array element is never a whitelisted slot.
-        assertThat(Interpolation.allowed("test.env[0].X")).isFalse();
+        // A bare `*` still never matches an array element: the indexed form has to be asked for.
+        assertThat(Interpolation.allowed("repositories.r[0].username")).isFalse();
+    }
+
+    @Test
+    void the_test_env_array_expands_in_values_and_not_in_names() {
+        // [test] env is an array of "forward this name" strings and "set these" tables. The value
+        // half is a whitelisted slot; the name half is not, so the two halves cannot be confused
+        // even though they are elements of one array. This is the guard doing that, not the parser.
+        assertThat(Interpolation.allowed("test.env[0].ANYTHING")).isTrue();
+        assertThat(Interpolation.allowed("test.env[12].ANYTHING")).isTrue();
+        // The bare-name position — `env = ["${FOO}"]` — stays an error.
+        assertThat(Interpolation.allowed("test.env[0]")).isFalse();
+        // And the table shape it replaced is no longer a position at all.
+        assertThat(Interpolation.allowed("test.env.ANYTHING")).isFalse();
+        // A subscript has to be an index, not a name that happens to end in brackets.
+        assertThat(Interpolation.allowed("test.env[x].ANYTHING")).isFalse();
     }
 
     @Test

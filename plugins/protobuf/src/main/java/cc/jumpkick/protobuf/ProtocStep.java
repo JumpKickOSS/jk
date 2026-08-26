@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.protobuf;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Stream;
 
 /**
@@ -66,8 +66,7 @@ final class ProtocStep {
     /** Stage the fetched binary into scratch with the executable bit set (cache files are read-only). */
     private static Path executable(TaskExec exec) throws IOException {
         Path fetched = exec.requireExtra("protoc");
-        boolean windows =
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+        boolean windows = Os.isWindows();
         Path staged =
                 Files.createDirectories(exec.scratch().resolve("tools")).resolve(windows ? "protoc.exe" : "protoc");
         Files.copy(fetched, staged, StandardCopyOption.REPLACE_EXISTING);

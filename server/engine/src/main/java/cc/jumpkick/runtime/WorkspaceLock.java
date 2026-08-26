@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.lock.LockFreshness;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +25,7 @@ public final class WorkspaceLock {
     private WorkspaceLock() {}
 
     public static BuildService.LockGuard ensureWorkspaceLockFresh(Path root, JkBuild rootBuild, Path cache) {
-        Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(root);
+        Path rootLock = LockPaths.lockFile(root);
         return ensureWorkspaceLockFresh(root, cache, workspaceLockStale(root, rootBuild, rootLock));
     }
 
@@ -57,24 +63,22 @@ public final class WorkspaceLock {
         int packages = 0;
         int declared = 0;
         try {
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
+            Path lockFile = LockPaths.lockFile(entryDir);
             if (Files.isRegularFile(lockFile)) {
-                packages = cc.jumpkick.lock.LockfileReader.read(lockFile)
-                        .artifacts()
-                        .size();
+                packages = LockfileReader.read(lockFile).artifacts().size();
             }
         } catch (Exception ignored) {
             // unknown package count
         }
         try {
             if (entryDir != null) {
-                Path toml = entryDir.resolve("jk.toml");
+                Path toml = entryDir.resolve(ManifestPaths.MANIFEST);
                 if (Files.isRegularFile(toml)) {
                     JkBuild b = JkBuildParser.parseLocal(toml);
                     // Workspace root: merge is done at lock time; package count from the existing
                     // root lock (above) is the best size signal. Declared roots = rough cold seed.
-                    for (var scope : cc.jumpkick.model.Scope.values()) {
-                        if (scope == cc.jumpkick.model.Scope.PLATFORM) continue;
+                    for (var scope : Scope.values()) {
+                        if (scope == Scope.PLATFORM) continue;
                         declared += b.dependencies().of(scope).size();
                     }
                 }
@@ -82,7 +86,7 @@ public final class WorkspaceLock {
         } catch (Exception ignored) {
             // unknown declared count
         }
-        long composed = cc.jumpkick.cache.LockTimings.estimateMillis(declared, packages);
+        long composed = LockTimings.estimateMillis(declared, packages);
         // Soft floor from this project's prior whole-lock walls (same dir) — only when composition
         // under-shoots a stable measured average by a wide margin (never pull a large monorepo down).
         try {
@@ -125,6 +129,6 @@ public final class WorkspaceLock {
     public static boolean workspaceLockStale(Path root, JkBuild rootBuild, Path rootLock) {
         // rootBuild is unused for the check — member list comes from the live root manifest inside
         // LockFreshness (digest-aware, clone-safe). Kept on the signature for call-site compat.
-        return cc.jumpkick.lock.LockFreshness.workspaceLockStale(root, rootLock);
+        return LockFreshness.workspaceLockStale(root, rootLock);
     }
 }

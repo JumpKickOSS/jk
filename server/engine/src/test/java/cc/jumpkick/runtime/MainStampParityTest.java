@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Files;
@@ -16,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * the compile-main freshness-stamp inputs come from ONE recipe
- * ({@link BuildPlanner#mainStampClasspath}) shared by the live check, {@code write-stamp}, and
+ * ({@link PlannerSupport#mainStampClasspath}) shared by the live check, {@code write-stamp}, and
  * the forecast. Two hand-maintained copies drifted before: the forecast missed the mixed-language
  * classpath entries (mixed modules never forecast stamp-fresh) and write-stamp missed the
  * processor path (processor modules never checked stamp-fresh).
@@ -25,12 +26,12 @@ class MainStampParityTest {
 
     private static BuildLayout layout(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                group = "com.example"
-                name  = "mixed"
-                version = "1.0.0"
-                jdk = 25
-                java = 25
-                """);
+            group = "com.example"
+            name  = "mixed"
+            version = "1.0.0"
+            jdk = 25
+            java = 25
+            """);
         return BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
     }
 
@@ -59,13 +60,13 @@ class MainStampParityTest {
         Path out = layout.classesDir();
 
         List<Path> written =
-                BuildPlanner.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
-        FreshnessStamp.write(out, FreshnessStamp.JAVA_STAMP, "compile-main", "", sources, written, 21);
+                PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
+        FreshnessStamp.write(out, BuildStamps.JAVA, "compile-main", "", sources, written, 21);
 
         // The forecast/check recompute through the same recipe → fresh.
         List<Path> recomputed =
-                BuildPlanner.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
-        assertThat(FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, sources, recomputed, 21))
+                PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
+        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, recomputed, 21))
                 .isTrue();
 
         // The pre-fix forecast recipe (base classpath + processors only, no kotlin classes dir)
@@ -73,7 +74,7 @@ class MainStampParityTest {
         // recipe closes.
         List<Path> oldForecast = new ArrayList<>(List.of(dep));
         oldForecast.add(processor);
-        assertThat(FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, sources, oldForecast, 21))
+        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, oldForecast, 21))
                 .isFalse();
     }
 
@@ -95,18 +96,18 @@ class MainStampParityTest {
 
         FreshnessStamp.write(
                 out,
-                FreshnessStamp.JAVA_STAMP,
+                BuildStamps.JAVA,
                 "compile-main",
                 "",
                 sources,
-                BuildPlanner.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
+                PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
                 21);
 
         assertThat(FreshnessStamp.isFresh(
                         out,
-                        FreshnessStamp.JAVA_STAMP,
+                        BuildStamps.JAVA,
                         sources,
-                        BuildPlanner.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
+                        PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
                         21))
                 .isTrue();
 
@@ -114,9 +115,9 @@ class MainStampParityTest {
         Files.writeString(processor, "proc-v2-different-bytes");
         assertThat(FreshnessStamp.isFresh(
                         out,
-                        FreshnessStamp.JAVA_STAMP,
+                        BuildStamps.JAVA,
                         sources,
-                        BuildPlanner.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
+                        PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
                         21))
                 .isFalse();
     }
@@ -127,7 +128,7 @@ class MainStampParityTest {
         Path dep = dir.resolve("dep.jar");
         Path groovyJar = dir.resolve("groovy.jar");
 
-        List<Path> inputs = BuildPlanner.mainStampClasspath(List.of(dep), List.of(), false, true, layout, groovyJar);
+        List<Path> inputs = PlannerSupport.mainStampClasspath(List.of(dep), List.of(), false, true, layout, groovyJar);
 
         assertThat(inputs).containsExactly(dep, layout.groovyClassesDir(), groovyJar);
     }

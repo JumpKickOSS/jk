@@ -4,8 +4,8 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.util.Hashing;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -115,6 +115,9 @@ class PomRuntimeClasspathTest {
         Coordinate dep = Coordinate.of("org.example", "lib", "1.0");
         Path workspaceJar = tmp.resolve("target/plugins/host-worker/jk-host-worker-1.0.0.jar");
         Files.createDirectories(workspaceJar.getParent());
+        // A module output directory, not just a path with `target` in it: the compiled classes are
+        // what make this a jar jk built rather than a jar that happens to sit under that name.
+        Files.createDirectories(workspaceJar.getParent().resolve("classes").resolve("main"));
         Files.writeString(workspaceJar, "workspace-worker");
         putJar(host, RepoArtifactResolver.JK_LOCAL, worker, "store-worker");
         putPom(host, RepoArtifactResolver.JK_LOCAL, worker, """

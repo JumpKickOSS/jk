@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.runtime.NewProjectOps;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.resolver.DependencyGraphModel;
+import cc.jumpkick.runtime.ProjectCard;
+import cc.jumpkick.scaffold.NewGroupGuess;
+import cc.jumpkick.scaffold.NewParentDirGuess;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -10,7 +23,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -42,18 +54,17 @@ final class HttpProjectApi {
     void handleNewProject(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String name = cc.jumpkick.jsonl.Jsonl.str(body, "name");
-        String parentDir = cc.jumpkick.jsonl.Jsonl.str(body, "parentDir");
-        String group = cc.jumpkick.jsonl.Jsonl.str(body, "group");
-        String lang = cc.jumpkick.jsonl.Jsonl.str(body, "lang");
-        String layout = cc.jumpkick.jsonl.Jsonl.str(body, "layout");
-        String template = cc.jumpkick.jsonl.Jsonl.str(body, "template");
-        boolean executable = cc.jumpkick.jsonl.Jsonl.bool(body, "executable", true);
+        String name = Jsonl.str(body, "name");
+        String parentDir = Jsonl.str(body, "parentDir");
+        String group = Jsonl.str(body, "group");
+        String lang = Jsonl.str(body, "lang");
+        String layout = Jsonl.str(body, "layout");
+        String template = Jsonl.str(body, "template");
+        boolean executable = Jsonl.bool(body, "executable", true);
         try {
             // The SPA routes #project/<id> immediately, so identity materializes with creation.
-            var result = cc.jumpkick.engine.runtime.NewProjectOps.createWithIdentity(
-                    new cc.jumpkick.engine.runtime.NewProjectOps.Request(
-                            name, parentDir, group, lang, layout, template, executable));
+            var result = NewProjectOps.createWithIdentity(
+                    new NewProjectOps.Request(name, parentDir, group, lang, layout, template, executable));
             JsonOut created = JsonOut.object()
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());
@@ -80,7 +91,7 @@ final class HttpProjectApi {
      * git email like {@code jk new}, parent dir from history / well-known roots / git clusters).
      */
     void handleProjectDefaults(HttpExchange exchange) throws IOException {
-        String group = cc.jumpkick.scaffold.NewGroupGuess.guess();
+        String group = NewGroupGuess.guess();
         List<Path> historyDirs = new ArrayList<>();
         try {
             for (var rec : journal.list()) {
@@ -91,7 +102,7 @@ final class HttpProjectApi {
         } catch (RuntimeException ignored) {
             // journal empty / unreadable — parent guess still works without it
         }
-        Path parent = cc.jumpkick.scaffold.NewParentDirGuess.guess(
+        Path parent = NewParentDirGuess.guess(
                 Optional.ofNullable(System.getProperty("user.home"))
                         .map(Path::of)
                         .orElse(null),
@@ -115,8 +126,7 @@ final class HttpProjectApi {
             HttpEngineServer.sendJson(exchange, 200, cached.json());
             return;
         }
-        var entries =
-                cc.jumpkick.giter8.Giter8TemplateIndex.picker(cc.jumpkick.giter8.Giter8TemplateIndex.searchRoots());
+        var entries = Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {
@@ -166,7 +176,7 @@ final class HttpProjectApi {
             return;
         }
         if (projectId != null && !projectId.isBlank()) {
-            var path = cc.jumpkick.builds.ProjectIdentity.pathForId(projectId);
+            var path = ProjectIdentity.pathForId(projectId);
             if (path.isEmpty()) {
                 HttpEngineServer.sendJson(
                         exchange,
@@ -181,7 +191,7 @@ final class HttpProjectApi {
         }
         // One card, one parse path (shared with MCP jk_project): identity resolves without a
         // parseable manifest, so a ?dir= call on a broken workspace still gets its durable id.
-        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(Path.of(dir));
+        ProjectCard card = ProjectCard.of(Path.of(dir));
         String resolvedId = card.projectId() != null ? card.projectId() : projectId;
         if (card.coord() != null) {
             HttpEngineServer.sendJson(
@@ -211,7 +221,7 @@ final class HttpProjectApi {
     void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
         Path projectDir;
-        List<cc.jumpkick.model.Scope> scopes;
+        List<Scope> scopes;
         try {
             String dir = HttpEngineServer.queryParam(query, "dir");
             if (dir == null || dir.isBlank()) {
@@ -222,18 +232,18 @@ final class HttpProjectApi {
                 return;
             }
             projectDir = Path.of(dir);
-            scopes =
-                    cc.jumpkick.resolver.DependencyGraphModel.parseScopes(HttpEngineServer.queryParam(query, "scopes"));
+            scopes = DependencyGraphModel.parseScopes(HttpEngineServer.queryParam(query, "scopes"));
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        boolean transitive = parseTruthy(HttpEngineServer.queryParamLenient(query, "transitive"));
-        cc.jumpkick.resolver.DependencyGraphModel.Graph data;
+        boolean transitive = EnvValues.parseBool(HttpEngineServer.queryParamLenient(query, "transitive"))
+                .orElse(false);
+        DependencyGraphModel.Graph data;
         try {
-            data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
-        } catch (IOException | cc.jumpkick.config.JkBuildParseException e) {
+            data = DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
+        } catch (IOException | JkBuildParseException e) {
             String msg = e.getMessage() == null || e.getMessage().isBlank() ? e.toString() : e.getMessage();
             HttpEngineServer.sendJson(
                     exchange, 422, JsonOut.object().put("error", msg).toString());
@@ -266,7 +276,7 @@ final class HttpProjectApi {
         body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -324,7 +334,7 @@ final class HttpProjectApi {
         body.put("dir", list.root().toString());
         body.put("truncated", list.truncated());
         body.put("files", files);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -405,7 +415,7 @@ final class HttpProjectApi {
                 body.put("encoding", b.encoding());
                 body.put("etag", b.etag());
                 body.put("content", b.content());
-                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
+                HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
             }
         }
     }
@@ -504,11 +514,11 @@ final class HttpProjectApi {
             return;
         }
         String body = new String(raw, StandardCharsets.UTF_8);
-        String projectId = cc.jumpkick.jsonl.Jsonl.topStr(body, "project");
-        String path = cc.jumpkick.jsonl.Jsonl.topStr(body, "path");
-        String content = cc.jumpkick.jsonl.Jsonl.topStr(body, "content");
-        String etag = cc.jumpkick.jsonl.Jsonl.topStr(body, "etag");
-        String encoding = cc.jumpkick.jsonl.Jsonl.topStr(body, "encoding");
+        String projectId = Jsonl.topStr(body, "project");
+        String path = Jsonl.topStr(body, "path");
+        String content = Jsonl.topStr(body, "content");
+        String etag = Jsonl.topStr(body, "etag");
+        String encoding = Jsonl.topStr(body, "encoding");
         if (projectId == null || projectId.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -590,18 +600,11 @@ final class HttpProjectApi {
                 // A manifest edit stales the lock's manifests-sha256 stamp: the next build pays a
                 // full re-resolve. Tell the pane so the user is not surprised.
                 String fileName = w.path().substring(w.path().lastIndexOf('/') + 1);
-                if (fileName.equals("jk.toml") || fileName.equals("jk-libs.toml")) {
+                if (fileName.equals(ManifestPaths.MANIFEST) || fileName.equals(ManifestPaths.LIBRARIES)) {
                     resp.put("lockStale", Boolean.TRUE);
                 }
-                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(resp));
+                HttpEngineServer.sendJson(exchange, 200, MiniJson.write(resp));
             }
         }
-    }
-
-    /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
-    private static boolean parseTruthy(String raw) {
-        if (raw == null || raw.isBlank()) return false;
-        String t = raw.trim().toLowerCase(Locale.ROOT);
-        return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("on");
     }
 }

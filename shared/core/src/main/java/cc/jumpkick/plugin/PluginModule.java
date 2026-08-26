@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,8 +27,8 @@ public final class PluginModule {
      */
     public static boolean isWorker(Path moduleDir) {
         if (moduleDir == null) return false;
-        return Files.isRegularFile(moduleDir.resolve("jk-plugin.toml"))
-                || Files.isRegularFile(resource(moduleDir, "jk-plugin.toml"))
+        return Files.isRegularFile(moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST))
+                || Files.isRegularFile(resource(moduleDir, ManifestPaths.PLUGIN_MANIFEST))
                 || Files.isRegularFile(resource(moduleDir, SERVICE));
     }
 

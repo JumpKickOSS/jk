@@ -6,10 +6,12 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
@@ -80,7 +82,7 @@ public final class GitSourceMaterializer {
         Lockfile.Artifact.GitInfo gitInfo = new Lockfile.Artifact.GitInfo(
                 source.canonicalUrl(), sha, source.ref().token());
 
-        boolean isJk = Files.isRegularFile(projectDir.resolve("jk.toml"));
+        boolean isJk = Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST));
 
         // Determine the coordinate. For a jk target it's read cheaply from project identity (+ the
         // ref-derived version), so an already-built commit is a cache hit with no build. A foreign
@@ -91,16 +93,16 @@ public final class GitSourceMaterializer {
         String versionOverride = null;
         Path marker = shaDir.resolve("coordinate.txt");
         if (isJk) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve("jk.toml")));
+            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
             group = project.project().group();
             artifact = project.project().name();
             version = deriveVersion(fetcher, source, sha);
             versionOverride = version; // git deps override the jk.toml version with the ref-derived one
         } else if (Files.isRegularFile(marker)) {
-            String[] gav = Files.readString(marker).strip().split(":", 3);
-            group = gav[0];
-            artifact = gav[1];
-            version = gav[2];
+            Gav cached = readCoordinateMarker(marker);
+            group = cached.group();
+            artifact = cached.artifact();
+            version = cached.version();
         }
 
         // Cache hit: coordinate known and the artifact is already installed.
@@ -117,7 +119,7 @@ public final class GitSourceMaterializer {
         version = built.version();
         installArtifact(repo, group, artifact, version, built.jar(), built.pomXml());
         if (!isJk) {
-            Files.writeString(marker, built.coordinate());
+            writeCoordinateMarker(marker, built);
         }
         return new Materialized(group, artifact, version, repo.toUri(), gitInfo);
     }
@@ -132,6 +134,30 @@ public final class GitSourceMaterializer {
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".pom");
     }
 
+    /** The coordinate a foreign (Gradle/Maven) target only reveals once it has been built. */
+    record Gav(String group, String artifact, String version) {}
+
+    /**
+     * Cache a foreign target's coordinate beside its built artifacts. Both source materializers
+     * write and read this file, so the format has one owner: {@code group:artifact:version} and
+     * nothing else. {@link SourceProjectBuilder.Built#coordinate()} already carries the version;
+     * appending it a second time yielded {@code g:a:v:v}, which no artifact path can match, so
+     * every foreign path target rebuilt on every resolve.
+     */
+    static void writeCoordinateMarker(Path marker, SourceProjectBuilder.Built built) throws IOException {
+        Files.writeString(marker, built.coordinate());
+    }
+
+    /** Inverse of {@link #writeCoordinateMarker}. */
+    static Gav readCoordinateMarker(Path marker) throws IOException {
+        String text = Files.readString(marker).strip();
+        String[] gav = text.split(":");
+        if (gav.length != 3) {
+            throw new IOException(marker + ": expected group:artifact:version, got " + text);
+        }
+        return new Gav(gav[0], gav[1], gav[2]);
+    }
+
     /** Copy the built jar + POM into the {@code file://} repo and (re)write maven-metadata.xml. */
     static void installArtifact(Path repo, String group, String artifact, String version, Path builtJar, String pomXml)
             throws IOException {
@@ -143,10 +169,15 @@ public final class GitSourceMaterializer {
         Files.writeString(pomPath, pomXml);
 
         // maven-metadata.xml lets the resolver enumerate this artifact's versions through the
-        // file:// repo (one version per source dir).
+        // file:// repo (one version per source dir). MavenMetadata is the one writer: a git tag is
+        // free-form text and reaches the version string verbatim (GitVersion.fromTag returns a
+        // non-version-like tag unchanged, and keeps a coercible tag's suffix), so a tag carrying
+        // `&` or `<` must be escaped here or the resolver cannot parse what we just wrote.
         Path metaPath = repo.resolve(group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml");
         Files.createDirectories(metaPath.getParent());
-        Files.writeString(metaPath, metadataXml(group, artifact, version));
+        Files.write(
+                metaPath,
+                MavenMetadata.empty(group, artifact).withVersion(version).render());
     }
 
     private static String deriveVersion(GitFetcher fetcher, GitSource source, String sha) throws IOException {
@@ -163,22 +194,5 @@ public final class GitSourceMaterializer {
 
     private static String shortSha(String sha) {
         return sha.length() > 12 ? sha.substring(0, 12) : sha;
-    }
-
-    private static String metadataXml(String group, String artifact, String version) {
-        return """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <metadata>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <versioning>
-                    <latest>%s</latest>
-                    <release>%s</release>
-                    <versions>
-                      <version>%s</version>
-                    </versions>
-                  </versioning>
-                </metadata>
-                """.formatted(group, artifact, version, version, version);
     }
 }

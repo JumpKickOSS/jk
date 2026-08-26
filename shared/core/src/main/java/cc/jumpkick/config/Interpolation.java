@@ -55,7 +55,11 @@ public final class Interpolation {
     /** {@code ${NAME}} — the same shape {@link RepositoryToml} expands. */
     private static final Pattern REFERENCE = Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)}");
 
-    /** Dotted paths where a reference is honoured; {@code *} matches one path segment. */
+    /**
+     * Dotted paths where a reference is honoured. {@code *} matches one whole path segment;
+     * {@code name[*]} matches one array element of {@code name}, which a bare {@code *} deliberately
+     * never does — an array index is not a slot anyone whitelisted by name.
+     */
     private static final List<String> ALLOWED = List.of(
             "repositories.*.username",
             "repositories.*.password",
@@ -65,7 +69,12 @@ public final class Interpolation {
             "repositories.*.access-key",
             "repositories.*.secret-key",
             "repositories.*.session-token",
-            "test.env.*");
+            // [test] env is an array: a value lives in a table inside it, at test.env[i].NAME.
+            // Note what is NOT here — test.env[*], the bare-name position. A forwarded name is a
+            // name, so `env = ["${FOO}"]` stays an error, and the split between "names are
+            // literal, values may expand" is enforced by this list rather than by the parser
+            // remembering to.
+            "test.env[*].*");
 
     private Interpolation() {}
 
@@ -113,11 +122,23 @@ public final class Interpolation {
         }
     }
 
-    private static void check(String value, String path, List<String> offenders) {
-        if (value.indexOf('$') < 0) return;
+    /**
+     * The {@code ${NAME}} references in {@code value}, in order and without duplicates.
+     *
+     * <p>Public because the reference syntax has a second, distant consumer: the client has to know
+     * which variables a manifest reads before it can resolve any of them, and a second copy of this
+     * pattern is a second answer to "what is a reference" that nothing would keep in step.
+     */
+    public static Set<String> references(String value) {
+        if (value == null || value.indexOf('$') < 0) return Set.of();
         Matcher m = REFERENCE.matcher(value);
         Set<String> found = new LinkedHashSet<>();
         while (m.find()) found.add(m.group(1));
+        return found;
+    }
+
+    private static void check(String value, String path, List<String> offenders) {
+        Set<String> found = references(value);
         if (found.isEmpty() || allowed(path)) return;
         for (String var : found) offenders.add(path + " (${" + var + "})");
     }
@@ -139,7 +160,39 @@ public final class Interpolation {
                 if (a[i].indexOf('[') >= 0) return false; // an array element is never a whitelisted slot
                 continue;
             }
+            if (p[i].endsWith("[*]") && indexedMatch(p[i], a[i])) continue;
             if (!p[i].equals(a[i])) return false;
+        }
+        return true;
+    }
+
+    /** {@code env[*]} against {@code env[3]}: same name, and the subscript is a plain index. */
+    /**
+     * Why {@code ${VAR}} could not be resolved, and what to do about it.
+     *
+     * <p>The bare fact — "unset environment variable" — is the one thing the reader already knows;
+     * they exported it. What they cannot see is that {@code jk} is a client talking to a daemon that
+     * has its own environment, so exporting a variable is not the same as the build seeing one. The
+     * message says which of the two halves is missing, and both fixes, because from inside the
+     * engine the two are indistinguishable: the variable really is unset, whether that is because
+     * the caller never set it or because nothing declared it and so nothing carried it across.
+     */
+    static String unsetMessage(String describe, String var) {
+        return describe + " references unset environment variable ${" + var + "}."
+                + " Set it in the shell that runs jk, or in a .env beside the manifest."
+                + " If it IS set there, jk did not carry it: the engine is a long-lived process with"
+                + " its own environment, so only declared names travel with the request. Declare it"
+                + " by naming it in [test] env — env = [\"" + var + "\", …] forwards the caller's"
+                + " value when set, and does not fail when it is not. `jk env` shows what resolved.";
+    }
+
+    private static boolean indexedMatch(String pattern, String actual) {
+        String name = pattern.substring(0, pattern.length() - "[*]".length());
+        if (!actual.startsWith(name + "[") || !actual.endsWith("]")) return false;
+        String index = actual.substring(name.length() + 1, actual.length() - 1);
+        if (index.isEmpty()) return false;
+        for (int i = 0; i < index.length(); i++) {
+            if (!Character.isDigit(index.charAt(i))) return false;
         }
         return true;
     }
@@ -155,9 +208,7 @@ public final class Interpolation {
         if (raw == null || raw.indexOf('$') < 0) return raw;
         return RepositoryToml.interpolate(raw, var -> {
             String value = env.apply(var);
-            if (value == null) {
-                throw new JkBuildParseException(describe + " references unset environment variable ${" + var + "}");
-            }
+            if (value == null) throw new JkBuildParseException(unsetMessage(describe, var));
             return value;
         });
     }

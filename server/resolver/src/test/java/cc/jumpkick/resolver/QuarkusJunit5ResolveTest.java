@@ -10,6 +10,7 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.PackageSource;
 import cc.jumpkick.resolver.pubgrub.PubGrubSolver;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -27,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
-@Tag("integration")
+@Tag("network")
 class QuarkusJunit5ResolveTest {
 
     @Test
@@ -46,7 +47,7 @@ class QuarkusJunit5ResolveTest {
         AtomicInteger versions = new AtomicInteger();
         AtomicInteger deps = new AtomicInteger();
         MavenPackageSource inner = new MavenPackageSource(repos, pomBuilder, bom);
-        var src = new cc.jumpkick.resolver.pubgrub.PackageSource() {
+        var src = new PackageSource() {
             @Override
             public List<String> versions(String pkg) throws IOException, InterruptedException {
                 versions.incrementAndGet();
@@ -72,6 +73,11 @@ class QuarkusJunit5ResolveTest {
         System.out.println(
                 "junit5 n=" + sol.size() + " ms=" + ms + " versions=" + versions.get() + " deps=" + deps.get());
         assertThat(sol).isNotEmpty();
-        assertThat(ms).isLessThan(15_000L);
+        // LIVENESS, and a restatement of the solver's own budget: it was constructed with
+        // timeoutMs=15_000, so exceeding that throws rather than returning late. Kept as a belt to
+        // catch a single step overrunning; it is not a performance budget (JK-2446).
+        assertThat(ms)
+                .as("LIVENESS: solved inside the solver's own 15s timeout")
+                .isLessThan(15_000L);
     }
 }

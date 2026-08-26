@@ -9,18 +9,16 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoGroup;
-import com.sun.net.httpserver.HttpServer;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -29,9 +27,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class PluginJarDepsFetchTest {
 
-    private HttpServer server;
-    private String base;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
+
     /** Restored after each test — self-host / Gradle may pin a real publisher jar. */
     private String savedPublisherJarProp;
 
@@ -39,20 +37,7 @@ class PluginJarDepsFetchTest {
     void start() throws IOException {
         EffectivePomBuilder.clearProcessCache();
         RepoGroup.clearProcessFetchCache();
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = "http://127.0.0.1:" + server.getAddress().getPort() + "/";
-        System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, base);
+        System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, http.baseUrl());
         savedPublisherJarProp = System.getProperty(PluginJar.PUBLISHER.jarProperty());
         System.clearProperty(PluginJar.PUBLISHER.jarProperty());
     }
@@ -65,7 +50,6 @@ class PluginJarDepsFetchTest {
         } else {
             System.clearProperty(PluginJar.PUBLISHER.jarProperty());
         }
-        server.stop(0);
     }
 
     @Test
@@ -298,6 +282,6 @@ class PluginJarDepsFetchTest {
     }
 
     private void serve(String path, String body) {
-        served.put(path, body.getBytes(StandardCharsets.UTF_8));
+        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
     }
 }

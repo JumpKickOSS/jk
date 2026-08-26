@@ -4,16 +4,24 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
+import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.jdk.JdkSelector;
+import cc.jumpkick.jdk.LockPinMatch;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ToolchainPins;
 import cc.jumpkick.tool.NativeImageDriver;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -22,10 +30,11 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Resolves {@code bin/native-image}'s GraalVM home for {@code jk native} / native {@code jk
+ * Resolves the GraalVM home that owns {@code native-image} for {@code jk native} / native {@code jk
  * install}: explicit {@code [native].graal} pin (auto-install), else project JDK /
  * {@code $GRAALVM_HOME} / {@code PATH}, else prompt or install. Run before the progress UI; memoized
- * by spec.
+ * by spec. Where the launcher sits under a home — and which home a launcher belongs to — is
+ * {@link GraalLauncher}'s answer, not this class's.
  */
 public final class GraalResolver {
 
@@ -41,7 +50,7 @@ public final class GraalResolver {
     /**
      * The GraalVM home to use for {@code projectDir}, or empty when it couldn't be resolved (an
      * actionable message has already been printed — the caller should abort the native build). A
-     * non-empty result is suitable to pass as {@code graalHome} to {@code BuildPlanner.nativeStep}.
+     * non-empty result is suitable to pass as {@code graalHome} to {@code NativePlans.nativeStep}.
      */
     public Optional<Path> resolve(Path projectDir, String graalSpec) {
         String key = graalSpec == null ? "" : graalSpec;
@@ -64,8 +73,7 @@ public final class GraalResolver {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
 
         // 1. Explicit spec: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
-        String effective = firstNonBlank(
-                cc.jumpkick.config.SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
+        String effective = firstNonBlank(SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
         if (effective != null && !effective.isBlank()) {
             Optional<InstalledJdk> hit = registry.findBySpec(effective);
             if (hit.isPresent() && NativeImageDriver.resolve(hit.get().home()).isPresent()) {
@@ -74,9 +82,28 @@ public final class GraalResolver {
             return install(effective, registry, /*announce*/ "graal = \"" + effective + "\"");
         }
 
-        // 2. The `jk jdk graal` default-graal pointer, if one is set and usable.
+        // 2. Lock [graal] pin — ahead of the inventory pointer and de-facto policy,
+        //    mirroring the JDK side's lock tier. Major-or-better among installed wins;
+        //    an unsatisfied pin is a floor the native build must not sink below, so it
+        //    installs the pinned spec rather than falling through to an older Graal.
+        Lockfile.GraalPin lockGraal = ToolchainPins.scan(projectDir).graal();
+        if (lockGraal != null) {
+            Optional<JdkHit> locked =
+                    LockPinMatch.chooseGraal(registry.listHits(), lockGraal.vendor(), lockGraal.version());
+            if (locked.isPresent()
+                    && NativeImageDriver.resolve(locked.get().home()).isPresent()) {
+                return locked.get().home();
+            }
+            String spec = LockPinMatch.installSpec(lockGraal.vendor(), lockGraal.version());
+            return install(
+                    spec,
+                    registry, /*announce*/
+                    "[graal] " + lockGraal.vendor() + " " + lockGraal.version() + " (lock)");
+        }
+
+        // 3. The `jk jdk graal` default-graal pointer, if one is set and usable.
         try {
-            cc.jumpkick.jdk.JdkInventory gd = cc.jumpkick.jdk.JdkInventory.current();
+            JdkInventory gd = JdkInventory.current();
             Optional<Path> gh = gd.graalHome();
             if (gh.isPresent() && NativeImageDriver.resolve(gh.get()).isPresent()) {
                 return gh.get();
@@ -90,10 +117,17 @@ public final class GraalResolver {
                 }
             }
         } catch (IOException ignored) {
-            // no usable default-graal — fall through to the ambient search
+            // no usable default-graal — fall through to de-facto / ambient search
         }
 
-        // 3. No pin/default — current native-image search (project JDK → $GRAALVM_HOME → PATH).
+        // 4. De-facto preferred installed Graal (same policy as the shell hook).
+        Optional<JdkHit> defacto = DefaultGraalPolicy.choose(registry.listHits());
+        if (defacto.isPresent()
+                && NativeImageDriver.resolve(defacto.get().home()).isPresent()) {
+            return defacto.get().home();
+        }
+
+        // 5. Ambient native-image search (project JDK → $GRAALVM_HOME → PATH).
         // projectJavaHome may be null (jk runs as a native image with no java.home,
         // and the project pins no JDK); NativeImageDriver.resolve tolerates null and
         // still checks $GRAALVM_HOME and PATH.
@@ -110,16 +144,31 @@ public final class GraalResolver {
             if (javaHome != null && !javaHome.isBlank()) projectJavaHome = Path.of(javaHome);
         }
         Optional<Path> binary = NativeImageDriver.resolve(projectJavaHome);
-        if (binary.isPresent()) {
-            // Hand the step the GraalVM home that owns native-image (.../bin/native-image).
-            Path bin = binary.get();
-            return bin.getParent() != null && bin.getParent().getParent() != null
-                    ? bin.getParent().getParent()
-                    : projectJavaHome;
-        }
+        if (binary.isPresent()) return graalHomeOf(binary.get(), projectJavaHome);
 
-        // 3. Missing — offer Oracle GraalVM (prompt / --yes / non-TTY fail).
+        // 6. Missing — offer Oracle GraalVM (prompt / --yes / non-TTY fail).
         return offerOracleGraalVm(projectJavaHome, registry);
+    }
+
+    /**
+     * The GraalVM home that OWNS {@code launcher} — {@code NativePlans.nativeStep} wants the home,
+     * and {@link NativeImageDriver#resolve} found the launcher.
+     *
+     * <p>This used to be a parent-of-parent at the call site, which is right for {@code
+     * <home>/bin/native-image} and wrong for {@code <home>/lib/svm/bin/native-image.exe} — a path the
+     * driver can and does return on Windows, and which the fixed depth turned into {@code
+     * <home>/lib/svm}, a directory that is not a home. {@link GraalLauncher#homeOf} is the declared
+     * inverse of the search that produced the path, so it knows both layouts and neither call site
+     * has to.
+     *
+     * <p>{@code fallback} — the pinned JDK — is used when the launcher sits somewhere {@code
+     * GraalLauncher} does not recognise, e.g. a bare {@code $PATH} directory that is not a GraalVM
+     * {@code bin}. There is no home to name in that case, and {@code PlannerNative} re-searches
+     * {@code $GRAALVM_HOME} and {@code $PATH} when the home it is handed turns out not to hold a
+     * launcher.
+     */
+    static Path graalHomeOf(Path launcher, Path fallback) {
+        return GraalLauncher.homeOf(launcher).orElse(fallback);
     }
 
     private Path offerOracleGraalVm(Path searchedJavaHome, JdkRegistry registry) {

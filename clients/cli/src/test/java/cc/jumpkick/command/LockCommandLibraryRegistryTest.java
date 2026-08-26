@@ -8,6 +8,8 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.repo.LibraryRegistrySync;
+import cc.jumpkick.testing.SysProps;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -21,7 +23,6 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -33,16 +34,8 @@ import org.junit.jupiter.api.io.TempDir;
  * conditional GET before resolving — the automatic counterpart to {@code jk library update}.
  */
 @Tag("integration")
+@SysProps.TempRoots("jk.m2.local")
 class LockCommandLibraryRegistryTest {
-
-    // These tests drive the real fetch plan against a mock Maven server; fetched
-    // artifacts mirror into the Maven local repo. Point that at a throwaway dir (see
-    // M2Dirs) so stub artifacts never overwrite the developer's real ~/.m2 — the
-    // fixture reuses real coordinates (junit-jupiter et al).
-    @BeforeAll
-    static void isolateM2(@TempDir Path m2) {
-        System.setProperty("jk.m2.local", m2.toString());
-    }
 
     private static final String ETAG = "\"v1\"";
     private static final byte[] FRESH_BODY = "[libraries]\nfoo = \"com.acme:foo\"\n".getBytes(StandardCharsets.UTF_8);
@@ -86,7 +79,6 @@ class LockCommandLibraryRegistryTest {
     @AfterEach
     void stop() {
         registryServer.stop(0);
-        cc.jumpkick.config.SessionContext.reset();
         LockfileReader.clearCache();
     }
 
@@ -94,9 +86,7 @@ class LockCommandLibraryRegistryTest {
     private static void makeStale(Path file) throws IOException {
         Files.setLastModifiedTime(
                 file,
-                FileTime.from(Instant.now()
-                        .minus(cc.jumpkick.repo.LibraryRegistrySync.FRESH_FOR)
-                        .minusSeconds(60)));
+                FileTime.from(Instant.now().minus(LibraryRegistrySync.FRESH_FOR).minusSeconds(60)));
     }
 
     @Test

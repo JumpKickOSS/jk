@@ -6,7 +6,6 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stripAll;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -116,18 +115,6 @@ class JkManagerChromeTest {
         String all = String.join("\n", lines);
         assertThat(all).contains("Compile").contains("cannot find symbol Foo");
         assertThat(all).doesNotContain("Failed\n"); // not the generic-only brief when we have a real one
-    }
-
-    @Test
-    void brief_error_line_colors_message_not_rail() {
-        // Rail/indent is dim; only the message is error-red (not the whole " │ Failed" string).
-        Theme t = Theme.active();
-        String mid = JkManager.renderBriefErrorLine(false, "Failed");
-        String last = JkManager.renderBriefErrorLine(true, "boom");
-        assertThat(mid).isEqualTo(Theme.colorize(" │  ", t.darkGray()) + Theme.colorize("Failed", t.error()));
-        assertThat(last).isEqualTo(Theme.colorize("    ", t.darkGray()) + Theme.colorize("boom", t.error()));
-        // Whole-line coloring would put the rail inside one error-styled span — must not.
-        assertThat(mid).isNotEqualTo(Theme.colorize(" │  Failed", t.error()));
     }
 
     @Test
@@ -353,12 +340,5 @@ class JkManagerChromeTest {
         assertThat(System.out).isSameAs(original); // streams restored
         assertThat(cm.outputWindow().size()).isEqualTo(1);
         assertThat(cm.outputWindow().linesForDisplay(10)).contains("from a step");
-    }
-
-    @Test
-    void fmt_elapsed_formats_minutes_and_seconds() {
-        assertThat(JkManager.fmtElapsed(112_000)).isEqualTo("1m 52s");
-        assertThat(JkManager.fmtElapsed(52_000)).isEqualTo("52s");
-        assertThat(JkManager.fmtElapsed(0)).isEqualTo("0s");
     }
 }

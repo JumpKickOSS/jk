@@ -6,11 +6,14 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.JavacRunner;
-import cc.jumpkick.compile.KotlincDriver;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.compile.KotlincResult;
+import cc.jumpkick.compile.WorkerCompileDriver;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -30,8 +33,8 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.tool.JarManifest;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -143,10 +146,8 @@ public final class ScriptPlans {
                 .requires(TaskNames.RESOLVE_DEPS)
                 .ticks(1)
                 .execute(ctx -> {
-                    boolean rerun = forceRecompile
-                            || cc.jumpkick.config.SessionContext.current()
-                                    .config()
-                                    .rebuildOr(false);
+                    boolean rerun =
+                            forceRecompile || SessionContext.current().config().rebuildOr(false);
                     if (!rerun && Files.exists(classesDir.resolve(mainClass.replace('.', '/') + ".class"))) {
                         ctx.label("cache hit (" + mainClass + ".class)");
                         materializeFiles(script, header, classesDir);
@@ -287,10 +288,8 @@ public final class ScriptPlans {
                 .requires(TaskNames.RESOLVE_DEPS, TaskNames.RESOLVE_KOTLINC)
                 .ticks(1)
                 .execute(ctx -> {
-                    boolean rerun = forceRecompile
-                            || cc.jumpkick.config.SessionContext.current()
-                                    .config()
-                                    .rebuildOr(false);
+                    boolean rerun =
+                            forceRecompile || SessionContext.current().config().rebuildOr(false);
                     if (!rerun && Files.exists(classesDir.resolve(mainClass.replace('.', '/') + ".class"))) {
                         ctx.label("cache hit (" + mainClass + ".class)");
                         materializeFiles(script, header, classesDir);
@@ -309,9 +308,9 @@ public final class ScriptPlans {
                     // it; paired with -no-stdlib).
                     List<Path> compileCp = new ArrayList<>(depsClasspath);
                     compileCp.add(ctx.require(KT_STDLIB));
-                    Path workingDir = cacheDir.resolve("actions")
-                            .resolve("incremental-kotlin")
-                            .resolve(cc.jumpkick.task.ActionKey.qualifiedTaskId("script", classesDir));
+                    Path workingDir = ActionTree.INCREMENTAL_KOTLIN
+                            .under(CacheTree.ACTIONS.under(cacheDir))
+                            .resolve(ActionKey.qualifiedTaskId("script", classesDir));
                     @SuppressWarnings("unchecked")
                     List<Path> workerCp = (List<Path>) ctx.require(WORKER_CP);
                     // @file:DependsOn/@file:Repository were resolved by jk (parseKotlin);
@@ -337,7 +336,7 @@ public final class ScriptPlans {
                             .workingDir(workingDir)
                             .extraArgs(List.of("-no-stdlib"))
                             .build();
-                    KotlincResult result = new KotlincDriver().compile(req);
+                    CompileResult result = WorkerCompileDriver.compile(req);
                     if (!result.success()) {
                         ctx.error("kotlinc", result.output());
                         throw new RuntimeException("kotlinc failed");
@@ -399,8 +398,7 @@ public final class ScriptPlans {
                 .execute(ctx -> {
                     ctx.label("provision kotlinc");
                     Path kotlinHome = CompileToolchain.resolveKotlinHome(cacheDir, null, ctx::output);
-                    Path kotlinc =
-                            kotlinHome.resolve("bin").resolve(HostPlatform.isWindows() ? "kotlinc.bat" : "kotlinc");
+                    Path kotlinc = kotlinHome.resolve("bin").resolve(Os.isWindows() ? "kotlinc.bat" : "kotlinc");
                     if (!Files.exists(kotlinc)) {
                         ctx.error("kotlinc-missing", "kotlinc not found at " + kotlinc);
                         throw new RuntimeException("kotlinc missing");
@@ -480,7 +478,10 @@ public final class ScriptPlans {
                     Cas cas = JkStores.cas(cacheDir);
                     Http http = new Http();
                     RepoGroup repos = new RepoGroup(List.of(new MavenRepo(
-                            "central", repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url(), http, cas)));
+                            RepositorySpec.CENTRAL,
+                            repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url(),
+                            http,
+                            cas)));
                     try {
                         classpath.addAll(resolveClasspath(declaredDeps, repos));
                     } catch (RuntimeException e) {
@@ -579,7 +580,7 @@ public final class ScriptPlans {
     private static RepoGroup buildRepos(ScriptHeader header, URI repoUrl, Http http, Cas cas) {
         List<MavenRepo> list = new ArrayList<>();
         if (repoUrl != null) {
-            list.add(new MavenRepo("central", repoUrl, http, cas));
+            list.add(new MavenRepo(RepositorySpec.CENTRAL, repoUrl, http, cas));
         } else {
             for (URI uri : header.repos()) {
                 list.add(new MavenRepo("script-repo-" + list.size(), uri, http, cas));

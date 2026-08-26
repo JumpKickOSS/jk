@@ -2,11 +2,16 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.ActiveJavac;
 import cc.jumpkick.jdk.HostPlatform;
@@ -19,6 +24,7 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -71,8 +77,7 @@ public final class JdkListCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Also list downloadable JDKs from the feed", "--all"),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
                         .hide(),
                 Opt.value("<file>", "Override the catalog cache path (for tests).", "--cache-file")
@@ -131,10 +136,9 @@ public final class JdkListCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.all = in.isSet("all");
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile =
-                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheFile = in.value("cache-file").map(CliPaths::abs).orElse(null);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         Path jdksRoot = registry.jdksRoot();
         List<JdkHit> installed = registry.listHits();
@@ -173,7 +177,7 @@ public final class JdkListCommand implements CliCommand {
         }
 
         String title = all ? "All OpenJDKs" : "Installed OpenJDKs";
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+        CommandWedge.envelopeStart();
         for (String line : renderTable(rows, title)) {
             CliOutput.out(line);
         }
@@ -230,9 +234,9 @@ public final class JdkListCommand implements CliCommand {
                     ? e.vendor() + " " + e.product()
                     : (j.vendor() != JdkVendor.UNKNOWN ? j.vendor().displayName() : "");
             int major = e != null ? e.majorVersion() : parseMajor(id);
-            boolean isActive = sameHome(currentHome, j.home());
-            boolean isDefault = sameHome(defaultHome, j.home());
-            boolean isNative = sameHome(graalHome, j.home());
+            boolean isActive = LockPinMatch.sameHome(currentHome, j.home());
+            boolean isDefault = LockPinMatch.sameHome(defaultHome, j.home());
+            boolean isNative = LockPinMatch.sameHome(graalHome, j.home());
             Optional<JdkCatalog.Entry> latest = e != null
                     ? Optional.ofNullable(latestPerTuple.get(familyKey(e)))
                     : latestPointRelease(catalog, id, os, arch);
@@ -268,12 +272,12 @@ public final class JdkListCommand implements CliCommand {
         // but outside every manager's root). Synthesize an ACTIVE row so the
         // JDK this shell actually uses is never absent from the list.
         if (currentHome != null && !currentShown) {
-            cc.jumpkick.discovery.ProbeSupport.discoverJdk(currentHome, "path").ifPresent(hit -> {
+            ProbeSupport.discoverJdk(currentHome, "path").ifPresent(hit -> {
                 String id =
                         IntellijJdkDir.installDirOf(hit.home()).getFileName().toString();
                 String vendor = hit.vendor() != JdkVendor.UNKNOWN ? hit.vendor().displayName() : "";
-                boolean d = sameHome(defaultHome, hit.home());
-                boolean n = sameHome(graalHome, hit.home());
+                boolean d = LockPinMatch.sameHome(defaultHome, hit.home());
+                boolean n = LockPinMatch.sameHome(graalHome, hit.home());
                 Optional<JdkCatalog.Entry> latest = latestPointRelease(catalog, id, os, arch);
                 String installedVersion =
                         hit.version() != null && !hit.version().isBlank() ? hit.version() : id;
@@ -390,19 +394,6 @@ public final class JdkListCommand implements CliCommand {
             return registry.find(id).map(InstalledJdk::home);
         } catch (IOException e) {
             return Optional.empty();
-        }
-    }
-
-    private static boolean sameHome(Path currentHome, Path hitHome) {
-        if (currentHome == null || hitHome == null) return false;
-        return canonical(currentHome).equals(canonical(hitHome));
-    }
-
-    private static Path canonical(Path p) {
-        try {
-            return p.toRealPath();
-        } catch (IOException e) {
-            return p.toAbsolutePath().normalize();
         }
     }
 
@@ -531,8 +522,7 @@ public final class JdkListCommand implements CliCommand {
     private JdkCatalog fetchCatalogOrNull() {
         if (!HostPlatform.supported()) return null;
         try {
-            boolean refresh =
-                    cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+            boolean refresh = SessionContext.current().config().forceOr(false);
             JdkCatalogClient client = (feedUrl != null
                             ? new JdkCatalogClient(
                                     new Http(),
@@ -546,7 +536,7 @@ public final class JdkListCommand implements CliCommand {
             return client.fetch(refresh, /* firstClassOnly= */ false);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JDK", "JetBrains feed unreachable (" + e.getMessage() + "); showing installed JDKs only.");
             return null;
         }

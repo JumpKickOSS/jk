@@ -4,17 +4,21 @@ package cc.jumpkick.model;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
-/** Parsed contents of a project's {@code jk.toml}. */
+/**
+ * Parsed contents of a project's {@code jk.toml}: one nested record per block, plus the derived
+ * answers that read across blocks ({@link #nativeMode} reconciles {@code [application] native} with
+ * {@code [native] enabled}; {@link #graal} falls back only when native is on). The {@code [project]}
+ * block is its own top-level {@link Project}, as are {@link Layout}, {@link SourcesMode} and
+ * {@link ProjectInherit} — the identity vocabulary is referenced far more widely than this record is
+ * and had no reason to be reached through it.
+ */
 public record JkBuild(
         Project project,
         Dependencies dependencies,
@@ -467,39 +471,6 @@ public record JkBuild(
     }
 
     /**
-     * Source layout: {@code simple} (Mill-like), {@code traditional} (Maven), or {@code auto}
-     * (infer from the tree; default when the key is omitted). Prefer omitting the key — set it
-     * only to override ambiguous trees.
-     */
-    public enum Layout {
-        SIMPLE,
-        TRADITIONAL,
-        AUTO;
-
-        /** Parse from a jk.toml string value; null or blank → AUTO. */
-        public static Layout parse(String raw) {
-            if (raw == null || raw.isBlank()) return AUTO;
-            return switch (raw.trim().toLowerCase()) {
-                case "simple" -> SIMPLE;
-                case "traditional" -> TRADITIONAL;
-                case "auto" -> AUTO;
-                default ->
-                    throw new IllegalArgumentException(
-                            "layout must be \"simple\", \"traditional\", or \"auto\" (got: " + raw + ")");
-            };
-        }
-
-        /** The string written to jk.toml, or null for AUTO (omitted). */
-        public String tomlValue() {
-            return switch (this) {
-                case SIMPLE -> "simple";
-                case TRADITIONAL -> "traditional";
-                case AUTO -> null;
-            };
-        }
-    }
-
-    /**
      * Resolved {@code [native].enabled} (or legacy {@code always}). See {@link JkBuild#nativeMode}.
      */
     public enum NativeMode {
@@ -518,476 +489,6 @@ public record JkBuild(
 
         public boolean isEnabled() {
             return this != DISABLED;
-        }
-    }
-
-    /** When a sources JAR is produced ({@code sources}): never / publish only / always. */
-    public enum SourcesMode {
-        DISABLED,
-        /** Assembled during {@code jk publish} only. */
-        PUBLISH,
-        /** Built by {@code jk build} and uploaded by {@code jk publish}. */
-        ALWAYS;
-
-        public boolean publishSources() {
-            return this != DISABLED;
-        }
-    }
-
-    /**
-     * Sentinel for string fields declared with {@code <field>.workspace = true} until
-     * {@link Project#resolveFromWorkspaceRoot} runs. Never a publishable group/version.
-     */
-    public static final String VERSION_FROM_WORKSPACE = "__jk.workspace__";
-
-    /**
-     * Root-level project keys that may use Cargo-style {@code field.workspace = true}. {@code name} is
-     * intentionally excluded — every module keeps its own artifact id.
-     */
-    public enum ProjectInherit {
-        GROUP,
-        VERSION,
-        JDK,
-        JAVA,
-        KOTLIN,
-        GROOVY,
-        SCALA,
-        SOURCES,
-        DESCRIPTION,
-        M2INTEGRATION,
-        M2INSTALL,
-        LAYOUT
-    }
-
-    public record Project(
-            String group,
-            String name,
-            String version,
-            String jdk,
-            int java,
-            VersionSelector kotlin,
-            VersionSelector groovy,
-            VersionSelector scala,
-            SourcesMode sourcesMode,
-            String description,
-            boolean m2integration,
-            boolean m2install,
-            Layout layout,
-            Set<ProjectInherit> workspaceInherits) {
-
-        public Project {
-            Objects.requireNonNull(group, "group");
-            Objects.requireNonNull(name, "name");
-            Objects.requireNonNull(version, "version");
-            if (group.isBlank()) throw new IllegalArgumentException("group must not be blank");
-            if (name.isBlank()) throw new IllegalArgumentException("name must not be blank");
-            if (version.isBlank()) throw new IllegalArgumentException("version must not be blank");
-            if (java < 0) {
-                throw new IllegalArgumentException("java must be non-negative");
-            }
-            if (jdk != null && jdk.isBlank()) jdk = null;
-            if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
-            if (layout == null) layout = Layout.AUTO;
-            if (description != null && description.isBlank()) description = null;
-            workspaceInherits =
-                    workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
-        }
-
-        /** Unset Scala pin; {@code workspaceInherits} as given. */
-        public Project(
-                String group,
-                String name,
-                String version,
-                String jdk,
-                int java,
-                VersionSelector kotlin,
-                VersionSelector groovy,
-                SourcesMode sourcesMode,
-                String description,
-                boolean m2integration,
-                Layout layout,
-                Set<ProjectInherit> workspaceInherits) {
-            this(
-                    group,
-                    name,
-                    version,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    null,
-                    sourcesMode,
-                    description,
-                    m2integration,
-                    true,
-                    layout,
-                    workspaceInherits);
-        }
-
-        /** Unset Scala pin and no workspace inheritance flags. */
-        public Project(
-                String group,
-                String name,
-                String version,
-                String jdk,
-                int java,
-                VersionSelector kotlin,
-                VersionSelector groovy,
-                SourcesMode sourcesMode,
-                String description,
-                boolean m2integration,
-                Layout layout) {
-            this(
-                    group,
-                    name,
-                    version,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    null,
-                    sourcesMode,
-                    description,
-                    m2integration,
-                    true,
-                    layout,
-                    Set.of());
-        }
-
-        /** AUTO layout, no workspace inheritance flags. */
-        public Project(
-                String group,
-                String name,
-                String version,
-                String jdk,
-                int java,
-                VersionSelector kotlin,
-                VersionSelector groovy,
-                SourcesMode sourcesMode,
-                String description,
-                boolean m2integration) {
-            this(
-                    group,
-                    name,
-                    version,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    null,
-                    sourcesMode,
-                    description,
-                    m2integration,
-                    true,
-                    Layout.AUTO,
-                    Set.of());
-        }
-
-        /** True when any project identity field still needs workspace-root resolution. */
-        public boolean inheritsFromWorkspace() {
-            return !workspaceInherits.isEmpty();
-        }
-
-        public boolean inherits(ProjectInherit field) {
-            return workspaceInherits.contains(field);
-        }
-
-        /**
-         * True when group/version still need a workspace root (cannot be used as a standalone
-         * project).
-         */
-        public boolean requiresWorkspaceRoot() {
-            return inherits(ProjectInherit.GROUP)
-                    || inherits(ProjectInherit.VERSION)
-                    || VERSION_FROM_WORKSPACE.equals(group)
-                    || VERSION_FROM_WORKSPACE.equals(version);
-        }
-
-        /**
-         * Drop inheritance flags for optional fields (everything except {@link ProjectInherit#GROUP}
-         * and {@link ProjectInherit#VERSION}). Used for standalone projects that omitted {@code java}
-         * / {@code jdk} / … — those stay at local defaults rather than requiring a workspace.
-         */
-        public Project droppingOptionalInherits() {
-            if (workspaceInherits.isEmpty()) return this;
-            EnumSet<ProjectInherit> next = EnumSet.copyOf(workspaceInherits);
-            next.remove(ProjectInherit.JDK);
-            next.remove(ProjectInherit.JAVA);
-            next.remove(ProjectInherit.KOTLIN);
-            next.remove(ProjectInherit.GROOVY);
-            next.remove(ProjectInherit.SCALA);
-            next.remove(ProjectInherit.SOURCES);
-            next.remove(ProjectInherit.DESCRIPTION);
-            next.remove(ProjectInherit.M2INTEGRATION);
-            next.remove(ProjectInherit.M2INSTALL);
-            next.remove(ProjectInherit.LAYOUT);
-            if (next.equals(workspaceInherits)) return this;
-            return new Project(
-                    group,
-                    name,
-                    version,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    scala,
-                    sourcesMode,
-                    description,
-                    m2integration,
-                    m2install,
-                    layout,
-                    next);
-        }
-
-        /** True when this project declared {@code version.workspace = true} and is not yet resolved. */
-        public boolean inheritsVersionFromWorkspace() {
-            return inherits(ProjectInherit.VERSION) || VERSION_FROM_WORKSPACE.equals(version);
-        }
-
-        /**
-         * Fill every {@code *.workspace = true} field from {@code root}. Throws if the root still has
-         * pending inheritance for a requested field, or lacks a concrete value where required.
-         */
-        public Project resolveFromWorkspaceRoot(Project root) {
-            Objects.requireNonNull(root, "root");
-            if (workspaceInherits.isEmpty()) return this;
-            if (root.inheritsFromWorkspace()) {
-                throw new IllegalArgumentException("workspace root still has unresolved *.workspace inheritance");
-            }
-            String g = inherits(ProjectInherit.GROUP) ? requireRoot(root.group(), "group") : group;
-            String v = inherits(ProjectInherit.VERSION) ? requireRoot(root.version(), "version") : version;
-            if (VERSION_FROM_WORKSPACE.equals(v) && !inherits(ProjectInherit.VERSION)) {
-                v = requireRoot(root.version(), "version");
-            }
-            String j = inherits(ProjectInherit.JDK) ? root.jdk() : jdk;
-            int ja = inherits(ProjectInherit.JAVA) ? root.java() : java;
-            VersionSelector kt = inherits(ProjectInherit.KOTLIN) ? root.kotlin() : kotlin;
-            VersionSelector gr = inherits(ProjectInherit.GROOVY) ? root.groovy() : groovy;
-            VersionSelector sc = inherits(ProjectInherit.SCALA) ? root.scala() : scala;
-            SourcesMode src = inherits(ProjectInherit.SOURCES) ? root.sourcesMode() : sourcesMode;
-            String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
-            boolean m2 = inherits(ProjectInherit.M2INTEGRATION) ? root.m2integration() : m2integration;
-            boolean inst = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
-            Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
-            return new Project(g, name, v, j, ja, kt, gr, sc, src, desc, m2, inst, lay, Set.of());
-        }
-
-        private static String requireRoot(String value, String field) {
-            if (value == null || value.isBlank() || VERSION_FROM_WORKSPACE.equals(value)) {
-                throw new IllegalArgumentException(
-                        "module inherits " + field + " from the workspace, but the root has no concrete " + field);
-            }
-            return value;
-        }
-
-        /** Same project with a concrete {@code version} (workspace inheritance resolution). */
-        public Project withVersion(String newVersion) {
-            Objects.requireNonNull(newVersion, "version");
-            if (newVersion.isBlank()) throw new IllegalArgumentException("version must not be blank");
-            if (newVersion.equals(this.version) && !inherits(ProjectInherit.VERSION)) return this;
-            EnumSet<ProjectInherit> next = workspaceInherits.isEmpty()
-                    ? EnumSet.noneOf(ProjectInherit.class)
-                    : EnumSet.copyOf(workspaceInherits);
-            next.remove(ProjectInherit.VERSION);
-            return new Project(
-                    group,
-                    name,
-                    newVersion,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    scala,
-                    sourcesMode,
-                    description,
-                    m2integration,
-                    m2install,
-                    layout,
-                    next);
-        }
-
-        /** Library project — bare-major {@code jdk} (0 → unset). */
-        public Project(String group, String name, String version, int jdk) {
-            this(
-                    group,
-                    name,
-                    version,
-                    majorSpec(jdk),
-                    jdk,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    true,
-                    true,
-                    Layout.AUTO,
-                    Set.of());
-        }
-
-        /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
-        private static String majorSpec(int major) {
-            return major > 0 ? Integer.toString(major) : null;
-        }
-
-        /** Fluent builder; only group/name/version are required. */
-        public static Builder builder(String group, String name, String version) {
-            return new Builder(group, name, version);
-        }
-
-        /** Mutable accumulator for {@link Project}. */
-        public static final class Builder {
-            private final String group;
-            private final String name;
-            private final String version;
-            private String jdk;
-            private int java;
-            private VersionSelector kotlin;
-            private VersionSelector groovy;
-            private VersionSelector scala;
-            private SourcesMode sourcesMode = SourcesMode.DISABLED;
-            private String description;
-            private boolean m2integration = true;
-            private boolean m2install = true;
-            private Layout layout = Layout.AUTO;
-
-            private Builder(String group, String name, String version) {
-                this.group = group;
-                this.name = name;
-                this.version = version;
-            }
-
-            /** Toolchain JDK spec, e.g. {@code "temurin-25"} or {@code "25"}. */
-            public Builder jdk(String jdk) {
-                this.jdk = jdk;
-                return this;
-            }
-
-            /** Toolchain JDK from a bare major ({@code 25} → {@code "25"}; 0/negative → unset). */
-            public Builder jdkMajor(int major) {
-                this.jdk = majorSpec(major);
-                return this;
-            }
-
-            /** {@code --release} target for javac (0 → falls back to the jdk major). */
-            public Builder java(int java) {
-                this.java = java;
-                return this;
-            }
-
-            public Builder kotlin(VersionSelector kotlin) {
-                this.kotlin = kotlin;
-                return this;
-            }
-
-            public Builder groovy(VersionSelector groovy) {
-                this.groovy = groovy;
-                return this;
-            }
-
-            public Builder scala(VersionSelector scala) {
-                this.scala = scala;
-                return this;
-            }
-
-            public Builder sourcesMode(SourcesMode sourcesMode) {
-                this.sourcesMode = sourcesMode;
-                return this;
-            }
-
-            public Builder description(String description) {
-                this.description = description;
-                return this;
-            }
-
-            public Builder m2integration(boolean m2integration) {
-                this.m2integration = m2integration;
-                return this;
-            }
-
-            public Builder m2install(boolean m2install) {
-                this.m2install = m2install;
-                return this;
-            }
-
-            public Builder layout(Layout layout) {
-                this.layout = layout;
-                return this;
-            }
-
-            public Project build() {
-                return new Project(
-                        group,
-                        name,
-                        version,
-                        jdk,
-                        java,
-                        kotlin,
-                        groovy,
-                        scala,
-                        sourcesMode,
-                        description,
-                        m2integration,
-                        m2install,
-                        layout,
-                        Set.of());
-            }
-        }
-
-        /** True when this is a Kotlin project (i.e. a {@code kotlin} version is set). */
-        public boolean isKotlin() {
-            return kotlin != null;
-        }
-
-        /** True when this is a Groovy project (i.e. a {@code groovy} version is set). */
-        public boolean isGroovy() {
-            return groovy != null;
-        }
-
-        /** True when this is a Scala project (i.e. a {@code scala} version is set). */
-        public boolean isScala() {
-            return scala != null;
-        }
-
-        /** {@code java} release, or {@code jdk} major when {@code java} is unset. */
-        public int javaRelease() {
-            return java > 0 ? java : jdkMajor();
-        }
-
-        /** Major implied by {@code jdk} ({@code "temurin-25"} → 25); 0 when unset/unparseable. */
-        public int jdkMajor() {
-            return majorOf(jdk);
-        }
-
-        /** First numeric-leading token in a JDK spec (before {@code .}); 0 if none. */
-        public static int majorOf(String spec) {
-            if (spec == null) return 0;
-            for (String tok : spec.toLowerCase(Locale.ROOT).split("[-_]")) {
-                if (tok.isEmpty() || !Character.isDigit(tok.charAt(0))) continue;
-                int dot = tok.indexOf('.');
-                try {
-                    return Integer.parseInt(dot < 0 ? tok : tok.substring(0, dot));
-                } catch (NumberFormatException ignored) {
-                    // not a clean integer — keep scanning later tokens
-                }
-            }
-            return 0;
-        }
-
-        /** True when the spec pins a point release (e.g. {@code "25.0.3"}); jk rejects these. */
-        public static boolean hasPointRelease(String spec) {
-            if (spec == null) return false;
-            for (String tok : spec.toLowerCase(Locale.ROOT).split("[-_]")) {
-                if (!tok.isEmpty() && Character.isDigit(tok.charAt(0)) && tok.indexOf('.') >= 0) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        /** {@code "java"} / {@code "kotlin"} / {@code "groovy"} / {@code "scala"} — derived from which compiler field is set. */
-        public String languageName() {
-            return isKotlin() ? "kotlin" : isGroovy() ? "groovy" : isScala() ? "scala" : "java";
         }
     }
 
@@ -1032,9 +533,21 @@ public record JkBuild(
     /**
      * {@code [native]} table for GraalVM native-image. {@link #enabled} is the resolved
      * {@code enabled} key (default {@link NativeMode#SUPPORTED} when the table is present with no
-     * key). See {@link JkBuild#nativeMode}.
+     * key). {@link #metadataRepository} selects the GraalVM reachability-metadata repository
+     * release, in the same grammar as a dependency version and defaulting to {@link
+     * #METADATA_REPOSITORY_DEFAULT} — {@code jk lock} resolves it and pins the answer, exactly as
+     * it does for a floating dependency. See {@link JkBuild#nativeMode}.
      */
-    public record NativeConfig(String mainClass, String name, List<String> args, String graal, NativeMode enabled) {
+    public record NativeConfig(
+            String mainClass,
+            String name,
+            List<String> args,
+            String graal,
+            NativeMode enabled,
+            VersionSelector metadataRepository) {
+
+        /** {@code metadata-repository} when the key is omitted: newest stable at lock time. */
+        public static final VersionSelector METADATA_REPOSITORY_DEFAULT = VersionSelector.parseFloating("latest");
 
         public NativeConfig {
             args = args == null ? List.of() : List.copyOf(args);
@@ -1042,6 +555,7 @@ public record JkBuild(
             name = executableBasename(name);
             if (graal != null && graal.isBlank()) graal = null;
             if (enabled == null) enabled = NativeMode.SUPPORTED;
+            if (metadataRepository == null) metadataRepository = METADATA_REPOSITORY_DEFAULT;
         }
 
         /**
@@ -1075,6 +589,17 @@ public record JkBuild(
             List<KotlinPluginDecl> kotlinPlugins,
             List<String> kspOptions,
             List<String> extraSrc,
+            /**
+             * {@code [test] extra-src}: module-relative source roots compiled with the test tier and
+             * placed on every suite's compile classpath. The test-scoped twin of {@code extraSrc},
+             * and the same spelling on purpose — one vocabulary, two scopes.
+             *
+             * <p>This is how a module publishes shared test helpers without shipping them: they
+             * compile into the test classes output, so a sibling reaches them through an existing
+             * {@code kind = "tests"} edge and nothing reaches a main jar. Gradle spells the same
+             * fact as a {@code testFixtures} source set.
+             */
+            List<String> testExtraSrc,
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
             Integer testWorkers,
             /**
@@ -1095,11 +620,16 @@ public record JkBuild(
              */
             UnmappedPolicy unmappedPolicy,
             /**
-             * {@code [test] env} — added to every forked test JVM's environment. Test-scoped like
-             * {@code testPluginJars}, hence its home here. Values may use {@code ${target}} and
-             * {@code ${module}}; explicit tokens rather than guessing which values look like paths.
+             * {@code [test] env} — what every forked test JVM's environment gets, in the order the
+             * manifest lists it. Test-scoped like {@code testPluginJars}, hence its home here.
+             *
+             * <p>A list rather than a map because the two things a module says about the environment
+             * are different statements — {@link TestEnvDecl.Forward} names a variable it wants if the
+             * caller has one, {@link TestEnvDecl.Set} states a value outright — and because order is
+             * then a rule the manifest can express instead of one a reader has to memorise: later
+             * wins, top to bottom.
              */
-            Map<String, String> testEnv) {
+            List<TestEnvDecl> testEnv) {
 
         public static final Build EMPTY = new Build(
                 List.of(),
@@ -1108,11 +638,12 @@ public record JkBuild(
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 null,
                 List.of(),
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
-                Map.of());
+                List.of());
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -1124,7 +655,7 @@ public record JkBuild(
             testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
-            testEnv = testEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
+            testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -1139,6 +670,7 @@ public record JkBuild(
                     kotlinPlugins,
                     kspOptions,
                     all,
+                    testExtraSrc,
                     testWorkers,
                     testSerialTags,
                     platformPolicy,
@@ -1154,6 +686,7 @@ public record JkBuild(
                     kotlinPlugins,
                     kspOptions,
                     extraSrc,
+                    testExtraSrc,
                     testWorkers,
                     testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
@@ -1183,6 +716,36 @@ public record JkBuild(
      * {@code [[kotlin-plugins]]} entry: {@code group:artifact[:version]} (omit version to match
      * the project Kotlin version); {@code id} defaults to the artifact name.
      */
+    /**
+     * One entry of {@code [test] env}.
+     *
+     * <p>Sealed and matched exhaustively: the two arms differ in what an absent value means, which
+     * is the one thing a reader of this manifest most needs to be sure of. A {@code default} arm
+     * would let a new consumer inherit whichever answer it happened to fall through to.
+     */
+    public sealed interface TestEnvDecl {
+
+        /** The variable this entry is about. */
+        String name();
+
+        /**
+         * A bare name in the array: {@code "JK_WEB_JS_SKIP"}. Take the caller's value if there is
+         * one; if there is not, the test JVM does not get the variable at all.
+         *
+         * <p>Absent, never empty. A suite asking {@code getenv("X") != null} must see what it would
+         * see outside jk, so an unset forward cannot become {@code X=""}.
+         */
+        record Forward(String name) implements TestEnvDecl {}
+
+        /**
+         * A table entry in the array: {@code { TZ = "UTC" }}. The value is what the module says it
+         * is, and may reference {@code ${target}}, {@code ${module}} or an environment variable —
+         * an unset {@code ${VAR}} here is an error, because a value stated outright and then
+         * silently emptied is how a build authenticates anonymously and calls it success.
+         */
+        record Set(String name, String value) implements TestEnvDecl {}
+    }
+
     public record KotlinPluginDecl(String id, String coordinate, List<String> options) {
         public KotlinPluginDecl {
             Objects.requireNonNull(coordinate, "coordinate");

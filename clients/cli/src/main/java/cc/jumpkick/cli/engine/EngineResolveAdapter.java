@@ -5,14 +5,13 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.run.TaskStatus;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -24,6 +23,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted lock/update/sync: decode wire events into the command's listeners/handlers.
@@ -38,9 +38,8 @@ final class EngineResolveAdapter {
      * carrying the {@link cc.jumpkick.engine.protocol.OutdatedReport} back. Read-only — no cascade,
      * no plan stream.
      */
-    static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
-            EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
-        return EngineBuildListenerAdapter.request(
+    static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
+        return EngineReads.request(
                 paths,
                 ProtoReads.outdatedRequest(
                         req.entryDir().toString(),
@@ -50,7 +49,7 @@ final class EngineResolveAdapter {
                         req.force()),
                 EngineProtocol.OUTDATED_ACK,
                 "outdated request",
-                cc.jumpkick.engine.protocol.OutdatedReport::decode);
+                OutdatedReport::decode);
     }
 
     /** Run {@code jk lock}'s cascade against the engine, driving {@code handler}. */
@@ -108,7 +107,7 @@ final class EngineResolveAdapter {
 
     /**
      * Run {@code jk sync}'s single plan against the engine — the same listener-factory contract as
-     * {@link EngineBuildListenerAdapter#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
+     * {@link EngineJobs#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
      * holders) are populated from the terminal plan-finish <em>before</em> it reaches the factory's
      * listener, exactly mirroring how the in-process path's counters are already settled by the time
      * the console listener's own {@code planFinish} renders the summary line.
@@ -122,10 +121,10 @@ final class EngineResolveAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
+            BufferedReader reader = EngineWire.protocolReader(ch);
 
             send(
                     writer,
@@ -140,42 +139,42 @@ final class EngineResolveAdapter {
                             req.refresh(),
                             req.verbose()));
 
-            List<Task> steps = new ArrayList<>();
-            List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-            BuildPlanListener listener = null;
+            return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
+                private final List<Task> steps = new ArrayList<>();
+                private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+                private @Nullable BuildPlanListener listener;
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) continue;
-                switch (type) {
-                    case EngineProtocol.PLAN_TASK ->
-                        steps.add(Task.builder(Jsonl.str(line, "name"))
-                                .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "stage")))
-                                .build());
-                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                    case EngineProtocol.BUILDPLAN_FINISH -> {
-                        if (fetchedOut != null) fetchedOut[0] = Jsonl.longValue(line, "syncFetched", 0);
-                        if (upToDateOut != null) upToDateOut[0] = Jsonl.longValue(line, "syncUpToDate", 0);
-                        BuildPlanResult result = new BuildPlanResult(
-                                "sync",
-                                Jsonl.bool(line, "success", false),
-                                Duration.ZERO,
-                                List.of(),
-                                List.of(),
-                                diagnostics,
-                                false,
-                                false);
-                        if (listener != null) listener.planFinish(result);
-                        return result;
+                @Override
+                public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
+                    switch (type) {
+                        case EngineProtocol.PLAN_TASK ->
+                            steps.add(Task.builder(Jsonl.str(line, "name"))
+                                    .label(Jsonl.str(line, "label"))
+                                    .phase(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
+                                    .build());
+                        case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                        case EngineProtocol.BUILDPLAN_FINISH -> {
+                            if (fetchedOut != null) fetchedOut[0] = Jsonl.longValue(line, "syncFetched", 0);
+                            if (upToDateOut != null) upToDateOut[0] = Jsonl.longValue(line, "syncUpToDate", 0);
+                            BuildPlanResult result = new BuildPlanResult(
+                                    "sync",
+                                    Jsonl.bool(line, "success", false),
+                                    Duration.ZERO,
+                                    List.of(),
+                                    List.of(),
+                                    diagnostics,
+                                    false,
+                                    false);
+                            if (listener != null) listener.planFinish(result);
+                            return result;
+                        }
+                        case EngineProtocol.ERROR ->
+                            throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
                     }
-                    case EngineProtocol.ERROR ->
-                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
+                    return null;
                 }
-            }
-            throw disconnected();
+            });
         }
     }
 
@@ -185,25 +184,24 @@ final class EngineResolveAdapter {
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
+            BufferedReader reader = EngineWire.protocolReader(ch);
             send(writer, requestLine);
 
             // Cascade state: the module currently streaming. Modules are strictly sequential on the
-            // wire (the engine locks them one at a time), so one slot suffices.
-            String currentDir = null;
-            String currentCoord = null;
-            List<Task> steps = new ArrayList<>();
-            List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-            BuildPlanListener listener = null;
+            // wire (the engine locks them one at a time), so one slot suffices. A named type, not
+            // locals, because the catch below has to reach the module that was still live.
+            final class Cascade implements WireStream.Decoder<EngineRequests.LockOutcome> {
+                private @Nullable String currentDir;
+                private @Nullable String currentCoord;
+                private List<Task> steps = new ArrayList<>();
+                private List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+                private @Nullable BuildPlanListener listener;
 
-            try {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String type = EngineProtocol.typeOf(line);
-                    if (type == null) continue;
+                @Override
+                public EngineRequests.@Nullable LockOutcome onLine(String type, String line) throws IOException {
                     switch (type) {
                         case EngineProtocol.LOCK_MODULE -> {
                             currentDir = Jsonl.str(line, "dir");
@@ -215,7 +213,7 @@ final class EngineResolveAdapter {
                         case EngineProtocol.PLAN_TASK ->
                             steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(wireGroup(Jsonl.str(line, "stage")))
+                                    .phase(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         case EngineProtocol.PLAN_DONE ->
                             listener = handler.onModuleStart(currentDir, currentCoord, steps);
@@ -236,7 +234,7 @@ final class EngineResolveAdapter {
                                     false,
                                     false);
                             if (listener != null) listener.planFinish(result);
-                            listener = null; // settled — the catch below must not settle it twice
+                            listener = null; // settled — settle() must not settle it twice
                             handler.onModuleFinish(
                                     currentDir,
                                     result,
@@ -254,92 +252,36 @@ final class EngineResolveAdapter {
                         }
                         case EngineProtocol.ERROR ->
                             throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
+                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
                     }
+                    return null;
                 }
-                throw disconnected();
-            } catch (IOException | RuntimeException e) {
-                // An in-flight module's live region must settle before the error propagates:
-                // planFinish dismisses the pinned region and restores the captured System.out,
-                // or the failure prints interleaved with a still-animating region and the
-                // terminal is left mid-frame with stdout redirected.
-                if (listener != null) {
+
+                /**
+                 * An in-flight module's live region must settle before the error propagates:
+                 * planFinish dismisses the pinned region and restores the captured System.out, or
+                 * the failure prints interleaved with a still-animating region and the terminal is
+                 * left mid-frame with stdout redirected.
+                 */
+                void settle(Throwable failure) {
+                    if (listener == null) return;
                     try {
                         listener.planFinish(new BuildPlanResult(
                                 planName, false, Duration.ZERO, List.of(), List.of(), diagnostics, false, false));
                     } catch (RuntimeException settling) {
-                        e.addSuppressed(settling);
+                        failure.addSuppressed(settling);
                     }
                 }
+            }
+
+            Cascade cascade = new Cascade();
+            try {
+                return WireStream.pumpJob(reader, ch, cascade);
+            } catch (IOException | RuntimeException e) {
+                cascade.settle(e);
                 throw e;
             }
         }
-    }
-
-    /**
-     * Replay one standard single-plan wire event into {@code listener} (accumulating {@code
-     * plan-diagnostic}s aside, like {@link EngineBuildListenerAdapter} does) — the shared tail of
-     * both stream loops. Unknown types are forward-compatible no-ops.
-     */
-    private static void dispatchBuildPlanEvent(
-            String type, String line, BuildPlanListener listener, List<BuildPlanResult.Diagnostic> diagnostics) {
-        if (listener == null) {
-            // plan-diagnostics can still matter pre-listener; everything else needs one.
-            if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
-                diagnostics.add(readDiagnostic(line));
-            }
-            return;
-        }
-        switch (type) {
-            case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
-            case EngineProtocol.TASK_START ->
-                listener.stepStart(
-                        Jsonl.str(line, "task"), wireGroup(Jsonl.str(line, "stage")), Jsonl.intValue(line, "ticks", 0));
-            case EngineProtocol.PROGRESS ->
-                listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
-            case EngineProtocol.TICK_UPDATE ->
-                listener.tickUpdate(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
-            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "task"), Jsonl.str(line, "label"));
-            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
-            case EngineProtocol.WARN ->
-                listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
-            case EngineProtocol.ERROR_LINE ->
-                listener.error(
-                        Jsonl.str(line, "task"),
-                        Jsonl.str(line, "code"),
-                        Jsonl.str(line, "message"),
-                        Jsonl.str(line, "test"),
-                        Jsonl.str(line, "exceptionClass"));
-            case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
-            case EngineProtocol.TASK_FINISH ->
-                listener.stepFinish(
-                        Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "stage")),
-                        TaskStatus.valueOf(Jsonl.str(line, "status")),
-                        Duration.ZERO);
-            default -> {
-                /* forward-compatible no-op */
-            }
-        }
-    }
-
-    private static BuildPlanResult.Diagnostic readDiagnostic(String line) {
-        return new BuildPlanResult.Diagnostic(
-                Jsonl.str(line, "task"),
-                Jsonl.str(line, "code"),
-                Jsonl.str(line, "message"),
-                Jsonl.str(line, "test"),
-                Jsonl.str(line, "exceptionClass"));
-    }
-
-    private static BuildPlanView readBuildPlanView(String line) {
-        return new BuildPlanView(
-                Jsonl.str(line, "planName"),
-                Jsonl.longValue(line, "numerator", 0),
-                Jsonl.longValue(line, "denominator", 0),
-                Jsonl.intValue(line, "tasksTotal", 0),
-                Jsonl.intValue(line, "tasksComplete", 0),
-                Jsonl.bool(line, "cancelled", false));
     }
 
     private static void send(BufferedWriter writer, String line) throws IOException {
@@ -348,14 +290,5 @@ final class EngineResolveAdapter {
         writer.flush();
     }
 
-    private static IOException disconnected() {
-        return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                + "(it may have crashed); run `jk engine status` for details");
-    }
-
     private static final EngineRequests.LockHandler NOOP_HANDLER = (dir, coord, steps) -> new BuildPlanListener() {};
-
-    private static String wireGroup(String raw) {
-        return raw == null || raw.isBlank() ? null : raw;
-    }
 }

@@ -69,6 +69,23 @@ class CodeFormatterStepsTest {
     }
 
     @Test
+    void groovy_pipeline_is_remove_semicolons() {
+        assertThat(CodeFormatter.groovySteps())
+                .extracting(FormatterStep::getName)
+                .containsExactly("Remove unnecessary semicolons");
+    }
+
+    @Test
+    void scala_pipeline_is_scalafmt() {
+        var spec = new CodeFormatter.Spec();
+        spec.scalaVersion = "3.8.1";
+        spec.scalaJars = jars("/tmp/scalafmt.jar");
+        assertThat(CodeFormatter.scalaSteps(spec))
+                .extracting(FormatterStep::getName)
+                .containsExactly("scalafmt");
+    }
+
+    @Test
     void unnamed_class_probe_uses_already_read_bytes() {
         assertThat(CodeFormatter.isUnnamedClass("void main() { IO.println(1); }".getBytes()))
                 .isTrue();

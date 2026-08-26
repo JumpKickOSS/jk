@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.runtime.ModuleOutcome;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -73,11 +75,10 @@ public sealed interface EngineEvent {
             @Nullable String exceptionClass)
             implements EngineEvent {}
 
-    record ErrorFailure(String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure)
+    record ErrorFailure(String dir, String step, String code, String message, TestFailureInfo failure)
             implements EngineEvent {}
 
-    record PlanDiagnosticFailure(
-            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure)
+    record PlanDiagnosticFailure(String dir, String step, String code, String message, TestFailureInfo failure)
             implements EngineEvent {}
 
     record Preflight(String stage, int done, int total, String label) implements EngineEvent {}
@@ -101,7 +102,7 @@ public sealed interface EngineEvent {
             long millis,
             boolean didWork,
             boolean cancelled,
-            cc.jumpkick.runtime.ModuleOutcome.Image image)
+            ModuleOutcome.Image image)
             implements EngineEvent {}
 
     record Eta(long remainingMs) implements EngineEvent {}

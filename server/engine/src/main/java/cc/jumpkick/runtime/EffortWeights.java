@@ -1,14 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.FetchTimings;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkLts;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,8 +65,8 @@ public final class EffortWeights {
         // happens on the submitting thread (inside withOverReserveTails), restore on the worker;
         // remove() in finally keeps shared cpu() workers clean.
         // SessionContext's static init uses bind() (displaces); force it to land before our add().
-        cc.jumpkick.config.SessionContext.current();
-        cc.jumpkick.run.ContextPropagator.add(new cc.jumpkick.run.ContextPropagator.Propagator() {
+        SessionContext.current();
+        ContextPropagator.add(new ContextPropagator.Propagator() {
             @Override
             public Runnable wrapRunnable(Runnable r) {
                 if (!overReserveTails()) return r;
@@ -174,35 +191,12 @@ public final class EffortWeights {
         return TEST_STARTUP;
     }
 
-    /**
-     * Phase rollup: sum of flat learned step weights for a module (compile + test + package).
-     * Missing steps contribute 0. Used for module-level schedule costs when shape memo is cold.
-     */
-    public static int phaseRollupWeight(String dir, BuildMetrics metrics) {
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        int sum = 0;
-        for (String step : List.of(
-                "compile-java",
-                "compile-kotlin",
-                "compile-groovy",
-                "compile-test",
-                "run-tests",
-                "package-jar",
-                "resolve-deps",
-                "copy-resources")) {
-            var e = metrics.step(dir == null ? "" : dir, step);
-            if (e.isPresent() && e.get().ok().count() >= MIN_METRICS_SAMPLES) {
-                sum += flatWeight(e.get().ok().avgMillis());
-            }
-        }
-        return sum;
-    }
-
     /** Learnable startup floor subtracted before recording a per-unit rate. */
     static int floor(String step) {
         return switch (step) {
-            case "run-tests" -> TEST_STARTUP_FLOOR;
-            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" -> COMPILE_FLOOR;
+            case TaskNames.RUN_TESTS -> TEST_STARTUP_FLOOR;
+            case TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY, TaskNames.COMPILE_TEST ->
+                COMPILE_FLOOR;
             default -> 0;
         };
     }
@@ -217,21 +211,17 @@ public final class EffortWeights {
     public static String metricsStepName(String step) {
         if (step == null || step.isBlank()) return "";
         return switch (step) {
-            case "compile-main" -> "compile-java";
+            case TaskNames.COMPILE_MAIN -> TaskNames.COMPILE_JAVA;
             default -> step;
         };
     }
 
     /**
-     * Success-only average wall for one module step (ms), or 0 when never recorded. Count ≥ 1 is
-     * enough — ETA composes dirty steps from measured pieces, not whole-build priors.
+     * Success-only average wall for one module step (ms), from this module's own history; 0 when it
+     * never ran the step here. Count ≥ 1 is enough — ETA composes dirty steps from measured pieces,
+     * not whole-build priors. Every caller picks its own fallback, so there is deliberately no
+     * combiner that tries own-then-host for them.
      */
-    public static long stepOkAvgMillis(BuildMetrics metrics, String dir, String step) {
-        long own = stepOkAvgMillisOwn(metrics, dir, step);
-        return own > 0 ? own : stepOkAvgMillisHost(metrics, step);
-    }
-
-    /** Module-own tier of {@link #stepOkAvgMillis} — 0 when this module never ran the step here. */
     static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
@@ -246,7 +236,7 @@ public final class EffortWeights {
         return 0;
     }
 
-    /** Host tier of {@link #stepOkAvgMillis}: the cross-module average wall for {@code step}. */
+    /** Host tier: the cross-module average wall for {@code step}, when this module has no history. */
     static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
@@ -274,7 +264,7 @@ public final class EffortWeights {
             if (dir == null || dir.isBlank()) {
                 key = "task." + task + ".wall-ms";
             } else {
-                key = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
+                key = "module." + AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
             }
             Double mean = agg.meanMap().get(key);
             Double last = agg.lastMap().get(key);
@@ -331,14 +321,16 @@ public final class EffortWeights {
     /** Reject absurdly short measured walls for heavy steps (action-cache restore noise). */
     private static long heavyWallFloorMs(String step) {
         String s = metricsStepName(step);
-        if ("native-image".equals(s)) return 5_000L;
-        if ("write-image".equals(s)) return 3_000L;
+        if (TaskNames.NATIVE_IMAGE.equals(s)) return 5_000L;
+        if (TaskNames.WRITE_IMAGE.equals(s)) return 3_000L;
         return 0L;
     }
 
     private static boolean heavyFixedStep(String step) {
         String s = metricsStepName(step);
-        return "native-image".equals(s) || "write-image".equals(s) || "package-assembly".equals(s);
+        return TaskNames.NATIVE_IMAGE.equals(s)
+                || TaskNames.WRITE_IMAGE.equals(s)
+                || TaskNames.PACKAGE_ASSEMBLY.equals(s);
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
@@ -380,7 +372,7 @@ public final class EffortWeights {
         // Cold module with a known planned method count: the count-scaled host prior beats the
         // host suite-wall average, which prices a 2000-method suite like the host's ~average
         // suite. The host wall stays the fallback when no count is known.
-        if ("run-tests".equals(key) && count > 0) {
+        if (TaskNames.RUN_TESTS.equals(key) && count > 0) {
             var msPer = timings.hostAvgTestMethodMs();
             if (msPer.isPresent()) {
                 return Math.max(1, (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
@@ -418,10 +410,10 @@ public final class EffortWeights {
      * the build countdown so it shares {@link #costFromRunningSteps} with explain rather than
      * re-pricing with empty counts (which collapses cold test ETA to suite-startup only).
      */
-    public static Map<String, Integer> stepCountsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
+    public static Map<String, Integer> stepCountsFromBuildPlan(BuildPlan plan) {
         Map<String, Integer> counts = new HashMap<>();
         if (plan == null) return counts;
-        for (cc.jumpkick.run.Task s : plan.steps()) {
+        for (Task s : plan.steps()) {
             String key = metricsStepName(s.name());
             if (key.isEmpty()) continue;
             int ticks;
@@ -439,10 +431,10 @@ public final class EffortWeights {
      * Steps that will do real work in a prepared plan (weight &gt; {@link #TOKEN}). Cached/skip
      * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached}.
      */
-    public static List<String> runningStepsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
+    public static List<String> runningStepsFromBuildPlan(BuildPlan plan) {
         List<String> running = new ArrayList<>();
         if (plan == null) return running;
-        for (cc.jumpkick.run.Task s : plan.steps()) {
+        for (Task s : plan.steps()) {
             try {
                 if (s.estimateWeight() > TOKEN) running.add(s.name());
             } catch (RuntimeException e) {
@@ -498,13 +490,13 @@ public final class EffortWeights {
             String step = metricsStepName(raw);
             if (step.isEmpty()) continue;
             int w;
-            if ("run-tests".equals(step)) {
+            if (TaskNames.RUN_TESTS.equals(step)) {
                 // Class walls when complete; else method product only if count known (never invent).
                 int methods = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, 0));
                 Map<String, Long> walls = loadClassWalls(mod);
                 // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
                 w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
-            } else if ("native-image".equals(step)) {
+            } else if (TaskNames.NATIVE_IMAGE.equals(step)) {
                 w = NativeEffort.weight(dir);
             } else {
                 // Prefer this module's own measured whole-task wall; count-scaled/host/static tiers
@@ -526,7 +518,7 @@ public final class EffortWeights {
                 }
             }
             weight += w;
-            if ("run-tests".equals(step)) testWeight += w;
+            if (TaskNames.RUN_TESTS.equals(step)) testWeight += w;
         }
         return new ModuleCost(dir, prereqs, weight, testWeight);
     }
@@ -537,8 +529,8 @@ public final class EffortWeights {
         if (!live.isEmpty()) return live;
         if (moduleDir == null || moduleDir.isBlank()) return Map.of();
         try {
-            var agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(cc.jumpkick.util.JkDirs.builds());
-            String prefix = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(moduleDir) + ".test-class.";
+            var agg = AggregatedMetrics.loadAll(JkDirs.builds());
+            String prefix = "module." + AggregatedMetrics.sanitize(moduleDir) + ".test-class.";
             String suffix = ".wall-ms";
             Map<String, Long> out = new LinkedHashMap<>();
             for (var e : agg.meanMap().entrySet()) {
@@ -574,32 +566,34 @@ public final class EffortWeights {
         // Uncalibrated host: product baselines with scale=1 (same formula as Calibration.scaleBaseline
         // at identity), and the same cold test-worker cap so ETA does not invent linear -w speedup.
         return switch (step) {
-            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" ->
+            case TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY, TaskNames.COMPILE_TEST ->
                 flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_COMPILE_PER_SOURCE_MS, 1.0)
                         * Math.max(1, count));
-            case "run-tests" -> {
+            case TaskNames.RUN_TESTS -> {
                 int w = Calibration.coldTestParallel(testWorkers);
                 long method = Calibration.scaleBaseline(Calibration.BASELINE_METHOD_MS, 1.0);
                 long startup = Calibration.scaleBaseline(Calibration.BASELINE_SUITE_STARTUP_MS, 1.0);
                 long body = (long) Math.max(0, count) * method;
                 yield flatWeight(startup + (body + w - 1) / w);
             }
-            case "package-jar" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
-            case "package-assembly" -> ASSEMBLY_RUN;
-            case "native-image" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_NATIVE_IMAGE_MS, 1.0));
-            case "write-image" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_OCI_IMAGE_MS, 1.0));
-            case "resolve-deps",
-                    "parse-build",
-                    "ensure-jdk",
-                    "copy-resources",
-                    "copy-test-resources",
-                    "write-stamp",
-                    "write-stamp-kotlin",
-                    "write-stamp-groovy",
-                    "build-logic-after-compile",
-                    "build-logic-before-package" -> TOKEN;
+            case TaskNames.PACKAGE_JAR ->
+                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
+            case TaskNames.PACKAGE_ASSEMBLY -> ASSEMBLY_RUN;
+            case TaskNames.NATIVE_IMAGE ->
+                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_NATIVE_IMAGE_MS, 1.0));
+            case TaskNames.WRITE_IMAGE -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_OCI_IMAGE_MS, 1.0));
+            case TaskNames.RESOLVE_DEPS,
+                    TaskNames.PARSE_BUILD,
+                    TaskNames.ENSURE_JDK,
+                    TaskNames.COPY_RESOURCES,
+                    TaskNames.COPY_TEST_RESOURCES,
+                    TaskNames.WRITE_STAMP,
+                    TaskNames.WRITE_STAMP_KOTLIN,
+                    TaskNames.WRITE_STAMP_GROOVY,
+                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                    TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> TOKEN;
             // Post-jk-clean gate: action keys hit, target/ wiped — live work is CAS restore.
-            case "restore-outputs" -> RESTORE;
+            case TaskNames.RESTORE_OUTPUTS -> RESTORE;
             default -> 0;
         };
     }
@@ -689,29 +683,28 @@ public final class EffortWeights {
             if (useJava) {
                 List<Path> src = CompileSupport.collectJavaSources(
                         compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java"));
-                javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, src);
+                javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, src);
                 compileJava = javaRun
                         ? learned(
                                 timings,
                                 mod,
-                                "compile-java",
+                                TaskNames.COMPILE_JAVA,
                                 src.size(),
-                                coldWorkWeight("compile-java", src.size()),
+                                coldWorkWeight(TaskNames.COMPILE_JAVA, src.size()),
                                 projectDirs)
                         : SKIP;
             }
             boolean ktRun = false;
             if (useKotlin) {
-                List<Path> src = CompileSupport.collectKotlinSources(in.dir(), compact);
-                ktRun = rerun
-                        || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, src);
+                List<Path> src = PlannerCompile.mainKotlinSources(project, in.dir(), compact);
+                ktRun = rerun || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, src);
                 compileKotlin = ktRun
                         ? learned(
                                 timings,
                                 mod,
-                                "compile-kotlin",
+                                TaskNames.COMPILE_KOTLIN,
                                 src.size(),
-                                coldWorkWeight("compile-kotlin", src.size()),
+                                coldWorkWeight(TaskNames.COMPILE_KOTLIN, src.size()),
                                 projectDirs)
                         : SKIP;
             }
@@ -719,15 +712,15 @@ public final class EffortWeights {
             if (useGroovy) {
                 // The groovy stamp lives in the merged classes dir — that is where
                 // write-stamp-groovy writes it (stamp-only freshness, like Kotlin's).
-                List<Path> src = CompileSupport.collectGroovySources(in.dir(), compact);
-                gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, src);
+                List<Path> src = PlannerCompile.mainGroovySources(project, in.dir(), compact);
+                gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, src);
                 compileGroovy = gvRun
                         ? learned(
                                 timings,
                                 mod,
-                                "compile-groovy",
+                                TaskNames.COMPILE_GROOVY,
                                 src.size(),
-                                coldWorkWeight("compile-groovy", src.size()),
+                                coldWorkWeight(TaskNames.COMPILE_GROOVY, src.size()),
                                 projectDirs)
                         : SKIP;
             }
@@ -761,9 +754,9 @@ public final class EffortWeights {
                     ? learned(
                             timings,
                             mod,
-                            "compile-test",
+                            TaskNames.COMPILE_TEST,
                             1,
-                            coldWorkWeight("compile-test", Math.max(1, testSrc.size())),
+                            coldWorkWeight(TaskNames.COMPILE_TEST, Math.max(1, testSrc.size())),
                             projectDirs)
                     : SKIP;
 
@@ -772,24 +765,24 @@ public final class EffortWeights {
             // Cold bar weight uses the same host priors as ETA (not legacy TEST_METHOD×8).
             int testWorkers = resolveTestWorkersForPredict(in, classes);
             int staticTests =
-                    coldWorkWeight("run-tests", methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
+                    coldWorkWeight(TaskNames.RUN_TESTS, methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
             // prefer method-count × run-tests rate; fall back to class-count ×
             // run-tests-class rate when method annotations are not found.
             if (testWillRun) {
                 if (methods > 0) {
-                    runTests = learned(timings, mod, "run-tests", methods, staticTests, projectDirs);
+                    runTests = learned(timings, mod, TaskNames.RUN_TESTS, methods, staticTests, projectDirs);
                 } else if (classes > 0) {
                     runTests = learned(timings, mod, "run-tests-class", classes, staticTests, projectDirs);
                 } else {
-                    runTests = learned(timings, mod, "run-tests", 1, staticTests, projectDirs);
+                    runTests = learned(timings, mod, TaskNames.RUN_TESTS, 1, staticTests, projectDirs);
                 }
             } else {
                 runTests = SKIP;
             }
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
-            int staticPkg = coldWorkWeight("package-jar", 1);
-            pkg = jarFresh ? SKIP : learnedFixedWeight(mod, "package-jar", staticPkg);
+            int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
+            pkg = jarFresh ? SKIP : learnedFixedWeight(mod, TaskNames.PACKAGE_JAR, staticPkg);
         } catch (Exception ignored) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
@@ -829,21 +822,21 @@ public final class EffortWeights {
      */
     public static int jdkWeight(Path dir, Path jdksDir) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
-            Path lf = cc.jumpkick.lock.LockPaths.lockFile(dir);
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            Path lf = LockPaths.lockFile(dir);
             Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
-            cc.jumpkick.jdk.JdkRegistry registry =
-                    jdksDir != null ? new cc.jumpkick.jdk.JdkRegistry(jdksDir) : new cc.jumpkick.jdk.JdkRegistry();
-            var req = new cc.jumpkick.jdk.JdkResolution.Request(
+            JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+            // The request's environment, not the daemon's — see JK-1021.
+            var env = BuildEnv.forModule(dir);
+            var req = new JdkResolution.Request(
                     dir,
-                    cc.jumpkick.config.SessionContext.current().jdkSpec(),
-                    System.getenv("JK_JDK"),
-                    lock != null ? lock.jdk() : null,
+                    SessionContext.current().jdkSpec(),
+                    null,
+                    lock == null ? null : lock.jdk(),
                     project.project() != null ? project.project().jdk() : null,
                     project.project() != null ? project.project().javaRelease() : 0,
-                    System::getenv);
-            var r = cc.jumpkick.jdk.JdkResolution.resolve(
-                    req, registry, cc.jumpkick.jdk.JdkInventory.current(), cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS);
+                    env::apply);
+            var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return (r.jdk().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
         } catch (Exception e) {
             return SKIP;
@@ -870,11 +863,11 @@ public final class EffortWeights {
      */
     public static int assemblyWeight(Path dir) {
         if (jarWillChange(dir)) {
-            return learnedFixedWeight(dir.toString(), "package-assembly", ASSEMBLY_RUN);
+            return learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
         }
         return artifactFresh(dir, BuildLayout::assemblyJar)
                 ? SKIP
-                : learnedFixedWeight(dir.toString(), "package-assembly", ASSEMBLY_RUN);
+                : learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
     }
 
     /**
@@ -905,7 +898,7 @@ public final class EffortWeights {
      */
     public static int ociWeight(Path dir) {
         if (ociWillChange(dir)) {
-            return learnedFixedWeight(dir.toString(), "write-image", OCI_RUN);
+            return learnedFixedWeight(dir.toString(), TaskNames.WRITE_IMAGE, OCI_RUN);
         }
         return OCI_SKIP;
     }
@@ -944,7 +937,7 @@ public final class EffortWeights {
     static boolean producesNativeImage(Path dir) {
         try {
             if (dir == null || !Files.isDirectory(dir)) return false;
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             return project.nativeMode() == JkBuild.NativeMode.ALWAYS;
         } catch (Exception e) {
             return false;
@@ -959,30 +952,27 @@ public final class EffortWeights {
      */
     static boolean mainJarWillChange(Path dir) {
         try {
-            var cfg = cc.jumpkick.config.SessionContext.current().config();
+            var cfg = SessionContext.current().config();
             if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
             if (dir == null || !Files.isDirectory(dir)) return true;
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             BuildLayout layout = BuildLayout.of(dir, project);
             if (!Files.isRegularFile(layout.mainJar())) return true;
-            boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(dir);
+            boolean compact = ModuleLayout.isCompact(dir);
             // Java main sources
             List<Path> javaSrc =
                     CompileSupport.collectJavaSources(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
-            if (!javaSrc.isEmpty()
-                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, javaSrc)) {
+            if (!javaSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, javaSrc)) {
                 return true;
             }
             // Kotlin
-            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
-            if (!ktSrc.isEmpty()
-                    && !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc)) {
+            List<Path> ktSrc = PlannerCompile.mainKotlinSources(project, dir, compact);
+            if (!ktSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, ktSrc)) {
                 return true;
             }
             // Groovy (stamp in merged classes dir)
-            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
-            if (!gvSrc.isEmpty()
-                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc)) {
+            List<Path> gvSrc = PlannerCompile.mainGroovySources(project, dir, compact);
+            if (!gvSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, gvSrc)) {
                 return true;
             }
             return false;
@@ -1002,9 +992,9 @@ public final class EffortWeights {
      */
     private static boolean artifactFresh(Path dir, Function<BuildLayout, Path> artifact) {
         try {
-            if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
-            if (cc.jumpkick.config.SessionContext.current().config().forceOr(false)) return false;
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            if (SessionContext.current().config().rebuildOr(false)) return false;
+            if (SessionContext.current().config().forceOr(false)) return false;
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             BuildLayout layout = BuildLayout.of(dir, project);
             Path art = artifact.apply(layout);
             if (!Files.isRegularFile(art)) return false;
@@ -1032,7 +1022,7 @@ public final class EffortWeights {
                 // sha256 is byte-identical), so a forced build resolves entirely from local disk
                 // it even succeeds offline. Reserving a per-artifact download here for cached deps
                 // was the bug that made `jk explain --force` predict tens of seconds of phantom fetch.
-                String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
+                String hex = a.checksumHex();
                 if (!cas.contains(hex)) fetches++;
             }
             return fetches == 0 ? SKIP : fetches * perFetch;
@@ -1046,7 +1036,7 @@ public final class EffortWeights {
      * {@link #ARTIFACT_FETCH}.
      */
     static int artifactFetchWeight() {
-        return cc.jumpkick.cache.FetchTimings.weightUnits(ARTIFACT_FETCH, MS_PER_WEIGHT);
+        return FetchTimings.weightUnits(ARTIFACT_FETCH, MS_PER_WEIGHT);
     }
 
     // --- parallel-aware wall-clock estimate ----------------------------------
@@ -1063,7 +1053,7 @@ public final class EffortWeights {
      * step as a cross-module serial bound). Shared by {@code jk build} and {@code jk explain} so
      * their wall-clock estimates are computed from the plan identically.
      */
-    public static ModuleCost costOf(Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan plan) {
+    public static ModuleCost costOf(Path dir, Set<Path> prereqs, BuildPlan plan) {
         return costOf(dir, prereqs, plan, Set.of());
     }
 
@@ -1077,11 +1067,10 @@ public final class EffortWeights {
      * two modules, ~11s on five. A single-module project looked fine only because one module's full
      * cost rounds to "&lt;1s".
      */
-    public static ModuleCost costOf(
-            Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan plan, Set<String> cachedSteps) {
+    public static ModuleCost costOf(Path dir, Set<Path> prereqs, BuildPlan plan, Set<String> cachedSteps) {
         int weight = 0;
         int testWeight = 0;
-        for (cc.jumpkick.run.Task step : plan.steps()) {
+        for (Task step : plan.steps()) {
             int stepWeight;
             if (cachedSteps.contains(step.name())) {
                 stepWeight = SKIP;
@@ -1093,7 +1082,7 @@ public final class EffortWeights {
                 }
             }
             weight += stepWeight;
-            if (step.name().equals("run-tests")) testWeight += stepWeight;
+            if (step.name().equals(TaskNames.RUN_TESTS)) testWeight += stepWeight;
         }
         return new ModuleCost(dir, prereqs, weight, testWeight);
     }

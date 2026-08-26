@@ -4,15 +4,20 @@ package cc.jumpkick.builds;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
@@ -75,13 +80,6 @@ public final class ProjectBuilds {
     /** Opaque project id for this checkout ({@link ProjectIdentity#resolve(Path)}). */
     public static String key(Path projectDir) {
         return ProjectIdentity.resolve(projectDir).id();
-    }
-
-    /** @deprecated use {@link #key(Path)} — path-only hash is no longer the identity. */
-    @Deprecated
-    public static String key(String coord, Path projectDir) {
-        return ProjectIdentity.resolve(projectDir == null ? Path.of(".") : projectDir)
-                .id();
     }
 
     public static Path projectHome(Path projectDir) {
@@ -180,21 +178,18 @@ public final class ProjectBuilds {
                 projectHome.resolve(RUN_NUMBER + ".lock").toAbsolutePath().normalize();
         RUN_NUMBER_LOCK.lock();
         try {
-            java.nio.channels.FileChannel ch = null;
+            FileChannel ch = null;
             try {
-                ch = java.nio.channels.FileChannel.open(
-                        lockPath,
-                        java.nio.file.StandardOpenOption.CREATE,
-                        java.nio.file.StandardOpenOption.WRITE,
-                        java.nio.file.StandardOpenOption.READ);
+                ch = FileChannel.open(
+                        lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
             } catch (IOException | RuntimeException noLockFile) {
                 // No usable lock file (exotic or read-only filesystem): still allocate under the
                 // JVM lock rather than failing the build — degrades to the previous
                 // single-process guarantee instead of breaking.
                 return bumpRunNumber(f);
             }
-            try (java.nio.channels.FileChannel channel = ch) {
-                java.nio.channels.FileLock fileLock = null;
+            try (FileChannel channel = ch) {
+                FileLock fileLock = null;
                 try {
                     fileLock = channel.lock();
                 } catch (IOException | RuntimeException noFlock) {
@@ -262,7 +257,7 @@ public final class ProjectBuilds {
     public static List<Path> listProjectHomesForMetrics(Path buildsRoot) {
         List<Path> all = listProjectHomes(buildsRoot);
         if (all.size() <= 1) return all;
-        Map<String, Path> bestByPath = new java.util.LinkedHashMap<>();
+        Map<String, Path> bestByPath = new LinkedHashMap<>();
         Map<String, Long> scoreByPath = new HashMap<>();
         List<Path> noPath = new ArrayList<>();
         for (Path home : all) {
@@ -308,7 +303,7 @@ public final class ProjectBuilds {
         long newestSec = 0;
         if (!runs.isEmpty()) {
             try {
-                newestSec = Files.getLastModifiedTime(runs.getFirst()).to(java.util.concurrent.TimeUnit.SECONDS);
+                newestSec = Files.getLastModifiedTime(runs.getFirst()).to(TimeUnit.SECONDS);
             } catch (IOException ignored) {
                 // recency unavailable — fall through to run count
             }
@@ -458,9 +453,5 @@ public final class ProjectBuilds {
         public Path projectMetricsFile() {
             return projectHome.resolve(PROJECT_METRICS);
         }
-    }
-
-    private static String quote(String s) {
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 }

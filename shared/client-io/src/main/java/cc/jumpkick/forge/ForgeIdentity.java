@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.forge;
 
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jsonl.MiniJson;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link ForgeKind}) so the mechanism stays decoupled and testable against a local server.
  * Best-effort by contract: offline, a non-2xx response, or any error yields {@link
  * Optional#empty()} so the caller falls back to another auth shape. Results are cached per
- * (endpoint, token).
+ * (endpoint, token digest).
  */
 public interface ForgeIdentity {
 
@@ -47,14 +50,20 @@ public interface ForgeIdentity {
         @Override
         public Optional<String> login(URI userEndpoint, String loginField, String token) {
             if (token == null || token.isBlank()) return Optional.empty();
-            String cacheKey = userEndpoint + " " + token;
+            // The token identifies the cache entry; it must not BE the cache entry's name. A live
+            // bearer token in a map key is readable in a heap dump, in any debug print of the map,
+            // and in anything that ever serializes the cache. A digest distinguishes two tokens
+            // exactly as well and reveals neither. Same `sha256:<hex>` spelling SecretRedactor uses
+            // when a secret has to take part in an action key.
+            String cacheKey = userEndpoint + " " + SecretRedactor.KEY_PREFIX + Hashing.sha256Hex(token);
             String cached = cache.get(cacheKey);
             if (cached != null) return Optional.of(cached);
             try {
                 HttpResponse<byte[]> resp = http.get(
                         userEndpoint, Map.of("Authorization", "Bearer " + token, "Accept", "application/json"));
                 if (resp.statusCode() / 100 != 2) return Optional.empty();
-                String login = readJsonStr(new String(resp.body(), StandardCharsets.UTF_8), loginField);
+                String body = new String(resp.body(), StandardCharsets.UTF_8);
+                String login = MiniJson.str(MiniJson.parse(body), loginField);
                 if (login == null || login.isBlank()) return Optional.empty();
                 cache.put(cacheKey, login);
                 return Optional.of(login);
@@ -65,30 +74,6 @@ public interface ForgeIdentity {
                 // Offline, network error, malformed JSON — caller falls back.
                 return Optional.empty();
             }
-        }
-
-        /** Extract a top-level string field from a flat JSON object without a JSON library. */
-        private static String readJsonStr(String json, String key) {
-            String needle = "\"" + key + "\":\"";
-            int start = json.indexOf(needle);
-            if (start < 0) return null;
-            start += needle.length();
-            StringBuilder sb = new StringBuilder();
-            for (int i = start; i < json.length(); i++) {
-                char c = json.charAt(i);
-                if (c == '\\' && i + 1 < json.length()) {
-                    char n = json.charAt(++i);
-                    if (n == '"') sb.append('"');
-                    else if (n == '\\') sb.append('\\');
-                    else {
-                        sb.append('\\');
-                        sb.append(n);
-                    }
-                } else if (c == '"') {
-                    break;
-                } else sb.append(c);
-            }
-            return sb.toString();
         }
     }
 }

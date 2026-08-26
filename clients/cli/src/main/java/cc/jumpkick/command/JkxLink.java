@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +39,7 @@ final class JkxLink {
             if (jkExe == null || !jkExe.isAbsolute() || !Files.isRegularFile(jkExe)) {
                 return new Result(Status.SKIPPED_NO_EXE, null);
             }
-            return HostPlatform.isWindows() ? ensureCmdShim(binDir, jkExe) : ensurePosix(binDir, jkExe);
+            return Os.isWindows() ? ensureCmdShim(binDir, jkExe) : ensurePosix(binDir, jkExe);
         } catch (IOException | RuntimeException e) {
             // Best-effort by contract: a broken jkx must never break `jk activate`.
             return new Result(Status.SKIPPED_NO_EXE, null);

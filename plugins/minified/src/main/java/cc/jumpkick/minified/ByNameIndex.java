@@ -12,6 +12,7 @@ import java.util.Collection;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
@@ -117,12 +118,12 @@ final class ByNameIndex {
      * implementation segment must read as fully-qualified class names — which is what separates a
      * marker index from a directory of data files.
      */
-    static java.util.Optional<String> markerClassName(String name) {
-        if (!name.startsWith("META-INF/")) return java.util.Optional.empty();
+    static Optional<String> markerClassName(String name) {
+        if (!name.startsWith("META-INF/")) return Optional.empty();
         String[] parts = name.split("/");
-        if (parts.length != 4) return java.util.Optional.empty();
-        if (!isClassName(parts[2]) || !isClassName(parts[3])) return java.util.Optional.empty();
-        return java.util.Optional.of(parts[3]);
+        if (parts.length != 4) return Optional.empty();
+        if (!isClassName(parts[2]) || !isClassName(parts[3])) return Optional.empty();
+        return Optional.of(parts[3]);
     }
 
     /** How many distinct classes R8 reported absent from the program inputs. */

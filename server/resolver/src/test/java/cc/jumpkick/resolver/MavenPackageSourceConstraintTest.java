@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
@@ -144,8 +145,7 @@ class MavenPackageSourceConstraintTest {
         MavenRepo repo =
                 new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
         RepoGroup group = RepoGroup.of(repo);
-        return new MavenPackageSource(
-                group, new EffectivePomBuilder(group), bom, Map.of(), cc.jumpkick.resolver.KmpRedirects.NONE, policy);
+        return new MavenPackageSource(group, new EffectivePomBuilder(group), bom, Map.of(), KmpRedirects.NONE, policy);
     }
 
     private static MavenPackageSource strictSource(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
@@ -153,12 +153,6 @@ class MavenPackageSourceConstraintTest {
                 new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
         RepoGroup group = RepoGroup.of(repo);
         return new MavenPackageSource(
-                group,
-                new EffectivePomBuilder(group),
-                bom,
-                Map.of(),
-                cc.jumpkick.resolver.KmpRedirects.NONE,
-                policy,
-                cc.jumpkick.model.UnmappedPolicy.STRICT);
+                group, new EffectivePomBuilder(group), bom, Map.of(), KmpRedirects.NONE, policy, UnmappedPolicy.STRICT);
     }
 }

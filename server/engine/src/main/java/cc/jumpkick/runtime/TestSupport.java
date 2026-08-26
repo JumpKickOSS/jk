@@ -5,16 +5,27 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -26,6 +37,53 @@ import java.util.stream.Stream;
  * and embedders can drive it without the CLI/TUI.
  */
 public final class TestSupport {
+
+    /**
+     * Sources under {@code [test] extra-src}, by extension. These roots belong to the test tier but
+     * to no suite: there is nothing in them to run, so they compile with whichever suites were
+     * selected rather than being selectable themselves.
+     *
+     * <p>They land in the module's test classes output, which is what makes a sibling's
+     * {@code kind = "tests"} edge reach them — {@code WorkspaceClasspath} already contributes that
+     * directory. No second artifact, so nothing here can reach a published POM.
+     */
+    /**
+     * {@link #testExtraSources} for a forecast: {@code .java} only, and degrading to empty rather
+     * than throwing, because a forecast reports on a build instead of being one.
+     *
+     * <p>It lives here, beside the collector the build uses, on purpose. {@code TaskForecaster}'s
+     * size-baseline invariant is that a forecast key derived <em>there</em> rather than shared with
+     * the build is the defect class that file keeps reintroducing — and this is another instance of
+     * it: these roots are in {@code compile-test}'s hashed request, so a forecast that cannot see
+     * them keys off a smaller source set than the build and reports a phantom rebuild (JK-2601).
+     */
+    static List<Path> forecastTestExtraSources(JkBuild project, Path moduleDir) {
+        try {
+            return testExtraSources(project, moduleDir, ".java");
+        } catch (IOException degraded) {
+            return List.of();
+        }
+    }
+
+    static List<Path> testExtraSources(JkBuild project, Path moduleDir, String ext) throws IOException {
+        List<String> roots = project.build().testExtraSrc();
+        if (roots.isEmpty()) return List.of();
+        List<Path> out = new ArrayList<>();
+        for (String rel : roots) {
+            Path root = moduleDir.resolve(rel).normalize();
+            if (Files.isDirectory(root)) {
+                out.addAll(TestSuites.collectExt(root, ext));
+            } else if (rel.endsWith(ext) && Files.isRegularFile(root)) {
+                // One file, not a root. `clients/cli` needs exactly one source out of the IntelliJ
+                // plugin's package — JkWireModel, the wire parser, which imports only java.util and
+                // org.jetbrains.annotations. Its five neighbours need the platform SDK, so naming
+                // the directory would not compile. Gradle expresses the same thing by Sync-ing that
+                // one file into a generated source dir.
+                out.add(root);
+            }
+        }
+        return out;
+    }
 
     private TestSupport() {}
 
@@ -65,12 +123,12 @@ public final class TestSupport {
      */
     public static int estimateAllSuiteTestCount(Path moduleDir, boolean compact) {
         int total = 0;
-        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
-        for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
-            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        for (String suite : TestSuites.discover(moduleDir, compact)) {
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestCount(r);
         return total;
@@ -81,21 +139,20 @@ public final class TestSupport {
      * bar/ETA with every discovered suite made plain `jk test` under-fill and snap to 100 when
      * an integration suite existed. Unresolvable selections fall back to all discovered suites.
      */
-    public static int estimateSelectedSuiteTestCount(
-            Path moduleDir, boolean compact, cc.jumpkick.config.TestSelection selection) {
-        java.util.List<String> discovered = cc.jumpkick.layout.TestSuites.discover(moduleDir, compact);
-        java.util.List<String> suites = discovered;
+    public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
+        List<String> discovered = TestSuites.discover(moduleDir, compact);
+        List<String> suites = discovered;
         if (selection != null) {
             var resolved = selection.resolve(discovered);
             if (resolved.ok()) suites = resolved.suites();
         }
         int total = 0;
-        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (String suite : suites) {
-            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestCount(r);
         return total;
@@ -107,12 +164,12 @@ public final class TestSupport {
      */
     public static int estimateAllSuiteTestClassCount(Path moduleDir, boolean compact) {
         int total = 0;
-        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
-        for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
-            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
-            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        for (String suite : TestSuites.discover(moduleDir, compact)) {
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestClassCount(r);
         return total;
@@ -142,17 +199,17 @@ public final class TestSupport {
 
     /** Collect all test sources for every discovered suite (deduped paths). */
     public static List<Path> collectAllSuiteTestSources(Path moduleDir, boolean compact) throws IOException {
-        java.util.LinkedHashSet<Path> out = new java.util.LinkedHashSet<>();
-        List<String> suites = cc.jumpkick.layout.TestSuites.discover(moduleDir, compact);
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        List<String> suites = TestSuites.discover(moduleDir, compact);
         if (suites.isEmpty()) {
             // Fall back to default suite dirs even if empty of sources
-            suites = List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
+            suites = List.of(TestSuites.DEFAULT);
         }
-        out.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(moduleDir, compact, suites));
-        out.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(moduleDir, compact, suites));
-        out.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(moduleDir, compact, suites));
-        out.addAll(cc.jumpkick.layout.TestSuites.collectScalaSources(moduleDir, compact, suites));
-        return new java.util.ArrayList<>(out);
+        out.addAll(TestSuites.collectJavaSources(moduleDir, compact, suites));
+        out.addAll(TestSuites.collectKotlinSources(moduleDir, compact, suites));
+        out.addAll(TestSuites.collectGroovySources(moduleDir, compact, suites));
+        out.addAll(TestSuites.collectScalaSources(moduleDir, compact, suites));
+        return new ArrayList<>(out);
     }
 
     /**
@@ -192,20 +249,20 @@ public final class TestSupport {
     /** Share {@code cache} with {@link #bridgeListener} so each failure is resolved once. */
     public static List<String> renderFailures(TestSummary result, Path moduleDir, TestFailureSource.Cache cache) {
         List<String> out = new ArrayList<>();
-        List<TestSummary.Failure> failures = result.failures();
+        List<TestFailureInfo> failures = result.failures();
         if (failures.isEmpty()) return out;
         TestFailureSource.Cache effectiveCache = cache != null ? cache : new TestFailureSource.Cache();
         // No leading blank — the CLI leaves a single blank under the prompt / live region.
         out.add("Test Failure");
         // First non-blank module wins for the header (multi-module reports still list each FAILED).
         String module = failures.stream()
-                .map(TestSummary.Failure::module)
+                .map(TestFailureInfo::module)
                 .filter(m -> m != null && !m.isBlank())
                 .findFirst()
                 .orElse("");
         if (!module.isBlank()) out.add("module: " + module);
         out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed");
-        for (TestSummary.Failure f : failures) {
+        for (TestFailureInfo f : failures) {
             out.add("");
             out.add("FAILED " + shortTestLabel(f));
             Optional<TestFailureSource.Snippet> snippet = Optional.empty();
@@ -250,11 +307,9 @@ public final class TestSupport {
      * parentheses, simple param type names, and a trailing invocation tag ({@code [#1]}). Falls
      * back to the failure's test name when class/method are unknown.
      */
-    static String shortTestLabel(TestSummary.Failure f) {
+    static String shortTestLabel(TestFailureInfo f) {
         String cls = simpleClassName(f.className());
-        String method = f.method();
-        if (method == null || method.isBlank()) method = f.testName();
-        method = method == null ? "" : method.strip();
+        String method = f.method() == null ? "" : f.method().strip();
         // "Foo > bar()" / "Foo.bar()" → method part only
         int gt = method.lastIndexOf(" > ");
         if (gt >= 0) method = method.substring(gt + 3).strip();
@@ -274,10 +329,9 @@ public final class TestSupport {
         if (!method.isEmpty() && method.indexOf('(') < 0 && !method.equals("(test run)")) {
             method = method + "()";
         }
-        if (cls.isEmpty() && method.isEmpty()) return f.testName() == null ? "?" : f.testName();
+        if (cls.isEmpty() && method.isEmpty()) return "?";
         String label = cls.isEmpty() ? method : (method.isEmpty() ? cls : cls + "." + method);
-        if (f.workerId() > 0) label = label + "  [w" + f.workerId() + "]";
-        return label;
+        return TestFailureInfo.label("", label, f.worker());
     }
 
     /**
@@ -312,7 +366,7 @@ public final class TestSupport {
     }
 
     /** Human-facing assertion / message lines (no stack frames, no exception FQCN prefix). */
-    static List<String> failureBodyLines(TestSummary.Failure f) {
+    static List<String> failureBodyLines(TestFailureInfo f) {
         String msg = f.message() == null ? "" : f.message().strip();
         if (!msg.isEmpty()) {
             List<String> lines = new ArrayList<>();
@@ -352,7 +406,7 @@ public final class TestSupport {
     }
 
     /** {@code at …} / {@code ... N more} lines from the stack, preserving original indent. */
-    static List<String> failureStackFrames(TestSummary.Failure f) {
+    static List<String> failureStackFrames(TestFailureInfo f) {
         String details = f.stack() == null ? "" : f.stack();
         if (details.isBlank()) return List.of();
         List<String> frames = new ArrayList<>();
@@ -421,8 +475,7 @@ public final class TestSupport {
                 // tree (finish-only labels lag one event behind). Prefer Class > method when the
                 // unique id carries a class segment and display is the bare method name.
                 // Skip engine/suite roots (no [class:…] segment) so we don't flash "JUnit Jupiter".
-                if (!isTest
-                        && cc.jumpkick.test.JUnitLauncher.classFromUniqueId(id).isEmpty()) {
+                if (!isTest && JUnitLauncher.classFromUniqueId(id).isEmpty()) {
                     return;
                 }
                 String detail = liveTestDetail(id, display, isTest);
@@ -474,7 +527,7 @@ public final class TestSupport {
                 String file = "";
                 int line = 0;
                 int snippetStart = 0;
-                java.util.List<String> snippetLines = java.util.List.of();
+                List<String> snippetLines = List.of();
                 if (dir != null) {
                     var snip = snippets.resolve(dir, className, stack);
                     if (snip.isPresent()) {
@@ -488,7 +541,7 @@ public final class TestSupport {
                 ctx.error(
                         "test-failure",
                         message,
-                        new cc.jumpkick.run.TestFailureInfo(
+                        new TestFailureInfo(
                                 module == null ? "" : module,
                                 engine == null ? "" : engine,
                                 className == null ? "" : className,
@@ -520,18 +573,13 @@ public final class TestSupport {
         };
     }
 
-    /** Progress / failure label: optional module and worker id. */
+    /**
+     * Progress / failure label: optional module and worker id. Rendered by
+     * {@link TestFailureInfo#label} — the one owner of the {@code " :: "} separator — with the
+     * worker suffix suppressed for a serial run, where {@code [w1]} would say nothing.
+     */
     static String progressLabel(String module, String display, int workerId, int workerCount) {
-        String d = display == null ? "" : display;
-        StringBuilder sb = new StringBuilder();
-        if (module != null && !module.isBlank()) {
-            sb.append(module).append(" :: ");
-        }
-        sb.append(d);
-        if (workerCount > 1 && workerId > 0) {
-            sb.append("  [w").append(workerId).append(']');
-        }
-        return sb.toString();
+        return TestFailureInfo.label(module, display, workerCount > 1 ? workerId : 0);
     }
 
     /**
@@ -541,7 +589,7 @@ public final class TestSupport {
      * " > "} display separator — the CLI paints this with Java syntax highlighting.
      */
     static String liveTestDetail(String uniqueId, String display, boolean isTest) {
-        String cls = cc.jumpkick.test.JUnitLauncher.classFromUniqueId(uniqueId);
+        String cls = JUnitLauncher.classFromUniqueId(uniqueId);
         String simple = simpleClassName(cls);
         String d = normalizeTestDisplay(display);
         // Display never shows package FQCNs in param lists (wire may still carry them).
@@ -664,10 +712,10 @@ public final class TestSupport {
         }
         CompileRequest request = req.build();
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
-        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
-        boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
-        java.nio.file.Path stateDir =
-                cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot));
+        boolean useCache = !SessionContext.current().config().rebuildOr(false);
+        Path actions = CacheTree.ACTIONS.under(cacheRoot);
+        Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(cacheTaskId);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
         // restore (3), else a full compile. Same key JavaCompile uses.
@@ -684,10 +732,10 @@ public final class TestSupport {
         ctx.label(taskId + ": " + sources.size() + " sources");
         Path gen = generatedSourceDir != null
                 ? generatedSourceDir
-                : cacheRoot.resolve("generated").resolve(cacheTaskId);
+                : CacheTree.GENERATED.under(cacheRoot).resolve(cacheTaskId);
         Files.createDirectories(gen);
-        Path workerJar = cc.jumpkick.engine.plugin.PluginJar.JAVA_COMPILER.locate(cas);
-        cc.jumpkick.task.JavaCompile.Result r = cc.jumpkick.task.JavaCompile.run(
+        Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
+        JavaCompile.Result r = JavaCompile.run(
                 cacheTaskId,
                 request,
                 BuildIdentity.cacheKeyVersion(),

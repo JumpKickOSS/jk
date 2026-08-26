@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
@@ -38,7 +39,7 @@ public final class ScalaToolResolver {
         requireSupportedVersion(scalaVersion);
         Path cacheFile = cacheFile(cas, scalaVersion);
         Path libDir = libDir(cas, scalaVersion);
-        boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean refresh = SessionContext.current().config().forceOr(false);
         if (!refresh) {
             List<Path> cached = readValidatedClosure(libDir, cacheFile);
             if (cached != null) return cached;

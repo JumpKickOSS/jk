@@ -47,8 +47,7 @@ public final class NerdFontDetect {
      */
     public static Result detect(Function<String, String> env, TerminalFonts fonts) {
         // T0 — environments that never want PUA, whatever the font situation is.
-        String ci = env.apply("CI");
-        if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) {
+        if (EnvValues.bool(env, "CI").orElse(false)) {
             return new Result(NerdFontCaps.NONE, "ci", "CI environment");
         }
         if ("dumb".equals(env.apply("TERM"))) {
@@ -95,7 +94,10 @@ public final class NerdFontDetect {
         if (notBlank(env.apply("ALACRITTY_LOG"))
                 || notBlank(env.apply("ALACRITTY_WINDOW_ID"))
                 || notBlank(env.apply("ALACRITTY_SOCKET"))) {
-            return fromFont(safe(fonts::alacrittyFont), "alacritty", "Alacritty");
+            // Alacritty draws the classic Powerline set itself, so the triangles land whatever the
+            // configured font is — the same floor as Terminal.app. It does not cover Powerline
+            // Extra, so the semi-circles still have to be earned from the font.
+            return fromFont(safe(fonts::alacrittyFont), "alacritty", "Alacritty", NerdFontCaps.WEDGE_ONLY);
         }
         if (termProgram.equals("vscode")) {
             return fromFont(safe(fonts::vscodeFont), "vscode", "VS Code");
@@ -130,11 +132,20 @@ public final class NerdFontDetect {
 
     /** Turn a looked-up font name into caps, keeping the font in the reason for {@code --explain}. */
     private static Result fromFont(Optional<String> font, String source, String label) {
+        return fromFont(font, source, label, NerdFontCaps.NONE);
+    }
+
+    /**
+     * As {@link #fromFont(Optional, String, String)} but for a terminal that renders some glyphs
+     * from its own tables: {@code floor} is granted unconditionally and the font can only add to it.
+     * A font we cannot read therefore costs the upgrade, never the floor.
+     */
+    private static Result fromFont(Optional<String> font, String source, String label, NerdFontCaps floor) {
         if (font.isEmpty()) {
-            return new Result(NerdFontCaps.NONE, source, label + " — font not determined");
+            return new Result(floor, source, label + " — font not determined");
         }
         String name = font.get();
-        NerdFontCaps caps = NerdFontNames.caps(name);
+        NerdFontCaps caps = NerdFontNames.caps(name).max(floor);
         return new Result(caps, source, label + " font " + name);
     }
 

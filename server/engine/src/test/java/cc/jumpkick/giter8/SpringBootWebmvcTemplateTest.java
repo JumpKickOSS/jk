@@ -4,6 +4,7 @@ package cc.jumpkick.giter8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.file.Files;
@@ -116,9 +117,12 @@ class SpringBootWebmvcTemplateTest {
     }
 
     private static Path pluginJar() {
+        // Version derived from the owner: a hand-typed version turned this into a silent
+        // assume-skip on every version bump.
+        String jarName = "jk-spring-boot-" + JkVersion.VERSION + ".jar";
         Path p = Path.of("").toAbsolutePath().normalize();
         for (int i = 0; i < 8 && p != null; i++) {
-            Path jar = p.resolve("plugins/spring-boot/build/libs/jk-spring-boot-0.12.0.jar");
+            Path jar = p.resolve("plugins/spring-boot/build/libs").resolve(jarName);
             if (Files.isRegularFile(jar)) return jar;
             p = p.getParent();
         }

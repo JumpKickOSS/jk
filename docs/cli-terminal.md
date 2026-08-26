@@ -314,7 +314,6 @@ clients/cli-terminal/
     Ansi.java                  CSI/OSC constructors (no SessionContext)
     Size.java                  moved from TerminalSize (no JLine Signals)
     Signals.java               sun.misc.Signal wrapper
-    Os.java                    isWindows / isDarwin / isLinux — HostPlatform is forbidden
   src/main/java/cc/jumpkick/terminal/posix/
     PosixTty.java              open /dev/tty, poll, read, write, tcsetattr
     TermiosLinux.java          glibc struct layout + flag constants
@@ -361,14 +360,17 @@ name = "jk-cli-terminal"
 description = "Controlling TTY, VT style, and keys for the native CLI"
 java = 25
 
+[dependencies]
+jk-host.workspace = true
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
 ```
 
-No `[dependencies]`. JSpecify/Lombok come from conventions as `compileOnly`.
+Only `jk-host` (for `Os`). JSpecify/Lombok come from conventions as `compileOnly`.
 
-Workspace registration (same pattern as `:jsonl`):
+Workspace registration (same pattern as `:host`):
 
 - `settings.gradle.kts` — `include(":cli-terminal")` under the clients/ block;
   `project(":cli-terminal").projectDir = file("clients/cli-terminal")`
@@ -384,7 +386,7 @@ Package `cc.jumpkick.terminal` is deliberate: not `cc.jumpkick.cli.tui`. The lib
 leaf. Putting it under `cli.tui` would invite `:cli` internals to leak in.
 
 Java 25 (client native image). Not Java 17 — workers never load this. Do not copy
-`shared/jsonl/jk.toml`'s `java = 17`.
+`shared/host/jk.toml`'s `java = 17`.
 
 ### Layering
 
@@ -1851,7 +1853,7 @@ None remaining.
 - `clients/cli/src/main/java/cc/jumpkick/cli/tui/RichText.java` (`strike` / `crossedOut`)
 - `clients/cli/build.gradle.kts`, `clients/cli/jk.toml`
 - `templates/java/none/cli-native.g8` — user LineReader template (stays)
-- `shared/jsonl/` — leaf-module Gradle/jk.toml template
+- `shared/host/` — leaf-module Gradle/jk.toml template
 
 ---
 

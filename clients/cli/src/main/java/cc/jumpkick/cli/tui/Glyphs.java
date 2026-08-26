@@ -53,6 +53,9 @@ public final class Glyphs {
     /** Pulse / spinner circle (U+25CF) — open and chip spinners. */
     public static final String PULSE = "●";
 
+    /** Truncation marker — U+2026 horizontal ellipsis. One column, never three dots. */
+    public static final String ELLIPSIS = "…";
+
     // ASCII fallbacks for --no-ansi / plain mode.
     public static final String CHECK_PLAIN = "+";
     public static final String CROSS_PLAIN = "!";

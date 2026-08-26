@@ -2,8 +2,10 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,13 +34,13 @@ public final class PluginContributions {
      * (before resolution; the manifest loader already rejected classpath-has conditions here).
      */
     public static List<PlatformDep> platformDependencies(
-            JkBuild.Project project, boolean nativeDeclared, Map<String, PluginConfig> pluginConfigs) {
+            Project project, boolean nativeDeclared, Map<String, PluginConfig> pluginConfigs) {
         return platformDependencies(project, nativeDeclared, pluginConfigs, PluginTableRegistry.manifests());
     }
 
     /** As above against an explicit manifest set (the parser passes built-ins + resolved third-party). */
     public static List<PlatformDep> platformDependencies(
-            JkBuild.Project project,
+            Project project,
             boolean nativeDeclared,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> manifests) {
@@ -244,14 +246,34 @@ public final class PluginContributions {
     /**
      * The active plugins' {@code [[contribute.step-dependency]]} entries with conditions evaluated
      * and coordinates interpolated — the engine fetches these into the cache (never into the
-     * project's dependency graph) and hands them to the step worker by name.
+     * project's dependency graph) and hands them to the step worker by name. This lane, and only
+     * this lane, is rendered into step and packager action keys.
      */
     public static List<StepDep> stepDependencies(JkBuild build, Path moduleDir) {
+        return toolDependencies(build, moduleDir, "step-dependency", PluginDescriptor.Contributions::stepDependencies);
+    }
+
+    /**
+     * The active plugins' {@code [[contribute.command-dependency]]} entries with conditions
+     * evaluated and coordinates interpolated — tools only plugin commands read. The engine fetches
+     * these when a command runs; they join no step's or packager's action key and are never
+     * provisioned by a build.
+     */
+    public static List<StepDep> commandDependencies(JkBuild build, Path moduleDir) {
+        return toolDependencies(
+                build, moduleDir, "command-dependency", PluginDescriptor.Contributions::commandDependencies);
+    }
+
+    private static List<StepDep> toolDependencies(
+            JkBuild build,
+            Path moduleDir,
+            String kind,
+            Function<PluginDescriptor.Contributions, List<PluginDescriptor.StepDependency>> lane) {
         List<StepDep> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
-            for (PluginDescriptor.StepDependency sd : manifest.contributions().stepDependencies()) {
+            for (PluginDescriptor.StepDependency sd : lane.apply(manifest.contributions())) {
                 if (!holds(
                         sd.when(), config, build.project(), build.nativeConfig().isPresent(), null, manifest.id())) {
                     continue;
@@ -264,7 +286,7 @@ public final class PluginContributions {
                 String coordinate = Interpolation.resolve(sd.coordinate(), config, build.project(), null);
                 String[] parts = coordinate.split(":");
                 if (parts.length < 3 || parts.length > 4) {
-                    throw new JkBuildParseException("[" + manifest.id() + "] step-dependency coordinate must be"
+                    throw new JkBuildParseException("[" + manifest.id() + "] " + kind + " coordinate must be"
                             + " \"group:artifact:version[:classifier]\" — got: " + coordinate);
                 }
                 String managedBy = sd.managedBy() == null
@@ -275,7 +297,7 @@ public final class PluginContributions {
                     String resolved = Interpolation.resolve(w, config, build.project(), null);
                     String[] wp = resolved.split(":");
                     if (wp.length < 3 || wp.length > 4) {
-                        throw new JkBuildParseException("[" + manifest.id() + "] step-dependency with entry must be"
+                        throw new JkBuildParseException("[" + manifest.id() + "] " + kind + " with entry must be"
                                 + " \"group:artifact:version[:classifier]\" — got: " + resolved);
                     }
                     with.add(resolved);
@@ -325,8 +347,7 @@ public final class PluginContributions {
         if ("android".equals(selected)) return selected;
         if (build.isWorkspaceRoot()) {
             try {
-                for (var entry : cc.jumpkick.config.WorkspaceLoader.loadModules(moduleDir, build)
-                        .entrySet()) {
+                for (var entry : WorkspaceLoader.loadModules(moduleDir, build).entrySet()) {
                     if ("android".equals(jvmEnvironmentLocal(entry.getValue(), entry.getKey()))) {
                         return "android";
                     }
@@ -384,7 +405,7 @@ public final class PluginContributions {
     private static boolean holds(
             PluginDescriptor.Condition when,
             PluginConfig config,
-            JkBuild.Project project,
+            Project project,
             boolean nativeDeclared,
             Set<String> classpathModules,
             String pluginId) {

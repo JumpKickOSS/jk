@@ -3,6 +3,7 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.Scope;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -70,7 +71,7 @@ class LockfileWriterAtomicTest {
                     "https://repo.example/artifact-" + i,
                     "sha256:" + "ab".repeat(32),
                     null,
-                    List.of(cc.jumpkick.model.Scope.MAIN),
+                    List.of(Scope.MAIN),
                     List.of(),
                     null,
                     null));

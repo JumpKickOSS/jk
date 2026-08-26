@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.minified;
 
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
+import cc.jumpkick.surface.DynamicSurface;
+import cc.jumpkick.surface.DynamicSurfaceIo;
+import cc.jumpkick.surface.KeepRuleEmitter;
+import cc.jumpkick.surface.TrainLayout;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
@@ -28,7 +33,8 @@ import java.util.zip.ZipEntry;
 
 /**
  * {@code minified-jar} packager: R8 {@code --classfile} full mode over classes + runtime closure →
- * one slim jar. Shrink-only by default; {@code obfuscate = true} writes a mapping file.
+ * one slim jar. Shrink-only by default; {@code obfuscate = true} also emits the {@code -mapping.txt}
+ * deobfuscation map beside the jar, as a declared output so a cache hit restores the pair.
  *
  * <p>{@code [application] main} is optional: when present, R8 keeps the entry point and the
  * manifest gets {@code Main-Class}. When absent (library fat/shrunk jars), every class from the
@@ -36,19 +42,7 @@ import java.util.zip.ZipEntry;
  */
 final class MinifiedJarPackager {
 
-    /** Fixed entry timestamp (zip's floor is 1980) — reproducible output, same as jk's packagers. */
-    private static final LocalDateTime ENTRY_TIME = LocalDateTime.of(1980, 2, 1, 0, 0);
-
-    /**
-     * A pinned-time entry via {@link JarEntry#setTimeLocal} — NOT {@code setTime}, whose DOS-time
-     * conversion is timezone-sensitive and would make the bytes (and raw-jar fingerprints) vary
-     * with the build host's $TZ. Mirrors the engine's DeterministicJar.
-     */
-    private static JarEntry pinnedEntry(String name) {
-        JarEntry entry = new JarEntry(name);
-        entry.setTimeLocal(ENTRY_TIME);
-        return entry;
-    }
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private MinifiedJarPackager() {}
 
@@ -120,25 +114,24 @@ final class MinifiedJarPackager {
             // Libraries describe their own reflective surface in META-INF/native-image for
             // native-image, which reads it unaided. R8 has no equivalent, so the same facts reach
             // it as keep rules. Free: the data is already in the jars, no run involved.
-            cc.jumpkick.surface.DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
-            cc.jumpkick.surface.DynamicSurface surface =
-                    ByNameIndex.surface(derived).merge(composed);
+            DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
+            DynamicSurface surface = ByNameIndex.surface(derived).merge(composed);
             // Optional train observations from `jk train` (target/train/merged/dynamic-surface.json).
             Path trainSurface = io.artifactPath()
                     .getParent()
-                    .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                    .resolve(TrainLayout.ROOT)
                     .resolve("merged")
-                    .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
-            cc.jumpkick.surface.DynamicSurface trained = cc.jumpkick.surface.DynamicSurface.empty();
+                    .resolve(TrainLayout.SURFACE_JSON);
+            DynamicSurface trained = DynamicSurface.empty();
             if (Files.isRegularFile(trainSurface)) {
-                trained = cc.jumpkick.surface.DynamicSurfaceIo.readJson(trainSurface);
+                trained = DynamicSurfaceIo.readJson(trainSurface);
                 surface = surface.merge(trained);
             }
             if (!surface.entries().isEmpty()) {
                 pro.append("\n# Derived from by-name indexes, library native-image metadata")
                         .append(trained.entries().isEmpty() ? "" : ", and train observations")
                         .append(".\n")
-                        .append(cc.jumpkick.surface.KeepRuleEmitter.emit(surface));
+                        .append(KeepRuleEmitter.emit(surface));
                 io.label("keep rules: " + derived.size() + " from by-name indexes, "
                         + composed.entries().size() + " from library metadata"
                         + (trained.entries().isEmpty()
@@ -187,11 +180,14 @@ final class MinifiedJarPackager {
             for (String rel : io.config().stringList("keep-files")) {
                 run.arg("--pg-conf").arg(projectFile(io, rel).toString());
             }
+            // The deobfuscation map. Obfuscated stack traces are unreadable without it, and it is
+            // the only copy — so it is a declared output, cached and restored with the jar. A
+            // cache hit that brought back the jar alone would leave a shipped artifact whose crash
+            // reports can never be resolved again.
+            Path mapping = null;
             if (obfuscate) {
-                run.arg("--pg-map-output")
-                        .arg(io.artifactPath()
-                                .resolveSibling(stripExtension(io.artifactPath()) + "-mapping.txt")
-                                .toString());
+                mapping = io.artifactPath().resolveSibling(stripExtension(io.artifactPath()) + "-mapping.txt");
+                run.arg("--pg-map-output").arg(mapping.toString());
             }
             long before = 0;
             for (Path p : program) before += Files.size(p);
@@ -201,6 +197,7 @@ final class MinifiedJarPackager {
             if (result.exit() != 0) {
                 throw new IllegalStateException("R8 failed (exit " + result.exit() + "):\n" + result.output());
             }
+            if (mapping != null) io.produced(mapping);
             int absent = ByNameIndex.countMissingClasses(result.output());
             if (absent > 0) {
                 io.label(absent + " optional " + (absent == 1 ? "class is" : "classes are")
@@ -212,7 +209,7 @@ final class MinifiedJarPackager {
             writeOutputJar(shrunk, io.artifactPath(), mainClass);
             io.label("shrunk " + mb(before) + " → " + mb(Files.size(io.artifactPath())));
         } finally {
-            deleteRecursively(work);
+            PathUtil.deleteRecursively(work);
         }
     }
 
@@ -251,7 +248,7 @@ final class MinifiedJarPackager {
             message.append("  ").append(name).append('\n');
         }
         message.append("\nKeep them with [minified] keep, or a keep-files rule file:\n")
-                .append(cc.jumpkick.surface.KeepRuleEmitter.emit(
+                .append(KeepRuleEmitter.emit(
                         ByNameIndex.surface(expected.stream().limit(3).toList())));
         if (expected.size() > 3) message.append("  …\n");
         throw new IllegalStateException(message.toString());
@@ -316,7 +313,13 @@ final class MinifiedJarPackager {
         return file;
     }
 
-    private static void zipClasses(Path classesDir, Path jar) throws IOException {
+    /**
+     * The module's classes as one R8 program input. Compile freshness stamps are left out: R8
+     * copies unrecognised inputs straight through, so a stamp taken in here would ship in the
+     * shrunk jar with a wall clock inside it.
+     */
+    // Package-private for MinifiedJarPackagerTest.
+    static void zipClasses(Path classesDir, Path jar) throws IOException {
         try (OutputStream out = Files.newOutputStream(jar);
                 JarOutputStream jos = new JarOutputStream(out);
                 Stream<Path> walk = Files.walk(classesDir)) {
@@ -325,9 +328,8 @@ final class MinifiedJarPackager {
                     .toList();
             for (Path file : files) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
-                jos.putNextEntry(pinnedEntry(name));
-                Files.copy(file, jos);
-                jos.closeEntry();
+                if (BuildStamps.isStampFile(name)) continue;
+                ZIP.writeEntry(jos, name, file);
             }
         }
     }
@@ -336,10 +338,9 @@ final class MinifiedJarPackager {
      * R8's output jar, rewritten with a deterministic order/times. Sets {@code Main-Class} only when
      * {@code mainClass} is non-null (library fat/shrunk jars need no entry point).
      *
-     * <p>Parent directory entries are synthesized for every file: frameworks that enumerate
-     * resource directories from the classpath (Micronaut's SoftServiceLoader over {@code
-     * META-INF/micronaut/...}) resolve them via the jar's directory entries, and R8's output
-     * carries none. Thin, fat, and minified jars owe the same contract.
+     * <p>R8's output carries no directory entries; {@link DeterministicZip#writeParentDirs}
+     * synthesizes them, because frameworks that enumerate resource directories from the classpath
+     * resolve them that way.
      */
     // Package-private for MinifiedJarPackagerTest.
     static void writeOutputJar(Path shrunk, Path artifact, String mainClass) throws IOException {
@@ -353,40 +354,17 @@ final class MinifiedJarPackager {
                 OutputStream out = Files.newOutputStream(artifact);
                 JarOutputStream jos = new JarOutputStream(out)) {
             Set<String> dirs = new HashSet<>();
-            writeParentDirs(jos, "META-INF/MANIFEST.MF", dirs);
-            jos.putNextEntry(pinnedEntry("META-INF/MANIFEST.MF"));
-            manifest.write(jos);
-            jos.closeEntry();
+            ZIP.writeParentDirs(jos, JarFile.MANIFEST_NAME, dirs);
+            ZIP.writeManifest(jos, manifest);
             List<JarEntry> entries = new ArrayList<>();
             for (Enumeration<JarEntry> e = in.entries(); e.hasMoreElements(); ) {
                 entries.add(e.nextElement());
             }
             entries.sort(Comparator.comparing(ZipEntry::getName));
             for (JarEntry entry : entries) {
-                if (entry.isDirectory() || entry.getName().equals("META-INF/MANIFEST.MF")) continue;
-                writeParentDirs(jos, entry.getName(), dirs);
-                jos.putNextEntry(pinnedEntry(entry.getName()));
-                try (InputStream body = in.getInputStream(entry)) {
-                    body.transferTo(jos);
-                }
-                jos.closeEntry();
-            }
-        }
-    }
-
-    /**
-     * Directory entries for every ancestor of {@code name}, parents first, each once —
-     * {@code dirs} accumulates what has already been emitted across the whole jar. Local copy of
-     * the engine's DeterministicJar.writeParentDirs by design: plugins stay dependency-free of
-     * jk's kernel modules.
-     */
-    private static void writeParentDirs(JarOutputStream jos, String name, Set<String> dirs) throws IOException {
-        int slash = -1;
-        while ((slash = name.indexOf('/', slash + 1)) >= 0) {
-            String dir = name.substring(0, slash + 1);
-            if (dirs.add(dir)) {
-                jos.putNextEntry(pinnedEntry(dir));
-                jos.closeEntry();
+                if (entry.isDirectory() || entry.getName().equals(JarFile.MANIFEST_NAME)) continue;
+                ZIP.writeParentDirs(jos, entry.getName(), dirs);
+                ZIP.writeEntryStreaming(jos, entry.getName(), in.getInputStream(entry));
             }
         }
     }
@@ -399,19 +377,5 @@ final class MinifiedJarPackager {
 
     private static String mb(long bytes) {
         return String.format(Locale.ROOT, "%.1f MB", bytes / 1_000_000.0);
-    }
-
-    // Local copy by design: plugins stay dependency-free of jk's kernel modules.
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.delete(p);
-                } catch (IOException ignored) {
-                    /* best-effort temp cleanup */
-                }
-            });
-        }
     }
 }

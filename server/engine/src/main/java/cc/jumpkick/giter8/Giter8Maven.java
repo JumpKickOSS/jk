@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.http.Http;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenMetadata;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,21 +19,17 @@ public final class Giter8Maven {
 
     private static final Pattern EXPR = Pattern.compile(
             "maven\\(\\s*([^,\\s]+)\\s*,\\s*([^,\\s]+)(?:\\s*,\\s*([^)]+))?\\s*\\)", Pattern.CASE_INSENSITIVE);
-    private static final URI CENTRAL = URI.create("https://repo1.maven.org/maven2/");
+    private static final URI CENTRAL = RepositorySpec.MAVEN_CENTRAL.url();
 
     /**
-     * Timeouts are mandatory: an unresponsive Central used to hang {@code jk new} (and its engine
-     * worker) forever — the request had no deadline and each lookup built its own client.
+     * One shared transport, and it is jk's. A private {@link java.net.http.HttpClient} here reached
+     * Central without the mirror, without the per-host cooldown, and without opening the rate-limit
+     * window — so a scaffold could spend a 429 that the rest of the build never learned about.
+     * {@link Http} also carries the deadline this lookup used to be missing (an unresponsive
+     * Central once hung {@code jk new} forever) and the retry ladder.
      */
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
-
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
-
     private static final class Client {
-        static final HttpClient SHARED = HttpClient.newBuilder()
-                .connectTimeout(CONNECT_TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        static final Http SHARED = new Http();
     }
 
     /**
@@ -61,13 +56,9 @@ public final class Giter8Maven {
                     : null;
             if (md == null) {
                 String path = group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml";
-                HttpRequest req = HttpRequest.newBuilder(CENTRAL.resolve(path))
-                        .timeout(REQUEST_TIMEOUT)
-                        .GET()
-                        .build();
                 HttpResponse<byte[]> res;
                 try {
-                    res = Client.SHARED.send(req, HttpResponse.BodyHandlers.ofByteArray());
+                    res = Client.SHARED.get(CENTRAL.resolve(path));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new IOException("maven() lookup interrupted", e);

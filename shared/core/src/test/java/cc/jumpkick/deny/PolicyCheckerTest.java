@@ -2,15 +2,34 @@
 package cc.jumpkick.deny;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.config.DenyPolicyParser;
+import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.DenyPolicy;
 import cc.jumpkick.model.Scope;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class PolicyCheckerTest {
+
+    @TempDir
+    Path dir;
+
+    /**
+     * {@code [deny]} is read by the manifest owner, not by a private parser — so these cases break
+     * if {@link JkBuildParser}'s document policy changes.
+     */
+    private DenyPolicy deny(String toml) throws IOException {
+        Path file = dir.resolve("jk.toml");
+        Files.writeString(file, toml);
+        return JkBuildParser.denyPolicy(file);
+    }
 
     @Test
     void no_policy_yields_no_violations() {
@@ -62,8 +81,8 @@ class PolicyCheckerTest {
     }
 
     @Test
-    void toml_parser_extracts_sources_only() {
-        DenyPolicy policy = DenyPolicyParser.parse("""
+    void toml_parser_extracts_sources_only() throws IOException {
+        DenyPolicy policy = deny("""
                 group    = "g"
                 name     = "a"
                 version  = "1"
@@ -79,39 +98,51 @@ class PolicyCheckerTest {
 
     @Test
     void toml_parser_rejects_unenforced_licenses() {
-        org.junit.jupiter.api.Assertions.assertThrows(
-                cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
-                        group = "g"
-                        name = "a"
-                        version = "1"
-                        jdk = 25
-                        [deny.licenses]
-                        deny = ["GPL-3.0"]
-                        """));
+        assertThatThrownBy(() -> deny("""
+                group = "g"
+                name = "a"
+                version = "1"
+                jdk = 25
+                [deny.licenses]
+                deny = ["GPL-3.0"]
+                """)).isInstanceOf(JkBuildParseException.class);
     }
 
     @Test
     void toml_parser_rejects_unenforced_yanked_deny() {
-        org.junit.jupiter.api.Assertions.assertThrows(
-                cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
-                        group = "g"
-                        name = "a"
-                        version = "1"
-                        jdk = 25
-                        [deny]
-                        yanked = "deny"
-                        """));
+        assertThatThrownBy(() -> deny("""
+                group = "g"
+                name = "a"
+                version = "1"
+                jdk = 25
+                [deny]
+                yanked = "deny"
+                """)).isInstanceOf(JkBuildParseException.class);
     }
 
     @Test
-    void toml_parser_returns_permissive_when_block_absent() {
-        DenyPolicy policy = DenyPolicyParser.parse("""
+    void toml_parser_returns_permissive_when_block_absent() throws IOException {
+        DenyPolicy policy = deny("""
                 group    = "g"
                 name     = "a"
                 version  = "1"
                 jdk      = 25
                 """);
         assertThat(policy.isEmpty()).isTrue();
+    }
+
+    /**
+     * The owner's {@link cc.jumpkick.config.Interpolation} whitelist now reaches {@code [deny]}.
+     * The private parser had no guard, so a denied-source list could be environment-dependent —
+     * a policy gate that reads differently on two machines.
+     */
+    @Test
+    void interpolation_outside_the_whitelist_is_rejected() {
+        assertThatThrownBy(() -> deny("""
+                name = "a"
+                [deny.sources]
+                deny = ["${BLOCKED_HOST}"]
+                """)).isInstanceOf(JkBuildParseException.class);
     }
 
     private static Lockfile.Artifact pkg(String name, String version, String source) {

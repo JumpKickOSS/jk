@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -140,7 +144,8 @@ public final class EngineInstall {
     /**
      * Install {@code version}'s engine jar from CAS as {@code jk-engine-<version>.jar} when that
      * path is free, else {@code jk-engine-<version>.<epoch>.jar}. Identical live bytes are a no-op.
-     * Refuses to replace a <em>newer</em> live install with an older version.
+     * Refuses to replace a <em>newer</em> live install with an older version, newer being
+     * {@link Versions#compare} — the one version order in the product.
      */
     public Materialized materialize(String version, Cas cas, String engineJarSha) throws IOException {
         Optional<Materialized> existing = currentInstall();
@@ -156,7 +161,7 @@ public final class EngineInstall {
             if (sameLive(raced, version, engineJarSha)) {
                 return confirmLive(raced.get(), version, engineJarSha);
             }
-            if (raced.isPresent() && compare(raced.get().version(), version) > 0) {
+            if (raced.isPresent() && Versions.compare(raced.get().version(), version) > 0) {
                 throw new IOException(
                         "refusing to replace jk-engine " + raced.get().version() + " with older " + version);
             }
@@ -196,7 +201,7 @@ public final class EngineInstall {
     }
 
     public static void installBinaries(Path clientSource, Path binDir) throws IOException {
-        installBinaries(clientSource, binDir, windowsOs());
+        installBinaries(clientSource, binDir, Os.isWindows());
     }
 
     static void installBinaries(Path clientSource, Path binDir, boolean windows) throws IOException {
@@ -245,7 +250,7 @@ public final class EngineInstall {
             for (Path p : stream.toList()) {
                 String name = p.getFileName().toString();
                 if (name.endsWith(".lock")) continue;
-                if (name.equals(cc.jumpkick.util.AotManifest.FILE_NAME)) {
+                if (name.equals(AotManifest.FILE_NAME)) {
                     continue;
                 }
                 if (!isAotArtifactName(name)) continue;
@@ -255,10 +260,11 @@ public final class EngineInstall {
                 if (primary) {
                     aotFiles++;
                     removedPrimaries.add(name);
-                } else if (name.endsWith(".aot.noaot") || name.endsWith(".aot.config")) {
-                    String primaryName = name.endsWith(".aot.noaot")
-                            ? name.substring(0, name.length() - ".noaot".length())
-                            : name.substring(0, name.length() - ".config".length());
+                } else if (AotCacheFiles.isMarker(name)) {
+                    String primaryName = AotCacheFiles.cacheOf(name);
+                    if (isPrimaryAotCacheName(primaryName)) removedPrimaries.add(primaryName);
+                } else if (name.endsWith(AotCacheFiles.CACHE + ".config")) {
+                    String primaryName = name.substring(0, name.length() - ".config".length());
                     if (isPrimaryAotCacheName(primaryName)) removedPrimaries.add(primaryName);
                 }
             }
@@ -266,12 +272,12 @@ public final class EngineInstall {
             // best-effort
         }
         if (!removedPrimaries.isEmpty()) {
-            cc.jumpkick.util.AotManifest.remove(aotDir, removedPrimaries);
-            cc.jumpkick.util.AotManifest.reconcile(aotDir);
+            AotManifest.remove(aotDir, removedPrimaries);
+            AotManifest.reconcile(aotDir);
         }
         if (!keepAny || !hasPrimaryAot(aotDir)) {
             try {
-                Files.deleteIfExists(aotDir.resolve(cc.jumpkick.util.AotManifest.FILE_NAME));
+                Files.deleteIfExists(aotDir.resolve(AotManifest.FILE_NAME));
             } catch (IOException ignored) {
             }
         }
@@ -297,33 +303,25 @@ public final class EngineInstall {
     }
 
     static boolean isPrimaryAotCacheName(String name) {
-        return name != null && name.endsWith(".aot") && name.length() > 4 && !name.contains(".aot.");
+        return name != null
+                && name.endsWith(AotCacheFiles.CACHE)
+                && name.length() > AotCacheFiles.CACHE.length()
+                && !name.contains(AotCacheFiles.CACHE + ".");
     }
 
+    /**
+     * Everything the AOT directory can hold for one key. The bare {@link AotCacheFiles#MARKER} test
+     * rather than {@link AotCacheFiles#isMarker} is deliberate: markers written under the retired
+     * {@code <stem>.noaot} spelling are orphans no reader recognises, and a wipe is the one sweep
+     * that should still reclaim them.
+     */
     static boolean isAotArtifactName(String name) {
         if (name == null || name.isBlank()) return false;
-        return name.endsWith(".aot")
-                || name.endsWith(".noaot")
+        return name.endsWith(AotCacheFiles.CACHE)
+                || name.endsWith(AotCacheFiles.MARKER)
                 || name.endsWith(".config")
                 || name.endsWith(".training")
                 || name.contains(".tmp-");
-    }
-
-    public static int compare(String a, String b) {
-        String[] an = a.split("-", 2);
-        String[] bn = b.split("-", 2);
-        String[] as = an[0].split("\\.");
-        String[] bs = bn[0].split("\\.");
-        for (int i = 0; i < Math.max(as.length, bs.length); i++) {
-            long av = i < as.length ? parse(as[i]) : 0;
-            long bv = i < bs.length ? parse(bs[i]) : 0;
-            if (av != bv) return Long.compare(av, bv);
-        }
-        boolean aq = an.length > 1;
-        boolean bq = bn.length > 1;
-        if (aq != bq) return aq ? -1 : 1;
-        if (!aq) return 0;
-        return an[1].compareTo(bn[1]);
     }
 
     static boolean isParkedClientName(String name) {
@@ -603,18 +601,6 @@ public final class EngineInstall {
         } catch (IOException e) {
             return 0L;
         }
-    }
-
-    private static long parse(String seg) {
-        try {
-            return Long.parseLong(seg);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    private static boolean windowsOs() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private static void makeExecutable(Path p) {

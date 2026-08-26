@@ -4,7 +4,7 @@ package cc.jumpkick.task;
 import java.time.Duration;
 
 /**
- * What holds one {@link CacheTier} down: an optional retention window, plus a cap for when the
+ * What holds one cache tier down: an optional retention window, plus a cap for when the
  * window alone is not enough.
  *
  * <p>The window runs <strong>unconditionally</strong> — a cache that never approaches any limit
@@ -48,13 +48,6 @@ public record Bound(Kind kind, Duration window, Cap cap, String reason) {
         /** Delete the tier every pass. For aliases and links that are recreated on demand. */
         record ResetAlways() implements Cap {}
 
-        /**
-         * Keep the one child named {@code live}; everything beside it is dead rather than old.
-         * For a tier where exactly one entry can ever be read, which makes a clock unnecessary:
-         * no window can be right for the entry still in use, and none is needed for the rest.
-         */
-        record KeepOnly(String live) implements Cap {}
-
         /** The window is the whole policy. */
         record None() implements Cap {}
     }
@@ -93,10 +86,6 @@ public record Bound(Kind kind, Duration window, Cap cap, String reason) {
 
     public static Cap resetAlways() {
         return new Cap.ResetAlways();
-    }
-
-    public static Cap keepOnly(String live) {
-        return new Cap.KeepOnly(live);
     }
 
     public static Cap none() {

@@ -2,22 +2,31 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.ParallelTestsOpts;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EnginePrewarm;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.JobCancelledException;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
-import cc.jumpkick.cli.run.AggregateModuleListener;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
-import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.DashboardCodeLink;
-import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.run.SessionMirrorListener;
-import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -31,16 +40,13 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@code jk test} — compile main + test sources and run JUnit Platform tests.
  *
- * <p>Runs the same core plan ({@code BuildPlanner.coreBuilder}) as {@code jk build}, in
+ * <p>Runs the same core plan ({@code TrainPlans.coreBuilder}) as {@code jk build}, in
  * {@code testOnly} mode: parse → sync → jdk → compile (Kotlin and/or Java, main and test) →
  * resources → compile-test → run-tests, stopping short of packaging a jar. Sharing the plan
  * means Kotlin test sources compile and run exactly as they do under {@code jk build} — no
@@ -68,11 +74,10 @@ public final class TestCommand implements CliCommand {
                 Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"),
                 Opt.flag("Skip profile tag filters", "--no-profile"),
                 Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers")));
-        opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
-        opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
-        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
+        opts.addAll(ParallelTestsOpts.options());
+        opts.add(CommonOpts.cacheDir());
+        opts.add(CommonOpts.jdksDir());
+        opts.addAll(CommonOpts.moduleSelection());
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
@@ -93,30 +98,29 @@ public final class TestCommand implements CliCommand {
     int jobs;
     String affectedSince;
     String modulesSpec;
-    cc.jumpkick.config.TestSelection testSelection = cc.jumpkick.config.TestSelection.DEFAULT;
+    TestSelection testSelection = TestSelection.DEFAULT;
     private CliSessionTranscript session;
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.affectedSince = in.value("affected-since").orElse(null);
         this.modulesSpec = in.value("modules").orElse(null);
         this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
-        this.parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
+        this.parallelTests = ParallelTestsOpts.enabled(in);
         try {
             this.testSelection = resolveTestSelection(in);
         } catch (IllegalArgumentException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Test", e.getMessage());
+            CommandWedge.printFail("Test", e.getMessage());
             return Exit.CONFIG;
         }
-        cc.jumpkick.config.SessionContext.install(cc.jumpkick.config.SessionContext.current()
-                .withParallelTests(parallelTests)
-                .withTestSelection(testSelection));
+        SessionContext.install(
+                SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
@@ -131,7 +135,7 @@ public final class TestCommand implements CliCommand {
         // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
-        var info = BuildCommand.projectInfoOrNull(dir);
+        var info = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
@@ -146,14 +150,14 @@ public final class TestCommand implements CliCommand {
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            var sel = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince);
             if (sel.error() != null && !sel.error().isBlank()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", sel.error());
+                CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
                 return finishSession(Exit.CONFIG);
             }
             if (sel.moduleDirs().isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
+                CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
             }
@@ -161,7 +165,7 @@ public final class TestCommand implements CliCommand {
             boolean hit = sel.moduleDirs().stream()
                     .anyMatch(d -> Path.of(d).toAbsolutePath().normalize().equals(here));
             if (!hit) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
+                CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
             }
@@ -171,7 +175,7 @@ public final class TestCommand implements CliCommand {
         TestSummary testResult;
         // Engine-hosted (Task 3): the wire has no real BuildPlan to attach a console listener to
         // ahead of time, so the listener is chosen once the step list arrives over the socket
-        // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
+        // see EngineJobs.runTest. testResultHolder is populated (if the run-tests
         // step actually ran) before the terminal plan-finish reaches that listener, exactly
         // mirroring how plan.get(TEST_RESULT) is already populated by the in-process path above.
         TestSummary[] testResultHolder = new TestSummary[1];
@@ -180,9 +184,9 @@ public final class TestCommand implements CliCommand {
         String module = BuildCommand.buildTarget(buildFile, dir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runTest(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.TestRequest(
+            result = EngineClient.runTest(
+                    EnginePaths.current(),
+                    new EngineRequests.TestRequest(
                             dir,
                             cache,
                             jdksDir,
@@ -192,14 +196,14 @@ public final class TestCommand implements CliCommand {
                             // Global flags are consumed into the session before dispatch
                             // the session (not the Invocation) is their authority, exactly as
                             // BuildCommand's request wiring reads them.
-                            cc.jumpkick.config.SessionContext.current().offline(),
-                            cc.jumpkick.config.SessionContext.current().force(),
+                            SessionContext.current().offline(),
+                            SessionContext.current().force(),
                             parallelTests,
                             testSelection),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Test", e.getMessage());
+            CommandWedge.printFail("Test", e.getMessage());
             if (session != null) session.error(e.getMessage());
             return finishSession(Exit.SOFTWARE);
         }
@@ -256,19 +260,19 @@ public final class TestCommand implements CliCommand {
             throws IOException, InterruptedException {
         List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
         if (!tokens.isEmpty()) {
-            var sel = BuildCommand.projectInfoOrError(entryDir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince);
             if (sel.error() != null && !sel.error().isBlank()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", sel.error());
+                CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
                 return Exit.CONFIG;
             }
             if (sel.moduleDirs().isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
+                CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return 0;
             }
         } else if (rootInfo != null && rootInfo.moduleDirs().isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "workspace declares no modules");
+            CommandWedge.printOk("Test", "workspace declares no modules");
             if (session != null) session.wedge("workspace declares no modules");
             return 0;
         }
@@ -286,8 +290,7 @@ public final class TestCommand implements CliCommand {
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
         List<String> scopeNames = List.of();
         if (modules != null && !modules.isEmpty()) {
-            scopeNames =
-                    ModuleScopeHint.namesFrom(BuildCommand.projectInfoOrError(entryDir, modulesSpec, affectedSince));
+            scopeNames = ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince));
             if (!live) {
                 ModuleScopeHint.print("testing", scopeNames, global != null && global.outputIsJson());
             }
@@ -298,106 +301,24 @@ public final class TestCommand implements CliCommand {
         return runWorkspaceTestsLive(entryDir, cache, workerCount, modules, scopeNames);
     }
 
-    /** Live TTY: one JkManager "Test" region — mirrors {@link BuildCommand} workspace live path. */
+    /** Live TTY: one JkManager "Test" region — the same {@link WorkspaceRunView} {@code jk build} drives. */
     private int runWorkspaceTestsLive(
             Path entryDir, Path cache, int workerCount, List<String> modules, List<String> scopeNames) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        cc.jumpkick.cli.engine.EnginePrewarm.ensure();
+        EnginePrewarm.ensure();
         long start = System.nanoTime();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
         ModuleScopeHint.show("testing", scopeNames, global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
-        Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
-        List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
-        AtomicInteger completed = new AtomicInteger();
-        int[] total = {0};
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true, true), entryDir, session, false);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    request,
-                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
-                        @Override
-                        public void onPreflight(String stage, int done, int totalUnits, String label) {
-                            agg.preflight(stage, done, totalUnits, label);
-                        }
-
-                        @Override
-                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
-                            agg.applySnapshot(snap);
-                            if (snap.modulesTotal() > total[0]) total[0] = snap.modulesTotal();
-                            JsonlShape.emitJsonl(
-                                    JsonlShape.workspaceProgress(
-                                            entryDir.toString(),
-                                            snap.numerator(),
-                                            snap.denominator(),
-                                            snap.phase(),
-                                            snap.modulesComplete(),
-                                            snap.modulesTotal()),
-                                    false);
-                        }
-
-                        @Override
-                        public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
-                            total[0] = plan.size();
-                            JsonlShape.emitJsonl(JsonlShape.workspaceStart(plan.size()), false);
-                        }
-
-                        @Override
-                        public void onEtaEstimate(long millis) {
-                            view.setRemainingWorkEstimate(millis);
-                        }
-
-                        @Override
-                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            List<String> buf = Collections.synchronizedList(new ArrayList<>());
-                            buffers.put(m.dir(), buf);
-                            var lis = new AggregateModuleListener(
-                                    agg, m.coord(), m.plan().steps(), m.weight());
-                            lis.bufferOutputInto(buf);
-                            JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
-                            SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
-                            return CompositeBuildPlanListener.of(lis, mirror);
-                        }
-
-                        @Override
-                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            JsonlShape.emitJsonl(
-                                    JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()),
-                                    false);
-                            List<String> buf = buffers.getOrDefault(o.dir(), List.of());
-                            String completion = BuildCommand.completionLine(
-                                    o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
-                            if (view.animating()) {
-                                view.addCompletion(completion);
-                                // Paint with module link context now; snapshot() re-paint is a no-op
-                                // on already-styled lines (no Test Failure sentinel left).
-                                synchronized (buf) {
-                                    if (!buf.isEmpty()) {
-                                        try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
-                                            deferredOutput.addAll(TestFailureHighlight.paintLines(buf));
-                                        }
-                                    }
-                                }
-                            } else {
-                                List<String> painted;
-                                synchronized (buf) {
-                                    try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
-                                        painted = TestFailureHighlight.paintLines(buf);
-                                    }
-                                }
-                                StringBuilder block = new StringBuilder();
-                                for (String l : painted) block.append(l).append('\n');
-                                block.append(completion);
-                                view.writeAbove(block.toString());
-                            }
-                        }
-                    });
-        } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            result = EngineClient.buildWorkspace(EnginePaths.current(), request, run.live(view, agg));
+        } catch (JobCancelledException e) {
             view.finishBuildPlanCancelled(List.of());
             if (session != null) session.wedge("Test job was cancelled");
             return 1;
@@ -406,149 +327,35 @@ public final class TestCommand implements CliCommand {
             if (session != null) session.error(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
-        if (session != null) {
-            for (var m : result.modules()) session.module(m.coord());
-            for (String err : result.errors()) session.error(err);
-            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
-                session.error(d.step(), d.code(), d.message());
-            }
-        }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-        List<String> above = snapshot(deferredOutput);
-        if (result.cancelled()) {
-            view.finishBuildPlanCancelled(above);
-            if (session != null) session.wedge("Test job was cancelled");
-            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
-            return 1;
-        }
-        if (!result.errors().isEmpty()) {
-            List<String> errs = new ArrayList<>(above);
-            for (String err : result.errors()) errs.add(ConsoleSpec.errorLine("composite", err));
-            view.finishBuildPlanFailure("dependency resolution failed", errs);
-            if (session != null) session.wedge("dependency resolution failed");
-            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
-            return result.exitCode();
-        }
-        if (!result.success()) {
-            List<String> failAbove = new ArrayList<>(above);
-            List<BuildPlanResult.Diagnostic> settleErrors = new ArrayList<>();
-            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
-                if ("test-failure".equals(d.code())) continue;
-                settleErrors.add(d);
-            }
-            ConsoleSpec.appendErrors(failAbove, settleErrors);
-            String failTail = workspaceTestFailureTail(result, elapsedMs);
-            view.finishBuildPlanFailure(failTail, failAbove);
-            if (session != null) session.wedge(failTail);
-            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
-            return result.exitCode();
-        }
-        String okTail = workspaceTestSuccessTail(result, total[0], elapsedMs);
-        view.finishBuildPlanSuccess(okTail, above);
-        if (session != null) session.wedge(okTail);
-        JsonlShape.emitJsonl(JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
-        return 0;
+        var tails = new WorkspaceRunView.Tails(
+                (r, planned) -> workspaceTestSuccessTail(r, planned, elapsedMs),
+                r -> workspaceTestFailureTail(r, elapsedMs));
+        return run.settleLive(view, agg, result, elapsedMs, tails, settled -> {});
     }
 
     /** Headless / JSON: same workspace RPC as live, no JkManager chrome. */
     private int runWorkspaceTestsHeadless(Path entryDir, Path cache, int workerCount, List<String> modules) {
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
-        int[] total = {0};
-        // Per-module console buffers (BuildCommand's headless pattern): modules stream
-        // concurrently, so output is buffered and printed as one block per module finish.
-        var buffers = new ConcurrentHashMap<Path, List<String>>();
-        var done = new AtomicInteger();
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true, true), entryDir, session, json);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    request,
-                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
-                        @Override
-                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
-                            cc.jumpkick.cli.run.LiveProgress.get().apply(snap);
-                            JsonlShape.emitJsonl(
-                                    JsonlShape.workspaceProgress(
-                                            entryDir.toString(),
-                                            snap.numerator(),
-                                            snap.denominator(),
-                                            snap.phase(),
-                                            snap.modulesComplete(),
-                                            snap.modulesTotal()),
-                                    json);
-                        }
-
-                        @Override
-                        public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
-                            total[0] = plan.size();
-                            JsonlShape.emitJsonl(JsonlShape.workspaceStart(plan.size()), json);
-                        }
-
-                        @Override
-                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
-                            if (json) {
-                                return new cc.jumpkick.cli.run.JsonlListener(System.out, false);
-                            }
-                            List<String> buf = Collections.synchronizedList(new ArrayList<>());
-                            buffers.put(m.dir(), buf);
-                            var outLis = new cc.jumpkick.run.BuildPlanListener() {
-                                @Override
-                                public synchronized void output(String step, String line) {
-                                    buf.add(line);
-                                }
-
-                                @Override
-                                public synchronized void warn(String step, String code, String message) {
-                                    buf.add("  " + cc.jumpkick.cli.tui.Glyphs.BANG + " " + step + ": " + message);
-                                }
-
-                                @Override
-                                public synchronized void error(String step, String code, String message) {
-                                    if ("test-failure".equals(code)) return;
-                                    buf.add("  " + cc.jumpkick.cli.tui.Glyphs.CROSS + " " + step + ": " + message);
-                                }
-                            };
-                            SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
-                            return CompositeBuildPlanListener.of(outLis, mirror);
-                        }
-
-                        @Override
-                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            JsonlShape.emitJsonl(
-                                    JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()),
-                                    json);
-                            if (json) return;
-                            List<String> buf = buffers.getOrDefault(o.dir(), List.of());
-                            List<String> painted;
-                            try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
-                                painted = TestFailureHighlight.paintLines(buf);
-                            }
-                            synchronized (BuildCommand.OUT_LOCK) {
-                                for (String line : painted) CliOutput.out(line);
-                                CliOutput.out(BuildCommand.completionLine(
-                                        o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
-                            }
-                        }
-                    });
+            result = EngineClient.buildWorkspace(EnginePaths.current(), request, run.headless());
         } catch (IOException e) {
             if (!json) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", e.getMessage());
+                CommandWedge.printFail("Test", e.getMessage());
             }
             if (session != null) session.error(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
         long ms = (System.nanoTime() - start) / 1_000_000;
-        JsonlShape.emitJsonl(JsonlShape.workspaceFinish(result.success(), ms, total[0]), json);
-        if (session != null) {
-            for (var m : result.modules()) session.module(m.coord());
-            for (String err : result.errors()) session.error(err);
-        }
+        run.finishEvent(result.success(), ms);
+        run.absorb(null, result);
         if (result.success()) {
             if (!json) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", workspaceTestSuccessTail(result, total[0], ms));
+                CommandWedge.printOk("Test", workspaceTestSuccessTail(result, run.planned(), ms));
             }
             return 0;
         }
@@ -556,16 +363,15 @@ public final class TestCommand implements CliCommand {
             // Workspace-level errors (graph/lock problems) never reach a module listener —
             // print them before the wedge or a failing run shows no diagnostic at all.
             for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Test", workspaceTestFailureTail(result, ms));
+            CommandWedge.printFail("Test", workspaceTestFailureTail(result, ms));
         }
         return result.exitCode();
     }
 
     private WorkspaceRequest workspaceTestRequest(Path entryDir, Path cache, int workerCount, List<String> modules) {
-        String variant = cc.jumpkick.config.SessionContext.current().variant();
+        String variant = SessionContext.current().variant();
         if (variant == null) variant = "";
-        Map<String, String> clientEnv =
-                cc.jumpkick.config.SessionContext.current().clientEnv();
+        Map<String, String> clientEnv = SessionContext.current().clientEnv();
         int concurrency = parallelTests ? jobs : 1;
         return new WorkspaceRequest(
                         entryDir,
@@ -584,12 +390,6 @@ public final class TestCommand implements CliCommand {
                 .withModules(modules);
     }
 
-    private static List<String> snapshot(List<String> deferred) {
-        synchronized (deferred) {
-            return new ArrayList<>(cc.jumpkick.cli.run.TestFailureHighlight.paintLines(deferred));
-        }
-    }
-
     private static String workspaceTestSuccessTail(WorkspaceResult result, int planned, long elapsedMs) {
         int n = result.modules() == null ? 0 : result.modules().size();
         if (n == 0 || planned == 0) {
@@ -603,14 +403,8 @@ public final class TestCommand implements CliCommand {
     }
 
     private static String workspaceTestFailureTail(WorkspaceResult result, long elapsedMs) {
-        String failed = result.modules() == null
-                ? "tests"
-                : result.modules().stream()
-                        .filter(m -> !m.success())
-                        .map(cc.jumpkick.runtime.ModuleOutcome::coord)
-                        .findFirst()
-                        .orElse("tests");
-        return failed + " — failed " + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+        return WorkspaceRunView.failedCoord(result, "tests") + " — failed "
+                + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
     }
 
     /**
@@ -646,7 +440,7 @@ public final class TestCommand implements CliCommand {
      * Auto profile defers when CLI set any tag option so explicit CLI selection is not overridden
      * by profile filters.
      */
-    static cc.jumpkick.config.TestSelection resolveTestSelection(Invocation in) {
+    static TestSelection resolveTestSelection(Invocation in) {
         boolean all = in.isSet("all");
         List<String> suites = new ArrayList<>(in.values("suite"));
         boolean cliInclude = in.has("include-tags");
@@ -655,10 +449,10 @@ public final class TestCommand implements CliCommand {
             throw new IllegalArgumentException("--all and --suite cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
-        Path toml = wd.resolve("jk.toml");
+        Path toml = wd.resolve(ManifestPaths.MANIFEST);
         String explicit = in.value("profile").orElse(null);
         boolean explicitProfile = explicit != null && !explicit.isBlank();
-        String profileName = explicitProfile ? explicit : cc.jumpkick.model.Profiles.autoSelect(System.getenv());
+        String profileName = explicitProfile ? explicit : Profiles.autoSelect(System.getenv());
         List<String> scanKeys = new ArrayList<>();
         scanKeys.add("test.include-tags");
         scanKeys.add("test.exclude-tags");
@@ -666,7 +460,7 @@ public final class TestCommand implements CliCommand {
             scanKeys.add("profiles." + profileName + ".include-tags");
             scanKeys.add("profiles." + profileName + ".exclude-tags");
         }
-        var scan = cc.jumpkick.config.TomlScan.scan(toml, scanKeys.toArray(String[]::new));
+        var scan = TomlScan.scan(toml, scanKeys.toArray(String[]::new));
         List<String> include = new ArrayList<>(scan.stringArray("test.include-tags"));
         List<String> exclude = new ArrayList<>(scan.stringArray("test.exclude-tags"));
         // Track whether any layer explicitly resolved the tag lists. Only then is the selection
@@ -711,6 +505,6 @@ public final class TestCommand implements CliCommand {
             if (!cliExclude) exclude = new ArrayList<>();
             spoke = true;
         }
-        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude, spoke);
+        return TestSelection.of(suites, all, include, exclude, spoke);
     }
 }

@@ -46,7 +46,6 @@ class LockfileModulesTest {
         assertThat(member.name()).isEqualTo("lib");
         assertThat(member.version()).isEqualTo("9.9.9");
         assertThat(member.java()).isEqualTo(25);
-        assertThat(member.jdk()).isEqualTo("temurin-25");
         assertThat(member.description()).isEqualTo("workspace root");
     }
 

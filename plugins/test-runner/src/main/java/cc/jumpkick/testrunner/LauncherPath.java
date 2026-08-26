@@ -17,6 +17,7 @@ import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.engine.support.descriptor.ClassSource;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
+import org.junit.platform.launcher.TagFilter;
 import org.junit.platform.launcher.TestExecutionListener;
 import org.junit.platform.launcher.TestIdentifier;
 import org.junit.platform.launcher.TestPlan;
@@ -24,15 +25,18 @@ import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
 import org.junit.platform.launcher.core.LauncherFactory;
 
 /**
- * JUnit Platform <em>Launcher</em> path for {@code jk test}.
+ * JUnit Platform <em>Launcher</em> path for {@code jk test} — the only way this runner discovers or
+ * executes tests.
  *
  * <p>Unlike raw {@code TestEngine.discover/execute}, the Launcher opens a {@code LauncherSession}
  * and fires {@code LauncherSessionListener} / {@code LauncherDiscoveryListener} SPIs. Quarkus
  * ({@code CustomLauncherInterceptor}) needs those to install {@code FacadeClassLoader} and register
- * {@code TestConfig} before {@code @QuarkusTest} runs.
+ * {@code TestConfig} before {@code @QuarkusTest} runs. It is also the sole owner of tag filtering
+ * and of the wire payloads ({@link Adapter}); nothing in this plugin re-decides either.
  *
- * <p>Compile-only against launcher; the forked test JVM must put a matching launcher jar on the CP
- * (projects with junit-jupiter / Quarkus already do).
+ * <p>Compile-only against launcher; the forked test JVM must put a matching launcher jar on the CP.
+ * {@code jk lock} injects {@code org.junit.platform:junit-platform-launcher} into every project's
+ * test classpath, so this holds regardless of which test framework the project chose.
  */
 final class LauncherPath {
 
@@ -54,7 +58,7 @@ final class LauncherPath {
             List<String> includeTags,
             List<String> excludeTags,
             int workerId,
-            JsonEventWriter writer) {
+            EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
 
         LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
@@ -89,7 +93,7 @@ final class LauncherPath {
             List<String> includeTags,
             List<String> excludeTags,
             int workerId,
-            JsonEventWriter writer) {
+            EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
         LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
                 .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)));
@@ -180,26 +184,30 @@ final class LauncherPath {
         return adapter.hasFailures();
     }
 
+    /** Pull-mode handshake: "send me the next class". Same emit path as every other event. */
+    static void emitReady(EventWriter writer, int workerId) {
+        new Adapter(writer, workerId).emit(EventType.READY, new LinkedHashMap<>());
+    }
+
+    /**
+     * The one tag filter in this plugin. Entries are JUnit Platform <em>tag expressions</em>, not
+     * bare names: {@code slow}, {@code !slow}, {@code slow | bench} and {@code any()} all mean what
+     * JUnit says they mean, because {@link TagFilter} is the parser of record.
+     *
+     * <p>Discovery ({@code --list-only}) and execution (one-shot and pull) both come through here,
+     * so a filter can never select one set of tests to list and a different set to run.
+     */
     private static void applyTagFilters(
             LauncherDiscoveryRequestBuilder b, List<String> includeTags, List<String> excludeTags) {
-        if (includeTags != null && !includeTags.isEmpty()) {
-            List<String> inc = includeTags.stream()
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .toList();
-            if (!inc.isEmpty()) {
-                b.filters(org.junit.platform.launcher.TagFilter.includeTags(inc));
-            }
-        }
-        if (excludeTags != null && !excludeTags.isEmpty()) {
-            List<String> exc = excludeTags.stream()
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .toList();
-            if (!exc.isEmpty()) {
-                b.filters(org.junit.platform.launcher.TagFilter.excludeTags(exc));
-            }
-        }
+        List<String> inc = expressions(includeTags);
+        if (!inc.isEmpty()) b.filters(TagFilter.includeTags(inc));
+        List<String> exc = expressions(excludeTags);
+        if (!exc.isEmpty()) b.filters(TagFilter.excludeTags(exc));
+    }
+
+    private static List<String> expressions(List<String> raw) {
+        if (raw == null || raw.isEmpty()) return List.of();
+        return raw.stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
     }
 
     private static void emitDiscovery(TestPlan plan, Adapter adapter) {
@@ -223,7 +231,56 @@ final class LauncherPath {
         }
     }
 
-    /** Launcher listener that emits the same JSONL events as {@link StreamingListener}. */
+    /**
+     * Bound for a failure message on the wire — keep in lock-step with the engine aggregator's
+     * {@code JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS} and its {@code
+     * MESSAGE_TRUNCATION_MARKER}. Capping here bounds the JSONL line itself; the engine re-caps and
+     * recognises this exact form so a worker-capped message passes through with its own remainder
+     * count intact.
+     */
+    private static final int MAX_MESSAGE_CHARS = 8_192;
+
+    private static final String MESSAGE_TRUNCATION_MARKER = " ... message truncated (";
+
+    /**
+     * Render a throwable in a form the parent process can display without needing the failure's
+     * classes on its own classpath. {@code stack} is a single string ({@code printStackTrace} text).
+     *
+     * <p>The message is worker-controlled input that rides every downstream copy — wire, SSE,
+     * journal, web card — so an {@code assertEquals} diff of two multi-MB strings must not put
+     * hundreds of MB of transients through the engine for one bad suite.
+     */
+    static Map<String, Object> throwableMap(Throwable t) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("class", t.getClass().getName());
+        m.put("message", capMessage(t.getMessage() == null ? "" : t.getMessage()));
+        StringWriter sw = new StringWriter();
+        t.printStackTrace(new PrintWriter(sw));
+        m.put("stack", sw.toString()); // single string — not a line array
+        return m;
+    }
+
+    private static String capMessage(String message) {
+        if (message.length() <= MAX_MESSAGE_CHARS) return message;
+        int cut = MAX_MESSAGE_CHARS;
+        // Never leave a lone high surrogate at the cut — the JSON encoder would emit an
+        // unpaired code unit and the parent's decoder would see a replacement char.
+        if (Character.isHighSurrogate(message.charAt(cut - 1))) cut--;
+        return message.substring(0, cut) + MESSAGE_TRUNCATION_MARKER + (message.length() - cut) + " more chars)";
+    }
+
+    /**
+     * Structured identity from the uniqueId, plus the human display name when the engine has no
+     * class/method segments (Spock spec/feature, Cucumber feature/scenario) — without it, progress
+     * and FAILED labels regress to the raw bracketed uniqueId.
+     */
+    static void putIdentity(String uniqueId, String displayName, Map<String, Object> payload) {
+        JUnitUniqueId.parse(uniqueId).putIdentity(payload);
+        if (payload.containsKey("testClass") || payload.containsKey("testMethod")) return;
+        if (displayName != null && !displayName.isBlank()) payload.put("display", displayName);
+    }
+
+    /** The one listener: every event the parent sees is written here. */
     private static final class Adapter implements TestExecutionListener {
         private final EventWriter out;
         private final int workerId;
@@ -263,8 +320,7 @@ final class LauncherPath {
         public void dynamicTestRegistered(TestIdentifier id) {
             // Without this, every @ParameterizedTest/@TestFactory invocation counts as static
             // and the progress numerator blows past the static-plan denominator.
-            Map<String, Object> p = new LinkedHashMap<>();
-            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
+            Map<String, Object> p = identity(id);
             p.put("parent", id.getParentId().orElse(null));
             p.put("type", typeName(id));
             emit(EventType.DYNAMIC_REGISTERED, p);
@@ -279,8 +335,7 @@ final class LauncherPath {
 
         @Override
         public void executionSkipped(TestIdentifier id, String reason) {
-            Map<String, Object> p = new LinkedHashMap<>();
-            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
+            Map<String, Object> p = identity(id);
             p.put("type", typeName(id));
             p.put("reason", reason == null ? "" : reason);
             emit(EventType.SKIPPED, p);
@@ -289,8 +344,7 @@ final class LauncherPath {
         @Override
         public void executionStarted(TestIdentifier id) {
             startNanos.put(id.getUniqueId(), System.nanoTime());
-            Map<String, Object> p = new LinkedHashMap<>();
-            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
+            Map<String, Object> p = identity(id);
             p.put("parent", id.getParentId().orElse(null));
             p.put("type", typeName(id));
             id.getSource().ifPresent(src -> p.put("source", src.toString()));
@@ -304,13 +358,18 @@ final class LauncherPath {
             if (result.getStatus() == TestExecutionResult.Status.FAILED) {
                 failed.set(true);
             }
-            Map<String, Object> p = new LinkedHashMap<>();
-            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
+            Map<String, Object> p = identity(id);
             p.put("type", typeName(id));
             p.put("status", result.getStatus().name());
             p.put("duration_ms", durationMs);
             result.getThrowable().ifPresent(t -> p.put("throwable", throwableMap(t)));
             emit(EventType.FINISHED, p);
+        }
+
+        private static Map<String, Object> identity(TestIdentifier id) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            putIdentity(id.getUniqueId(), id.getDisplayName(), p);
+            return p;
         }
 
         private void emit(EventType type, Map<String, Object> payload) {
@@ -327,17 +386,6 @@ final class LauncherPath {
             if (id.isTest() && id.isContainer()) return "CONTAINER_AND_TEST";
             if (id.isTest()) return "TEST";
             return "CONTAINER";
-        }
-
-        /** Single-string stack ({@code printStackTrace}); not a line array. */
-        private static Map<String, Object> throwableMap(Throwable t) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("class", t.getClass().getName());
-            m.put("message", t.getMessage() == null ? "" : t.getMessage());
-            StringWriter sw = new StringWriter();
-            t.printStackTrace(new PrintWriter(sw));
-            m.put("stack", sw.toString());
-            return m;
         }
     }
 }

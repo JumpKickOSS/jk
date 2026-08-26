@@ -204,7 +204,7 @@ with a clear message. Use a separate worktree for true parallel builds.
 
 | Path | Role |
 |---|---|
-| `shared/` | Client-safe modules (`jsonl`, `jk-api`, `core`, `plugin-sdk`, `wire`, …) |
+| `shared/` | Client-safe modules (`host`, `jk-api`, `core`, `plugin-sdk`, `wire`, …) |
 | `server/` | Engine-only (`engine`, `resolver`, `io`, `toolchain`) |
 | `clients/` | `cli` (native/thin JVM client + CLI tests), `web`, `vscode` (VS Code extension) |
 | `plugins/` | First-party build/worker plugins |

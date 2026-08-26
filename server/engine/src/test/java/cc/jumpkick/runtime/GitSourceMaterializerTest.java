@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -67,7 +68,7 @@ class GitSourceMaterializerTest {
                 buildRepos,
                 Path.of(System.getProperty("java.home")),
                 "test",
-                new cc.jumpkick.forge.ForgeGitCredentials());
+                new ForgeGitCredentials());
 
         GitSourceMaterializer.Materialized m = materializer.materialize(source);
 
@@ -101,7 +102,7 @@ class GitSourceMaterializerTest {
                 buildRepos,
                 Path.of(System.getProperty("java.home")),
                 "test",
-                new cc.jumpkick.forge.ForgeGitCredentials());
+                new ForgeGitCredentials());
 
         var first = materializer.materialize(source);
         var second = materializer.materialize(source); // cache hit — same sha/version/repo

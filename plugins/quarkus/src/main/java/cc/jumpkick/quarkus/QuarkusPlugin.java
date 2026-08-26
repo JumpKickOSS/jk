@@ -40,6 +40,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
     static final String AUGMENT_STEP = "quarkus-augment";
     private static final String BOOTSTRAP_EXTRA = "quarkus-bootstrap";
+    static final String PLATFORM_PROPS_EXTRA = "quarkus-platform-properties";
 
     @Override
     public PluginManifest manifest() {
@@ -124,15 +125,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 .arg("-Djk.quarkus.native.sources=" + exec.project().nativeDeclared())
                 .arg("-Djk.quarkus.native.sources.out=" + nativeSourcesOut)
                 .mainClass(QuarkusAugmentMain.class.getName())
-                .arg(exec.moduleDir().toString())
-                .arg(classes.toString())
-                .arg(outRoot.toString())
-                .arg(baseName)
-                .arg(exec.project().group())
-                .arg(exec.project().name())
-                .arg(exec.project().version())
-                .arg(listFile.toString())
-                .arg(quarkusVersion)
+                .args(augmentArgs(exec, classes, outRoot, baseName, listFile, quarkusVersion))
                 .cwd(exec.moduleDir())
                 .run();
         if (run.exit() != 0) {
@@ -140,6 +133,31 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             // non-production artifact on every later build.
             throw new IOException("quarkus-augment failed (exit " + run.exit() + "):\n" + tail(run.output()));
         }
+    }
+
+    /**
+     * The augment's positional argument vector — the contract {@link QuarkusAugmentMain#main}
+     * parses, in one place so both ends can be read together and pinned by a test.
+     *
+     * <p>Offline is positional rather than a {@code -D}: the augment is a grandchild JVM, and the
+     * engine's per-job decision has to arrive as data it cannot be launched without. The platform
+     * properties path is positional for the same reason — it is a step-dependency the engine
+     * fetched through jk's repo stack, and the augment must never resolve the coordinate itself.
+     */
+    static List<String> augmentArgs(
+            TaskExec exec, Path classes, Path outRoot, String baseName, Path listFile, String quarkusVersion) {
+        return List.of(
+                exec.moduleDir().toString(),
+                classes.toString(),
+                outRoot.toString(),
+                baseName,
+                exec.project().group(),
+                exec.project().name(),
+                exec.project().version(),
+                listFile.toString(),
+                quarkusVersion,
+                exec.requireExtra(PLATFORM_PROPS_EXTRA).toString(),
+                Boolean.toString(exec.offline()));
     }
 
     /** {@code fast-jar} (default) or {@code uber-jar}; unknown values fail early. */

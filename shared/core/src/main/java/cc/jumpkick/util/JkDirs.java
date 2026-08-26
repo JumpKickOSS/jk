@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.host.Os;
+import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
@@ -87,7 +89,7 @@ public final class JkDirs {
      * same layout as the client that asked for it.
      */
     public static JkDirs current() {
-        return new JkDirs(JkDirs::env, System.getProperty("user.home"), System.getProperty("os.name", ""));
+        return new JkDirs(JkDirs::env, System.getProperty("user.home"), Os.name());
     }
 
     /**
@@ -102,7 +104,7 @@ public final class JkDirs {
 
     /** Test seam: fully synthetic environment (host OS name). */
     public static JkDirs of(Function<String, String> env, String userHome) {
-        return new JkDirs(env, userHome, System.getProperty("os.name", ""));
+        return new JkDirs(env, userHome, Os.name());
     }
 
     /** Test seam: synthetic environment + OS name (linux / mac / windows path shapes). */
@@ -176,7 +178,7 @@ public final class JkDirs {
     public Path userConfigFilePath() {
         String override = nonBlank(env.apply("JK_CONFIG_FILE"));
         if (override != null) return Path.of(override);
-        return configDir().resolve("config.toml");
+        return configDir().resolve(ManifestPaths.CONFIG);
     }
 
     /**

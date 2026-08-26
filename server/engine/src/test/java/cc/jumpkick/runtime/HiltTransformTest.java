@@ -3,20 +3,27 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeModel;
+import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.InvokeInstruction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -32,17 +39,15 @@ import org.junit.jupiter.api.io.TempDir;
  * are warm (same shared cache as KspRoomHiltTest).
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class HiltTransformTest {
 
     @Test
-    @Disabled("Hilt 2.60.1 + KSP aborts with GeneratesRootInputPropagatedData on "
-            + "dagger_hilt_android_AndroidEntryPoint (processor re-reads its own codegen "
-            + "package). Unblocks CI while the Android Hilt pipeline is fixed.")
     void unmodified_hilt_sources_build_and_superclasses_rewrite(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);
         acceptLicenses();
@@ -122,9 +127,9 @@ class HiltTransformTest {
         return ClassFile.of().parse(Files.readAllBytes(classFile)).methods().stream()
                 .filter(m -> m.methodName().equalsString("onReceive"))
                 .flatMap(m -> m.code().stream())
-                .flatMap(java.lang.classfile.CodeModel::elementStream)
-                .anyMatch(el -> el instanceof java.lang.classfile.instruction.InvokeInstruction inv
-                        && inv.opcode() == java.lang.classfile.Opcode.INVOKESPECIAL
+                .flatMap(CodeModel::elementStream)
+                .anyMatch(el -> el instanceof InvokeInstruction inv
+                        && inv.opcode() == Opcode.INVOKESPECIAL
                         && inv.owner().asInternalName().equals(owner)
                         && inv.name().equalsString("onReceive"));
     }
@@ -146,12 +151,11 @@ class HiltTransformTest {
     }
 
     private static void acceptLicenses() throws Exception {
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-34")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
     }

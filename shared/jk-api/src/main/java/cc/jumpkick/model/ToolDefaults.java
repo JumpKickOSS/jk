@@ -2,37 +2,25 @@
 package cc.jumpkick.model;
 
 /**
- * Default versions for scaffolds and tooling fallbacks — ONE source. The Giter8
- * bundles ({@code templates/quarkus.g8}, {@code clients/cli/src/main/resources/giter8}) and the
- * quarkus plugin's gradle compileOnly pin carry their own copies by design (data files /
- * separate toolchain); everything java-side reads this.
+ * The one tooling version jk has to hardcode: the Quarkus platform BOM for the generated test
+ * tooling POM. Language compiler defaults are NOT here — {@code KotlinResolver.DEFAULT_VERSION},
+ * {@code GroovyResolver.DEFAULT_VERSION} and {@code ScalaResolver.DEFAULT_VERSION} own theirs, and
+ * a second copy here was a "keep in sync" comment standing in for a compiler. Giter8 bundles
+ * ({@code templates/quarkus.g8}, {@code clients/cli/src/main/resources/giter8}) and the quarkus
+ * plugin's gradle compileOnly pin carry their own copies by design — they are data files and a
+ * separate toolchain, neither of which can read a Java constant.
  */
 public final class ToolDefaults {
-
-    /**
-     * Quarkus platform major-line floor for scaffolded {@code jk.toml} ({@code [quarkus] version}),
-     * where jk's bare-is-caret rule makes it a floor and the lock pins exact.
-     *
-     * <p>Never write this into a Maven POM: Maven has no caret, so {@code quarkus-bom:3} is a
-     * literal version that does not exist. Use {@link #QUARKUS_TOOLING_BOM_VERSION} there.
-     */
-    public static final String QUARKUS_PLATFORM_FLOOR = "3";
 
     /**
      * Concrete {@code io.quarkus.platform:quarkus-bom} version for the generated Maven tooling POM
      * that {@code @QuarkusTest}'s bootstrap reads. Only a last resort — the POM prefers the
      * version {@code jk-lock.toml} actually pinned.
+     *
+     * <p>Never write a bare major line into a Maven POM: Maven has no caret, so {@code quarkus-bom:3}
+     * is a literal version that does not exist.
      */
     public static final String QUARKUS_TOOLING_BOM_VERSION = "3.38.0";
-
-    /** Fallback Kotlin compiler version when the lock has no pin. Keep in sync with KotlinResolver.DEFAULT_VERSION. */
-    public static final String KOTLIN_DEFAULT_VERSION = "2.4.0";
-
-    /** Default Groovy compiler version for scaffolds ({@code groovy}). Keep in sync with GroovyResolver.DEFAULT_VERSION. */
-    public static final String GROOVY_DEFAULT_VERSION = "5.0.4";
-
-    /** Fallback Scala 3 compiler version when the lock has no pin. Keep in sync with ScalaResolver.DEFAULT_VERSION. */
-    public static final String SCALA_DEFAULT_VERSION = "3.8.4";
 
     private ToolDefaults() {}
 }

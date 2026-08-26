@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Engine JVM entrypoint ({@code:engine}). Plain Java — never a native image. Spawned by the slim
@@ -43,12 +49,13 @@ public final class EngineMain {
 
     /**
      * {@code EngineMain --inflate-xz <in.xz> <out>} — inflate a release client {@code .xz} to
-     * the raw binary. Returns 2 on usage error, 1 on inflate failure, 0 on success.
+     * the raw binary. Returns {@link Exit#USAGE} on a bad command line, 1 on inflate failure, 0 on
+     * success.
      */
     static int runInflateXz(String[] args) {
         if (args.length != 3) {
             System.err.println("usage: EngineMain --inflate-xz <in.xz> <out>");
-            return 2;
+            return Exit.USAGE;
         }
         try {
             Xz.inflate(Path.of(args[1]), Path.of(args[2]));
@@ -72,19 +79,18 @@ public final class EngineMain {
         TerminalSignals.ignoreInterruptAndHangup();
         try {
             EnginePaths.Paths paths = EnginePaths.current();
-            cc.jumpkick.engine.plugin.BuiltInPluginJars.registerMissingBuiltInFetcher();
-            cc.jumpkick.engine.plugin.BuiltInPluginJars.install();
+            BuiltInPluginJars.registerMissingBuiltInFetcher();
+            BuiltInPluginJars.install();
             try {
-                cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
+                BuiltInPluginJars.installUserConfig();
             } catch (RuntimeException badConfig) {
                 // A user-config plugin pin (or config parse) error is explicit user intent we
                 // cannot honor — refuse to start with the message, never a raw stack.
                 System.err.println("jk engine: " + badConfig.getMessage());
                 return 1;
             }
-            cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
-            cc.jumpkick.config.JkHttpConfig httpConfig =
-                    cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);
+            JkEngineConfig config = JkEngineConfig.resolve();
+            JkHttpConfig httpConfig = JkHttpConfig.resolve().orElse(null);
             EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
             // The spawner asks for an AOT cache with -Djk.aot.train.output=<path> when none exists
             // yet (see EngineClient.spawn). The server invokes the factory only after WINNING its
@@ -117,8 +123,8 @@ public final class EngineMain {
             Path finalPath = Path.of(aotOut);
             Path tmp = trainerTmpPath(finalPath);
             cleanStaleTrainerTmps(finalPath);
-            String javaExe = ProcessHandle.current().info().command().orElseGet(() -> Path.of(
-                            System.getProperty("java.home"), "bin", "java")
+            String javaExe = ProcessHandle.current().info().command().orElseGet(() -> JdkFingerprint.java(
+                            JavaHomes.runningJavaHome())
                     .toString());
             ProcessBuilder pb =
                     new ProcessBuilder(aotTrainerCommand(javaExe, System.getProperty("java.class.path"), tmp));
@@ -165,7 +171,7 @@ public final class EngineMain {
     static void promoteTrainedCache(Path tmp, Path finalPath, int exit) {
         try {
             if (exit == 0 && Files.isRegularFile(tmp) && Files.size(tmp) > 0) {
-                cc.jumpkick.util.AtomicWrites.moveInto(tmp, finalPath);
+                AtomicWrites.moveInto(tmp, finalPath);
                 return;
             }
         } catch (IOException e) {
@@ -221,7 +227,8 @@ public final class EngineMain {
                     System.err.println("jk engine (aot-training): exceeded " + (limitMs / 1000)
                             + "s — halting; a normal recording takes about "
                             + (AOT_TRAINING_UPTIME_MS / 1000) + "s");
-                    Runtime.getRuntime().halt(2);
+                    // Not a cancellation and not bad config: the trainer wedged. EX_SOFTWARE.
+                    Runtime.getRuntime().halt(Exit.SOFTWARE);
                 },
                 "jk-aot-training-watchdog");
         watchdog.setDaemon(true);
@@ -262,8 +269,8 @@ public final class EngineMain {
         try {
             tmp = Files.createTempDirectory("jk-aot-train-");
             EnginePaths.Paths paths = EnginePaths.resolve(tmp);
-            EngineServer server = new EngineServer(
-                    paths, cc.jumpkick.config.JkEngineConfig.resolve(), null, JkVersion.VERSION, System.err::println);
+            EngineServer server =
+                    new EngineServer(paths, JkEngineConfig.resolve(), null, JkVersion.VERSION, System.err::println);
             Thread serving = new Thread(
                     () -> {
                         try {
@@ -287,21 +294,7 @@ public final class EngineMain {
             System.err.println("jk engine (aot-training): " + e.getMessage());
             return 1;
         } finally {
-            if (tmp != null) deleteRecursively(tmp);
-        }
-    }
-
-    private static void deleteRecursively(Path root) {
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                    // best-effort cleanup
-                }
-            });
-        } catch (IOException ignored) {
-            // best-effort cleanup
+            if (tmp != null) PathUtil.deleteRecursively(tmp);
         }
     }
 }

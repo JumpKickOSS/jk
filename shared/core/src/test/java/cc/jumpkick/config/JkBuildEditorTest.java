@@ -8,6 +8,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.util.MinimalToml;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -530,5 +531,114 @@ class JkBuildEditorTest {
     void the_old_shrink_spelling_is_rejected_with_the_replacement() {
         assertThatThrownBy(() -> JkBuildParser.parse(BASE + "[application]\nassembly = \"shrink\"\n"))
                 .hasMessageContaining("minified = true");
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // One renderer: every scalar this writer emits goes through MinimalToml
+    // ───────────────────────────────────────────────────────────────
+
+    /**
+     * A value carrying TOML metacharacters survives render → parse unchanged. The editor's own
+     * escaper left every character below {@code 0x20} raw, and a raw control character is not a
+     * legal TOML basic string — so {@link JkBuildEditor}'s own {@code validated} rejected the file
+     * it had just written, and the user saw "edit produced invalid TOML" for a legal input.
+     */
+    @Test
+    void a_metacharacter_bearing_value_round_trips_through_the_writer() {
+        String nasty = "com.acme\\weird\"quoted\tand\u0007bell";
+        String edited = JkBuildEditor.addDependency(BASE, Scope.MAIN, "widget-lib", nasty, "widget-lib", "1.2.3");
+        JkBuild parsed = JkBuildParser.parse(edited);
+        assertThat(parsed.dependencies().of(Scope.MAIN).getFirst().group()).isEqualTo(nasty);
+    }
+
+    @Test
+    void a_metacharacter_bearing_module_path_round_trips() {
+        String weird = "mods/a\"b";
+        String edited = JkBuildEditor.registerWorkspaceModule(BASE, weird);
+        assertThat(JkBuildParser.parse(edited).workspace().modules()).containsExactly(weird);
+        // …and removing it finds the same element it wrote.
+        assertThat(JkBuildEditor.removeWorkspaceModule(edited, weird)).doesNotContain("a\\\"b");
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // setRootScalar
+    // ───────────────────────────────────────────────────────────────
+
+    @Test
+    void set_root_scalar_replaces_in_place_and_keeps_indent() {
+        String edited = JkBuildEditor.setRootScalar(BASE + "[application]\nmain = \"demo.App\"\n", "java", "21");
+        assertThat(edited).contains("java     = 21").doesNotContain("java     = 25");
+        assertThat(JkBuildParser.parse(edited).project().javaRelease()).isEqualTo(21);
+    }
+
+    /** A bare key after a header would land inside that table, so a new one goes before the first. */
+    @Test
+    void set_root_scalar_inserts_before_the_first_table() {
+        String start = """
+                group   = "com.example"
+                name    = "widget"
+                version = "0.1.0"
+                jdk     = 25
+
+                [application]
+                main = "demo.App"
+                """;
+        String edited = JkBuildEditor.setRootScalar(start, "java", "21");
+        assertThat(edited.indexOf("java = 21")).isLessThan(edited.indexOf("[application]"));
+        assertThat(JkBuildParser.parse(edited).project().javaRelease()).isEqualTo(21);
+        assertThat(JkBuildParser.parse(edited).mainClass()).isEqualTo("demo.App");
+    }
+
+    @Test
+    void set_root_scalar_appends_when_there_is_no_table_at_all() {
+        String edited = JkBuildEditor.setRootScalar(BASE, "java", "21");
+        assertThat(JkBuildParser.parse(edited).project().javaRelease()).isEqualTo(21);
+    }
+
+    /** A string value is TOML-encoded by the caller through the one encoder, and survives. */
+    @Test
+    void set_root_scalar_round_trips_a_quoted_value() {
+        String weird = "wid\"get";
+        String edited = JkBuildEditor.setRootScalar(BASE, "name", MinimalToml.quote(weird));
+        assertThat(JkBuildParser.parse(edited).project().name()).isEqualTo(weird);
+    }
+
+    /**
+     * The value form is not the regex's business. {@code McpManifest} used to match only
+     * {@code java\s*=\s*\d+\s*$}, so a commented or quoted value missed — and the miss fell
+     * through to the "insert a new root key" branch, writing a second {@code java =} line. Two
+     * root keys of the same name is invalid TOML, and nothing validated the result before it hit
+     * the disk.
+     */
+    @Test
+    void set_root_scalar_replaces_an_annotated_value_instead_of_duplicating_the_key() {
+        String start = """
+                name    = "widget"
+                group   = "com.example"
+                version = "0.1.0"
+                jdk     = 25
+                java    = 17  # bumped when the CI image moves
+
+                [dependencies]
+                """;
+        String edited = JkBuildEditor.setRootScalar(start, "java", "21");
+        assertThat(edited).containsOnlyOnce("java    =");
+        assertThat(edited).contains("# bumped when the CI image moves");
+        assertThat(JkBuildParser.parse(edited).project().javaRelease()).isEqualTo(21);
+    }
+
+    /** A {@code #} inside a quoted value is part of the value, not the start of a comment. */
+    @Test
+    void set_root_scalar_does_not_mistake_a_hash_inside_a_string_for_a_comment() {
+        String start = BASE.replace("name     = \"widget\"", "name     = \"wid#get\"");
+        String edited = JkBuildEditor.setRootScalar(start, "name", MinimalToml.quote("plain"));
+        assertThat(edited).doesNotContain("#");
+        assertThat(JkBuildParser.parse(edited).project().name()).isEqualTo("plain");
+    }
+
+    @Test
+    void set_root_scalar_refuses_a_key_that_would_need_quoting() {
+        assertThatThrownBy(() -> JkBuildEditor.setRootScalar(BASE, "not a key", "1"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

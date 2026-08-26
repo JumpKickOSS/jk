@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,7 +59,9 @@ public final class ChromeTimeline {
     public static ChromeTimeline open(Path projectDir, boolean noTimeline) {
         if (noTimeline || projectDir == null) return null;
         String env = System.getenv(ENV);
-        if (env != null && (env.isBlank() || "off".equalsIgnoreCase(env) || "0".equals(env))) {
+        // Blank is this switch's own "off"; a non-boolean value is a destination path.
+        if (env != null
+                && (env.isBlank() || EnvValues.parseBool(env).filter(on -> !on).isPresent())) {
             return null;
         }
         try {
@@ -143,26 +147,12 @@ public final class ChromeTimeline {
         }
     }
 
+    /**
+     * A trace field as a JSON string. Absent reads as empty rather than {@code null}: the Chrome
+     * viewer renders a null {@code name} or {@code cat} as the literal text "null".
+     */
     private static String json(String s) {
-        if (s == null) return "\"\"";
-        StringBuilder b = new StringBuilder(s.length() + 2);
-        b.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> b.append("\\\\");
-                case '"' -> b.append("\\\"");
-                case '\n' -> b.append("\\n");
-                case '\r' -> b.append("\\r");
-                case '\t' -> b.append("\\t");
-                default -> {
-                    if (c < 0x20) b.append(String.format("\\u%04x", (int) c));
-                    else b.append(c);
-                }
-            }
-        }
-        b.append('"');
-        return b.toString();
+        return s == null ? "\"\"" : Jsonl.quote(s);
     }
 
     private record Event(String module, String step, String status, long startNanos, long endNanos, int tid) {}

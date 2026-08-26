@@ -50,7 +50,7 @@ class CompactVersionWindowTest {
         List<String> window = MavenPackageSource.compactVersionCandidates(jacksonHighestFirst());
 
         for (int i = 1; i < window.size(); i++) {
-            assertThat(cc.jumpkick.resolver.Versions.compare(window.get(i - 1), window.get(i)))
+            assertThat(Versions.compare(window.get(i - 1), window.get(i)))
                     .as(window.get(i - 1) + " > " + window.get(i))
                     .isGreaterThan(0);
         }

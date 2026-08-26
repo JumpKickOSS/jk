@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,7 +29,7 @@ public final class HomebrewProbe implements LocalToolProbe {
     private final String osName;
 
     public HomebrewProbe() {
-        this(List.of(Path.of("/opt/homebrew/Cellar"), Path.of("/usr/local/Cellar")), System.getProperty("os.name", ""));
+        this(List.of(Path.of("/opt/homebrew/Cellar"), Path.of("/usr/local/Cellar")), Os.name());
     }
 
     HomebrewProbe(List<Path> cellars, String osName) {

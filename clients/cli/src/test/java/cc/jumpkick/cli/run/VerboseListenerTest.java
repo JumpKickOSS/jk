@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.terminal.Width;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -36,7 +37,7 @@ class VerboseListenerTest {
             v.output("run-tests", line);
         }
         v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(12));
-        String plain = cc.jumpkick.terminal.Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).doesNotContain("@@source");
         assertThat(plain).doesNotContain("@@src");
         assertThat(plain).doesNotContain("Test Failure end");
@@ -53,7 +54,7 @@ class VerboseListenerTest {
         var v = new VerboseListener(out, out);
         v.output("compile-main", "Note: Recompile with -Xlint");
         v.stepFinish("compile-main", "compile", TaskStatus.SUCCESS, Duration.ofMillis(3));
-        String plain = cc.jumpkick.terminal.Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).contains("Note: Recompile with -Xlint");
     }
 
@@ -65,7 +66,7 @@ class VerboseListenerTest {
         var v = new VerboseListener(out, out);
         v.output("run-tests", "test stdout: starting slow thing");
         // No stepFinish — the line is already on screen.
-        String plain = cc.jumpkick.terminal.Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).contains("test stdout: starting slow thing");
     }
 
@@ -80,7 +81,7 @@ class VerboseListenerTest {
         }
         v.output("run-tests", "after block");
         // Still no stepFinish: the block painted at its footer, trailing output streamed on.
-        String plain = cc.jumpkick.terminal.Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).contains("before block");
         assertThat(plain).contains("FAILED Foo.bar()");
         assertThat(plain).doesNotContain("Test Failure end");
@@ -88,7 +89,7 @@ class VerboseListenerTest {
         // The block was consumed — stepFinish must not repaint it.
         int first = plain.indexOf("FAILED Foo.bar()");
         v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(1));
-        String after = cc.jumpkick.terminal.Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String after = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(after.indexOf("FAILED Foo.bar()", first + 1)).isNegative();
     }
 
@@ -106,7 +107,7 @@ class VerboseListenerTest {
         for (String line : List.of("Test Failure", "1 test failed", "", "FAILED Second.b()", "Test Failure end")) {
             v.output("run-tests", line);
         }
-        String plain = cc.jumpkick.terminal.Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).contains("FAILED First.a()");
         assertThat(plain).contains("FAILED Second.b()");
         assertThat(plain.indexOf("FAILED First.a()")).isLessThan(plain.indexOf("FAILED Second.b()"));

@@ -43,32 +43,23 @@ class GlobalOptionsOverlayTest {
 
     @Test
     void bundled_and_abbreviated_redo_reach_the_session_overlay() throws Exception {
-        Session original = SessionContext.current();
-        try {
-            GlobalOptions bundled = GlobalOptions.from(parse("-rq"));
-            assertThat(bundled.rebuild).isTrue();
-            assertThat(SessionContext.current().config().rebuildOr(false))
-                    .as("engine wire reads rebuild from the session")
-                    .isTrue();
+        Session original = SessionContext.installed();
+        GlobalOptions bundled = GlobalOptions.from(parse("-rq"));
+        assertThat(bundled.rebuild).isTrue();
+        assertThat(SessionContext.current().config().rebuildOr(false))
+                .as("engine wire reads rebuild from the session")
+                .isTrue();
 
-            SessionContext.install(original);
-            GlobalOptions abbreviated = GlobalOptions.from(parse("--red"));
-            assertThat(abbreviated.rebuild).isTrue();
-            assertThat(SessionContext.current().config().rebuildOr(false)).isTrue();
-        } finally {
-            SessionContext.install(original);
-        }
+        SessionContext.install(original);
+        GlobalOptions abbreviated = GlobalOptions.from(parse("--red"));
+        assertThat(abbreviated.rebuild).isTrue();
+        assertThat(SessionContext.current().config().rebuildOr(false)).isTrue();
     }
 
     @Test
     void abbreviated_offline_reaches_the_session_overlay() throws Exception {
-        Session original = SessionContext.current();
-        try {
-            GlobalOptions g = GlobalOptions.from(parse("--offl"));
-            assertThat(g.offline).isTrue();
-            assertThat(SessionContext.current().config().offlineOr(false)).isTrue();
-        } finally {
-            SessionContext.install(original);
-        }
+        GlobalOptions g = GlobalOptions.from(parse("--offl"));
+        assertThat(g.offline).isTrue();
+        assertThat(SessionContext.current().config().offlineOr(false)).isTrue();
     }
 }

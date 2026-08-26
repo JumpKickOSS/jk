@@ -34,8 +34,9 @@ public final class JkSyncService {
         indicator.setIndeterminate(true);
         indicator.setText("JumpKick: resolving model (lock + sync)");
 
-        // 1) Machine model — proves engine handshake + gives module counts for UI.
-        JkCliRunner.Result modelRun = JkCliRunner.run(projectDir, List.of("ide", "--print-model"), indicator);
+        // 1) Machine model — proves engine handshake + gives module counts for UI. Full capture:
+        // the model JSON is parsed, so it must not be trimmed to the streaming tail.
+        JkCliRunner.Result modelRun = JkCliRunner.runCapture(projectDir, List.of("ide", "--print-model"), indicator);
         if (indicator.isCanceled()) {
             return new SyncResult(false, "cancelled", null, 130);
         }

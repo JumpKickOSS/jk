@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.manifest;
 
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginDeclaration;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +29,7 @@ public final class PluginDescriptorStore {
     private static final Map<String, PluginDescriptor> BY_SHA = new ConcurrentHashMap<>();
 
     public static Path storeDir(Path moduleDir) {
-        return moduleDir.resolve("target").resolve("plugin-manifests");
+        return moduleDir.resolve(BuildLayout.TARGET).resolve("plugin-manifests");
     }
 
     public static Path fileFor(Path moduleDir, String sha256Hex) {
@@ -35,7 +38,7 @@ public final class PluginDescriptorStore {
 
     /** The lock's pinned entry for {@code decl}, or empty when unlocked/no lock. */
     public static Optional<Lockfile.PluginEntry> lockEntry(Path moduleDir, PluginDeclaration decl) {
-        Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lock = LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lock)) return Optional.empty();
         try {
             for (Lockfile.PluginEntry e : LockfileReader.read(lock).plugins()) {
@@ -61,7 +64,8 @@ public final class PluginDescriptorStore {
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
             PluginDescriptor parsed = PluginDescriptors.parse(
-                    Files.readString(file, StandardCharsets.UTF_8), decl.coordinateWithVersion() + "!jk-plugin.toml");
+                    Files.readString(file, StandardCharsets.UTF_8),
+                    decl.coordinateWithVersion() + "!" + ManifestPaths.PLUGIN_MANIFEST);
             // Clear-on-overflow (ProjectIds idiom): a resident engine otherwise pins one
             // descriptor per plugin sha it ever met, across every checkout and upgrade.
             if (BY_SHA.size() >= 1_024) BY_SHA.clear();

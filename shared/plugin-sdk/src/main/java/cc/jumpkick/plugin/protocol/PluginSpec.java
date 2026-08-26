@@ -44,6 +44,7 @@ public final class PluginSpec {
     private final Map<String, Path> extras = new LinkedHashMap<>();
     private final Map<String, String> secrets = new LinkedHashMap<>();
     private final List<String> commandArgs = new ArrayList<>();
+    private boolean offline = true;
 
     private PluginSpec() {}
 
@@ -143,6 +144,7 @@ public final class PluginSpec {
                             String.valueOf(Jsonl.str(line, PluginProtocol.KEY)),
                             String.valueOf(Jsonl.str(line, PluginProtocol.VALUE)));
                 case PluginProtocol.COMMAND_ARGS -> s.commandArgs.addAll(Jsonl.strArray(line, PluginProtocol.VALUES));
+                case PluginProtocol.OFFLINE -> s.offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
                 default -> {
                     // unknown line — forward-compat
                 }
@@ -178,6 +180,22 @@ public final class PluginSpec {
 
     public Path classesDir() {
         return classesDir;
+    }
+
+    /**
+     * The invariant every {@code compile} op shares: the spec must name a classes dir, a
+     * {@code jvmTarget}, and at least one source. Returns the jvmTarget so a language worker
+     * validates and reads it in one call, and so the three messages are written once instead of
+     * once per language. What each worker decodes <em>after</em> this genuinely differs — kotlinc
+     * takes friend paths, a module name and a {@code -jdk-home}; groovyc takes joint-mode stubs and
+     * Java source roots and no project JDK at all — and stays in the worker's own spec type.
+     */
+    public String requireCompileInputs() {
+        if (classesDir == null) throw new IllegalArgumentException("spec missing layout.classesDir (OUTPUT)");
+        String jvmTarget = config().stringOpt("jvmTarget").orElse(null);
+        if (jvmTarget == null) throw new IllegalArgumentException("spec missing config jvmTarget");
+        if (sources.isEmpty()) throw new IllegalArgumentException("spec has no source entries");
+        return jvmTarget;
     }
 
     public Path sourceOutput() {
@@ -259,5 +277,14 @@ public final class PluginSpec {
 
     public List<String> commandArgs() {
         return commandArgs;
+    }
+
+    /**
+     * Whether this job forbids network access — the engine's {@code --offline}, stamped onto the
+     * spec at the fork. True when the spec carries no {@link PluginProtocol#OFFLINE} line: a worker
+     * launched without a stated policy must not reach out.
+     */
+    public boolean offline() {
+        return offline;
     }
 }

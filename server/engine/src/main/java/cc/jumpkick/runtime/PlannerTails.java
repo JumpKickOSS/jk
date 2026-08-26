@@ -2,19 +2,34 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerNative.nativeStep;
+import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
+import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
+import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
+import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
+import static cc.jumpkick.runtime.PlannerSupport.existingContributedDirs;
+import static cc.jumpkick.runtime.PlannerSupport.pluginDeclarationsFor;
+import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
+import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
+import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.compile.AssemblyPackager;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,7 +90,7 @@ public final class PlannerTails {
                 leaves.add(TaskNames.NATIVE_IMAGE);
                 joinStage = BuildStage.NATIVE;
             }
-            if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
+            if (project.project().sourcesMode() == SourcesMode.ALWAYS) {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
             }
@@ -103,7 +118,7 @@ public final class PlannerTails {
                     })
                     .build());
             b.terminal(DELIVER_JOIN);
-        } catch (cc.jumpkick.config.JkBuildParseException | IOException ignored) {
+        } catch (JkBuildParseException | IOException ignored) {
             // Core planning parses the same file and has already reported an unreadable or
             // malformed jk.toml loudly; re-reporting here would double the diagnostic. Anything
             // else must propagate — swallowing it silently dropped -all.jar/-min.jar/native
@@ -190,19 +205,19 @@ public final class PlannerTails {
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock).
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
-                    // Packaging cache: the fat jar is a pure function of the main
-                    // classes, the plugin-contributed dirs merged over them, the bundled
-                    // dependency jars' content, the main-class, and the manifest.
-                    List<String> tokens = List.of(
-                            "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
-                            "contrib:" + contributionsToken(contributed),
-                            "deps:" + cc.jumpkick.task.ClasspathFingerprint.of(depJars),
-                            "main:" + (project.mainClass() == null ? "" : project.mainClass()),
-                            "manifest:" + project.manifest(),
-                            "packaging:fat"); // distinct from shrink / thin package-jar
-                    String shTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
-                    String shKey =
-                            ActionKey.forArtifact(shTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
+                    // Packaging cache: the fat jar's key comes from PackagingKeys, the one body
+                    // the forecast also calls — the `main:` token used to be derived from a
+                    // different source on each side, so a worker module could never forecast
+                    // up-to-date (JK-2480).
+                    PackagingKeys.Keyed keyed = PackagingKeys.assembly(
+                            assemblyJar,
+                            layout.moduleRoot(),
+                            project,
+                            ClasspathFingerprint.entry(classes),
+                            contributionsToken(contributed),
+                            ClasspathFingerprint.of(depJars));
+                    String shTask = keyed.taskId();
+                    String shKey = keyed.key();
                     if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
                         ctx.label(assemblyJar.getFileName() + " up-to-date");
                         ctx.cached();
@@ -223,11 +238,18 @@ public final class PlannerTails {
                                     classes,
                                     depJars,
                                     assemblyJar,
-                                    project.mainClass(),
+                                    PackagingKeys.mainClass(layout.moduleRoot(), project),
                                     assemblyAttrs,
                                     assemblySbom == null ? Map.of() : Map.of(SBOM_JAR_ENTRY, assemblySbom),
                                     0L));
-                    storePackaged(cache, shTask, shKey, tokens, assemblyJar.getParent(), List.of(assemblyJar), persist);
+                    storePackaged(
+                            cache,
+                            shTask,
+                            shKey,
+                            keyed.tokens(),
+                            assemblyJar.getParent(),
+                            List.of(assemblyJar),
+                            persist);
                     ctx.progress(1);
                 })
                 .build();
@@ -263,7 +285,7 @@ public final class PlannerTails {
                             sourceRoots.stream()
                                     .map(r -> {
                                         try {
-                                            return cc.jumpkick.task.ClasspathFingerprint.entry(r);
+                                            return ClasspathFingerprint.entry(r);
                                         } catch (Exception e) {
                                             return "";
                                         }
@@ -271,7 +293,7 @@ public final class PlannerTails {
                                     .toList());
                     List<String> tokens = List.of("sources:" + srcHash);
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_SOURCES, sourcesJar);
-                    String key = ActionKey.forArtifact(task, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
+                    String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(cache, key, sourcesJar.getParent())) {
                         ctx.label(sourcesJar.getFileName() + " up-to-date");
                         ctx.cached();
@@ -279,7 +301,7 @@ public final class PlannerTails {
                         return;
                     }
                     ctx.label("package " + sourcesJar.getFileName());
-                    byte[] bytes = cc.jumpkick.cache.SourcesJar.build(sourceRoots);
+                    byte[] bytes = SourcesJar.build(sourceRoots);
                     Files.createDirectories(sourcesJar.getParent());
                     Files.write(sourcesJar, bytes);
                     storePackaged(cache, task, key, tokens, sourcesJar.getParent(), List.of(sourcesJar), persist);

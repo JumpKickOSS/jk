@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginJarNotFoundException;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -41,7 +42,7 @@ class KotlinPluginSetupTest {
         Path artifact = dir.resolve("repos/jk-local").resolve(M2_PATH);
         Files.createDirectories(artifact.getParent());
         Files.writeString(artifact, "stand-in worker jar");
-        local.writeMemo(M2_PATH, artifact, cc.jumpkick.util.Hashing.sha256Hex(artifact));
+        local.writeMemo(M2_PATH, artifact, Hashing.sha256Hex(artifact));
 
         withoutOverride(() -> assertThat(PluginJar.KOTLIN_COMPILER.locate(cas)).isEqualTo(artifact));
     }

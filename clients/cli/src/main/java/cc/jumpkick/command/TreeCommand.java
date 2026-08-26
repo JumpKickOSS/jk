@@ -2,18 +2,27 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.Badge;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Icon;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.ConfigSources;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -22,6 +31,8 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.resolver.DependencyTreeStyle;
+import cc.jumpkick.terminal.Width;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -78,16 +89,14 @@ public final class TreeCommand implements CliCommand {
                     .filter(s -> !s.isEmpty())
                     .toList();
             if (tokens.isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Tree", "--scopes requires at least one scope (valid: " + validScopes() + ")");
+                CommandWedge.printFail("Tree", "--scopes requires at least one scope (valid: " + validScopes() + ")");
                 return Exit.CONFIG;
             }
             Set<Scope> ordered = new LinkedHashSet<>();
             for (String token : tokens) {
                 List<Scope> expanded = resolveScopeToken(token);
                 if (expanded == null) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail(
-                            "Tree", "invalid scope '" + token + "' (valid: " + validScopes() + ")");
+                    CommandWedge.printFail("Tree", "invalid scope '" + token + "' (valid: " + validScopes() + ")");
                     return Exit.CONFIG;
                 }
                 ordered.addAll(expanded);
@@ -99,26 +108,24 @@ public final class TreeCommand implements CliCommand {
         String moduleSpec = in.positionals().isEmpty() ? null : in.positionals().getFirst();
         TreeDir target = resolveTreeDir(cwd, moduleSpec);
         if (!target.ok()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tree", target.error());
+            CommandWedge.printFail("Tree", target.error());
             return Exit.CONFIG;
         }
         Path dir = target.dir();
         var proj = ProjectContext.require(dir, "tree").orElse(null);
         if (proj == null) return Exit.CONFIG;
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Tree");
+        int lockCode = EnsureFreshLock.ensure(dir, JkDirs.cache(), global, "Tree");
         if (lockCode != 0) return lockCode;
         Path lockFile = proj.lockFile();
         if (!Files.isRegularFile(lockFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Tree",
-                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
-                            + " (lock refresh did not produce one)");
+            CommandWedge.printFail(
+                    "Tree", "no jk-lock.toml in " + PathDisplay.styledRaw(dir) + " (lock refresh did not produce one)");
             return Exit.CONFIG;
         }
 
         int max = maxDepth(transitive, depth);
 
-        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
 
@@ -127,10 +134,9 @@ public final class TreeCommand implements CliCommand {
         List<String> scopeNames = scopes.stream().map(Scope::canonical).toList();
         String tagged;
         try {
-            tagged = cc.jumpkick.cli.engine.EngineClient.treeRender(
-                    cc.jumpkick.engine.EnginePaths.current(), dir, max, flatten, stack, scopeNames);
+            tagged = EngineClient.treeRender(EnginePaths.current(), dir, max, flatten, stack, scopeNames);
         } catch (IOException | RuntimeException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Tree", e.getMessage());
+            CommandWedge.printFail("Tree", e.getMessage());
             return Exit.CONFIG;
         }
         String rendered = DependencyTreeStyle.applyStyling(tagged, styling(nerdFont.pill(), ansi));
@@ -186,7 +192,7 @@ public final class TreeCommand implements CliCommand {
         }
         Path root = workspaceOrProject(project);
         String want = spec.substring(1).trim();
-        var info = BuildCommand.projectInfoOrNull(root);
+        var info = ProjectInfos.orNull(root);
         if (info != null && !info.moduleNames().isEmpty()) {
             return matchColonName(spec, want, root, info.moduleDirs(), info.moduleNames());
         }
@@ -214,19 +220,21 @@ public final class TreeCommand implements CliCommand {
      * ({@code workspace.modules} + each member's {@code name}).
      */
     private static TreeDir matchColonNameBootstrap(Path root, String spec, String want) {
-        List<String> rels =
-                TomlScan.scan(root.resolve("jk.toml"), "workspace.modules").stringArray("workspace.modules");
+        List<String> rels = TomlScan.scan(root.resolve(ManifestPaths.MANIFEST), "workspace.modules")
+                .stringArray("workspace.modules");
         List<String> dirs = new ArrayList<>();
         List<String> names = new ArrayList<>();
         if (rels.isEmpty()) {
             dirs.add(root.toString());
-            String n = TomlScan.scan(root.resolve("jk.toml"), "name").get("name");
+            String n =
+                    TomlScan.scan(root.resolve(ManifestPaths.MANIFEST), "name").get("name");
             names.add(n == null || n.isBlank() ? root.getFileName().toString() : n);
         } else {
             for (String rel : rels) {
                 Path d = root.resolve(rel).toAbsolutePath().normalize();
                 dirs.add(d.toString());
-                String n = TomlScan.scan(d.resolve("jk.toml"), "name").get("name");
+                String n =
+                        TomlScan.scan(d.resolve(ManifestPaths.MANIFEST), "name").get("name");
                 names.add(n == null || n.isBlank() ? d.getFileName().toString() : n);
             }
         }
@@ -246,7 +254,7 @@ public final class TreeCommand implements CliCommand {
         if (Files.exists(relative) && !Files.isDirectory(relative)) {
             return TreeDir.fail("`" + spec + "` is not a directory");
         }
-        if (Files.isDirectory(relative) && !Files.isRegularFile(relative.resolve("jk.toml"))) {
+        if (Files.isDirectory(relative) && !Files.isRegularFile(relative.resolve(ManifestPaths.MANIFEST))) {
             return TreeDir.fail("no jk.toml in " + relative);
         }
         return TreeDir.fail("`" + spec + "` is not a module directory");
@@ -265,7 +273,7 @@ public final class TreeCommand implements CliCommand {
     }
 
     private static boolean isModuleDir(Path dir) {
-        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve("jk.toml"));
+        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST));
     }
 
     record TreeDir(Path dir, String error) {
@@ -301,8 +309,7 @@ public final class TreeCommand implements CliCommand {
     }
 
     private static RichText rootCoord(String rootLine) {
-        String vis = cc.jumpkick.terminal.Width.stripAnsi(rootLine == null ? "" : rootLine)
-                .strip();
+        String vis = Width.stripAnsi(rootLine == null ? "" : rootLine).strip();
         if (vis.startsWith("● ")) vis = vis.substring(2);
         else if (vis.startsWith("* ")) vis = vis.substring(2);
         return boldGav(vis);
@@ -410,7 +417,7 @@ public final class TreeCommand implements CliCommand {
                     asciiRail, plain, plain, plain, asciiReference, asciiBadge, plain, asciiRoot);
         }
         // Scope section badge: a rounded pill (pill axis) or space-padded chip.
-        UnaryOperator<String> scopeBadge = s -> cc.jumpkick.cli.tui.Badge.pill(s, pillCaps);
+        UnaryOperator<String> scopeBadge = s -> Badge.pill(s, pillCaps);
         Theme t = Theme.active();
         // Root-line: ● bullet (dark-gray) + bold coord colors — no pill or background.
         return new DependencyTreeStyle.Styling(

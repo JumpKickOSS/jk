@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.builds.DeclaredDeps;
+import cc.jumpkick.builds.DepFrequency;
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,23 +51,22 @@ public final class LockfileWriter {
             if (existing != null && !existing.isBlank()) {
                 stamped = stamped.withProjectId(existing);
             } else {
-                stamped = cc.jumpkick.builds.ProjectIdentity.ensureProjectId(stamped, owner);
+                stamped = ProjectIdentity.ensureProjectId(stamped, owner);
             }
         }
         // Atomic (temp + rename): concurrent readers never observe a truncated lock.
-        cc.jumpkick.util.AtomicWrites.replace(file, render(stamped));
+        AtomicWrites.replace(file, render(stamped));
         // Materialize identity.toml so project= id resolves to a checkout without a prior build.
         try {
             LockfileReader.clearCache();
-            cc.jumpkick.builds.ProjectIdentity identity = cc.jumpkick.builds.ProjectIdentity.resolve(owner);
-            Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(
-                    cc.jumpkick.builds.ProjectBuilds.buildsRoot(), identity);
-            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(home, identity);
+            ProjectIdentity identity = ProjectIdentity.resolve(owner);
+            Path home = ProjectBuilds.projectHome(ProjectBuilds.buildsRoot(), identity);
+            ProjectIdentity.IdentityFile.write(home, identity);
             // Host declared-dep frequency for the New wizard library picker.
             try {
                 String id = identity.id();
-                Set<String> deps = cc.jumpkick.builds.DeclaredDeps.collect(owner);
-                cc.jumpkick.builds.DepFrequency.load().observe(id, deps).save();
+                Set<String> deps = DeclaredDeps.collect(owner);
+                DepFrequency.load().observe(id, deps).save();
             } catch (Exception ignoredFreq) {
                 // never fail the lock write over frequency tracking
             }
@@ -86,9 +90,6 @@ public final class LockfileWriter {
         out.append("resolution-algorithm = ")
                 .append(quote(lockfile.resolutionAlgorithm()))
                 .append('\n');
-        if (lockfile.jdk() != null) {
-            out.append("jdk = ").append(quote(lockfile.jdk())).append('\n');
-        }
         if (lockfile.kotlin() != null) {
             out.append("kotlin = ").append(quote(lockfile.kotlin())).append('\n');
         }
@@ -105,6 +106,28 @@ public final class LockfileWriter {
         }
         if (lockfile.projectId() != null && !lockfile.projectId().isBlank()) {
             out.append("project-id = ").append(quote(lockfile.projectId())).append('\n');
+        }
+        // Tables after top-level scalars: opening one would swallow any key written after it.
+        // The [[artifact]] rows below close whatever table is open.
+        Lockfile.JdkPin jdk = lockfile.jdk();
+        if (jdk != null) {
+            out.append("\n[jdk]\n");
+            out.append("vendor  = ").append(quote(jdk.vendor())).append('\n');
+            out.append("version = ").append(quote(jdk.version())).append('\n');
+        }
+        Lockfile.GraalPin graal = lockfile.graal();
+        if (graal != null) {
+            out.append("\n[graal]\n");
+            out.append("vendor  = ").append(quote(graal.vendor())).append('\n');
+            out.append("version = ").append(quote(graal.version())).append('\n');
+        }
+        Lockfile.NativeMetadata pin = lockfile.nativeMetadata();
+        if (pin != null) {
+            out.append("\n[native]\n");
+            out.append("metadata-repository = ").append(quote(pin.version())).append('\n');
+            if (pin.checksum() != null && !pin.checksum().isBlank()) {
+                out.append("checksum = ").append(quote(pin.checksum())).append('\n');
+            }
         }
 
         List<Lockfile.Artifact> sorted = new ArrayList<>(lockfile.artifacts());
@@ -186,9 +209,6 @@ public final class LockfileWriter {
             out.append("group   = ").append(quote(m.group())).append('\n');
             out.append("name    = ").append(quote(m.name())).append('\n');
             out.append("version = ").append(quote(m.version())).append('\n');
-            if (m.jdk() != null && !m.jdk().isBlank()) {
-                out.append("jdk     = ").append(quote(m.jdk())).append('\n');
-            }
             if (m.java() != null && m.java() > 0) {
                 out.append("java    = ").append(m.java()).append('\n');
             }

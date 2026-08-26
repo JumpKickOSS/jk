@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -132,8 +133,8 @@ public final class Giter8Catalog {
     static boolean singleTemplateMatches(Path clone, String gitRef, String shortName) {
         Optional<String> propName = Giter8Apply.defaultName(clone);
         if (propName.isPresent() && shortName.equalsIgnoreCase(propName.get())) return true;
-        String ref = gitRef == null ? "" : gitRef.toLowerCase(java.util.Locale.ROOT);
-        String sn = shortName.toLowerCase(java.util.Locale.ROOT);
+        String ref = gitRef == null ? "" : gitRef.toLowerCase(Locale.ROOT);
+        String sn = shortName.toLowerCase(Locale.ROOT);
         return ref.contains("/" + sn) || ref.contains("/" + sn + ".g8") || ref.contains("/" + sn + ".git");
     }
 

@@ -2,14 +2,25 @@
 package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Root-level {@code nerd-font} reading from ~/.config/jk/config.toml, leniently. */
+/**
+ * Root-level {@code nerd-font} reading from ~/.config/jk/config.toml, leniently, plus the
+ * {@code [repositories]} layer this file shares with the project manifest.
+ */
 class GlobalConfigTest {
 
     // Precedence is asserted through nerdFontMode, which is pure. nerdFont() resolves "auto" against
@@ -106,6 +117,51 @@ class GlobalConfigTest {
         return GlobalConfig.nerdFontMode(configFile, null, null);
     }
 
+    // ───────────────────────────────────────────────────────────────
+    // The no-ANSI gate: one owner, two predicates
+
+    private static Function<String, String> env(String... pairs) {
+        Map<String, String> m = new HashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) m.put(pairs[i], pairs[i + 1]);
+        return m::get;
+    }
+
+    @Test
+    void ansi_suppressed_is_the_bare_trigger_triple() {
+        JkConfig plain = JkConfig.empty();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env())).isFalse();
+        assertThat(GlobalConfig.ansiSuppressed(plain.withNoAnsi(true), env())).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("TERM", "dumb"))).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("TERM", "xterm-256color")))
+                .isFalse();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("CI", "true"))).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("CI", "1"))).isTrue();
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("CI", "false"))).isFalse();
+        // NO_COLOR and --color never do NOT suppress ANSI — they only disable color.
+        assertThat(GlobalConfig.ansiSuppressed(plain, env("NO_COLOR", "1"))).isFalse();
+        assertThat(GlobalConfig.ansiSuppressed(plain.withColor(JkConfig.ColorChoice.NEVER), env()))
+                .isFalse();
+    }
+
+    @Test
+    void color_enabled_is_the_triple_plus_the_color_choice() {
+        JkConfig plain = JkConfig.empty();
+        // The triple wins outright, even over --color always.
+        assertThat(GlobalConfig.colorEnabled(plain.withNoAnsi(true), env())).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env("TERM", "dumb"))).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env("CI", "true"))).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain.withColor(JkConfig.ColorChoice.ALWAYS), env("CI", "1")))
+                .isFalse();
+        // Then the choice: ALWAYS ignores NO_COLOR, NEVER ignores its absence, AUTO honors it.
+        assertThat(GlobalConfig.colorEnabled(plain.withColor(JkConfig.ColorChoice.ALWAYS), env("NO_COLOR", "1")))
+                .isTrue();
+        assertThat(GlobalConfig.colorEnabled(plain.withColor(JkConfig.ColorChoice.NEVER), env()))
+                .isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env())).isTrue();
+        assertThat(GlobalConfig.colorEnabled(plain, env("NO_COLOR", "1"))).isFalse();
+        assertThat(GlobalConfig.colorEnabled(plain, env("NO_COLOR", ""))).isTrue();
+    }
+
     @Test
     void reads_toolchain_engine_jdk_pin(@TempDir Path dir) throws IOException {
         Path cfg = write(dir, "[toolchain]\njdk = \"temurin-25\"\n");
@@ -131,5 +187,127 @@ class GlobalConfigTest {
         Path f = Files.createTempFile(dir, "config", ".toml");
         Files.writeString(f, content);
         return f;
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // [repositories]: one reader, two policies
+    // ───────────────────────────────────────────────────────────────
+
+    /**
+     * The user-config layer and the project manifest read the same table with the same reader
+     * ({@link RepositoryToml#repositories}), differing only in {@link RepositoryToml.OnBad}. The
+     * same text therefore yields the same {@link RepositorySpec} on both sides.
+     */
+    @Test
+    void a_well_formed_table_reads_identically_in_both_layers(@TempDir Path dir) throws IOException {
+        String table = """
+                [repositories.internal]
+                url = "https://nexus.example.com/repo"
+                groups = ["com.acme", "com.acme.*"]
+                """;
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, table);
+        List<RepositorySpec> global = GlobalConfig.repositories(config);
+        List<RepositorySpec> project =
+                JkBuildParser.parse("name = \"demo\"\n" + table).repositories();
+
+        // Pinned to the declared values, not merely to each other: two readers that both went
+        // blank would compare equal and prove nothing.
+        assertThat(global).hasSize(1);
+        assertThat(global.getFirst().name()).isEqualTo("internal");
+        assertThat(global.getFirst().url()).hasToString("https://nexus.example.com/repo");
+        assertThat(global.getFirst().groups()).containsExactly("com.acme", "com.acme.*");
+        assertThat(project.getFirst().name()).isEqualTo(global.getFirst().name());
+        assertThat(project.getFirst().url()).isEqualTo(global.getFirst().url());
+        assertThat(project.getFirst().groups()).isEqualTo(global.getFirst().groups());
+    }
+
+    /**
+     * Where they differ is the policy and nothing else: a manifest that lies fails the build; the
+     * machine-local file drops the entry and carries on.
+     */
+    @Test
+    void a_malformed_entry_is_rejected_by_the_manifest_and_skipped_by_the_user_config(@TempDir Path dir)
+            throws IOException {
+        String table = """
+                [repositories.good]
+                url = "https://ok.example.com/repo"
+
+                [repositories.bad]
+                groups = ["com.acme"]
+                """;
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, table);
+        assertThat(GlobalConfig.repositories(config))
+                .extracting(RepositorySpec::name)
+                .containsExactly("good");
+
+        assertThatThrownBy(() -> JkBuildParser.parse("name = \"demo\"\n" + table))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.bad");
+    }
+
+    /** {@code jk-local} is the first-party install store: reserved in a manifest, ignored globally. */
+    @Test
+    void the_reserved_name_is_rejected_by_the_manifest_and_skipped_by_the_user_config(@TempDir Path dir)
+            throws IOException {
+        String table = "[repositories]\njk-local = \"https://elsewhere.example.com/\"\n";
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, table);
+        assertThat(GlobalConfig.repositories(config)).isEmpty();
+        assertThatThrownBy(() -> JkBuildParser.parse("name = \"demo\"\n" + table))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jk-local");
+    }
+
+    /**
+     * The two {@code ${VAR}} policies, from one {@link RepositoryToml.VarPolicy}. The user layer is
+     * lenient — an unset variable stays literal rather than failing a build — while the manifest
+     * defers expansion entirely, so a parsed manifest never carries a secret.
+     */
+    @Test
+    void unset_variables_are_left_literal_in_the_user_layer(@TempDir Path dir) throws IOException {
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, """
+                [repositories.internal]
+                url = "https://nexus.example.com/repo"
+                token = "${JK_TEST_DEFINITELY_UNSET_TOKEN}"
+                """);
+        // Read through secret(), not toString(): a credential no longer prints what it holds.
+        assertThat(GlobalConfig.repositories(config).getFirst().credential())
+                .get()
+                .extracting(c -> ((RepoCredential) c).secret())
+                .isEqualTo("${JK_TEST_DEFINITELY_UNSET_TOKEN}");
+
+        var manifest = JkBuildParser.parse("""
+                name = "demo"
+                [repositories.internal]
+                url = "https://nexus.example.com/repo"
+                token = "${JK_TEST_DEFINITELY_UNSET_TOKEN}"
+                """);
+        assertThat(manifest.repositories().getFirst().credential())
+                .get()
+                .extracting(c -> ((RepoCredential) c).secret())
+                .isEqualTo("${JK_TEST_DEFINITELY_UNSET_TOKEN}");
+    }
+
+    /**
+     * The owner's policies against an injected environment — the build path resolves the layered
+     * request env ({@code .env} under shell), so neither STRICT nor LENIENT may be welded to
+     * {@code System.getenv}.
+     */
+    @Test
+    void interpolate_resolves_against_an_injected_environment() {
+        UnaryOperator<String> env = var -> "TOKEN".equals(var) ? "s3cr3t" : null;
+        assertThat(RepositoryToml.interpolate(
+                        "x-${TOKEN}-y", RepositoryToml.VarPolicy.STRICT, "repositories.corp", env))
+                .isEqualTo("x-s3cr3t-y");
+        assertThat(RepositoryToml.interpolate("${UNSET}", RepositoryToml.VarPolicy.LENIENT, "repositories.corp", env))
+                .isEqualTo("${UNSET}");
+        assertThatThrownBy(() -> RepositoryToml.interpolate(
+                        "${UNSET}", RepositoryToml.VarPolicy.STRICT, "repositories.corp", env))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.corp")
+                .hasMessageContaining("${UNSET}");
     }
 }

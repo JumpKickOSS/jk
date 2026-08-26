@@ -29,10 +29,6 @@ public interface HostedVerb {
 
     String threadPrefix();
 
-    default VerbRequest decode(VerbInput in) {
-        return new VerbRequest(wireType(), jobKind().verb(), in.requestLine());
-    }
-
     /** HTTP/MCP job kinds this verb serves ({@code build}, {@code assemble}, …); empty = not exposed. */
     default List<String> jobKinds() {
         return List.of();
@@ -50,10 +46,9 @@ public interface HostedVerb {
 
     /**
      * {@code writer} is {@code null} for a detached (HTTP/MCP) job — sinks and hooks still run.
-     * A job verb returns its {@link cc.jumpkick.engine.jobs.JobOutcome}; the envelope stamps it
-     * (the one success law). Sync reads return {@code null}.
+     * A job verb returns its {@link JobOutcome} and the envelope stamps it (the one success law).
+     * An inline read journals nothing, so it returns {@link JobOutcome#declined()}.
      */
-    @Nullable
     JobOutcome run(String requestLine, Session.CancelToken cancel, @Nullable BufferedWriter writer);
 
     /** The submission for one decoded request; the line may refine the kind (workspace test). */

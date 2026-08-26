@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.config.RepositoryToml;
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeIdentity;
@@ -70,8 +71,19 @@ public final class RepoCredentialResolver {
      * Resolve credentials for the repository named {@code repoId} at {@code url}. {@code inline} is
      * the credential declared inline in {@code jk.toml} (empty when none / not yet parsed). Never
      * returns null; falls back to {@link RepoCredential#ANONYMOUS}.
+     *
+     * <p>Whatever it returns is also filed with {@link ResolvedSecrets}. This is the one funnel all
+     * five sources pass through and the only place in jk that holds the value before anything can
+     * print it, so it is where the redactor gets told. Nothing here inspects a name to decide
+     * secrecy — the value is secret because this method just resolved it as a credential.
      */
     public RepoCredential resolve(String repoId, URI url, Optional<RepoCredential> inline) {
+        RepoCredential credential = select(repoId, url, inline);
+        ResolvedSecrets.record(credential.secret());
+        return credential;
+    }
+
+    private RepoCredential select(String repoId, URI url, Optional<RepoCredential> inline) {
         // 1. inline jk.toml — expanding ${VAR} here rather than at parse time, because this
         // is where the request's environment is in scope. Doing it during the parse made the parse
         // environment-dependent, so a memoized result served the first caller's values to everyone,
@@ -105,8 +117,17 @@ public final class RepoCredentialResolver {
         return RepoCredential.ANONYMOUS;
     }
 
+    /**
+     * The environment-variable prefix this resolver reads for {@code repoId}, so a diagnostic can
+     * spell {@code JK_REPO_<ID>_TOKEN} the way the lookup actually spells it rather than guessing
+     * at the sanitization.
+     */
+    public static String envVarPrefix(String repoId) {
+        return "JK_REPO_" + sanitizeEnv(repoId) + "_";
+    }
+
     private Optional<RepoCredential> fromEnv(String repoId) {
-        String prefix = "JK_REPO_" + sanitizeEnv(repoId) + "_";
+        String prefix = envVarPrefix(repoId);
         String token = nonBlank(env.apply(prefix + "TOKEN"));
         if (token != null) return Optional.of(new RepoCredential.Bearer(token));
         String username = nonBlank(env.apply(prefix + "USERNAME"));

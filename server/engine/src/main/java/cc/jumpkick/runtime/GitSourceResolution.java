@@ -151,20 +151,7 @@ public final class GitSourceResolution {
                 out.add(p);
             }
         }
-        return new Lockfile(
-                lock.version(),
-                lock.generatedBy(),
-                lock.resolutionAlgorithm(),
-                lock.jdk(),
-                lock.kotlin(),
-                lock.scala(),
-                out,
-                lock.plugins(),
-                lock.sdk(),
-                lock.modules(),
-                lock.jkMin(),
-                lock.manifestsSha256(),
-                lock.projectId());
+        return lock.withArtifacts(out);
     }
 
     private static String ga(String nameOrKey) {

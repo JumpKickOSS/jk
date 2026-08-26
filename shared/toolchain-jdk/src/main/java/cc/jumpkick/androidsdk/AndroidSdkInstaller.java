@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -128,7 +129,11 @@ public final class AndroidSdkInstaller {
         return sdk;
     }
 
-    /** Download the archive next to the SDK root, verifying its sha1 as it streams. */
+    /**
+     * Download the archive next to the SDK root, verifying its sha1 as it streams. SHA-1 is what
+     * Google's repository feed advertises for each archive, so the feed's format names the
+     * algorithm — jk's own content hashing never does.
+     */
     private Path download(AndroidRepoFeed.Archive archive) throws IOException, InterruptedException {
         Path downloads = Files.createDirectories(sdk.root().resolve(".downloads"));
         Path target = Files.createTempFile(downloads, "jk-sdk-", ".zip");
@@ -139,11 +144,11 @@ public final class AndroidSdkInstaller {
             Files.deleteIfExists(target);
             throw new IOException("Android SDK download " + uri + " returned " + response.statusCode());
         }
-        MessageDigest sha1 = sha1();
+        MessageDigest sha1 = Hashing.newDigest("SHA-1");
         try (DigestInputStream in = new DigestInputStream(response.body(), sha1)) {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
-        String actual = hex(sha1.digest());
+        String actual = Hashing.hex(sha1.digest());
         if (!actual.equalsIgnoreCase(archive.sha1())) {
             Files.deleteIfExists(target);
             throw new IOException("Android SDK download " + uri + " checksum mismatch: expected " + archive.sha1()
@@ -203,14 +208,6 @@ public final class AndroidSdkInstaller {
     }
 
     private static void deleteRecursively(Path root) {
-        cc.jumpkick.util.PathUtil.deleteRecursively(root);
-    }
-
-    private static MessageDigest sha1() {
-        return Hashing.newDigest("SHA-1");
-    }
-
-    private static String hex(byte[] digest) {
-        return Hashing.hex(digest);
+        PathUtil.deleteRecursively(root);
     }
 }

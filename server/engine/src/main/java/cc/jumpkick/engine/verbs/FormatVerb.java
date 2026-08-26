@@ -1,11 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.FormatStyles;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.FormatPlans;
+import cc.jumpkick.runtime.FormatWorker;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
@@ -44,37 +57,34 @@ public final class FormatVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+    public String decodeJob(JobSpec spec) {
         Path entryDir = Path.of(spec.dir());
-        cc.jumpkick.model.JkBuild entry;
+        JkBuild entry;
         try {
-            entry = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
             throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
         }
         // Same style/hygiene precedence as `jk format` without CLI flags: the entry [format]
         // table, then the built-in defaults — one verb, one result across entry points.
-        cc.jumpkick.config.FormatStyles.Resolved styles =
-                cc.jumpkick.config.FormatStyles.resolve(null, null, null, null, null, null, entry.format());
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.formatRequest(
+        FormatStyles.Resolved styles = FormatStyles.resolve(null, null, null, null, null, null, entry.format());
+        return ProtoSession.withTrigger(
+                ProtoJobs.formatRequest(
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        JkDirs.cache().toString(),
                         false,
                         styles.java(),
                         styles.kotlin(),
                         styles.optimizeImports(),
                         styles.importOrder(),
                         styles.removeUnusedImports(),
-                        null,
                         false,
                         false),
                 "web");
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean check = Jsonl.bool(requestLine, "check", false);
@@ -83,10 +93,9 @@ public final class FormatVerb implements HostedVerb {
                 boolean optimizeImports = Jsonl.bool(requestLine, "optimizeImports", true);
                 boolean importOrder = Jsonl.bool(requestLine, "importOrder", true);
                 boolean removeUnusedImports = Jsonl.bool(requestLine, "removeUnusedImports", true);
-                String rewriteConfig = Jsonl.str(requestLine, "rewriteConfig");
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.FormatPlans.formatBuildPlan(
+                BuildPlan plan = FormatPlans.formatBuildPlan(
                         session.workingDir(),
                         session.cacheDir(),
                         check,
@@ -95,30 +104,29 @@ public final class FormatVerb implements HostedVerb {
                         optimizeImports,
                         importOrder,
                         removeUnusedImports,
-                        rewriteConfig != null ? Path.of(rewriteConfig) : null,
                         (path, status, message, index, total) -> host.sendQuiet(
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
-                host.streamSinglePlan(
+                // `result.success()` is the run's verdict on every surface — this event, the journal
+                // row PlanBurst stamps from it, and the CLI's wedge. It is false when the worker
+                // died mid-run (FormatWorker.reconcile), so a partial format is never reported as a
+                // complete one. The changed/clean/errors tallies stay off the wire: the CLI tallies
+                // all five summary categories from the per-file format-file stream.
+                return host.streamSinglePlan(
                         plan,
                         session,
                         writer,
                         result -> ProtoEvents.planFinishFormat(
                                 dir,
                                 result.success(),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.CHANGED)
-                                        .orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.CLEAN).orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.ERRORS).orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.TOTAL).orElse(-1),
-                                plan.get(cc.jumpkick.runtime.FormatPlans.WORKER_EXIT)
-                                        .orElse(-1)));
+                                plan.get(FormatWorker.TOTAL).orElse(-1),
+                                plan.get(FormatWorker.WORKER_EXIT).orElse(-1)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

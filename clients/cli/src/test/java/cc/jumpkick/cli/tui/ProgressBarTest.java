@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -16,7 +17,7 @@ class ProgressBarTest {
     void renders_blocks_then_spaces_then_percent_without_a_count() {
         String visible = TestAnsi.strip(new ProgressBar().render(45, 100));
         // 45% → 0.45 * 40 = 18.0 whole cells, no fraction, 22 unreached.
-        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (Theme.active().isAnsi()) {
             assertThat(visible).startsWith("█".repeat(18) + " ".repeat(22));
         } else {
             // Plain / CI: ASCII #/-
@@ -31,7 +32,7 @@ class ProgressBarTest {
     void fractional_frontier_uses_an_eighth_block() {
         // 2% → 0.8 of a cell → round(0.8*8)=6 eighths → ▊ (¾ block) as the first cell.
         String visible = TestAnsi.strip(new ProgressBar().render(2, 100));
-        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (Theme.active().isAnsi()) {
             assertThat(visible).startsWith("▊");
             assertThat(visible).doesNotContain("█"); // no whole cell yet
         } else {
@@ -45,7 +46,7 @@ class ProgressBarTest {
     void zero_is_all_spaces_and_full_is_all_blocks() {
         String zero = TestAnsi.strip(new ProgressBar().render(0, 100));
         String full = TestAnsi.strip(new ProgressBar().render(100, 100));
-        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (Theme.active().isAnsi()) {
             assertThat(zero).startsWith(" ".repeat(40)).contains("0%").doesNotContain("█");
             assertThat(full).startsWith("█".repeat(40)).contains("100%");
         } else {
@@ -58,7 +59,7 @@ class ProgressBarTest {
     void every_cell_is_underlined_including_the_unreached_spaces() {
         // 0% → 40 underlined spaces in the gradient's brightest (right-most) color.
         String line = new ProgressBar().render(0, 100);
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             // Plain: no SGR, just empty dashes.
             assertThat(TestAnsi.strip(line)).startsWith("-".repeat(40));
             return;
@@ -79,7 +80,7 @@ class ProgressBarTest {
 
     @Test
     void moving_gradient_pins_the_frontier_to_the_bright_end() {
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (!Theme.active().isAnsi()) {
             // Plain mode has no per-cell gradient SGR.
             return;
         }

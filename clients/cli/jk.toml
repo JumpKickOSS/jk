@@ -5,11 +5,12 @@ description = "The CLI (and primary) client for interacting with the JumpKick bu
 main = "cc.jumpkick.cli.Jk"
 
 [dependencies]
+jk-model.workspace = true
 jk-core.workspace = true
 jk-client-io.workspace = true
 jk-toolchain-jdk.workspace = true
 jk-engine-api.workspace = true
-jk-jsonl.workspace = true
+jk-host.workspace = true
 jk-cli-terminal.workspace = true
 
 [provided-dependencies]
@@ -20,10 +21,20 @@ lombok = "latest"
 lombok = "latest"
 
 [test-dependencies]
+# `kind = "tests"` reaches jk-host's test classes — where its `[test] extra-src`
+# fixtures compile. Direct edge only, and never in a main jar.
+jk-host = { workspace = true, kind = "tests" }
+# Same shape for jk-core: its testFixtures hold SessionBoundary, the process-static session
+# boundary this suite is bounded by (JK-1010). Test classpath only, never in a main jar.
+jk-core = { workspace = true, kind = "tests" }
 jk-engine.workspace = true
 assertj-core = "latest"
 junit-jupiter = "latest"
 bcpg-jdk18on = "latest"
+# JkWireModel (see [test] extra-src below) imports org.jetbrains.annotations because the
+# IntelliJ platform API does. Gradle spells this testCompileOnly; jk has no test-provided
+# scope, and an annotations-only jar on the test runtime classpath costs nothing.
+annotations = { group = "org.jetbrains", name = "annotations", version = "latest" }
 
 [image]
 main-class = "cc.jumpkick.cli.Jk"
@@ -42,6 +53,12 @@ args = [
 ]
 
 [test]
+# One file out of the IntelliJ plugin's package, single-sourced from the plugin's own tree: the
+# wire parser needs no platform SDK (java.util + regex + org.jetbrains.annotations), while its
+# five neighbours do — so this names the file, not the directory. Compiling it here puts the
+# parallel-array alignment and null-vs-empty rules in-gate, which G22 arm 4 can only approximate
+# textually. Gradle does the same thing by Sync-ing the file into a generated source dir.
+extra-src = ["../intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"]
 # Nested engines / shared sockets: integration classes materialize the resident engine and
 # share its JK_HOME store, so they stay on one serial trailing worker (serial-tags) while
 # the hermetic unit tier shards across workers (auto). History: the old blanket

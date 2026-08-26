@@ -2,7 +2,9 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.builds.ProjectIdentity;
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -195,7 +197,7 @@ final class WorkspaceFileAccess {
     }
 
     static boolean isModuleRoot(Path dir) {
-        return Files.isRegularFile(dir.resolve("jk.toml"))
+        return Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))
                 || Files.isRegularFile(dir.resolve("pom.xml"))
                 || Files.isRegularFile(dir.resolve("build.gradle"))
                 || Files.isRegularFile(dir.resolve("build.gradle.kts"));
@@ -254,8 +256,8 @@ final class WorkspaceFileAccess {
         }
         List<ListedFile> collected = new ArrayList<>();
         List<ListedFile> outputFiles = new ArrayList<>();
-        boolean rootManifest = containedRegularFile(absRoot.resolve("jk.toml"), realRoot);
-        if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
+        boolean rootManifest = containedRegularFile(absRoot.resolve(ManifestPaths.MANIFEST), realRoot);
+        if (rootManifest) collected.add(new ListedFile(ManifestPaths.MANIFEST, langOf(ManifestPaths.MANIFEST)));
         boolean truncated = false;
         // Output overflow must not stop the walk — sources found later still list.
         boolean outputOverflow = false;
@@ -303,7 +305,7 @@ final class WorkspaceFileAccess {
                             }
                         }
                         String posix = absRoot.relativize(entry).toString().replace('\\', '/');
-                        if (rootManifest && posix.equals("jk.toml")) continue; // pre-seeded
+                        if (rootManifest && posix.equals(ManifestPaths.MANIFEST)) continue; // pre-seeded
                         if (dir.output()) {
                             // Overflow past the cap can never be listed — drop, and flag.
                             if (outputFiles.size() < MAX_LIST_FILES) {
@@ -344,7 +346,7 @@ final class WorkspaceFileAccess {
      */
     private static boolean isTargetOutputDir(Path dir) {
         Path name = dir.getFileName();
-        if (name == null || !name.toString().equals("target")) return false;
+        if (name == null || !name.toString().equals(BuildLayout.TARGET)) return false;
         Path parent = dir.getParent();
         if (parent == null) return false;
         return isModuleRoot(parent) && !isModuleRoot(dir);

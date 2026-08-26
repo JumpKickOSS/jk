@@ -7,6 +7,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.ConfigSources;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -94,7 +95,7 @@ public final class ResultsCommand implements CliCommand {
         Optional<Path> journal = ProjectBuilds.latestRunFile(buildsRoot, projectDir, name);
         if (journal.isPresent()) return journal;
         if (!details) {
-            Path latest = projectDir.resolve("target").resolve(ProjectBuilds.RESULTS);
+            Path latest = projectDir.resolve(BuildLayout.TARGET).resolve(ProjectBuilds.RESULTS);
             if (Files.isRegularFile(latest)) return Optional.of(latest);
         }
         return Optional.empty();

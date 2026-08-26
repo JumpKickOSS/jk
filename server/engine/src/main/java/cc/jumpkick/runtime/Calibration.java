@@ -1,32 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.tomlj.Toml;
-import org.tomlj.TomlParseResult;
+import lombok.AccessLevel;
+import lombok.Builder;
 
 /**
  * Machine-scoped cold ETA priors + continuous host learning).
  *
  * <p><b>Bootstrap:</b> {@link #ensure} runs a multi-phase {@link HardwareProbe} when no usable
- * {@code ~/.local/state/jk/builds/calibration.toml} exists (or on {@code --force}). Network probes
+ * {@code ~/.local/state/jk/builds/host-metrics.toml} exists (or on {@code --force}). Network probes
  * (JUnit jar fetch + resolve micro-GET) are <strong>on by default</strong>; opt out with global
  * {@code --offline}.
  *
@@ -152,6 +153,7 @@ public final class Calibration {
     private final long probeCompilePerSourceMs;
     private final HostLearnedRates learned;
 
+    @Builder(toBuilder = true, access = AccessLevel.PACKAGE)
     private Calibration(
             double msPerWeight,
             long jvmForkMs,
@@ -203,6 +205,11 @@ public final class Calibration {
 
     public double msPerWeight() {
         return msPerWeight > 0 ? msPerWeight : EffortWeights.MS_PER_WEIGHT;
+    }
+
+    /** The stored anchor without the uncalibrated fallback — what {@link HostMetricsFile} writes. */
+    double msPerWeightRaw() {
+        return msPerWeight;
     }
 
     public boolean present() {
@@ -339,9 +346,9 @@ public final class Calibration {
     public long compilePerSourceMs(String step) {
         String key =
                 switch (step == null ? "" : step) {
-                    case "compile-kotlin" -> HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS;
-                    case "compile-groovy" -> HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS;
-                    case "compile-test" -> HostLearnedRates.COMPILE_TEST_PER_SOURCE_MS;
+                    case TaskNames.COMPILE_KOTLIN -> HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS;
+                    case TaskNames.COMPILE_GROOVY -> HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS;
+                    case TaskNames.COMPILE_TEST -> HostLearnedRates.COMPILE_TEST_PER_SOURCE_MS;
                     default -> HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS;
                 };
         OptionalDouble learned = this.learned.meanMs(key);
@@ -409,16 +416,16 @@ public final class Calibration {
         int n = Math.max(0, count);
         int w = coldTestParallel(testWorkers);
         return switch (s) {
-            case "run-tests" -> {
+            case TaskNames.RUN_TESTS -> {
                 long body = (long) n * testMethodMs();
                 yield testSuiteStartupMs() + Math.max(0, (body + w - 1) / w);
             }
-            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" ->
+            case TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY, TaskNames.COMPILE_TEST ->
                 compilePerSourceMs(s) * Math.max(1, n);
-            case "package-jar" -> packageJarMs();
-            case "package-assembly" -> packageAssemblyMs();
-            case "native-image" -> nativeImageMs();
-            case "write-image" -> ociImageMs();
+            case TaskNames.PACKAGE_JAR -> packageJarMs();
+            case TaskNames.PACKAGE_ASSEMBLY -> packageAssemblyMs();
+            case TaskNames.NATIVE_IMAGE -> nativeImageMs();
+            case TaskNames.WRITE_IMAGE -> ociImageMs();
             default -> 0L;
         };
     }
@@ -496,30 +503,7 @@ public final class Calibration {
 
     /** Test seam: construct an instance directly (bypasses the probe/IO). */
     static Calibration testInstance(double msPerWeight, boolean measured, String version, long updated) {
-        return new Calibration(
-                msPerWeight,
-                10,
-                20,
-                5,
-                8,
-                15,
-                40,
-                0,
-                0,
-                0,
-                1.5,
-                8,
-                "jdk-x",
-                version,
-                updated,
-                measured,
-                false,
-                false,
-                SCHEMA,
-                100,
-                15,
-                2,
-                new HostLearnedRates());
+        return testInstance(msPerWeight, measured, version, updated, new HostLearnedRates(), 100, 15, 2);
     }
 
     /** Test seam with explicit learned rates. */
@@ -532,148 +516,42 @@ public final class Calibration {
             long probeStartup,
             long probeMethod,
             long probeCompile) {
-        return new Calibration(
-                msPerWeight,
-                10,
-                20,
-                5,
-                8,
-                15,
-                40,
-                0,
-                0,
-                0,
-                1.5,
-                8,
-                "jdk-x",
-                version,
-                updated,
-                measured,
-                false,
-                false,
-                SCHEMA,
-                probeStartup,
-                probeMethod,
-                probeCompile,
-                learned);
+        return builder()
+                .msPerWeight(msPerWeight)
+                .jvmForkMs(10)
+                .javacMs(20)
+                .diskIoMs(5)
+                .hashCpuMs(8)
+                .junitForkMs(15)
+                .junitRunMs(40)
+                .loadAtCalibration(1.5)
+                .cores(8)
+                .jdk("jdk-x")
+                .jkVersion(version)
+                .updated(updated)
+                .measured(measured)
+                .schema(SCHEMA)
+                .probeTestSuiteStartupMs(probeStartup)
+                .probeTestMethodMs(probeMethod)
+                .probeCompilePerSourceMs(probeCompile)
+                .learned(learned)
+                .build();
     }
 
     public Calibration withEngineColdStartMs(long coldMs) {
-        long c = Math.max(0, coldMs);
-        return copy(
-                msPerWeight,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                c,
-                loadAtCalibration,
-                cores,
-                jdk,
-                jkVersion,
-                updated,
-                measured,
-                junitPlatformUsed,
-                resolveUsed,
-                schema,
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                learned);
+        return toBuilder().engineColdStartMs(Math.max(0, coldMs)).build();
     }
 
     private Calibration withLearned(HostLearnedRates next) {
-        return copy(
-                msPerWeight,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                engineColdStartMs,
-                loadAtCalibration,
-                cores,
-                jdk,
-                jkVersion,
-                updated,
-                measured,
-                junitPlatformUsed,
-                resolveUsed,
-                Math.max(schema, SCHEMA),
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                next);
-    }
-
-    private static Calibration copy(
-            double msPerWeight,
-            long jvmForkMs,
-            long javacMs,
-            long diskIoMs,
-            long hashCpuMs,
-            long junitForkMs,
-            long junitRunMs,
-            long junitPlatformMs,
-            long resolveMs,
-            long engineColdStartMs,
-            double loadAtCalibration,
-            int cores,
-            String jdk,
-            String jkVersion,
-            long updated,
-            boolean measured,
-            boolean junitPlatformUsed,
-            boolean resolveUsed,
-            int schema,
-            long probeTestSuiteStartupMs,
-            long probeTestMethodMs,
-            long probeCompilePerSourceMs,
-            HostLearnedRates learned) {
-        return new Calibration(
-                msPerWeight,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                engineColdStartMs,
-                loadAtCalibration,
-                cores,
-                jdk,
-                jkVersion,
-                updated,
-                measured,
-                junitPlatformUsed,
-                resolveUsed,
-                schema,
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                learned);
+        return toBuilder().schema(Math.max(schema, SCHEMA)).learned(next).build();
     }
 
     // --- load / ensure -------------------------------------------------------
 
-    /** Host metrics file (probe + continuous means). Formerly {@code calibration.toml}. */
-    static Path file() {
-        return JkDirs.builds().resolve("host-metrics.toml");
-    }
-
     public static Calibration load() {
         Calibration cached = MEMO.get();
         if (cached != null) return cached;
-        Calibration read = readOrAbsent();
+        Calibration read = HostMetricsFile.readOrAbsent(System.currentTimeMillis());
         MEMO.set(read);
         return read;
     }
@@ -696,8 +574,8 @@ public final class Calibration {
     }
 
     /**
-     * Full ensure. {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing
-     * from the local cache (default on; callers pass false under global {@code --offline}).
+     * Full ensure. {@code allowNetwork} (on unless global {@code --offline}) enables the resolve
+     * HTTP probe and a JUnit jar fetch into the artifact store when the pinned jars are missing.
      */
     public static Calibration ensure(Path jdksDir, boolean force, boolean allowNetwork) {
         Calibration current = load();
@@ -795,57 +673,26 @@ public final class Calibration {
     }
 
     private Calibration touch(long nowMillis) {
-        return copy(
-                msPerWeight > 0 ? msPerWeight : EffortWeights.MS_PER_WEIGHT,
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                engineColdStartMs,
-                loadAtCalibration,
-                cores > 0 ? cores : Runtime.getRuntime().availableProcessors(),
-                jdk,
-                JkVersion.VERSION,
-                nowMillis,
-                measured || !learned.isEmpty(),
-                junitPlatformUsed,
-                resolveUsed,
-                Math.max(schema, SCHEMA),
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                learned);
+        return toBuilder()
+                .msPerWeight(msPerWeight > 0 ? msPerWeight : EffortWeights.MS_PER_WEIGHT)
+                .cores(cores > 0 ? cores : Runtime.getRuntime().availableProcessors())
+                .jkVersion(JkVersion.VERSION)
+                .updated(nowMillis)
+                .measured(measured || !learned.isEmpty())
+                .schema(Math.max(schema, SCHEMA))
+                .build();
     }
 
     private static Calibration minimalWithLearned(HostLearnedRates learned, long now) {
-        return new Calibration(
-                EffortWeights.MS_PER_WEIGHT,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                safeLoadAverage(),
-                Runtime.getRuntime().availableProcessors(),
-                null,
-                JkVersion.VERSION,
-                now,
-                false,
-                false,
-                false,
-                SCHEMA,
-                0,
-                0,
-                0,
-                learned);
+        return builder()
+                .msPerWeight(EffortWeights.MS_PER_WEIGHT)
+                .loadAtCalibration(safeLoadAverage())
+                .cores(Runtime.getRuntime().availableProcessors())
+                .jkVersion(JkVersion.VERSION)
+                .updated(now)
+                .schema(SCHEMA)
+                .learned(learned)
+                .build();
     }
 
     public static Calibration recordEngineColdStart(long coldMs, long nowMillis) {
@@ -855,30 +702,16 @@ public final class Calibration {
         if (cur.present()) {
             next = cur.withEngineColdStartMs(c).touch(nowMillis);
         } else {
-            next = new Calibration(
-                    EffortWeights.MS_PER_WEIGHT,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    c,
-                    safeLoadAverage(),
-                    Runtime.getRuntime().availableProcessors(),
-                    null,
-                    JkVersion.VERSION,
-                    nowMillis,
-                    false,
-                    false,
-                    false,
-                    SCHEMA,
-                    0,
-                    0,
-                    0,
-                    cur.learned);
+            next = builder()
+                    .msPerWeight(EffortWeights.MS_PER_WEIGHT)
+                    .engineColdStartMs(c)
+                    .loadAtCalibration(safeLoadAverage())
+                    .cores(Runtime.getRuntime().availableProcessors())
+                    .jkVersion(JkVersion.VERSION)
+                    .updated(nowMillis)
+                    .schema(SCHEMA)
+                    .learned(cur.learned)
+                    .build();
         }
         persist(next);
         MEMO.set(next);
@@ -889,30 +722,14 @@ public final class Calibration {
         double next = (prev.present() && prev.measured)
                 ? ALPHA * observedMsPerWeight + (1 - ALPHA) * prev.msPerWeight
                 : observedMsPerWeight;
-        return copy(
-                next,
-                prev.jvmForkMs,
-                prev.javacMs,
-                prev.diskIoMs,
-                prev.hashCpuMs,
-                prev.junitForkMs,
-                prev.junitRunMs,
-                prev.junitPlatformMs,
-                prev.resolveMs,
-                prev.engineColdStartMs,
-                prev.loadAtCalibration,
-                prev.present() ? prev.cores : Runtime.getRuntime().availableProcessors(),
-                prev.jdk,
-                JkVersion.VERSION,
-                nowMillis,
-                true,
-                prev.junitPlatformUsed,
-                prev.resolveUsed,
-                Math.max(prev.schema, SCHEMA),
-                prev.probeTestSuiteStartupMs,
-                prev.probeTestMethodMs,
-                prev.probeCompilePerSourceMs,
-                prev.learned);
+        return prev.toBuilder()
+                .msPerWeight(next)
+                .cores(prev.present() ? prev.cores : Runtime.getRuntime().availableProcessors())
+                .jkVersion(JkVersion.VERSION)
+                .updated(nowMillis)
+                .measured(true)
+                .schema(Math.max(prev.schema, SCHEMA))
+                .build();
     }
 
     // --- the host probe ------------------------------------------------------
@@ -922,7 +739,7 @@ public final class Calibration {
             Optional<Path> javaHome = resolveJavaHome(jdksDir);
             if (javaHome.isEmpty()) return null;
             Path home = javaHome.get();
-            HardwareProbe.Result r = HardwareProbe.run(home, HardwareProbe.Options.of(allowNetwork, JkDirs.cache()));
+            HardwareProbe.Result r = HardwareProbe.run(home, HardwareProbe.Options.of(allowNetwork));
             if (r == null || !(r.msPerWeight() > 0)) return null;
             String jdkId = JdkRegistry.identifierFor(home);
             int platformMethods =
@@ -1007,10 +824,12 @@ public final class Calibration {
     private static Optional<Path> resolveJavaHome(Path jdksDir) {
         try {
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+            // No module context here, so the ambient layer: request env, then this process's.
+            var env = BuildEnv.ambient();
             var req = new JdkResolution.Request(
-                    null, SessionContext.current().jdkSpec(), System.getenv("JK_JDK"), null, null, 0, System::getenv);
+                    null, SessionContext.current().jdkSpec(), null, null, null, 0, env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
-            return r.jdk().map(cc.jumpkick.jdk.InstalledJdk::home);
+            return r.jdk().map(InstalledJdk::home);
         } catch (Exception e) {
             return Optional.empty();
         }
@@ -1022,8 +841,7 @@ public final class Calibration {
 
     private static double safeLoadAverage() {
         try {
-            return java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-                    .getSystemLoadAverage();
+            return ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
         } catch (Exception e) {
             return -1;
         }
@@ -1034,284 +852,17 @@ public final class Calibration {
         return updated > 0 && nowMillis - updated > MAX_AGE_MILLIS;
     }
 
-    // --- IO ------------------------------------------------------------------
+    // --- IO (format owner: HostMetricsFile) ----------------------------------
 
-    private static Calibration readOrAbsent() {
-        return readFrom(file(), System.currentTimeMillis());
-    }
-
-    static Calibration readFrom(Path f, long nowMillis) {
-        Calibration absent = absent();
-        try {
-            if (!Files.isRegularFile(f)) return absent;
-            TomlParseResult t = Toml.parse(f);
-            // Prefer [calibration] table in host-metrics.toml; fall back to root keys.
-            org.tomlj.TomlTable cal = t.getTable("calibration") != null ? t.getTable("calibration") : t;
-            double mpw = numberOr(cal, "ms-per-weight", 0);
-            long updated = cal.getLong("updated") != null ? cal.getLong("updated") : 0L;
-            String version = cal.getString("jk-version");
-            HostLearnedRates learned = HostLearnedRates.readFrom(t);
-            // Fold continuous [mean] scalars (native-image-ms-per-mib, compile-*-per-source-ms, …)
-            // as single-sample learned priors. Skip run-harvest keys (task.*/phase.*/module.*).
-            if (t.getTable("mean") != null) {
-                org.tomlj.TomlTable mean = t.getTable("mean");
-                Map<String, List<Double>> rings = new LinkedHashMap<>(learned.samples());
-                for (String key : mean.keySet()) {
-                    if (!cc.jumpkick.builds.MetricsHarvest.isContinuousMeanKey(key)) continue;
-                    Object v = mean.get(key);
-                    if (v instanceof Number n && n.doubleValue() > 0) {
-                        rings.putIfAbsent(key, List.of(n.doubleValue()));
-                    }
-                }
-                if (!rings.isEmpty()) learned = new HostLearnedRates(rings);
-            }
-            // Language buckets from jk optimize: mean.by_language.<lang>.compile_per_source_ms
-            // seeds cold compile priors when continuous harvest has not yet measured that language.
-            learned = foldLanguageBuckets(t, learned);
-            if (mpw <= 0 && learned.isEmpty()) return absent;
-            if (mpw <= 0) mpw = EffortWeights.MS_PER_WEIGHT;
-            if (stale(version, updated, nowMillis) && learned.isEmpty()) return absent;
-            int schema = cal.getLong("schema") != null ? Math.toIntExact(cal.getLong("schema")) : 1;
-            long probeSuite = longOr(cal, "probe-test-suite-startup-ms", 0);
-            long probeMethod = longOr(cal, "probe-test-method-ms", 0);
-            long probeCompile = longOr(cal, "probe-compile-per-source-ms", 0);
-            boolean measuredFlag = cal.getBoolean("measured") != null && cal.getBoolean("measured");
-            if (probeSuite <= 0 || probeMethod <= 0 || probeCompile <= 0) {
-                long jFork = longOr(cal, "junit-fork-ms", 0);
-                long jRun = longOr(cal, "junit-run-ms", 0);
-                long jPlat = longOr(cal, "junit-platform-ms", 0);
-                long jvm = longOr(cal, "jvm-fork-ms", 0);
-                long javac = longOr(cal, "javac-ms", 0);
-                boolean jUsed = cal.getBoolean("junit-platform-used") != null && cal.getBoolean("junit-platform-used");
-                if (probeSuite <= 0) probeSuite = deriveSuiteStartup(jUsed, jPlat, jFork, jvm);
-                if (probeMethod <= 0) probeMethod = deriveMethodMs(jRun, jUsed, jPlat);
-                if (probeCompile <= 0 && javac > 0) {
-                    probeCompile = Math.max(1, Math.round(javac / (double) Math.max(1, HardwareProbe.JAVAC_SOURCES)));
-                }
-            }
-            return new Calibration(
-                    mpw,
-                    longOr(cal, "jvm-fork-ms", 0),
-                    longOr(cal, "javac-ms", 0),
-                    longOr(cal, "disk-io-ms", 0),
-                    longOr(cal, "hash-cpu-ms", 0),
-                    longOr(cal, "junit-fork-ms", 0),
-                    longOr(cal, "junit-run-ms", 0),
-                    longOr(cal, "junit-platform-ms", 0),
-                    longOr(cal, "resolve-ms", 0),
-                    longOr(cal, "engine-cold-start-ms", 0),
-                    cal.getDouble("load-at-calibration") != null ? cal.getDouble("load-at-calibration") : -1,
-                    cal.getLong("cores") != null ? Math.toIntExact(cal.getLong("cores")) : 0,
-                    cal.getString("jdk"),
-                    version,
-                    updated,
-                    measuredFlag,
-                    cal.getBoolean("junit-platform-used") != null && cal.getBoolean("junit-platform-used"),
-                    cal.getBoolean("resolve-used") != null && cal.getBoolean("resolve-used"),
-                    schema,
-                    probeSuite,
-                    probeMethod,
-                    probeCompile,
-                    learned);
-        } catch (Exception e) {
-            return absent;
-        }
-    }
-
-    private static long longOr(org.tomlj.TomlTable t, String key, long dflt) {
-        Long v = t.getLong(key);
-        return v != null ? v : dflt;
-    }
-
-    /** tomlj is type-strict: bare integers are Long, so {@code getDouble} throws. */
-    private static double numberOr(org.tomlj.TomlTable t, String key, double dflt) {
-        if (t == null || key == null) return dflt;
-        try {
-            Double d = t.getDouble(key);
-            if (d != null) return d;
-        } catch (RuntimeException ignored) {
-        }
-        try {
-            Long l = t.getLong(key);
-            if (l != null) return l.doubleValue();
-        } catch (RuntimeException ignored) {
-        }
-        return dflt;
-    }
-
-    private static Calibration absent() {
-        return new Calibration(
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                -1,
-                0,
-                null,
-                null,
-                0,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                0,
-                new HostLearnedRates());
+    static Calibration absent() {
+        return builder().loadAtCalibration(-1).learned(new HostLearnedRates()).build();
     }
 
     private static void persist(Calibration c) {
         try {
-            writeTo(file(), c);
+            HostMetricsFile.writeTo(HostMetricsFile.file(), c);
         } catch (IOException | RuntimeException ignored) {
         }
-    }
-
-    /**
-     * Fold {@code [mean.by_language.<lang>].compile_per_source_ms} into HostLearnedRates compile
-     * keys when continuous means are still cold.
-     */
-    static HostLearnedRates foldLanguageBuckets(TomlParseResult t, HostLearnedRates learned) {
-        if (t == null) return learned == null ? new HostLearnedRates() : learned;
-        Map<String, List<Double>> rings = new LinkedHashMap<>(learned == null ? Map.of() : learned.samples());
-        foldLang(t, "java", HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, rings);
-        foldLang(t, "kotlin", HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, rings);
-        foldLang(t, "groovy", HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, rings);
-        return rings.isEmpty() ? (learned == null ? new HostLearnedRates() : learned) : new HostLearnedRates(rings);
-    }
-
-    private static void foldLang(TomlParseResult t, String lang, String rateKey, Map<String, List<Double>> rings) {
-        if (rings.containsKey(rateKey)) return;
-        // Nested table [mean.by_language.<lang>] — prefer dotted path (tomlj), then table walk.
-        // Reads are type-tolerant per key: a mistyped value skips this bucket only, never the
-        // whole calibration (readFrom's blanket catch would otherwise return absent).
-        double ms = numberOr(t, "mean.by_language." + lang + ".compile_per_source_ms", 0);
-        if (ms <= 0) {
-            try {
-                org.tomlj.TomlTable mean = t.getTable("mean");
-                org.tomlj.TomlTable byLang = mean != null ? mean.getTable("by_language") : null;
-                org.tomlj.TomlTable tbl = byLang != null ? byLang.getTable(lang) : null;
-                if (tbl != null) ms = numberOr(tbl, "compile_per_source_ms", 0);
-            } catch (RuntimeException ignored) {
-            }
-        }
-        // Sanity: reject implausible compile_per_source_ms (must be 1–500).
-        if (!(ms >= 1 && ms <= 500)) return;
-        rings.put(rateKey, List.of(ms));
-    }
-
-    static void writeTo(Path file, Calibration c) throws IOException {
-        // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch], language buckets.
-        StringBuilder out = new StringBuilder();
-        out.append("# host-metrics — probe + continuous means\n");
-        if (Files.isRegularFile(file)) {
-            try {
-                String existing = Files.readString(file);
-                // Keep [mean] and non-calibration sections from harvest / lock-fetch writers.
-                for (String section : List.of("mean", "lock", "fetch", "bootstrap")) {
-                    int idx = existing.indexOf("\n[" + section + "]");
-                    if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
-                    if (idx >= 0) {
-                        int end = existing.indexOf("\n[", idx + 2);
-                        String block = end < 0 ? existing.substring(idx) : existing.substring(idx, end);
-                        if (!block.isBlank()) out.append(block.strip()).append('\n');
-                    }
-                }
-                // Preserve mean.by_language.* tables written by jk optimize.
-                out.append(extractByLanguageBlocks(existing));
-            } catch (IOException ignored) {
-            }
-        }
-        // Learned rates as scalar means under [mean] (no sample rings).
-        out.append("\n[mean]\n");
-        if (c.learned != null && !c.learned.isEmpty()) {
-            for (var e : c.learned.samples().entrySet()) {
-                double m = HostLearnedRates.trimmedMean(e.getValue());
-                if (m > 0)
-                    out.append(e.getKey()).append(" = ").append(round3(m)).append('\n');
-            }
-        }
-        out.append('\n').append(c.renderCalibrationSection());
-        AtomicWrites.replace(file, out.toString());
-    }
-
-    /** Extract contiguous {@code [mean.by_language.*]} tables from an existing host-metrics file. */
-    static String extractByLanguageBlocks(String existing) {
-        if (existing == null || existing.isBlank()) return "";
-        StringBuilder lang = new StringBuilder();
-        boolean in = false;
-        for (String line : existing.split("\n", -1)) {
-            String t = line.trim();
-            if (t.startsWith("[mean.by_language.")) {
-                in = true;
-                lang.append(line).append('\n');
-                continue;
-            }
-            if (in) {
-                if (t.startsWith("[")) {
-                    in = false;
-                } else {
-                    lang.append(line).append('\n');
-                }
-            }
-        }
-        return lang.isEmpty() ? "" : "\n" + lang;
-    }
-
-    private String renderCalibrationSection() {
-        return """
-                [calibration]
-                schema               = %d
-                ms-per-weight        = %s
-                jvm-fork-ms          = %d
-                javac-ms             = %d
-                disk-io-ms           = %d
-                hash-cpu-ms          = %d
-                junit-fork-ms        = %d
-                junit-run-ms         = %d
-                junit-platform-ms    = %d
-                resolve-ms           = %d
-                engine-cold-start-ms = %d
-                probe-test-suite-startup-ms = %d
-                probe-test-method-ms        = %d
-                probe-compile-per-source-ms = %d
-                load-at-calibration  = %s
-                cores                = %d
-                jdk                  = %s
-                jk-version           = %s
-                measured             = %s
-                junit-platform-used  = %s
-                resolve-used         = %s
-                updated              = %d
-                """.formatted(
-                        schema <= 0 ? SCHEMA : schema,
-                        round3(msPerWeight),
-                        jvmForkMs,
-                        javacMs,
-                        diskIoMs,
-                        hashCpuMs,
-                        junitForkMs,
-                        junitRunMs,
-                        junitPlatformMs,
-                        resolveMs,
-                        engineColdStartMs,
-                        probeTestSuiteStartupMs,
-                        probeTestMethodMs,
-                        probeCompilePerSourceMs,
-                        round3(loadAtCalibration),
-                        cores,
-                        quote(jdk == null ? "" : jdk),
-                        quote(jkVersion == null ? "" : jkVersion),
-                        measured,
-                        junitPlatformUsed,
-                        resolveUsed,
-                        updated);
     }
 
     public String summary() {
@@ -1340,7 +891,7 @@ public final class Calibration {
         }
         sb.append(String.format(
                 "  cold ETA prior      startup=%d ms  method=%d ms  compile/src=%d ms%n",
-                testSuiteStartupMs(), testMethodMs(), compilePerSourceMs("compile-java")));
+                testSuiteStartupMs(), testMethodMs(), compilePerSourceMs(TaskNames.COMPILE_JAVA)));
         sb.append(String.format(
                 "  host scale          cpu=%.2f  fork=%.2f  io=%.2f  (baseline×scale×%.2f)%n",
                 cpuScale(), forkScale(), ioScale(), COLD_BIAS));
@@ -1356,14 +907,6 @@ public final class Calibration {
         if (engineColdStartMs > 0) sb.append(String.format("  engine cold start   %d ms%n", engineColdStartMs));
         sb.append(String.format("  cores=%d  measured=%s  schema=%d%n", cores, measured, schema));
         return sb.toString().stripTrailing();
-    }
-
-    private static String quote(String s) {
-        return cc.jumpkick.util.MinimalToml.quote(s);
-    }
-
-    private static double round3(double v) {
-        return Math.round(v * 1000.0) / 1000.0;
     }
 
     static void clearMemo() {

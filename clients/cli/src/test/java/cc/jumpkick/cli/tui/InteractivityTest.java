@@ -12,7 +12,6 @@ class InteractivityTest {
     @Test
     void restore_for_child_is_safe_when_never_opened() {
         assertThatCode(Terminals::restoreForChild).doesNotThrowAnyException();
-        assertThatCode(Interactivity::restoreForChildProcess).doesNotThrowAnyException();
     }
 
     @Test

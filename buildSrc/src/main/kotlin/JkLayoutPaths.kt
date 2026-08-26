@@ -97,9 +97,15 @@ object JkLayoutPaths {
 
     private fun userHome(): String = System.getProperty("user.home")
 
+    /**
+     * The one copy of `cc.jumpkick.host.Os.isWindows` that cannot call it: buildSrc compiles before the project, so
+     * `:host` is out of reach by construction and guard G20 does not scan here. It tests `"windows"` rather than
+     * `"win"` for the same reason the owner does — `"win"` is a substring of `Darwin`, and the short test sent this
+     * class looking for `jk.exe` on a Mac.
+     */
     private fun isWindows(): Boolean {
         val os = System.getProperty("os.name", "").lowercase()
-        return os.contains("win")
+        return os.contains("windows")
     }
 
     private fun nonBlank(s: String?): String? = if (s.isNullOrBlank()) null else s

@@ -2,13 +2,16 @@
 package cc.jumpkick.boot;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.BuildStamps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -37,13 +40,16 @@ class BootJarPackagerTest {
                 .packageBootJar(new BootJarPackager.BootJarRequest(
                         classes,
                         List.of(
-                                new BootJarPackager.Lib("spring-core-7.0.1.jar", dep, false),
-                                new BootJarPackager.Lib("acme-1.0-SNAPSHOT.jar", snap, true)),
+                                new BootJarPackager.Lib("spring-core-7.0.1.jar", dep, false, "org.springframework"),
+                                new BootJarPackager.Lib("acme-1.0-SNAPSHOT.jar", snap, true, "com.acme")),
                         loader,
                         out,
                         "com.example.App",
                         "4.0.0",
                         Map.of("Implementation-Title", "app"),
+                        Map.of(),
+                        null,
+                        List.of(),
                         0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
@@ -92,10 +98,56 @@ class BootJarPackagerTest {
     }
 
     @Test
-    void colliding_lib_file_names_get_disambiguated(@TempDir Path tmp) throws Exception {
+    void compile_freshness_stamps_never_reach_boot_inf_classes(@TempDir Path tmp) throws Exception {
+        // A stamp body is a wall clock, so a boot jar carrying one is neither clean nor
+        // byte-reproducible.
+        Path classes = Files.createDirectories(tmp.resolve("classes/com/example"));
+        Files.write(classes.resolve("App.class"), new byte[] {1, 2, 3});
+        for (String stamp : BuildStamps.ALL) {
+            Files.writeString(tmp.resolve("classes").resolve(stamp), "STAMP_MILLIS 1758000000000");
+        }
+        Path loader = writeJar(
+                tmp.resolve("spring-boot-loader-4.0.0.jar"),
+                "org/springframework/boot/loader/launch/JarLauncher.class");
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        tmp.resolve("classes"),
+                        List.of(),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.0.0",
+                        Map.of(),
+                        Map.of(),
+                        null,
+                        List.of(),
+                        0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(jar.getEntry("BOOT-INF/classes/com/example/App.class")).isNotNull();
+            for (String stamp : BuildStamps.ALL) {
+                assertThat(jar.getEntry("BOOT-INF/classes/" + stamp)).as(stamp).isNull();
+            }
+        }
+    }
+
+    /**
+     * Two coordinates can ship the same {@code artifact-version.jar}, and the nested entry names
+     * must differ. The group is what differs, and a reader can act on it. The disambiguator used to
+     * prepend {@code jar().getParent().getFileName()} instead — on the CAS layout production
+     * actually serves ({@code <store>/sha256/AB/CD/<60 hex>}) that is two hex characters, so a real
+     * collision produced {@code CD-util-1.0.jar}: unique by accident, meaningless to a reader, and
+     * content-derived, so bumping either dependency renamed the entry.
+     */
+    @Test
+    void colliding_lib_file_names_are_disambiguated_by_coordinate_group(@TempDir Path tmp) throws Exception {
         Path classes = Files.createDirectories(tmp.resolve("classes"));
-        Path a = writeJar(Files.createDirectories(tmp.resolve("group-a")).resolve("util-1.0.jar"), "a/A.class");
-        Path b = writeJar(Files.createDirectories(tmp.resolve("group-b")).resolve("util-1.0.jar"), "b/B.class");
+        Path a = writeJar(casBlob(tmp, "aa", "bb"), "a/A.class");
+        Path b = writeJar(casBlob(tmp, "cc", "dd"), "b/B.class");
+        Path c = writeJar(casBlob(tmp, "ee", "dd"), "c/C.class"); // same second shard pair as b
+        Path sibling = writeJar(tmp.resolve("util-1.0.jar"), "d/D.class"); // workspace: no coordinate
         Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
 
         Path out = tmp.resolve("app.jar");
@@ -103,19 +155,73 @@ class BootJarPackagerTest {
                 .packageBootJar(new BootJarPackager.BootJarRequest(
                         classes,
                         List.of(
-                                new BootJarPackager.Lib("util-1.0.jar", a, false),
-                                new BootJarPackager.Lib("util-1.0.jar", b, false)),
+                                new BootJarPackager.Lib("util-1.0.jar", a, false, "com.example.a"),
+                                new BootJarPackager.Lib("util-1.0.jar", b, false, "com.example.b"),
+                                new BootJarPackager.Lib("util-1.0.jar", c, false, "com.example.b"),
+                                new BootJarPackager.Lib("util-1.0.jar", sibling, false, "")),
                         loader,
                         out,
                         "com.example.App",
                         "4.0.0",
                         Map.of(),
+                        Map.of(),
+                        null,
+                        List.of(),
                         0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
-            assertThat(jar.getEntry("BOOT-INF/lib/util-1.0.jar")).isNotNull();
-            assertThat(jar.getEntry("BOOT-INF/lib/group-b-util-1.0.jar")).isNotNull();
+            assertThat(jar.getEntry("BOOT-INF/lib/util-1.0.jar")).isNotNull(); // first keeps the plain name
+            assertThat(jar.getEntry("BOOT-INF/lib/com.example.b-util-1.0.jar")).isNotNull();
+            // Same group twice: the group cannot separate them, so an ordinal says so out loud.
+            assertThat(jar.getEntry("BOOT-INF/lib/com.example.b-util-1.0.jar.2"))
+                    .isNotNull();
+            // A workspace sibling has no coordinate to borrow.
+            assertThat(jar.getEntry("BOOT-INF/lib/dup-util-1.0.jar")).isNotNull();
+            // No entry name may carry a CAS shard — that is what this replaced.
+            assertThat(jar.stream().map(JarEntry::getName).filter(n -> n.startsWith("BOOT-INF/lib/")))
+                    .noneMatch(n -> n.contains("/dd-") || n.contains("/bb-"));
+            // …and every lib is listed exactly once in the index the launcher reads.
+            assertThat(entryText(jar, "BOOT-INF/classpath.idx"))
+                    .isEqualTo("- \"BOOT-INF/lib/util-1.0.jar\"\n"
+                            + "- \"BOOT-INF/lib/com.example.b-util-1.0.jar\"\n"
+                            + "- \"BOOT-INF/lib/com.example.b-util-1.0.jar.2\"\n"
+                            + "- \"BOOT-INF/lib/dup-util-1.0.jar\"\n");
         }
+    }
+
+    /**
+     * The manifest attribute is a version a consumer reads. Writing the declared selector into it
+     * shipped jars announcing {@code Spring-Boot-Version: latest}; the packager now refuses the
+     * value rather than publishing it.
+     */
+    @Test
+    void a_selector_is_refused_as_the_boot_version(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+        for (String selector : List.of("latest", "^4", "=4.1.0", "~4.1", "")) {
+            assertThatThrownBy(() -> new BootJarPackager.BootJarRequest(
+                            classes,
+                            List.of(),
+                            loader,
+                            tmp.resolve("app.jar"),
+                            "com.example.App",
+                            selector,
+                            Map.of(),
+                            Map.of(),
+                            null,
+                            List.of(),
+                            0L))
+                    .as("selector %s", selector)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("resolved version");
+        }
+    }
+
+    /** A content-addressed blob path: {@code <store>/sha256/<hi>/<lo>/<name>}, as the CAS lays out. */
+    private static Path casBlob(Path tmp, String hi, String lo) throws IOException {
+        Path dir = tmp.resolve("store/sha256").resolve(hi).resolve(lo);
+        Files.createDirectories(dir);
+        return dir.resolve(hi + lo + "0".repeat(56));
     }
 
     @Test
@@ -140,6 +246,7 @@ class BootJarPackagerTest {
                         Map.of(),
                         Map.of("group", "com.example", "artifact", "shop", "name", "shop", "version", "1.0.0"),
                         sbom,
+                        List.of(),
                         0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
@@ -168,7 +275,44 @@ class BootJarPackagerTest {
         }
     }
 
-    /** A minimal jar containing one empty entry (+ nothing else). */
+    /** UTF-8 text of one jar entry. */
+    private static String entryText(JarFile jar, String name) throws IOException {
+        return new String(jar.getInputStream(jar.getEntry(name)).readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    /** A minimal jar carrying one entry and nothing else. */
+    @Test
+    void build_info_entries_with_separators_and_spaces_survive_properties_load(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes,
+                        List.of(),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.0.0",
+                        Map.of(),
+                        Map.of(
+                                "built by", "dev=ops:team \\ crew",
+                                "notes", " leading space and #hash",
+                                "revision", "line1\nline2"),
+                        null,
+                        List.of(),
+                        0L));
+
+        Properties loaded = new Properties();
+        try (JarFile jar = new JarFile(out.toFile())) {
+            loaded.load(jar.getInputStream(jar.getEntry("BOOT-INF/classes/META-INF/build-info.properties")));
+        }
+        assertThat(loaded.getProperty("build.built by")).isEqualTo("dev=ops:team \\ crew");
+        assertThat(loaded.getProperty("build.notes")).isEqualTo(" leading space and #hash");
+        assertThat(loaded.getProperty("build.revision")).isEqualTo("line1\nline2");
+    }
+
     private static Path writeJar(Path path, String entryName) throws IOException {
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(path))) {
             jos.putNextEntry(new JarEntry(entryName));

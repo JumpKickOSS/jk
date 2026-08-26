@@ -8,6 +8,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-@Tag("integration")
+@Tag("network")
 class LogbackCoreEdgeTest {
     @Test
     void lock_records_logback_core_as_dep_of_classic(@TempDir Path tmp) throws Exception {
@@ -38,8 +39,7 @@ class LogbackCoreEdgeTest {
                         "platform",
                         "io.micronaut.platform:micronaut-platform",
                         VersionSelector.parseFloating("=5.1.0"))));
-        JkBuild project =
-                new JkBuild(new JkBuild.Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
+        JkBuild project = new JkBuild(new Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
         Lockfile lock = new LockOrchestrator(RepoGroup.of(central)).lock(project, "test");
         Lockfile.Artifact classic = lock.artifacts().stream()
                 .filter(a -> a.packageKey().startsWith("ch.qos.logback:logback-classic"))

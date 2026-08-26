@@ -54,7 +54,7 @@ public final class EngineStopCommand implements CliCommand {
             return stopByPid(pidArg.get(), in.isSet("now"));
         }
         EnginePaths.Paths paths = EnginePaths.current();
-        Optional<EngineClient.Status> before = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+        Optional<EngineClient.Status> before = EngineClient.status(EnginePaths.activeSocket(paths));
         if (before.isEmpty()) {
             return settle(Exit.SUCCESS, "not running");
         }
@@ -63,13 +63,13 @@ public final class EngineStopCommand implements CliCommand {
         // Force: stop now, then CONFIRM it went. Reporting "stopped" without checking is how a wedged
         // engine ends up being the user's problem to find and kill.
         if (in.isSet("now")) {
-            if (!EngineClient.forceStop(cc.jumpkick.engine.EnginePaths.activeSocket(paths)))
+            if (!EngineClient.forceStop(EnginePaths.activeSocket(paths)))
                 EngineClient.hardKill(before.get().pid());
             return confirmGone(before.get().pid(), started);
         }
 
         // Graceful drain. The engine enters draining and reports the in-flight job count.
-        int jobs = EngineClient.drain(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+        int jobs = EngineClient.drain(EnginePaths.activeSocket(paths));
         if (jobs <= 0) {
             // Idle (or already gone): the engine should exit immediately — verify, and escalate if not.
             return confirmGone(before.get().pid(), started);
@@ -185,11 +185,10 @@ public final class EngineStopCommand implements CliCommand {
         try {
             while (true) {
                 if (view.forceRequested()) {
-                    EngineClient.forceStop(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+                    EngineClient.forceStop(EnginePaths.activeSocket(paths));
                     break;
                 }
-                Optional<EngineClient.Status> s =
-                        EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+                Optional<EngineClient.Status> s = EngineClient.status(EnginePaths.activeSocket(paths));
                 if (s.isEmpty()) {
                     // The draining engine has unbound its listener so a successor can bind. Status
                     // going silent is not exit — wait for the process, not the socket.
@@ -199,9 +198,8 @@ public final class EngineStopCommand implements CliCommand {
                         continue;
                     }
                     sleep(150);
-                    if (EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths))
-                                    .isEmpty()
-                            && !EngineClient.ping(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) break;
+                    if (EngineClient.status(EnginePaths.activeSocket(paths)).isEmpty()
+                            && !EngineClient.ping(EnginePaths.activeSocket(paths))) break;
                     continue;
                 }
                 view.setJobs(Math.max(0, s.get().activeBuildPlans()));

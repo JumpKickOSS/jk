@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,7 +24,7 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
         this(java, kotlin, groovy, false);
     }
 
-    public static Languages resolve(JkBuild.Project project, Path projectDir) {
+    public static Languages resolve(Project project, Path projectDir) {
         boolean javaDeclared = project.java() > 0;
         boolean kotlinDeclared = project.isKotlin();
         boolean groovyDeclared = project.isGroovy();

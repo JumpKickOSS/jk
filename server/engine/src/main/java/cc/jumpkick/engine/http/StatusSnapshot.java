@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.JsonOut;
+
 /**
  * The engine vitals {@code GET /api/status} reports — supplied per request by {@code EngineServer}
  * (the same numbers its socket {@code status-ack} carries), so the dashboard and {@code jk engine
@@ -83,5 +85,39 @@ public record StatusSnapshot(
                 /* engineEpoch */ version + "@" + startedAtMillis,
                 activeRequests,
                 activeBuildPlans);
+    }
+
+    /**
+     * These vitals as JSON — <strong>the</strong> serializer, so a field added to the record
+     * cannot reach one surface and miss another. {@code GET /api/status} chains its REST-only
+     * knobs (URLs, config limits, web root) onto the object this returns; the dashboard's SSE
+     * {@code status} frame publishes it unchanged. Field order is part of the answer: the two
+     * surfaces were byte-identical before this became one method and stay so after.
+     *
+     * <p>{@code uptimeSeconds} is derived rather than stored, because it is a function of the
+     * snapshot's {@code startedAtMillis} and the clock at render time, and a reader that computed
+     * it itself would be reading a second clock.
+     */
+    public JsonOut toJson() {
+        return JsonOut.object()
+                .put("version", version)
+                .put("pid", pid)
+                .put("startedAt", startedAtMillis)
+                .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - startedAtMillis) / 1000))
+                .put("activeRequests", activeRequests)
+                .put("activeBuildPlans", activeBuildPlans)
+                .put("peakActiveRequests", peakActiveRequests)
+                .put("peakActiveBuildPlans", peakActiveBuildPlans)
+                .put("heapUsedBytes", heapUsedBytes)
+                .put("heapCommittedBytes", heapCommittedBytes)
+                .put("heapMaxBytes", heapMaxBytes)
+                .put("rssBytes", rssBytes)
+                .put("aotTrainingPid", aotTrainingPid)
+                .put("cores", cores)
+                .put("totalMemoryBytes", totalMemoryBytes)
+                .put("availableMemoryBytes", availableMemoryBytes)
+                .put("systemCpuLoad", systemCpuLoad)
+                .put("systemLoadAverage", systemLoadAverage)
+                .put("engineEpoch", engineEpoch);
     }
 }

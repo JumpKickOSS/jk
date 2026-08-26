@@ -2,10 +2,16 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.bsp.BspServer;
 import cc.jumpkick.cli.ide.IdeEngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -13,6 +19,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -72,20 +79,19 @@ public final class BspCommand implements CliCommand {
             case "install" -> install(dir);
             case "serve", "run" -> serve(dir, global);
             default -> {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("BSP", "expected install or serve (got " + action + ")");
+                CommandWedge.printFail("BSP", "expected install or serve (got " + action + ")");
                 yield Exit.USAGE;
             }
         };
     }
 
     private static int install(Path projectDir) throws Exception {
-        if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "BSP", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.of(projectDir));
+        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+            CommandWedge.printFail("BSP", "no jk.toml in " + PathDisplay.of(projectDir));
             return Exit.CONFIG;
         }
         Path out = writeConnectionFile(projectDir);
-        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + cc.jumpkick.cli.PathDisplay.of(out, projectDir));
+        CommandWedge.printOk("BSP", "Wrote " + PathDisplay.of(out, projectDir));
         CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
         return 0;
     }
@@ -105,12 +111,12 @@ public final class BspCommand implements CliCommand {
         String json = """
                 {
                   "name": "jk",
-                  "version": "%s",
+                  "version": %s,
                   "bspVersion": "2.1.0",
                   "languages": ["java", "kotlin", "groovy"],
-                  "argv": ["%s", "bsp", "serve"]
+                  "argv": [%s, "bsp", "serve"]
                 }
-                """.formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));
+                """.formatted(Jsonl.quote(Jk.VERSION), Jsonl.quote(argv0));
         Path out = bspDir.resolve("jk.json");
         AtomicWrites.replace(out, json);
         return out;
@@ -120,16 +126,11 @@ public final class BspCommand implements CliCommand {
         var proj = ProjectContext.require(projectDir, "bsp").orElse(null);
         if (proj == null) return Exit.CONFIG;
         // Freshen once at serve start so IDE classpaths match manifests (long-lived process).
-        int lockCode =
-                cc.jumpkick.cli.EnsureFreshLock.ensure(projectDir, cc.jumpkick.util.JkDirs.cache(), global, "BSP");
+        int lockCode = EnsureFreshLock.ensure(projectDir, JkDirs.cache(), global, "BSP");
         if (lockCode != 0) return lockCode;
         IdeEngineClient ide = IdeEngineClient.open(projectDir);
         ide.connect();
         new BspServer(ide, System.in, System.out).serve();
         return 0;
-    }
-
-    private static String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

@@ -3,7 +3,9 @@ package cc.jumpkick.layout;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,12 +16,12 @@ class BuildLayoutTest {
 
     /** Library project: no {@code main}. Artifacts land in {@code target/lib/}. */
     private static JkBuild project(String artifact, String version) {
-        return JkBuild.of(new JkBuild.Project("com.acme", artifact, version, 25));
+        return JkBuild.of(new Project("com.acme", artifact, version, 25));
     }
 
     /** Application project: has {@code [application].main}. Artifacts land in {@code target/}. */
     private static JkBuild appProject(String artifact, String version) {
-        return cc.jumpkick.config.JkBuildParser.parse("""
+        return JkBuildParser.parse("""
                 group   = "com.acme"
                 name    = "%s"
                 version = "%s"
@@ -158,7 +160,7 @@ class BuildLayoutTest {
                 version  = "1.0.0"
                 """);
 
-        JkBuild moduleProject = cc.jumpkick.config.JkBuildParser.parse(module.resolve("jk.toml"));
+        JkBuild moduleProject = JkBuildParser.parse(module.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(module, moduleProject);
 
         assertThat(layout.workspaceRoot()).isEqualTo(workspace.toAbsolutePath().normalize());
@@ -178,7 +180,7 @@ class BuildLayoutTest {
     }
 
     private static JkBuild workspaceRootProject(String artifact, String version) {
-        return cc.jumpkick.config.JkBuildParser.parse("""
+        return JkBuildParser.parse("""
                 group    = "com.example"
                 name     = "%s"
                 version  = "%s"
@@ -236,7 +238,7 @@ class BuildLayoutTest {
 
     @Test
     void native_binary_honors_native_name(@TempDir Path dir) {
-        JkBuild build = cc.jumpkick.config.JkBuildParser.parse("""
+        JkBuild build = JkBuildParser.parse("""
                 group = "com.acme"
                 name = "jk-cli"
                 version = "1.0.0"
@@ -256,7 +258,7 @@ class BuildLayoutTest {
 
     @Test
     void native_binary_name_with_exe_suffix_matches_bare_name(@TempDir Path dir) {
-        JkBuild withExe = cc.jumpkick.config.JkBuildParser.parse("""
+        JkBuild withExe = JkBuildParser.parse("""
                 group = "com.acme"
                 name = "jk-cli"
                 version = "1.0.0"
@@ -269,7 +271,7 @@ class BuildLayoutTest {
                 enabled = "always"
                 name = "jk.exe"
                 """);
-        JkBuild bare = cc.jumpkick.config.JkBuildParser.parse("""
+        JkBuild bare = JkBuildParser.parse("""
                 group = "com.acme"
                 name = "jk-cli"
                 version = "1.0.0"

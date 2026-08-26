@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.layout.BuildLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -37,7 +38,7 @@ class BuildForecastingTargetMemoTest {
         Files.createDirectories(src);
         Files.writeString(src.resolve("App.java"), "class App {}\n");
         // Clean-claim requires the module output tree to exist.
-        Files.createDirectories(cc.jumpkick.layout.BuildLayout.moduleTargetDir(tmp, tmp));
+        Files.createDirectories(BuildLayout.moduleTargetDir(tmp, tmp));
         return BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
     }
 

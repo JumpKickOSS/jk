@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,7 +65,7 @@ public final class ModuleLayout {
         Boolean local = explicitLayout(moduleDir);
         if (local != null) return local;
         try {
-            Optional<Path> root = cc.jumpkick.config.WorkspaceLocator.findRoot(moduleDir);
+            Optional<Path> root = WorkspaceLocator.findRoot(moduleDir);
             if (root.isPresent() && !root.get().equals(moduleDir)) {
                 Boolean inherited = explicitLayout(root.get());
                 if (inherited != null) return inherited;
@@ -84,7 +87,7 @@ public final class ModuleLayout {
      * traditional, {@code null} = no key or an unrecognized value (let the tree decide).
      */
     private static Boolean explicitLayout(Path dir) {
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) return null;
         Path key = toml.toAbsolutePath().normalize();
         long mtime;
@@ -103,7 +106,7 @@ public final class ModuleLayout {
     }
 
     private static Boolean scanLayout(Path toml) {
-        String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
+        String layout = TomlScan.scan(toml, "layout").get("layout");
         if (layout == null) return null;
         if ("traditional".equalsIgnoreCase(layout)) return Boolean.FALSE;
         if ("simple".equalsIgnoreCase(layout)) return Boolean.TRUE;

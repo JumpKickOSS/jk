@@ -3,13 +3,17 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Prices {@code native-image} wall time for ETA and bar weights.
@@ -70,8 +74,7 @@ public final class NativeEffort {
 
     private static final long MIB = 1024L * 1024L;
 
-    private static final java.util.concurrent.ConcurrentHashMap<String, Long> LAST_INPUT_BYTES =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> LAST_INPUT_BYTES = new ConcurrentHashMap<>();
 
     private NativeEffort() {}
 
@@ -89,7 +92,7 @@ public final class NativeEffort {
         if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
 
         // 1) Module-own measured wall — project history supersedes host / baselines
-        long own = EffortWeights.stepOkAvgMillisOwn(metrics, mod, "native-image");
+        long own = EffortWeights.stepOkAvgMillisOwn(metrics, mod, TaskNames.NATIVE_IMAGE);
         if (own >= WALL_FLOOR_MS) return own;
 
         long effective = estimateInputBytes(moduleDir);
@@ -100,7 +103,7 @@ public final class NativeEffort {
 
         // 3) Host absolute wall only when we cannot size the closed world (no jar/deps yet).
         // Raw task.native-image.wall-ms is not size-normalized — do not use it when bytes exist.
-        long host = EffortWeights.stepOkAvgMillisHost(metrics, "native-image");
+        long host = EffortWeights.stepOkAvgMillisHost(metrics, TaskNames.NATIVE_IMAGE);
         if (host >= WALL_FLOOR_MS) return host;
 
         // 4) Cold flat: reference × cpuScale
@@ -127,7 +130,7 @@ public final class NativeEffort {
     private static InputSplit splitInputs(Path moduleDir) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return new InputSplit(0, 0);
         try {
-            JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
             BuildLayout layout = BuildLayout.of(moduleDir, project);
             long app = 0;
             Path mainJar = layout.mainJar();
@@ -135,11 +138,11 @@ public final class NativeEffort {
             else if (Files.isDirectory(layout.classesDir())) app = directorySize(layout.classesDir(), 0);
 
             long deps = 0;
-            Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+            Path lock = LockPaths.lockFile(moduleDir);
             Path cache = JkDirs.cache();
             if (Files.isRegularFile(lock)) {
                 try {
-                    List<Path> jars = BuildPlanner.assemblyDependencyJars(moduleDir, project, lock, cache);
+                    List<Path> jars = PlannerSupport.assemblyDependencyJars(moduleDir, project, lock, cache);
                     deps = sumExistingBytes(jars);
                 } catch (IOException | RuntimeException ignored) {
                 }

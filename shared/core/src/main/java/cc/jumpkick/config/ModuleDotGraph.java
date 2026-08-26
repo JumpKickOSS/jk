@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -111,7 +112,7 @@ public final class ModuleDotGraph {
     public static GraphData forProjectDir(Path projectDir) {
         Objects.requireNonNull(projectDir, "projectDir");
         Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = root.resolve("jk.toml");
+        Path toml = root.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) {
             return GraphData.empty(false);
         }

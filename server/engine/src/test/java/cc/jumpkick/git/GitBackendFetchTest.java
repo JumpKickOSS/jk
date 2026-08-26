@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.junit.jupiter.api.Tag;
@@ -47,8 +48,12 @@ class GitBackendFetchTest {
                 "file://" + upstream.workTree(), "file://" + upstream.workTree(), new GitRefSpec.Tag("v1.0.0"));
 
         GitFetcher.Fetched first = backend.fetch(source, false);
-        long firstMtime = Files.getLastModifiedTime(first.checkoutPath()).toMillis();
-        Thread.sleep(20);
+        // Backdate the checkout a clear minute, so ANY rewrite by the second fetch moves the mtime.
+        // The `Thread.sleep(20)` this replaces was betting that 20ms exceeds the filesystem's mtime
+        // granularity — true on ext4, not on every filesystem, and not a statement of intent
+        // either way (JK-2446).
+        long firstMtime = System.currentTimeMillis() - 60_000L;
+        Files.setLastModifiedTime(first.checkoutPath(), FileTime.fromMillis(firstMtime));
         GitFetcher.Fetched second = backend.fetch(source, false);
         assertThat(second.checkoutPath()).isEqualTo(first.checkoutPath());
         assertThat(Files.getLastModifiedTime(second.checkoutPath()).toMillis()).isEqualTo(firstMtime);

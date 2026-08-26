@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.OpenBrowser;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.ForgeAuthConfig;
 import cc.jumpkick.forge.AuthException;
@@ -167,6 +168,6 @@ public final class AuthLoginCommand implements CliCommand {
     }
 
     private static void openBrowser(String url) {
-        cc.jumpkick.cli.OpenBrowser.open(url);
+        OpenBrowser.open(url);
     }
 }

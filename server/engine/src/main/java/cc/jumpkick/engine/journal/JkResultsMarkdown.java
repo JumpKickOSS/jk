@@ -2,8 +2,11 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.DirKeys;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -518,13 +521,13 @@ public final class JkResultsMarkdown {
         String n = name.toLowerCase(Locale.ROOT);
         return "install".equals(n)
                 || "publish".equals(n)
-                || "native-image".equals(n)
-                || "write-image".equals(n)
-                || "package-jar".equals(n)
-                || "package-assembly".equals(n)
-                || "package-minified".equals(n)
-                || "cache-install".equals(n)
-                || n.contains("native-image")
+                || TaskNames.NATIVE_IMAGE.equals(n)
+                || TaskNames.WRITE_IMAGE.equals(n)
+                || TaskNames.PACKAGE_JAR.equals(n)
+                || TaskNames.PACKAGE_ASSEMBLY.equals(n)
+                || TaskNames.PACKAGE_MINIFIED.equals(n)
+                || TaskNames.CACHE_INSTALL.equals(n)
+                || n.contains(TaskNames.NATIVE_IMAGE)
                 || (n.endsWith("-image") && n.contains("write"));
     }
 
@@ -555,13 +558,13 @@ public final class JkResultsMarkdown {
     private static String testIdentity(BuildRecord.Diag d) {
         if (notBlank(d.className()) || notBlank(d.method())) {
             StringBuilder b = new StringBuilder();
-            if (notBlank(d.module())) b.append(d.module()).append(" :: ");
             if (notBlank(d.className())) b.append(d.className());
             if (notBlank(d.method())) {
                 if (notBlank(d.className())) b.append('.');
                 b.append(d.method());
             }
-            return b.toString();
+            // TestFailureInfo.label owns the module separator — the markdown must not spell it itself.
+            return TestFailureInfo.label(d.module(), b.toString(), 0);
         }
         return d.test() == null ? "" : d.test();
     }
@@ -607,7 +610,7 @@ public final class JkResultsMarkdown {
     private static String pathOr(@Nullable Path path, String fallback) {
         // Forward slashes in the markdown report so display paths match across OSes; a POSIX
         // backslash name renders verbatim (DirKeys rewrites only real Windows paths).
-        return path == null ? fallback : cc.jumpkick.util.DirKeys.slashes(path.toString());
+        return path == null ? fallback : DirKeys.slashes(path.toString());
     }
 
     private static String leaf(String dir) {

@@ -71,7 +71,13 @@ class EngineFleetTest {
         try {
             assertThat(EngineFleet.waitForExit(sleeper.pid())).isTrue();
             long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-            assertThat(elapsedMs).as("returned on exit, not at the deadline").isLessThan(4_000);
+            // LIVENESS, not performance. waitForExit's own grace is 8s and the kill lands at 300ms,
+            // so this only fails if the wait ignored the exit and sat out the whole deadline. It is
+            // deliberately half the grace rather than a tight number — a budget close to the real
+            // cost would be a fact about this machine, which is the JK-2446 defect shape.
+            assertThat(elapsedMs)
+                    .as("returned when the process exited, not after sitting out the 8s grace")
+                    .isLessThan(4_000);
         } finally {
             killer.join();
             sleeper.waitFor();

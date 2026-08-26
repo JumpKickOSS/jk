@@ -74,13 +74,27 @@ id         = "org.jetbrains.kotlin.noarg"
 coordinate = "org.jetbrains.kotlin:kotlin-noarg-compiler-plugin-embeddable:${kotlin.version}"
 options    = ["preset=jpa"]
 when       = { classpath-has = "jakarta.persistence:jakarta.persistence-api" }
+
+[[contribute.step-dependency]]        # a tool your steps (and packagers) read — engine-fetched,
+artifact   = "aapt2"                  # handed to the worker by name, in every step/packager key
+coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
+
+[[contribute.command-dependency]]     # a tool ONLY your commands read (an adb) — same entry
+artifact      = "adb"                 # shape and rules, but provisioned when the command runs
+sdk-component = "platform-tools"      # and part of no action key: upgrading it invalidates
+sdk-path      = "adb"                 # nothing
 ```
+
+A tool both lanes need is declared once, as a `step-dependency` — commands receive both lanes,
+so one artifact may not sit in both (parse error). `[[contribute.provided-classpath]]` resolves
+against the step lane only: a command-only tool never joins a compile classpath.
 
 **Interpolation (closed set):** `${config.<key>}`, `${kotlin.version}`,
 `${project.group|name|version}`, `${host.os}`, `${host.os-arch}`.
 
-**Coordinate versions — bare is exact.** In a `[[contribute.step-dependency]]` or
-`[[contribute.packager-dependency]]`, `…:8.5.35` is a hard pin and costs no network: a tool
+**Coordinate versions — bare is exact.** In a `[[contribute.step-dependency]]`,
+`[[contribute.command-dependency]]` or `[[contribute.packager-dependency]]`, `…:8.5.35` is a
+hard pin and costs no network: a tool
 version in a manifest is *your* choice, and a literal usually exists because the tool has to
 match some other line (android's r8 tracks the AGP tools line). Write `^` or `~` when you mean
 float-within-line — `…:^${config.version}` follows the Boot/Quarkus/Grails line the project

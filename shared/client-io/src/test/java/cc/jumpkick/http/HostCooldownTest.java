@@ -30,6 +30,19 @@ class HostCooldownTest {
         return Instant.parse(iso);
     }
 
+    /**
+     * The clock every window assertion below is measured against.
+     *
+     * <p>{@code HostCooldown} has taken an injectable clock since it was written, and
+     * {@code the_window_expires_on_its_own} has always used it — but four of its siblings built the
+     * real-clock instance and then compared the expiry to a fresh {@code Instant.now()}, which turns
+     * an exact arithmetic fact ("expiry = now + window") into a range that has to be loose enough to
+     * absorb however long the test itself took. That is why one of them read
+     * {@code isBetween(80s, 95s)} for a 90-second {@code Retry-After}. With the clock pinned the
+     * same four facts are equalities (JK-2446).
+     */
+    private static final Instant NOW = fixed("2026-07-30T10:00:00Z");
+
     @Test
     void a_host_that_has_not_refused_is_not_cooling_down(@TempDir Path tmp) {
         assertThat(new HostCooldown(tmp).until("repo.example")).isEmpty();
@@ -37,43 +50,44 @@ class HostCooldownTest {
 
     @Test
     void a_refusal_starts_a_window(@TempDir Path tmp) {
-        HostCooldown c = new HostCooldown(tmp);
+        HostCooldown c = new HostCooldown(tmp, () -> NOW);
 
         Instant until = c.noteRateLimited("repo.example", Optional.empty());
 
         assertThat(c.until("repo.example")).contains(until);
-        assertThat(until).isAfter(Instant.now());
+        assertThat(until).isEqualTo(NOW.plus(HostCooldown.DEFAULT_COOLDOWN));
     }
 
     @Test
     void the_window_is_minutes_not_the_retry_ladder(@TempDir Path tmp) {
         // The existing 100ms-1.6s backoff is tuned for a transient 5xx. A quota is a different animal, and
         // coming back in a second is what keeps it open.
-        HostCooldown c = new HostCooldown(tmp);
+        HostCooldown c = new HostCooldown(tmp, () -> NOW);
 
         Instant until = c.noteRateLimited("repo.example", Optional.empty());
 
-        assertThat(Duration.between(Instant.now(), until)).isGreaterThan(Duration.ofSeconds(30));
+        assertThat(Duration.between(NOW, until))
+                .isEqualTo(HostCooldown.DEFAULT_COOLDOWN)
+                .isGreaterThan(Duration.ofSeconds(30));
     }
 
     @Test
     void retry_after_is_honoured_when_the_host_sends_one(@TempDir Path tmp) {
-        HostCooldown c = new HostCooldown(tmp);
+        HostCooldown c = new HostCooldown(tmp, () -> NOW);
 
         Instant until = c.noteRateLimited("repo.example", Optional.of(Duration.ofSeconds(90)));
 
-        Duration actual = Duration.between(Instant.now(), until);
-        assertThat(actual).isBetween(Duration.ofSeconds(80), Duration.ofSeconds(95));
+        assertThat(Duration.between(NOW, until)).isEqualTo(Duration.ofSeconds(90));
     }
 
     @Test
     void an_absurd_retry_after_is_clamped(@TempDir Path tmp) {
         // A header should never be able to wedge a build for a day.
-        HostCooldown c = new HostCooldown(tmp);
+        HostCooldown c = new HostCooldown(tmp, () -> NOW);
 
         Instant until = c.noteRateLimited("repo.example", Optional.of(Duration.ofDays(30)));
 
-        assertThat(Duration.between(Instant.now(), until)).isLessThanOrEqualTo(HostCooldown.MAX_COOLDOWN);
+        assertThat(Duration.between(NOW, until)).isEqualTo(HostCooldown.MAX_COOLDOWN);
     }
 
     @Test
@@ -182,7 +196,7 @@ class HostCooldownTest {
 
     @Test
     void the_error_names_the_host_and_the_expiry() {
-        Instant until = Instant.now().plus(Duration.ofMinutes(5));
+        Instant until = NOW.plus(Duration.ofMinutes(5));
 
         RateLimitedException e = new RateLimitedException("repo.maven.apache.org", until);
 

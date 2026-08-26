@@ -3,9 +3,12 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,12 +18,10 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -164,7 +165,7 @@ public final class ActionCache {
                     // FreshnessStamp's sentinels (.jstamp/.kstamp) live inside
                     // outputDir but aren't action outputs — exclude them so we
                     // don't accidentally cache a stamp from a previous run.
-                    if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
+                    if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
                     // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
                     // plugin-sdk copyTree convention) is never an action output.
                     if (hasJkScratchSegment(outputDir.relativize(file))) continue;
@@ -191,7 +192,7 @@ public final class ActionCache {
      * and asking costs a security-descriptor read plus an access check per output file.
      */
     private static boolean executableBit(Path file) {
-        return !HostPlatform.isWindows() && Files.isExecutable(file);
+        return !Os.isWindows() && Files.isExecutable(file);
     }
 
     /** True when any path segment starts with {@code .jk-} — plugin-private scratch, never cached. */
@@ -322,8 +323,7 @@ public final class ActionCache {
         // doesn't wipe the stamp a later step relies on. (The test result is a CAS
         // marker now, not a file here — see TestStamp.)
         Map<String, byte[]> stamps = new LinkedHashMap<>();
-        for (String f :
-                new String[] {FreshnessStamp.JAVA_STAMP, FreshnessStamp.KOTLIN_STAMP, FreshnessStamp.GROOVY_STAMP}) {
+        for (String f : BuildStamps.ALL) {
             Path sp = outputDir.resolve(f);
             if (Files.isRegularFile(sp)) stamps.put(f, Files.readAllBytes(sp));
         }
@@ -366,12 +366,7 @@ public final class ActionCache {
      * disappeared after the caller's presence check is also false, not a throw.
      */
     private static boolean copyVerified(Path blob, Path target, String expectedSha) throws IOException {
-        MessageDigest md;
-        try {
-            md = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        MessageDigest md = Hashing.newSha256();
         try (var in = Files.newInputStream(blob);
                 var out = new DigestOutputStream(
                         Files.newOutputStream(
@@ -387,7 +382,7 @@ public final class ActionCache {
             Files.deleteIfExists(target);
             return false;
         }
-        if (expectedSha.equalsIgnoreCase(HexFormat.of().formatHex(md.digest()))) {
+        if (expectedSha.equalsIgnoreCase(Hashing.hex(md.digest()))) {
             return true;
         }
         Files.deleteIfExists(target);
@@ -678,14 +673,14 @@ public final class ActionCache {
     }
 
     private Path keysDir() {
-        return root.resolve("keys");
+        return ActionTree.KEYS.under(root);
     }
 
     private Path tasksDir() {
-        return root.resolve("tasks");
+        return ActionTree.TASKS.under(root);
     }
 
     private static void deleteRecursively(Path target) throws IOException {
-        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(target);
+        PathUtil.deleteRecursivelyOrThrow(target);
     }
 }

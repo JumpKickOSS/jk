@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TestSummary;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
@@ -21,7 +27,7 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             boolean parallelTests,
-            cc.jumpkick.config.TestSelection testSelection) {
+            TestSelection testSelection) {
         /** Backward-compatible ctor: serial cross-module gate, default suite. */
         public TestRequest(
                 Path entryDir,
@@ -32,17 +38,7 @@ public final class EngineRequests {
                 boolean verbose,
                 boolean offline,
                 boolean force) {
-            this(
-                    entryDir,
-                    cache,
-                    jdksDir,
-                    workers,
-                    profile,
-                    verbose,
-                    offline,
-                    force,
-                    false,
-                    cc.jumpkick.config.TestSelection.DEFAULT);
+            this(entryDir, cache, jdksDir, workers, profile, verbose, offline, force, false, TestSelection.DEFAULT);
         }
 
         public TestRequest(
@@ -65,7 +61,7 @@ public final class EngineRequests {
                     offline,
                     force,
                     parallelTests,
-                    cc.jumpkick.config.TestSelection.DEFAULT);
+                    TestSelection.DEFAULT);
         }
     }
 
@@ -242,7 +238,7 @@ public final class EngineRequests {
      * after that listener's own {@code planFinish} has been dispatched.
      */
     public interface LockHandler {
-        cc.jumpkick.run.BuildPlanListener onModuleStart(String dir, String coord, List<cc.jumpkick.run.Task> steps);
+        BuildPlanListener onModuleStart(String dir, String coord, List<Task> steps);
 
         default void onPackage(String dir, String name, String version) {}
 
@@ -255,7 +251,7 @@ public final class EngineRequests {
             onPackage(dir, name, version);
         }
 
-        default void onModuleFinish(String dir, cc.jumpkick.run.BuildPlanResult result, LockCounts counts) {}
+        default void onModuleFinish(String dir, BuildPlanResult result, LockCounts counts) {}
     }
 
     /** A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed before writing). */
@@ -275,7 +271,8 @@ public final class EngineRequests {
     // ---- hosted worker commands -------------------------------------------------------------------
 
     /** Everything an engine-hosted {@code jk audit} needs — mirrors {@code AuditCommand}'s local fields. */
-    public record AuditRequest(Path entryDir, Path cache, String severity, URI osvBatchUrl, URI osvVulnsUrl) {}
+    public record AuditRequest(
+            Path entryDir, Path cache, String severity, URI osvBatchUrl, URI osvVulnsUrl, boolean offline) {}
 
     /** Everything an engine-hosted {@code jk format} needs — resolved styles, not raw flags. */
     public record FormatRequest(
@@ -287,13 +284,11 @@ public final class EngineRequests {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
-            Path rewriteConfig,
             boolean offline,
             boolean verbose) {}
 
     /** A hosted {@code jk format} run's summary, decoded from the terminal plan-finish. */
-    public record FormatOutcome(
-            cc.jumpkick.run.BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
+    public record FormatOutcome(BuildPlanResult result, int total, int workerExit) {}
 
     /**
      * Everything an engine-hosted {@code jk publish} needs. The credential and GPG passphrase were
@@ -314,11 +309,12 @@ public final class EngineRequests {
             boolean sigstore,
             boolean slsa,
             boolean sbom,
-            cc.jumpkick.credential.RepoCredential credential,
+            RepoCredential credential,
+            boolean offline,
             boolean verbose) {}
 
     /** A hosted {@code jk publish} run's summary, decoded from the terminal plan-finish. */
-    public record PublishOutcome(cc.jumpkick.run.BuildPlanResult result, int files) {}
+    public record PublishOutcome(BuildPlanResult result, int files) {}
 
     /** Everything an engine-hosted {@code jk image} needs — mirrors {@code ImageCommand}'s local fields. */
     public record ImageRequest(
@@ -343,20 +339,14 @@ public final class EngineRequests {
      * counts.
      */
     public record ImageSummary(
-            cc.jumpkick.run.TestSummary testResult,
-            String ref,
-            String tarball,
-            String name,
-            String version,
-            String daemonExe) {}
+            TestSummary testResult, String ref, String tarball, String name, String version, String daemonExe) {}
 
     /** Everything an engine-hosted {@code jk import} needs — pre-flighted absolute paths. */
     public record ImportRequest(
             Path source, Path out, Path baseDir, Path tmpDir, boolean force, Path report, Path cache) {}
 
     /** A hosted {@code jk import} run's summary, decoded from the terminal plan-finish. */
-    public record ImportOutcome(
-            cc.jumpkick.run.BuildPlanResult result, int exitCode, int warnings, String error, String diag) {}
+    public record ImportOutcome(BuildPlanResult result, int exitCode, int warnings, String error, String diag) {}
 
     // ---- hosted plan commands ----------------------------------------------------------------
 
@@ -496,7 +486,7 @@ public final class EngineRequests {
     }
 
     /** A hosted git fetch's outcome: the plan result plus the materialized checkout + sha (null on failure). */
-    public record GitFetchOutcome(cc.jumpkick.run.BuildPlanResult result, Path checkout, String sha) {}
+    public record GitFetchOutcome(BuildPlanResult result, Path checkout, String sha) {}
 
     // ---- hosted long-tail commands ----------------------------------------------------------------
 
@@ -513,8 +503,7 @@ public final class EngineRequests {
      * landed on, the resolved main class, and the classpath (null/empty on failure) — the
      * ingredients of a client-side {@code ToolEnv}.
      */
-    public record ToolResolveOutcome(
-            cc.jumpkick.run.BuildPlanResult result, String coord, String mainClass, List<Path> classpath) {}
+    public record ToolResolveOutcome(BuildPlanResult result, String coord, String mainClass, List<Path> classpath) {}
 
     /**
      * Everything an engine-hosted script/jar preparation needs ({@code jk tool run <file>}).
@@ -540,7 +529,7 @@ public final class EngineRequests {
      * applicable to the mode (and everything on failure) are {@code null}/empty.
      */
     public record ScriptPrepareOutcome(
-            cc.jumpkick.run.BuildPlanResult result,
+            BuildPlanResult result,
             String mainClass,
             List<Path> classpath,
             Path classesDir,

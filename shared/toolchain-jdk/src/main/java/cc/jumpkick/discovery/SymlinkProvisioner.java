@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.Comparator;
 
 /**
  * Helpers for the link side of the discover-and-link pattern. Splits out so {@code JdkRegistry} and
@@ -22,7 +22,7 @@ public final class SymlinkProvisioner {
 
     /** False on Windows (junction handling is too quirky). True elsewhere. */
     public static boolean canSymlink() {
-        return !HostPlatform.isWindows();
+        return !Os.isWindows();
     }
 
     /**
@@ -61,25 +61,12 @@ public final class SymlinkProvisioner {
     }
 
     /**
-     * Recursively delete a directory tree, or unlink a symlink. Used when we're about to overwrite a
-     * jk-managed entry with a fresh link.
+     * Delete whatever is in the way before a fresh link goes there. A link is unlinked, a real
+     * directory is removed with its contents, anything else is one delete — which is exactly
+     * {@link PathUtil#deleteRecursively}'s contract, so it is not restated here. This used to be a
+     * three-arm copy of it.
      */
-    private static void removeRecursivelyOrUnlink(Path path) throws IOException {
-        if (Files.isSymbolicLink(path)) {
-            Files.deleteIfExists(path);
-            return;
-        }
-        if (Files.isDirectory(path)) {
-            try (var stream = Files.walk(path)) {
-                stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                    }
-                });
-            }
-            return;
-        }
-        Files.deleteIfExists(path);
+    private static void removeRecursivelyOrUnlink(Path path) {
+        PathUtil.deleteRecursively(path);
     }
 }

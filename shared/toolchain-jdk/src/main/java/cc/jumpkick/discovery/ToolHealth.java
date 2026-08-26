@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkVendor;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -61,8 +62,7 @@ public final class ToolHealth {
      */
     public static boolean hasJavac(Path home) {
         if (home == null) return false;
-        String exe = HostPlatform.isWindows() ? "javac.exe" : "javac";
-        return Files.exists(home.resolve("bin").resolve(exe));
+        return Files.exists(JdkFingerprint.javac(home));
     }
 
     /** Read the version off disk for a candidate {@code home}. */
@@ -179,16 +179,16 @@ public final class ToolHealth {
 
     /** {@code <home>/bin/<binary>} (or {@code .exe} / {@code .bat} on Windows). */
     public static Path requiredBinary(ToolSpec spec, Path home) {
-        boolean win = HostPlatform.isWindows();
-        return home.resolve("bin")
-                .resolve(
-                        switch (spec.kind()) {
-                            case "java" -> win ? "java.exe" : "java";
-                            case "maven" -> win ? "mvn.cmd" : "mvn";
-                            case "gradle" -> win ? "gradle.bat" : "gradle";
-                            case "kotlin" -> win ? "kotlinc.bat" : "kotlinc";
-                            default -> throw new IllegalArgumentException("unknown tool kind: " + spec.kind());
-                        });
+        boolean win = Os.isWindows();
+        // `java` is a JDK launcher and belongs to JdkFingerprint (guard G1). The build tools are a
+        // different vocabulary — .cmd / .bat, not .exe — and stay here.
+        return switch (spec.kind()) {
+            case "java" -> JdkFingerprint.java(home);
+            case "maven" -> home.resolve("bin").resolve(win ? "mvn.cmd" : "mvn");
+            case "gradle" -> home.resolve("bin").resolve(win ? "gradle.bat" : "gradle");
+            case "kotlin" -> home.resolve("bin").resolve(win ? "kotlinc.bat" : "kotlinc");
+            default -> throw new IllegalArgumentException("unknown tool kind: " + spec.kind());
+        };
     }
 
     /** Required artifacts beyond the launcher — useful for cheap structural checks. */

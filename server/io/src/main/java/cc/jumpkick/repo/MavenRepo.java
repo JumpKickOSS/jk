@@ -2,10 +2,16 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.FetchTimings;
+import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.CentralMirror;
+import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -14,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -29,6 +34,13 @@ import java.util.function.BooleanSupplier;
  * named repo store ({@link ArtifactNotFoundException} on miss).
  */
 public final class MavenRepo {
+
+    /**
+     * Central failover + the standing download preference: {@link CentralMirror#standard()}, the same
+     * instance the transport holds. Static because the four-hour window is a fact about this machine's
+     * IP rather than about a repository — a per-repository copy would split it.
+     */
+    private static final CentralMirror CENTRAL_MIRROR = CentralMirror.standard();
 
     private final String name;
     private final URI baseUrl;
@@ -46,11 +58,7 @@ public final class MavenRepo {
      * The HTTP client, retained for the small sidecar GETs that are not artifact fetches — currently the
      * {@code.sha1} that confirms an {@code ~/.m2} candidate. Null for non-HTTP transports.
      */
-    private final cc.jumpkick.http.Http http;
-
-    /** Central failover + the standing download preference. */
-    private final cc.jumpkick.http.CentralMirror centralMirror =
-            cc.jumpkick.http.CentralMirror.standard(cc.jumpkick.util.JkDirs.store());
+    private final Http http;
 
     /** Artifacts pinned this run without an upstream checksum sidecar. */
     private final AtomicInteger missingUpstreamChecksums = new AtomicInteger();
@@ -213,14 +221,14 @@ public final class MavenRepo {
      * before walking remotes that would 404 warm multi-repo re-lock).
      */
     public Optional<Fetched> tryLocalArtifact(Coordinate coord) {
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
         return tryLocalMirror(coord, MavenLayout.artifactPath(coord));
     }
 
     /** Local-only POM probe (no HTTP). See {@link #tryLocalArtifact}. */
     public Optional<Fetched> tryLocalPom(Coordinate coord) {
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
         return tryLocalMirror(coord, MavenLayout.pomPath(coord));
     }
@@ -239,7 +247,7 @@ public final class MavenRepo {
      * can union across repos.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
+        if (SessionContext.current().config().offlineOr(false)) {
             return repoStore.versions(coord.group(), coord.artifact());
         }
         try {
@@ -282,12 +290,12 @@ public final class MavenRepo {
             BooleanSupplier abort,
             String expectedSha256)
             throws IOException, InterruptedException {
-        if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
+        if (SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
         }
         // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
         // --force always revalidates from the network (checksums re-checked).
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean force = SessionContext.current().config().forceOr(false);
         if (mirror && !force) {
             Optional<Fetched> local = tryLocalMirror(coord, relativePath);
             if (local.isPresent()) {
@@ -301,7 +309,7 @@ public final class MavenRepo {
         warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
         // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
-        URI primary = leg == Leg.ARTIFACT ? centralMirror.routeForDownload(uri) : uri;
+        URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
         // Before paying for the artifact, see whether the machine's Maven repository already has it
         // . Confirmed against a checksum fetched from THIS repository, so ~/.m2 is only ever a
         // candidate for bytes the remote vouches for.
@@ -334,7 +342,7 @@ public final class MavenRepo {
                 return downloadAndVerify(coord, uri, relativePath, mirror);
             });
         }
-        cc.jumpkick.config.SessionContext.current().io().remoteDown(stored.size());
+        SessionContext.current().io().remoteDown(stored.size());
         Path placed = stored.path();
         if (mirror) {
             placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
@@ -354,7 +362,7 @@ public final class MavenRepo {
      * already equal; otherwise {@code repos/<name>/}. Never overwrites a mismatched local-repo file.
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
-        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().integration()) {
+        if (m2integration && JkM2Config.resolve().integration()) {
             // Refuse a relativePath (from a possibly hostile GAV) that would escape ~/.m2 (JK-2291).
             Path m2Target = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             Optional<Path> used = writeThroughM2(m2Target, source, relativePath, sha256);
@@ -404,7 +412,7 @@ public final class MavenRepo {
      * download, so the worst case is one wasted small GET.
      */
     private Optional<Fetched> tryM2(Coordinate coord, String relativePath, URI uri) {
-        if (!m2integration || !cc.jumpkick.config.JkM2Config.resolve().integration()) return Optional.empty();
+        if (!m2integration || !JkM2Config.resolve().integration()) return Optional.empty();
         if (http == null || !isHttp(baseUrl)) return Optional.empty();
         try {
             Path candidate = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
@@ -414,15 +422,15 @@ public final class MavenRepo {
             // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
             // for bytes any `mvn install` could have seeded — JK-2321).
             String vouchAlgo;
-            Optional<String> advertised = fetchSha256(uri);
+            Optional<String> advertised = fetchSidecar(uri, ".sha256", 64);
             if (advertised.isPresent()) {
                 vouchAlgo = "sha256";
-                if (!Hashing.fileHex("SHA-256", candidate).equalsIgnoreCase(advertised.get())) {
+                if (!Hashing.sha256Hex(candidate).equalsIgnoreCase(advertised.get())) {
                     return Optional.empty();
                 }
             } else {
                 vouchAlgo = "sha1";
-                advertised = fetchSha1(uri);
+                advertised = fetchSidecar(uri, ".sha1", 40);
                 if (advertised.isEmpty()) return Optional.empty();
                 if (!Hashing.fileHex("SHA-1", candidate).equalsIgnoreCase(advertised.get())) {
                     return Optional.empty();
@@ -431,7 +439,7 @@ public final class MavenRepo {
 
             String sha256 = Hashing.sha256Hex(candidate);
             repoStore.writeMemo(relativePath, candidate, sha256);
-            if (cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) {
+            if (SessionContext.current().config().verboseOr(false)) {
                 System.err.println("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo
                         + " confirmed by " + name + ")");
             }
@@ -441,37 +449,17 @@ public final class MavenRepo {
         }
     }
 
-    /** The {@code .sha256} this repository publishes beside {@code uri}; empty when absent or malformed. */
-    private Optional<String> fetchSha256(URI uri) {
+    /**
+     * The digest this repository publishes in the {@code suffix} sidecar beside {@code uri}; empty
+     * when absent or not a {@code hexLength}-digit digest. Some repositories answer a missing
+     * sidecar with an HTML error page under HTTP 200, which is why the body is validated and not
+     * merely non-empty.
+     */
+    private Optional<String> fetchSidecar(URI uri, String suffix, int hexLength) {
         try {
-            var resp = http.get(URI.create(uri + ".sha256"));
+            var resp = http.get(URI.create(uri + suffix));
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
-            String body = new String(resp.body(), StandardCharsets.UTF_8).strip();
-            if (body.isEmpty()) return Optional.empty();
-            String first = body.split("\\s+")[0];
-            if (first.length() != 64 || !first.chars().allMatch(c -> Character.digit(c, 16) >= 0)) {
-                return Optional.empty();
-            }
-            return Optional.of(first);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return Optional.empty();
-        }
-    }
-
-    /** The {@code .sha1} this repository publishes beside {@code uri}; empty when absent or malformed. */
-    private Optional<String> fetchSha1(URI uri) {
-        try {
-            var resp = http.get(URI.create(uri + ".sha1"));
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
-            String body = new String(resp.body(), StandardCharsets.UTF_8).strip();
-            if (body.isEmpty()) return Optional.empty();
-            String first = body.split("\\s+")[0];
-            // 40 hex chars, or it is not a SHA-1 (some repos serve an HTML error page with HTTP 200).
-            if (first.length() != 40 || !first.chars().allMatch(c -> Character.digit(c, 16) >= 0)) {
-                return Optional.empty();
-            }
-            return Optional.of(first);
+            return Hashing.checksumFromSidecar(new String(resp.body(), StandardCharsets.UTF_8), hexLength);
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return Optional.empty();
@@ -481,12 +469,11 @@ public final class MavenRepo {
     private record Downloaded(Path path, String sha256, long size) {}
 
     /** Per-host concurrency cap around the network leg only; file:// is not capped. */
-    private static Downloaded rateLimited(
-            URI uri, cc.jumpkick.http.HostRateLimiter.ThrowingSupplier<Downloaded, IOException> work)
+    private static Downloaded rateLimited(URI uri, HostRateLimiter.ThrowingSupplier<Downloaded, IOException> work)
             throws IOException, InterruptedException {
         String host = uri.getHost();
         boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
-        return limitHost ? cc.jumpkick.http.HostRateLimiter.shared().run(host, work) : work.get();
+        return limitHost ? HostRateLimiter.shared().run(host, work) : work.get();
     }
 
     private Downloaded downloadAndVerify(Coordinate coord, URI uri, String relativePath, boolean mirror)
@@ -512,7 +499,7 @@ public final class MavenRepo {
             Files.deleteIfExists(tmp);
             throw e;
         }
-        String hex = HexFormat.of().formatHex(digest.digest());
+        String hex = Hashing.hex(digest.digest());
         Downloaded stored = new Downloaded(tmp, hex, size);
         long ms = (System.nanoTime() - t0) / 1_000_000L;
         if (mirror) {
@@ -527,7 +514,7 @@ public final class MavenRepo {
         // train the host fetch-duration prior.
         if (ms > 0) {
             try {
-                cc.jumpkick.cache.FetchTimings.record(ms);
+                FetchTimings.record(ms);
             } catch (RuntimeException ignored) {
                 // advisory
             }
@@ -540,7 +527,7 @@ public final class MavenRepo {
      * return it without network I/O.
      */
     private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
-        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().integration()) {
+        if (m2integration && JkM2Config.resolve().integration()) {
             Path m2File = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             Optional<String> hex = repoStore.readSha256Sidecar(relativePath);
             if (Files.isRegularFile(m2File) && hex.isPresent()) {
@@ -606,8 +593,10 @@ public final class MavenRepo {
             throws IOException, InterruptedException {
         Optional<byte[]> sha256Side = transport.fetch(sidecarUri(artifactUri, ".sha256"), credential);
         if (sha256Side.isPresent()) {
-            String expected = normalizeChecksum(new String(sha256Side.get(), StandardCharsets.UTF_8));
-            if (isHexChecksum(expected, 64)) {
+            Optional<String> parsed =
+                    Hashing.checksumFromSidecar(new String(sha256Side.get(), StandardCharsets.UTF_8), 64);
+            if (parsed.isPresent()) {
+                String expected = parsed.get();
                 if (!expected.equalsIgnoreCase(actualSha256)) {
                     throw new ChecksumMismatchException("upstream checksum mismatch for "
                             + coord
@@ -626,8 +615,11 @@ public final class MavenRepo {
         }
         Optional<byte[]> sha1Side = transport.fetch(sidecarUri(artifactUri, ".sha1"), credential);
         if (sha1Side.isPresent()) {
-            String expected = normalizeChecksum(new String(sha1Side.get(), StandardCharsets.UTF_8));
-            if (isHexChecksum(expected, 40)) {
+            Optional<String> parsed =
+                    Hashing.checksumFromSidecar(new String(sha1Side.get(), StandardCharsets.UTF_8), 40);
+            if (parsed.isPresent()) {
+                String expected = parsed.get();
+                // SHA-1 because that is the sidecar Central publishes; the format names the algorithm.
                 String actualSha1 = Hashing.fileHex("SHA-1", blob);
                 if (!expected.equalsIgnoreCase(actualSha1)) {
                     throw new ChecksumMismatchException("upstream checksum mismatch for "
@@ -651,28 +643,6 @@ public final class MavenRepo {
         return URI.create(artifactUri.toString() + suffix);
     }
 
-    /** Sidecar bodies are often {@code <hex>  <filename>} — take the first hex token. */
-    static String normalizeChecksum(String body) {
-        if (body == null) return "";
-        String t = body.trim();
-        if (t.isEmpty()) return "";
-        int sp = t.indexOf(' ');
-        if (sp > 0) t = t.substring(0, sp);
-        int tab = t.indexOf('\t');
-        if (tab > 0) t = t.substring(0, tab);
-        return t.trim();
-    }
-
-    /** True when {@code s} is a lowercase/upper hex digest of length {@code len}. */
-    static boolean isHexChecksum(String s, int len) {
-        if (s == null || s.length() != len) return false;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
-        }
-        return true;
-    }
-
     /**
      * Serve a fetch from the named repo's full store under {@code repos/<name>/}; a coordinate
      * that was never fetched (or mirrored) here is treated as not-found and the resolver falls
@@ -685,12 +655,27 @@ public final class MavenRepo {
                 "offline: " + coord + " (" + relativePath + ") not in local index for " + name);
     }
 
+    /**
+     * The canonical form of a repository base URL: a trailing slash so {@code resolve} appends
+     * rather than replaces, and <strong>no userinfo</strong>.
+     *
+     * <p>{@link #baseUrl()} is not just a request prefix — {@code LockOrchestrator} interpolates it
+     * into every artifact's {@code source} field, so it is committed to {@code jk-lock.toml} and
+     * shared with everyone who clones the repository. A base URL declared as
+     * {@code https://alice:s3cr3t@nexus.example.com/repo/} (in {@code jk.toml} or, worse, in one
+     * developer's {@code ~/.config/jk/config.toml}) would put that credential in the lockfile, in
+     * every fetch error and in the journal. Stripping it here costs nothing: authentication runs
+     * through {@link RepoCredentialResolver} and an {@code Authorization} header,
+     * and the JDK's {@code HttpClient} never authenticates from userinfo — so the credential half
+     * of such a URL was inert on the wire and live everywhere else.
+     */
     private static URI normalize(URI uri) {
-        String s = uri.toString();
+        URI safe = SafeUri.withoutUserInfo(uri);
+        String s = safe.toString();
         if (!s.endsWith("/")) {
             return URI.create(s + "/");
         }
-        return uri;
+        return safe;
     }
 
     public record Fetched(URI url, Path cachePath, String sha256, long size) {}

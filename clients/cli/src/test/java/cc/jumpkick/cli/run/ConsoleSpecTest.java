@@ -3,18 +3,15 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkConfig;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import java.time.Duration;
-import java.util.Optional;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link ConsoleSpec#fmtDuration} is the one duration formatter in the CLI: bare millis below a
- * second, one-decimal seconds below a minute, then {@code m/h/d} compound forms — capping at days.
- * Also covers plain-mode {@link ConsoleSpec#took}.
+ * {@link ConsoleSpec#fmtDuration} is the settled took-line face of {@link DurationText}: bare millis
+ * below a second, one-decimal seconds below a minute, then {@code m/h/d} compound forms — capping
+ * at days. Also covers plain-mode {@link ConsoleSpec#took}.
  */
 class ConsoleSpecTest {
 
@@ -67,7 +64,7 @@ class ConsoleSpecTest {
 
     @Test
     void took_plain_prefixes_dash_separator() throws Exception {
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             assertThat(ConsoleSpec.took(Duration.ofMillis(547))).isEqualTo("- took 547ms");
             assertThat(ConsoleSpec.took(Duration.ofMillis(1200))).isEqualTo("- took 1.2s");
             // Callers keep a single space before took → "Already formatted - took 547ms"
@@ -81,20 +78,10 @@ class ConsoleSpecTest {
     void took_ansi_is_dim_italic_without_dash() throws Exception {
         // When ANSI is available the body is styled "took …" (no leading dash).
         String took = ConsoleSpec.took(Duration.ofMillis(100));
-        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+        if (Theme.active().isAnsi()) {
             assertThat(took).contains("took 100ms");
             assertThat(took).doesNotStartWith("- ");
             assertThat(took).contains("\u001B["); // styled
-        }
-    }
-
-    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
-        Session original = SessionContext.current();
-        try {
-            return SessionContext.where(original.withConfig(noAnsi), body::get);
-        } finally {
-            SessionContext.install(original);
         }
     }
 }

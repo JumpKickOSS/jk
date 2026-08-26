@@ -6,23 +6,38 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.Linking;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.lock.LockFreshness;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Variants;
+import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -36,7 +51,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -72,15 +86,16 @@ public final class ExecPlans {
      */
     public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince, boolean counts) {
         try {
-            Path buildFile = dir.resolve("jk.toml");
+            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile)) {
                 return ProjectInfo.error("no jk.toml in " + dir);
             }
             JkBuild build = JkBuildParser.parse(buildFile);
-            build = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(dir, build);
+            build = WorkspaceResolve.applyWorkspace(dir, build);
             build = applyLockModulePin(dir, build);
 
             String workspaceRootDir = "";
+            List<JkBuild> envSources = new ArrayList<>(List.of(build));
             List<String> moduleDirs = new ArrayList<>();
             List<String> moduleNames = new ArrayList<>();
             Path wsRoot = null;
@@ -94,7 +109,7 @@ public final class ExecPlans {
                     wsRoot = root.get();
                     workspaceRootDir = wsRoot.toString();
                     try {
-                        rootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                        rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
                     } catch (Exception ignored) {
                         rootBuild = build;
                     }
@@ -105,6 +120,7 @@ public final class ExecPlans {
                     for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
                         moduleDirs.add(e.getKey().toAbsolutePath().normalize().toString());
                         moduleNames.add(e.getValue().project().name());
+                        envSources.add(e.getValue()); // a member declares what the root does not
                     }
                 } catch (Exception ignored) {
                     for (String m : rootBuild.workspace().modules()) {
@@ -122,8 +138,7 @@ public final class ExecPlans {
                     || (affectedSince != null && !affectedSince.isBlank())) {
                 Path selectRoot = wsRoot != null ? wsRoot : dir;
                 JkBuild selectBuild = wsRoot != null ? rootBuild : build;
-                var hit = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                        selectRoot, selectBuild, modulesSpec, affectedSince);
+                var hit = ModuleSelection.resolveOptional(selectRoot, selectBuild, modulesSpec, affectedSince);
                 if (hit != null && !hit.ok()) {
                     return ProjectInfo.error(hit.errorMessage());
                 }
@@ -159,13 +174,13 @@ public final class ExecPlans {
                 }
             }
 
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+            Path lockFile = LockPaths.lockFile(dir);
             boolean hasLock = Files.exists(lockFile);
             String lockJdk = "";
             if (hasLock) {
                 try {
-                    String id = LockfileReader.read(lockFile).jdk();
-                    if (id != null) lockJdk = id;
+                    var pin = LockfileReader.read(lockFile).jdk();
+                    if (pin != null) lockJdk = pin.vendor() + "-" + pin.version();
                 } catch (IOException ignored) {
                     // unreadable lock — summarized as jdk-unknown, not an error
                 }
@@ -197,7 +212,7 @@ public final class ExecPlans {
                     build.mainClass() == null ? "" : build.mainClass(),
                     build.assembly(),
                     build.application()
-                            .map(cc.jumpkick.model.JkBuild.Application::config)
+                            .map(JkBuild.Application::config)
                             .filter(c -> c != null && !c.isBlank())
                             .orElse(""),
                     build.nativeMode().name(),
@@ -219,7 +234,7 @@ public final class ExecPlans {
                     pathDeps(build),
                     layoutOf(build, dir, BuildLayout::sourcesJar),
                     layoutOf(build, dir, BuildLayout::javadocJar),
-                    VariantApply.envRefs(build),
+                    VariantApply.envRefs(envSources),
                     moduleNames,
                     sourceCount,
                     testCount,
@@ -231,36 +246,34 @@ public final class ExecPlans {
                     layoutOf(build, dir, BuildLayout::testResultsDir),
                     testTags.includeTags(),
                     testTags.excludeTags(),
-                    hasLock && cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile),
+                    hasLock && LockFreshness.isStale(dir, lockFile),
                     build.project().isScala(),
                     build.project().scala() == null
                             ? ""
                             : build.project().scala().raw());
         } catch (RuntimeException | IOException e) {
-            return ProjectInfo.error(cc.jumpkick.util.Errors.text(e));
+            return ProjectInfo.error(Errors.text(e));
         }
     }
 
     private static String sanitizeIdentity(String value) {
-        if (value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value)) return "";
+        if (value == null || value.isBlank() || Project.VERSION_FROM_WORKSPACE.equals(value)) return "";
         return value;
     }
 
     private static String sanitizeJdk(String jdk) {
-        if (jdk == null || jdk.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(jdk)) return "";
+        if (jdk == null || jdk.isBlank() || Project.VERSION_FROM_WORKSPACE.equals(jdk)) return "";
         return jdk;
     }
 
     /** Apply a matching {@code [[module]]} lock pin for display identity. */
     private static JkBuild applyLockModulePin(Path cwd, JkBuild build) {
         try {
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(cwd);
+            Path lockFile = LockPaths.lockFile(cwd);
             if (!Files.isRegularFile(lockFile)) return build;
             Lockfile lock = LockfileReader.read(lockFile);
             if (lock.modules().isEmpty()) return build;
-            Path owner = cc.jumpkick.lock.LockPaths.lockOwnerDir(cwd)
-                    .toAbsolutePath()
-                    .normalize();
+            Path owner = LockPaths.lockOwnerDir(cwd).toAbsolutePath().normalize();
             String rel = owner.relativize(cwd.toAbsolutePath().normalize())
                     .toString()
                     .replace('\\', '/');
@@ -275,20 +288,18 @@ public final class ExecPlans {
             var p = build.project();
             String group = blankOrSentinel(p.group()) ? pin.group() : p.group();
             String version = blankOrSentinel(p.version()) ? pin.version() : p.version();
-            String jdk = blankOrSentinel(p.jdk()) && pin.jdk() != null ? pin.jdk() : p.jdk();
             int javaRelease = p.java() > 0 ? p.java() : (pin.java() != null ? pin.java() : 0);
             if (group.equals(p.group())
                     && version.equals(p.version())
-                    && Objects.equals(jdk, p.jdk())
                     && javaRelease == p.java()
                     && !p.inheritsFromWorkspace()) {
                 return build;
             }
-            var resolved = new JkBuild.Project(
+            var resolved = new Project(
                     group,
                     p.name(),
                     version,
-                    jdk,
+                    p.jdk(),
                     javaRelease,
                     p.kotlin(),
                     p.groovy(),
@@ -306,7 +317,7 @@ public final class ExecPlans {
     }
 
     private static boolean blankOrSentinel(String value) {
-        return value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value);
+        return value == null || value.isBlank() || Project.VERSION_FROM_WORKSPACE.equals(value);
     }
 
     static int countSources(Path module, boolean main) {
@@ -390,9 +401,8 @@ public final class ExecPlans {
             String variant,
             Map<String, String> clientEnv) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
-            project = VariantApply.applyLenient(
-                            project, dir, cc.jumpkick.model.Variants.Selection.parse(variant), clientEnv)
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
                     .build();
             BuildLayout layout = BuildLayout.of(dir, project);
             return switch (kind) {
@@ -404,7 +414,7 @@ public final class ExecPlans {
                 default -> ExecPlan.error(kind, "unknown exec-plan kind: " + kind);
             };
         } catch (RuntimeException | IOException e) {
-            return ExecPlan.error(kind, cc.jumpkick.util.Errors.text(e));
+            return ExecPlan.error(kind, Errors.text(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return ExecPlan.error(kind, "interrupted");
@@ -422,7 +432,7 @@ public final class ExecPlans {
             return ExecPlan.error(
                     "jshell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`");
         }
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockFile = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
             return ExecPlan.error("jshell", "no jk-lock.toml — lock refresh did not produce one");
         }
@@ -474,7 +484,7 @@ public final class ExecPlans {
      */
     static List<Path> jarAliased(Path cache, List<Path> jars) throws IOException {
         List<Path> out = new ArrayList<>(jars.size());
-        Path aliasDir = cache.resolve("jshell-cp");
+        Path aliasDir = CacheTree.JSHELL_CP.under(cache);
         for (Path jar : jars) {
             if (jar == null) continue;
             String name = jar.getFileName().toString().toLowerCase();
@@ -624,7 +634,7 @@ public final class ExecPlans {
 
         boolean devtoolsInjected = false;
         boolean hotReload = false;
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockFile = LockPaths.lockFile(dir);
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             classpath.addAll(new ClasspathResolver(JkStores.cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
@@ -633,10 +643,9 @@ public final class ExecPlans {
                     String n = a.name();
                     return "org.springframework.boot:spring-boot-devtools".equals(n)
                             || "org.springframework.boot:spring-boot-devtools:jar:".equals(a.packageKey())
-                            || (cc.jumpkick.model.PackageId.isMavenPackageKey(n)
+                            || (PackageId.isMavenPackageKey(n)
                                     && "org.springframework.boot:spring-boot-devtools"
-                                            .equals(cc.jumpkick.model.PackageId.parse(n)
-                                                    .ga()));
+                                            .equals(PackageId.parse(n).ga()));
                 });
             }
         }
@@ -686,7 +695,7 @@ public final class ExecPlans {
             boolean hasDeps = classpath.size() > 1;
             Path first = classpath.get(0);
             argv.add("-cp");
-            argv.add(joinPaths(classpath));
+            argv.add(Classpaths.join(classpath));
             argv.add(mainClass);
             display = (hasDeps ? "java -cp … " : "java -cp " + dir.relativize(first) + " ") + mainClass;
         }
@@ -880,7 +889,7 @@ public final class ExecPlans {
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         Path repoJar = JkStores.storeRootFor(cache)
                 .resolve("repos")
-                .resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL)
+                .resolve(RepoArtifactResolver.JK_LOCAL)
                 .resolve(MavenLayout.artifactPath(coord));
         if (!Files.isRegularFile(repoJar)) {
             repoJar = layout.mainJar();
@@ -923,7 +932,7 @@ public final class ExecPlans {
     }
 
     static boolean isPluginWorker(Path dir, JkBuild project) {
-        if (cc.jumpkick.plugin.PluginModule.isWorker(dir)) return true;
+        if (PluginModule.isWorker(dir)) return true;
         String main = project.mainClass();
         return main != null && "cc.jumpkick.plugin.process.PluginMain".equals(main);
     }
@@ -961,12 +970,12 @@ public final class ExecPlans {
         if (!Files.isRegularFile(mainJar)) {
             return ExecPlan.error("aot-cache", "jar not found at " + mainJar + " — build before --aot-cache");
         }
-        int major = JkBuild.Project.majorOf(project.project().jdk());
+        int major = Project.majorOf(project.project().jdk());
         String tier = major >= 25 ? "aot" : "cds";
 
         List<String> libNames = new ArrayList<>();
         List<String> libPaths = new ArrayList<>();
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path lockFile = LockPaths.lockFile(dir);
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
@@ -1023,8 +1032,8 @@ public final class ExecPlans {
     /** The project-pinned JDK when resolvable; the engine's own JVM home otherwise. */
     private static Path projectJavaHome(Path dir) {
         try {
-            return cc.jumpkick.jdk.JdkResolver.forProject(dir, JkDirs.jdks())
-                    .map(cc.jumpkick.jdk.InstalledJdk::home)
+            return JdkResolver.forProject(dir, JkDirs.jdks())
+                    .map(InstalledJdk::home)
                     .orElseGet(JavaHomes::runningJavaHome);
         } catch (IOException e) {
             return JavaHomes.runningJavaHome();
@@ -1039,8 +1048,7 @@ public final class ExecPlans {
             if (bootVersion == null) return null;
             Cas cas = JkStores.cas(cache);
             return RepoGroupBuilder.buildFor(project, null, cas)
-                    .tryFetchArtifact(cc.jumpkick.model.Coordinate.of(
-                            "org.springframework.boot", "spring-boot-devtools", bootVersion))
+                    .tryFetchArtifact(Coordinate.of("org.springframework.boot", "spring-boot-devtools", bootVersion))
                     .map(hit -> hit.fetched().cachePath())
                     .orElse(null);
         } catch (IOException e) {
@@ -1052,11 +1060,11 @@ public final class ExecPlans {
     }
 
     private static Path resolveLockFile(Path projectDir) throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        Path lockFile = LockPaths.lockFile(projectDir);
         if (!Files.exists(lockFile)) {
             var rootOpt = WorkspaceLocator.findRoot(projectDir);
             if (rootOpt.isPresent()) {
-                Path candidate = cc.jumpkick.lock.LockPaths.lockFile(rootOpt.get());
+                Path candidate = LockPaths.lockFile(rootOpt.get());
                 if (Files.exists(candidate)) return candidate;
             }
         }
@@ -1064,19 +1072,7 @@ public final class ExecPlans {
     }
 
     private static String javaBin(Path javaHome) {
-        return javaHome.resolve("bin")
-                .resolve(HostPlatform.isWindows() ? "java.exe" : "java")
-                .toString();
-    }
-
-    private static String joinPaths(List<Path> paths) {
-        String sep = System.getProperty("path.separator");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < paths.size(); i++) {
-            if (i > 0) sb.append(sep);
-            sb.append(paths.get(i).toAbsolutePath());
-        }
-        return sb.toString();
+        return JdkFingerprint.java(javaHome).toString();
     }
 
     private static String orEmpty(String s) {

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
+import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
+import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -9,6 +13,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -85,7 +90,7 @@ public final class PlannerNative {
                     JkBuild project = ctx.require(PROJECT);
                     JkBuild.NativeConfig nativeCfg = project.nativeConfig()
                             .orElseGet(() -> new JkBuild.NativeConfig(
-                                    null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED));
+                                    null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null));
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path mainJar = layout.mainJar();
                     if (!Files.exists(mainJar)) {
@@ -221,7 +226,11 @@ public final class PlannerNative {
                         cc.jumpkick.repo.RepoGroup metaRepos =
                                 RepoGroupBuilder.buildFor(project, null, JkStores.cas(cache));
                         metadataDirs = ReachabilityMetadata.configDirs(
-                                cache, metaRepos, runtimeArtifacts, msg -> ctx.label(msg));
+                                JkStores.storeRootFor(cache),
+                                metaRepos,
+                                metaLock.nativeMetadata(),
+                                runtimeArtifacts,
+                                msg -> ctx.label(msg));
                     }
                     if (frameworkSources != null) {
                         metadataDirs = List.of();
@@ -233,19 +242,20 @@ public final class PlannerNative {
                             .resolve(cc.jumpkick.surface.TrainLayout.REACHABILITY);
                     if (Files.isDirectory(trainReach)
                             && Files.isRegularFile(trainReach.resolve("reachability-metadata.json"))) {
-                        java.util.ArrayList<Path> withTrain = new java.util.ArrayList<>(metadataDirs);
+                        ArrayList<Path> withTrain = new ArrayList<>(metadataDirs);
                         withTrain.add(0, trainReach);
                         metadataDirs = withTrain;
                         // Refuse to native-build on stale train outputs when configured.
                         try {
-                            var trainCfg = cc.jumpkick.config.TrainConfigParser.parse(dir.resolve("jk.toml"));
+                            var trainCfg =
+                                    cc.jumpkick.config.JkBuildParser.trainConfig(dir.resolve(ManifestPaths.MANIFEST));
                             String stale =
                                     TrainRunner.staleReason(dir, project, layout, lockFile, javaHomeEarly, trainCfg);
                             if (stale != null) {
                                 ctx.error("train-stale", stale);
                                 throw new RuntimeException(stale);
                             }
-                        } catch (java.io.IOException e) {
+                        } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
                     }
@@ -270,7 +280,7 @@ public final class PlannerNative {
                     // toolchain. Shared libraries (+ generated C headers) aren't cached yet.
                     Path releaseFile = javaHome.resolve("release");
                     String graalTok = Files.isRegularFile(releaseFile)
-                            ? cc.jumpkick.util.Hashing.sha256Hex(releaseFile)
+                            ? cc.jumpkick.host.Hashing.sha256Hex(releaseFile)
                             : javaHome.toString();
                     List<String> nativeTokens = List.of(
                             "cp:" + cc.jumpkick.task.ClasspathFingerprint.of(classpath),
@@ -356,7 +366,7 @@ public final class PlannerNative {
                     // plan output channel. The CLI buffers output for Ctrl-O peek (hidden by
                     // default); --verbose streams it live. Do not gate on verbose/failure only —
                     // that left the peek buffer empty during a successful native-image run.
-                    java.util.List<String> niLog = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+                    List<String> niLog = java.util.Collections.synchronizedList(new ArrayList<>());
                     int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, line -> {
                         niLog.add(line);
                         ctx.output(line);
@@ -422,7 +432,7 @@ public final class PlannerNative {
         }
     }
 
-    static Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, cc.jumpkick.layout.BuildLayout layout)
+    static Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, BuildLayout layout)
             throws IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, dir);
         if (active.isEmpty()) return null;
@@ -438,7 +448,7 @@ public final class PlannerNative {
     /** The plugin's build step name — the scratch dir its declared outputs live under. */
     static String stepNameOf(PluginBuild.Active active, JkBuild project, Path dir, Path cache)
             throws IOException, InterruptedException {
-        var decls = PluginBuild.declarations(active, project, dir, cache, dir.resolve("target"));
+        var decls = PluginBuild.declarations(active, project, dir, cache, dir.resolve(BuildLayout.TARGET));
         for (var task : decls.steps()) {
             for (String outDir : task.outputs()) {
                 if (!outDir.isBlank()) return task.name();
@@ -507,18 +517,22 @@ public final class PlannerNative {
     }
 
     /**
-     * GraalVM / JDK home that has {@code bin/native-image}: client-resolved home first, then
-     * {@code $GRAALVM_HOME}, then the project JDK, then the running JVM.
+     * GraalVM / JDK home that {@code NativeImageDriver.resolve} recognises — i.e. one where
+     * {@code GraalLauncher} finds a native-image launcher; that owner defines which directories
+     * and spellings count. Order: client-resolved home first, then {@code $GRAALVM_HOME}, then
+     * the project JDK, then the running JVM.
      */
     static Path resolveNativeImageHome(Path graalHome, Path projectDir, Path jdksDir) {
         if (graalHome != null
                 && cc.jumpkick.tool.NativeImageDriver.resolve(graalHome).isPresent()) {
             return graalHome;
         }
-        String env = System.getenv("GRAALVM_HOME");
+        // The request's environment, not the daemon's — see JK-1021.
+        var buildEnv = BuildEnv.forModule(projectDir);
+        String env = buildEnv.apply("GRAALVM_HOME");
         if (env != null && !env.isBlank()) {
             Path fromEnv = Path.of(env);
-            if (cc.jumpkick.tool.NativeImageDriver.resolve(fromEnv).isPresent()) return fromEnv;
+            if (cc.jumpkick.tool.NativeImageDriver.resolve(fromEnv, buildEnv).isPresent()) return fromEnv;
         }
         try {
             return cc.jumpkick.jdk.JdkResolver.forProject(projectDir, jdksDir)

@@ -101,6 +101,38 @@ class LibraryCatalogLayeringTest {
                 .isEqualTo("project");
     }
 
+    /**
+     * Catalog-root discovery reads {@code workspace.modules} through {@link
+     * cc.jumpkick.config.TomlScan}, the owner of that scan, instead of a private line loop. The
+     * private loop keyed on a {@code [workspace]} header and a line starting with {@code modules},
+     * so the equivalent dotted spelling was invisible to it — a workspace root written that way
+     * silently became "not a workspace", and its {@code jk-libs.toml} stopped reaching the module.
+     */
+    @Test
+    void for_project_sees_a_workspace_declared_with_a_dotted_key(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        Path mod = root.resolve("app");
+        Files.createDirectories(mod);
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+                workspace.modules = ["app"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), """
+                name = "app"
+                """);
+        Files.writeString(root.resolve("jk-libs.toml"), """
+                [libraries]
+                internal = "com.acme:internal"
+                """);
+
+        assertThat(LibraryCatalog.forProject(mod).lookup("internal"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.acme:internal");
+    }
+
     @Test
     void for_project_rejects_module_local_jk_libs(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("ws");

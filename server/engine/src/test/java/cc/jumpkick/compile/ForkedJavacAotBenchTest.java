@@ -61,7 +61,11 @@ class ForkedJavacAotBenchTest {
         System.clearProperty("jk.worker.aot");
         for (int i = 0; i < WARMUP; i++) {
             ForkedJavac.compile(req);
-            Thread.sleep(1500); // background trainer
+            // Benchmark methodology, not synchronisation: let the background AOT trainer finish
+            // before the measured runs start. This file asserts nothing (every check is an
+            // assumeTrue; the javadoc says it prints medians and never fails on a delta), so there
+            // is no assertion this delay could make falsely green — the JK-2446 defect shape.
+            Thread.sleep(1500);
         }
 
         List<Long> on = new ArrayList<>();

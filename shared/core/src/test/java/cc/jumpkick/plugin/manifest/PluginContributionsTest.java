@@ -8,7 +8,9 @@ import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.VersionSelector;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,7 +43,7 @@ class PluginContributionsTest {
         // The contribution lands as written, not exactified with a leading `=`, so a
         // `version = "4"` floor floats within the Boot 4 line at lock.
         assertThat(build.dependencies().of(Scope.PLATFORM).getFirst().version())
-                .isInstanceOf(cc.jumpkick.model.VersionSelector.Caret.class);
+                .isInstanceOf(VersionSelector.Caret.class);
     }
 
     @Test
@@ -200,6 +202,134 @@ class PluginContributionsTest {
                                 "extra/res", true, new PluginDescriptor.Condition.NativeDeclared()));
     }
 
+    // ---- [[contribute.command-dependency]] — the command-only tool lane ------------------------
+
+    @Test
+    void command_dependencies_parse_into_their_own_lane() {
+        var parsed = PluginDescriptors.parse("""
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.step-dependency]]
+                artifact = "aapt2"
+                coordinate = "com.acme:aapt2:1.0.0"
+
+                [[contribute.command-dependency]]
+                artifact = "adb"
+                sdk-component = "platform-tools"
+                sdk-path = "platform-tools/adb"
+
+                [[contribute.command-dependency]]
+                artifact = "helper"
+                coordinate = "com.acme:helper:1.0.0"
+                """, "p.toml");
+        assertThat(parsed.contributions().stepDependencies())
+                .extracting(PluginDescriptor.StepDependency::artifact)
+                .containsExactly("aapt2");
+        assertThat(parsed.contributions().commandDependencies())
+                .extracting(PluginDescriptor.StepDependency::artifact)
+                .containsExactly("adb", "helper");
+    }
+
+    @Test
+    void command_dependency_shares_the_step_lane_entry_rules() {
+        String base = """
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.command-dependency]]
+                %s
+                """;
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted("artifact = \"x\"\ncoordinate = \"a:b:1\"\nsdk-component = \"tools\""),
+                        "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("needs exactly one of");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted(
+                                "artifact = \"x\"\ncoordinate = \"a:b:1\"\n" + "when = { classpath-has = \"g:a\" }"),
+                        "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("classpath-has cannot gate a command-dependency");
+    }
+
+    @Test
+    void an_artifact_cannot_sit_in_both_tool_lanes() {
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "p"
+                        table = "p"
+
+                        [[contribute.step-dependency]]
+                        artifact = "bundletool"
+                        coordinate = "com.acme:bundletool:1.0.0"
+
+                        [[contribute.command-dependency]]
+                        artifact = "bundletool"
+                        coordinate = "com.acme:bundletool:1.0.0"
+                        """, "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("already a [[contribute.step-dependency]]")
+                .hasMessageContaining("declare it once, in the step lane");
+    }
+
+    @Test
+    void provided_classpath_refuses_a_command_only_tool() {
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "p"
+                        table = "p"
+
+                        [[contribute.command-dependency]]
+                        artifact = "adb"
+                        sdk-component = "platform-tools"
+
+                        [[contribute.provided-classpath]]
+                        dependency = "adb"
+                        """, "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("never joins a compile classpath");
+    }
+
+    @Test
+    void command_dependencies_evaluate_apart_from_the_step_lane() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id = "cmdlane-fixture"
+                table = "cmdlane-fixture"
+
+                [[contribute.step-dependency]]
+                artifact = "aapt2"
+                coordinate = "com.acme:aapt2:1.0.0"
+
+                [[contribute.command-dependency]]
+                artifact = "adb"
+                sdk-component = "platform-tools"
+                sdk-path = "platform-tools/adb"
+                """, "cmdlane-fixture.toml");
+        PluginTableRegistry.putBuiltIn(manifest, null);
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                jdk = "25"
+
+                [cmdlane-fixture]
+                """);
+
+        assertThat(PluginContributions.stepDependencies(build, null))
+                .extracting(PluginContributions.StepDep::artifact)
+                .containsExactly("aapt2");
+        var commandDeps = PluginContributions.commandDependencies(build, null);
+        assertThat(commandDeps)
+                .extracting(PluginContributions.StepDep::artifact)
+                .containsExactly("adb");
+        assertThat(commandDeps.getFirst().sdkComponent()).isEqualTo("platform-tools");
+        assertThat(commandDeps.getFirst().sdkPath()).isEqualTo("platform-tools/adb");
+    }
+
     // ---- manifest-load validation --------------------------------------------------------------
 
     @Test
@@ -289,16 +419,15 @@ class PluginContributionsTest {
                 """, "p.toml");
         var configs = Map.of("ktextra", PluginTableRegistry.validate(manifest, org.tomlj.Toml.parse("")));
 
-        JkBuild.Project thin =
-                JkBuild.Project.builder("g", "m", "1.0").jdkMajor(25).java(21).build();
+        Project thin = Project.builder("g", "m", "1.0").jdkMajor(25).java(21).build();
         assertThat(PluginContributions.platformDependencies(thin, false, configs, List.of(manifest)))
                 .as("no kotlin → condition false")
                 .isEmpty();
 
-        JkBuild.Project resolved = JkBuild.Project.builder("g", "m", "1.0")
+        Project resolved = Project.builder("g", "m", "1.0")
                 .jdkMajor(25)
                 .java(21)
-                .kotlin(cc.jumpkick.model.VersionSelector.parse("=2.4.0"))
+                .kotlin(VersionSelector.parse("=2.4.0"))
                 .build();
         assertThat(PluginContributions.platformDependencies(resolved, false, configs, List.of(manifest)))
                 .extracting(PluginContributions.PlatformDep::module)

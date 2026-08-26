@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.layout.BuildLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -109,7 +110,7 @@ class PreflightMemoTest {
                 .findFirst()
                 .orElseThrow()
                 .dir();
-        Files.createDirectories(cc.jumpkick.layout.BuildLayout.moduleTargetDir(tmp, aDir));
+        Files.createDirectories(BuildLayout.moduleTargetDir(tmp, aDir));
         storeDirty(tmp, graph, Set.of());
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 

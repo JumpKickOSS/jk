@@ -5,13 +5,21 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.TestSupport;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.Set;
 
 /** Single-project {@code test-request}. */
@@ -44,12 +52,11 @@ public final class TestVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
             int workers = Jsonl.intValue(requestLine, "workers", 0);
             String profile = Jsonl.str(requestLine, "profile");
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
@@ -62,27 +69,19 @@ public final class TestVerb implements HostedVerb {
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Path buildFile = entryDir.resolve("jk.toml");
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
+            Path buildFile = entryDir.resolve(ManifestPaths.MANIFEST);
+            Path lockFile = LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
 
-            boolean compactTests = cc.jumpkick.layout.ModuleLayout.isCompact(entryDir);
-            int estimatedTestCount = cc.jumpkick.runtime.TestSupport.estimateSelectedSuiteTestCount(
+            boolean compactTests = ModuleLayout.isCompact(entryDir);
+            int estimatedTestCount = TestSupport.estimateSelectedSuiteTestCount(
                     entryDir, compactTests, ProtoJobs.testSelectionOf(requestLine));
 
-            JkConfig config = new JkConfig(
-                    Optional.empty(),
-                    Optional.of(offline),
-                    Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of(verbose),
-                    Optional.empty(),
-                    Optional.of(force),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty());
+            JkConfig config = JkConfig.empty()
+                    .withOffline(offline)
+                    .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                    .withVerbose(verbose)
+                    .withForce(force);
             Session session = Session.defaults()
                     .withConfig(config)
                     .withWorkingDir(entryDir)
@@ -91,9 +90,18 @@ public final class TestVerb implements HostedVerb {
                     .withCancel(cancelToken)
                     .withJvm(ProtoSession.jvmTuning(requestLine))
                     .withParallelTests(parallelTests)
-                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine));
+                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine))
+                    // The request's env belongs on the session too, not only on the request: it is
+                    // what BuildEnv hands every build-path caller, and without it `FOO=x jk build`
+                    // reached variant `env:` indirection (which is passed the request's map
+                    // directly) but nothing that asked BuildEnv — so `[test] env` resolved against
+                    // the daemon's own environment instead of the caller's.
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                    // The request's toolchain selection belongs on it too: without this the SWITCH tier is
+                    // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                    .withToolchainSpecs(ProtoSession.jdkSpecOf(requestLine), ProtoSession.graalSpecOf(requestLine));
 
-            cc.jumpkick.runtime.BuildPlanner.Inputs inputs = new cc.jumpkick.runtime.BuildPlanner.Inputs(
+            BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                             entryDir,
                             cache,
                             buildFile,
@@ -110,19 +118,20 @@ public final class TestVerb implements HostedVerb {
                             Set.of(),
                             session)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
-            cc.jumpkick.run.BuildPlan plan =
-                    cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs).build();
+            BuildPlan plan = BuildPlanner.coreBuilder(inputs).build();
 
             PlanBurst.announce(host, plan, writer);
-            cc.jumpkick.run.BuildPlanResult result = SessionContext.where(session, plan::run);
+            BuildPlanResult result = SessionContext.where(session, plan::run);
             host.releaseExclusiveSlot();
             host.accTests(
-                    host.eventRequestId(),
-                    plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            return cc.jumpkick.engine.jobs.JobOutcome.of(result.success(), result.success() ? 0 : 1);
+                    host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+            return result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
         } catch (Exception e) {
+            // The run threw before it could rule. Declining here would hand the journal a run
+            // with no failure rows, which derives green — a test run that never finished,
+            // recorded as a success.
             host.sendQuiet(writer, host.requestFailedLine(null, e));
-            return null;
+            return JobOutcome.failed(Exit.FAILURE);
         }
     }
 }

@@ -3,10 +3,6 @@
 export __JK_EXE=__JK_EXE__
 export __JK_SHELL=zsh
 
-if [ -z "${__JK_ORIG_PATH:-}" ]; then
-    export __JK_ORIG_PATH="$PATH"
-fi
-
 autoload -Uz add-zsh-hook
 
 _jk_hook_precmd() {

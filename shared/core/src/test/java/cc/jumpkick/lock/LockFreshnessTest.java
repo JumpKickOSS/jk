@@ -138,6 +138,83 @@ class LockFreshnessTest {
     }
 
     @Test
+    void pinless_lock_over_a_native_manifest_is_stale(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "n"
+                version = "1"
+
+                [native]
+                metadata-repository = "=1.1.4"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        // Writer stamps a clean digest; the [native] pin is only stamped by a real re-lock.
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+        assertThat(LockfileReader.read(lockFile).nativeMetadata()).isNull();
+
+        assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+    }
+
+    @Test
+    void pinless_lock_over_a_non_native_manifest_follows_the_digest_rule(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+
+        assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
+    }
+
+    @Test
+    void pinned_lock_over_a_native_manifest_follows_the_digest_rule(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "n"
+                version = "1"
+
+                [native]
+                metadata-repository = "=1.1.4"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        Lockfile pinned = Lockfile.empty("test")
+                .withNativeMetadata(new Lockfile.NativeMetadata("1.1.4", "sha256:" + "0".repeat(64)));
+        LockfileWriter.write(pinned, lockFile);
+        assertThat(LockfileReader.read(lockFile).nativeMetadata()).isNotNull();
+
+        assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
+
+        Files.writeString(dir.resolve("jk-libs.toml"), """
+                [libraries]
+                foo = "com.example:foo"
+                """);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+    }
+
+    @Test
+    void conflicting_native_selectors_are_stale(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "g"
+                name    = "n"
+                version = "1"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        Files.createDirectories(dir.resolve("a"));
+        Files.createDirectories(dir.resolve("b"));
+        Files.writeString(dir.resolve("a/jk.toml"), "name = \"a\"\n\n[native]\nmetadata-repository = \"=1.1.4\"\n");
+        Files.writeString(dir.resolve("b/jk.toml"), "name = \"b\"\n\n[native]\nmetadata-repository = \"=2.0.0\"\n");
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+
+        // Fail closed: the re-lock surfaces LockNativePin's conflict message.
+        assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+    }
+
+    @Test
     void isValidDigest_accepts_hex64_only() {
         assertThat(LockFreshness.isValidDigest(null)).isFalse();
         assertThat(LockFreshness.isValidDigest("")).isFalse();

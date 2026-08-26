@@ -8,6 +8,7 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -120,10 +121,10 @@ public final class DependencyGraphModel {
 
     /**
      * Default scopes match {@code jk tree}: export, main, runtime
-     * ({@link cc.jumpkick.resolver.DependencyTree#defaultScopeOrder()}).
+     * ({@link DependencyTreeStyle#defaultScopeOrder()}).
      */
     public static List<Scope> defaultScopes() {
-        return List.copyOf(DependencyTree.defaultScopeOrder());
+        return List.copyOf(DependencyTreeStyle.defaultScopeOrder());
     }
 
     /**
@@ -174,7 +175,7 @@ public final class DependencyGraphModel {
         List<Scope> scopeList = scopes == null || scopes.isEmpty() ? defaultScopes() : List.copyOf(scopes);
         List<String> scopeNames = scopeList.stream().map(Scope::canonical).toList();
         Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = root.resolve("jk.toml");
+        Path toml = root.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) {
             return Graph.empty(scopeNames, transitive);
         }
@@ -210,7 +211,7 @@ public final class DependencyGraphModel {
         try {
             Path wsRoot = WorkspaceLocator.findRoot(dir).orElse(null);
             if (wsRoot != null) {
-                JkBuild rootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                JkBuild rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
                 for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
                     Path modDir = e.getKey().toAbsolutePath().normalize();
                     if (modDir.equals(dir)) continue;

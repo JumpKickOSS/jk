@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.io.InputStream;
@@ -8,16 +9,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 /**
- * {@code apk} packager: assemble from {@code resources.ap_} + dex, then v1+v2 debug-sign with a
- * generated {@code androiddebugkey} keystore.
+ * {@code apk} packager: assemble from {@code resources.ap_} + dex, then v1+v2 sign — with the
+ * configured release identity, else the stable {@link DebugKeystore}.
  */
 final class ApkPackager {
+
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private ApkPackager() {}
 
@@ -40,7 +42,7 @@ final class ApkPackager {
             Signing.sign(Signing.release(io), unsigned, out);
         } else {
             io.label("sign (debug)");
-            Signing.sign(Signing.debug(io, work), unsigned, out);
+            Signing.sign(Signing.debug(io), unsigned, out);
         }
         AndroidDeps.copyRetraceArtifacts(io);
     }
@@ -70,35 +72,22 @@ final class ApkPackager {
                 try (InputStream stream = in.getInputStream(entry)) {
                     bytes = stream.readAllBytes();
                 }
-                write(zip, entry.getName(), bytes, entry.getMethod());
+                ZIP.writeEntry(zip, entry.getName(), bytes, entry.getMethod());
             }
             List<Path> dexFiles = ResourceStep.filesUnder(dexDir, ".dex");
             if (dexFiles.isEmpty()) {
                 throw new IOException("no .dex files under " + dexDir);
             }
             for (Path dex : dexFiles) {
-                write(zip, dex.getFileName().toString(), Files.readAllBytes(dex), ZipEntry.DEFLATED);
+                ZIP.writeEntry(zip, dex.getFileName().toString(), Files.readAllBytes(dex), ZipEntry.DEFLATED);
             }
             for (var asset : AndroidDeps.mergedAssets(io).entrySet()) {
-                write(zip, "assets/" + asset.getKey(), Files.readAllBytes(asset.getValue()), ZipEntry.DEFLATED);
+                ZIP.writeEntry(
+                        zip, "assets/" + asset.getKey(), Files.readAllBytes(asset.getValue()), ZipEntry.DEFLATED);
             }
             for (var lib : AndroidDeps.nativeLibs(io).entrySet()) {
-                write(zip, "lib/" + lib.getKey(), Files.readAllBytes(lib.getValue()), ZipEntry.STORED);
+                ZIP.writeEntry(zip, "lib/" + lib.getKey(), Files.readAllBytes(lib.getValue()), ZipEntry.STORED);
             }
         }
-    }
-
-    private static void write(ZipOutputStream zip, String name, byte[] bytes, int method) throws IOException {
-        ZipEntry entry = new ZipEntry(name);
-        entry.setMethod(method);
-        if (method == ZipEntry.STORED) {
-            entry.setSize(bytes.length);
-            CRC32 crc = new CRC32();
-            crc.update(bytes);
-            entry.setCrc(crc.getValue());
-        }
-        zip.putNextEntry(entry);
-        zip.write(bytes);
-        zip.closeEntry();
     }
 }

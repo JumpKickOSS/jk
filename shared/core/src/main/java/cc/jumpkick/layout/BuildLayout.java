@@ -2,12 +2,13 @@
 package cc.jumpkick.layout;
 
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.PluginModule;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
-import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -25,6 +26,44 @@ import java.util.Objects;
  * compile. Apps put artifacts at the module target root; libraries under {@code lib/}.
  */
 public final class BuildLayout {
+
+    /**
+     * The one directory name jk writes build output under, and the one name every "is this a build
+     * output tree?" test compares against. Ignore sets, {@code jk clean}, the preflight memo and
+     * the workspace file server all have to agree with {@link #moduleTargetDir}; when they spelled
+     * it themselves, agreement was a coincidence that a rename would have quietly ended — a
+     * scanner still walking {@code target/} while the builder wrote somewhere else.
+     *
+     * <p>Not every {@code "target"} in the tree is this one: a CLI parameter named {@code target},
+     * javac's {@code -target}, a BSP request field and the {@code ${target}} interpolation variable
+     * are separate vocabularies and must not borrow it.
+     */
+    public static final String TARGET = "target";
+
+    /**
+     * True when {@code artifact} is a file jk built into a {@link #TARGET} tree.
+     *
+     * <p>Anchored on the shape, not on the name. An ancestor called {@code target} is not enough:
+     * jk's own test scratch lives at {@code target/<module>/tmp/…}, so once the forked test JVM's
+     * temp root moved inside the build output, every {@code @TempDir} acquired a {@code target}
+     * ancestor and a scratch file started reading as a workspace-built artifact. The anchor is a
+     * {@code classes/} directory beside the file — a module output directory has one and a scratch
+     * directory does not — which is a fact about the tree rather than about how a path is spelled.
+     *
+     * <p>The same class of defect as a containment test written with {@code startsWith}: a textual
+     * ancestor is not a structural one, and the two agree right up until someone puts a directory
+     * where the text did not expect it.
+     */
+    public static boolean isBuildOutput(Path artifact) {
+        if (artifact == null) return false;
+        Path dir = artifact.toAbsolutePath().normalize().getParent();
+        if (dir == null || !Files.isDirectory(dir.resolve("classes"))) return false;
+        for (Path cur = dir; cur != null; cur = cur.getParent()) {
+            Path name = cur.getFileName();
+            if (name != null && TARGET.equals(name.toString())) return true;
+        }
+        return false;
+    }
 
     private final Path workspaceRoot;
     private final Path moduleRoot;
@@ -70,7 +109,7 @@ public final class BuildLayout {
                 project.project().name(),
                 project.project().version(),
                 hasMain(project),
-                cc.jumpkick.plugin.PluginModule.isWorker(projectDir),
+                PluginModule.isWorker(projectDir),
                 nativeName(project));
     }
 
@@ -82,7 +121,7 @@ public final class BuildLayout {
                 project.project().name(),
                 project.project().version(),
                 hasMain(project),
-                cc.jumpkick.plugin.PluginModule.isWorker(moduleRoot),
+                PluginModule.isWorker(moduleRoot),
                 nativeName(project));
     }
 
@@ -165,22 +204,22 @@ public final class BuildLayout {
         Path wsOut = workspaceRoot.toAbsolutePath().normalize();
         Path modAbs = moduleRoot.toAbsolutePath().normalize();
         if (modAbs.equals(wsOut)) {
-            return wsOut.resolve("target");
+            return wsOut.resolve(TARGET);
         }
         if (modAbs.startsWith(wsOut)) {
-            return wsOut.resolve("target").resolve(wsOut.relativize(modAbs));
+            return wsOut.resolve(TARGET).resolve(wsOut.relativize(modAbs));
         }
         // Lexical miss: an alias pair can still name the same tree — compare realpath keys.
         Path modKey = absoluteKey(moduleRoot);
         Path wsKey = absoluteKey(workspaceRoot);
         if (modKey.equals(wsKey)) {
-            return wsOut.resolve("target");
+            return wsOut.resolve(TARGET);
         }
         if (!modKey.startsWith(wsKey)) {
             // Genuinely outside the workspace tree — fall back to module-local target/.
-            return modAbs.resolve("target");
+            return modAbs.resolve(TARGET);
         }
-        return wsOut.resolve("target").resolve(wsKey.relativize(modKey));
+        return wsOut.resolve(TARGET).resolve(wsKey.relativize(modKey));
     }
 
     /**
@@ -245,12 +284,12 @@ public final class BuildLayout {
         // requires output folders inside the project, and a workspace member's central dir would
         // render as an invalid "../target/…" entry in .classpath. jk's own outputs
         // never live here, so the isolation contract holds either way.
-        return moduleRoot().resolve("target").resolve("jdt").resolve("classes").resolve("main");
+        return moduleRoot().resolve(TARGET).resolve("jdt").resolve("classes").resolve("main");
     }
 
     /** {@code target/jdt/classes/test/} — test class output for an external IDE language server. */
     public Path jdtTestClassesDir() {
-        return moduleRoot().resolve("target").resolve("jdt").resolve("classes").resolve("test");
+        return moduleRoot().resolve(TARGET).resolve("jdt").resolve("classes").resolve("test");
     }
 
     /**
@@ -418,11 +457,7 @@ public final class BuildLayout {
     public static String nativeExecutableFileName(String base) {
         String name = JkBuild.NativeConfig.executableBasename(base);
         if (name == null || name.isEmpty()) return base;
-        String os = System.getProperty("os.name", "");
-        if (os.toLowerCase(Locale.ROOT).contains("win")) {
-            return name + ".exe";
-        }
-        return name;
+        return Os.isWindows() ? name + ".exe" : name;
     }
 
     /**

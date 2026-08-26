@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.VersionSelector;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,7 +42,7 @@ public final class LockfileModules {
      */
     public static List<Lockfile.ModuleEntry> capture(Path projectDir) throws IOException {
         Path dir = projectDir.toAbsolutePath().normalize();
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) return List.of();
         // parseLocal + explicit workspace capture (resolved pins), not parse() which also rewrites
         // sibling deps we do not need here.
@@ -53,7 +54,7 @@ public final class LockfileModules {
         var rootOpt = WorkspaceLocator.findRoot(dir);
         if (rootOpt.isPresent()) {
             Path root = rootOpt.get();
-            JkBuild rootManifest = JkBuildParser.parseLocal(root.resolve("jk.toml"));
+            JkBuild rootManifest = JkBuildParser.parseLocal(root.resolve(ManifestPaths.MANIFEST));
             return captureWorkspace(root, rootManifest);
         }
         // Standalone: drop optional auto-inherits so we pin concrete local defaults.
@@ -76,7 +77,7 @@ public final class LockfileModules {
     }
 
     /** Build a lock pin from an already-resolved project (no pending workspace inherits). */
-    public static Lockfile.ModuleEntry fromProject(String path, JkBuild.Project p) {
+    public static Lockfile.ModuleEntry fromProject(String path, Project p) {
         String sources =
                 switch (p.sourcesMode()) {
                     case DISABLED -> null;
@@ -88,7 +89,6 @@ public final class LockfileModules {
                 p.group(),
                 p.name(),
                 p.version(),
-                p.jdk(),
                 p.java() > 0 ? p.java() : null,
                 selectorRaw(p.kotlin()),
                 selectorRaw(p.groovy()),
@@ -96,8 +96,7 @@ public final class LockfileModules {
                 p.description(),
                 sources,
                 p.m2integration() ? null : Boolean.FALSE,
-                p.m2install() ? null : Boolean.FALSE,
-                null);
+                p.m2install() ? null : Boolean.FALSE);
     }
 
     private static String selectorRaw(VersionSelector v) {

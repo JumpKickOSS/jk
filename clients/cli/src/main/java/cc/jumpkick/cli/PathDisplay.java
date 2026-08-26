@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.util.DirKeys;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -62,8 +63,8 @@ public final class PathDisplay {
         Path abs = target.toAbsolutePath().normalize();
         Path anchor = closestAnchor(abs, workingDir);
         // DirKeys rewrites only real Windows paths — a POSIX file named a\b displays verbatim.
-        if (anchor == null) return cc.jumpkick.util.DirKeys.slashes(abs.toString());
-        String rel = cc.jumpkick.util.DirKeys.slashes(anchor.relativize(abs).toString());
+        if (anchor == null) return DirKeys.slashes(abs.toString());
+        String rel = DirKeys.slashes(anchor.relativize(abs).toString());
         return rel.isEmpty() ? "." : rel;
     }
 

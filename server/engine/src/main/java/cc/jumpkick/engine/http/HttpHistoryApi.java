@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.runtime.ProjectIds;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -69,7 +74,7 @@ final class HttpHistoryApi {
             return;
         }
         exchange.sendResponseHeaders(200, 0);
-        Map<String, cc.jumpkick.config.SecretRedactor> redactors = new HashMap<>();
+        Map<String, SecretRedactor> redactors = new HashMap<>();
         try (var out = exchange.getResponseBody()) {
             out.write('[');
             int sent = 0;
@@ -97,21 +102,21 @@ final class HttpHistoryApi {
      * pre-redaction secrets — same defense-in-depth as the REST history stream.
      */
     static List<String> redactRecords(List<String> raw) {
-        Map<String, cc.jumpkick.config.SecretRedactor> cache = new HashMap<>();
+        Map<String, SecretRedactor> cache = new HashMap<>();
         List<String> out = new ArrayList<>(raw.size());
         for (String r : raw) out.add(redactRecordJson(r, cache));
         return out;
     }
 
-    static String redactRecordJson(String raw, Map<String, cc.jumpkick.config.SecretRedactor> cache) {
+    static String redactRecordJson(String raw, Map<String, SecretRedactor> cache) {
         try {
             String dir = scanStringField(raw, "dir");
             String key = dir == null ? "" : dir;
-            cc.jumpkick.config.SecretRedactor redactor = cache.computeIfAbsent(key, k -> {
+            SecretRedactor redactor = cache.computeIfAbsent(key, k -> {
                 try {
-                    return cc.jumpkick.engine.listen.EventRedaction.redactorFor(dir);
+                    return EventRedaction.redactorFor(dir);
                 } catch (RuntimeException e) {
-                    return cc.jumpkick.config.SecretRedactor.none();
+                    return SecretRedactor.none();
                 }
             });
             // The document is escaped JSON: match escaped renderings too, or a secret containing
@@ -126,7 +131,7 @@ final class HttpHistoryApi {
     private static boolean isBuildLikeHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return false;
         String kind = scanStringField(raw, "kind");
-        return kind != null && cc.jumpkick.engine.BuildHistoryKinds.isBuildLike(kind);
+        return kind != null && BuildHistoryKinds.isBuildLike(kind);
     }
 
     /**
@@ -182,7 +187,7 @@ final class HttpHistoryApi {
     private String enrichHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return raw;
         try {
-            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(raw);
+            Object parsed = MiniJson.parse(raw);
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
@@ -194,15 +199,15 @@ final class HttpHistoryApi {
             // fresh unknown:unknown id that 404s on the detail page.
             if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
                 if (m.get("dir") instanceof String dir && !dir.isBlank()) {
-                    String resolved = cc.jumpkick.runtime.ProjectIds.idOf(dir);
+                    String resolved = ProjectIds.idOf(dir);
                     if (resolved != null) m.put("projectId", resolved);
                 }
             }
             if (!Boolean.TRUE.equals(m.get("running"))) {
-                return cc.jumpkick.jsonl.MiniJson.write(m);
+                return MiniJson.write(m);
             }
             HttpLive.Run match = matchLiveRun(m);
-            if (match == null) return cc.jumpkick.jsonl.MiniJson.write(m);
+            if (match == null) return MiniJson.write(m);
             m.put("jid", match.requestId());
             if (match.startedAt() > 0) {
                 m.put("startedAt", match.startedAt());
@@ -223,7 +228,7 @@ final class HttpHistoryApi {
             } else if (!match.tasks().isEmpty()) {
                 m.put("tasks", liveTasksJson(match.tasks()));
             }
-            return cc.jumpkick.jsonl.MiniJson.write(m);
+            return MiniJson.write(m);
         } catch (RuntimeException e) {
             return raw; // best-effort — never break the list for a bad row
         }

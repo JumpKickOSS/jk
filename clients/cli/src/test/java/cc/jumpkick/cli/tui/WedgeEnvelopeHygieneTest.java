@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.testing.MainSources;
 import java.io.IOException;
@@ -10,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -27,9 +25,7 @@ class WedgeEnvelopeHygieneTest {
 
     @Test
     void no_raw_command_wedge_prints_without_print_helpers() throws IOException {
-        Optional<Path> mainOpt = MainSources.locate();
-        assumeTrue(mainOpt.isPresent(), "cli main sources not adjacent to test classpath — skip hygiene scan");
-        Path main = mainOpt.get();
+        Path main = MainSources.locate();
         assertThat(main).exists();
         List<String> offenders = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(main)) {

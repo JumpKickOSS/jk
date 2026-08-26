@@ -3,6 +3,10 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -64,8 +68,7 @@ class ClasspathFingerprintTest {
         // Same tree reconstructed after clean (action record + resource roots).
         Path res = Files.createDirectories(dir.resolve("resources"));
         write(res.resolve("app.properties"), "x=1\n");
-        Map<String, String> compileOut =
-                Map.of("a/A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("a/A.class")));
+        Map<String, String> compileOut = Map.of("a/A.class", Hashing.sha256Hex(classes.resolve("a/A.class")));
         String reconstructed = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of(res));
         assertThat(reconstructed).isEqualTo(live);
     }
@@ -74,11 +77,11 @@ class ClasspathFingerprintTest {
     void stamp_files_are_excluded_from_output_digest_fingerprints(@TempDir Path dir) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("classes"));
         write(classes.resolve("A.class"), "AA");
-        write(classes.resolve(FreshnessStamp.JAVA_STAMP), "stamp-noise");
+        write(classes.resolve(BuildStamps.JAVA), "stamp-noise");
         String live = ClasspathFingerprint.entry(classes);
         Map<String, String> outs = new LinkedHashMap<>();
-        outs.put("A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("A.class")));
-        outs.put(FreshnessStamp.JAVA_STAMP, "deadbeef");
+        outs.put("A.class", Hashing.sha256Hex(classes.resolve("A.class")));
+        outs.put(BuildStamps.JAVA, "deadbeef");
         assertThat(ClasspathFingerprint.entryFromOutputDigests(outs)).isEqualTo(live);
     }
 
@@ -156,47 +159,45 @@ class ClasspathFingerprintTest {
         FileTime old = FileTime.fromMillis(System.currentTimeMillis() - 60_000);
         Files.setLastModifiedTime(jar, old);
         Path cache = dir.resolve("cache");
-        cc.jumpkick.config.SessionContext.where(
-                cc.jumpkick.config.Session.defaults().withCacheDir(cache), () -> {
-                    String fp1 = ClasspathFingerprint.entry(jar);
-                    FileHashMemo.flush();
-                    assertThat(Files.isRegularFile(cache.resolve("hash-memo/memo.v1")))
-                            .as("settled fingerprint reaches the one store file")
-                            .isTrue();
-                    assertThat(ClasspathFingerprint.entry(jar))
-                            .as("memoized read agrees with the computed fingerprint")
-                            .isEqualTo(fp1);
-                    writeJar(jar, new String[][] {{"A.class", "CHANGED-CONTENT"}}, 2000);
-                    Files.setLastModifiedTime(jar, FileTime.fromMillis(old.toMillis() + 5_000));
-                    assertThat(ClasspathFingerprint.entry(jar))
-                            .as("content change re-fingerprints despite the memo")
-                            .isNotEqualTo(fp1);
-                    return null;
-                });
+        SessionContext.where(Session.defaults().withCacheDir(cache), () -> {
+            String fp1 = ClasspathFingerprint.entry(jar);
+            FileHashMemo.flush();
+            assertThat(Files.isRegularFile(cache.resolve("hash-memo/memo.v1")))
+                    .as("settled fingerprint reaches the one store file")
+                    .isTrue();
+            assertThat(ClasspathFingerprint.entry(jar))
+                    .as("memoized read agrees with the computed fingerprint")
+                    .isEqualTo(fp1);
+            writeJar(jar, new String[][] {{"A.class", "CHANGED-CONTENT"}}, 2000);
+            Files.setLastModifiedTime(jar, FileTime.fromMillis(old.toMillis() + 5_000));
+            assertThat(ClasspathFingerprint.entry(jar))
+                    .as("content change re-fingerprints despite the memo")
+                    .isNotEqualTo(fp1);
+            return null;
+        });
     }
 
     @Test
     void jar_fingerprint_is_raw_content_and_cas_seed_is_trusted(@TempDir Path dir) throws Exception {
         Path jar = writeJar(dir.resolve("dep.jar"), new String[][] {{"A.class", "AA"}}, 1000);
         Path cache = dir.resolve("cache");
-        cc.jumpkick.config.SessionContext.where(
-                cc.jumpkick.config.Session.defaults().withCacheDir(cache), () -> {
-                    try {
-                        String fp = ClasspathFingerprint.entry(jar);
-                        assertThat(fp).startsWith("file:");
-                        // CAS restore seeds raw digest — entry must not re-hash.
-                        String hex = fp.substring("file:".length());
-                        FileHashMemo.reset();
-                        FileHashMemo.rememberContent(jar, hex);
-                        FileHashMemo.resetStats();
-                        long reads = FileHashMemo.contentReads();
-                        assertThat(ClasspathFingerprint.entry(jar)).isEqualTo(fp);
-                        assertThat(FileHashMemo.contentReads() - reads).isZero();
-                        return null;
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        SessionContext.where(Session.defaults().withCacheDir(cache), () -> {
+            try {
+                String fp = ClasspathFingerprint.entry(jar);
+                assertThat(fp).startsWith("file:");
+                // CAS restore seeds raw digest — entry must not re-hash.
+                String hex = fp.substring("file:".length());
+                FileHashMemo.reset();
+                FileHashMemo.rememberContent(jar, hex);
+                FileHashMemo.resetStats();
+                long reads = FileHashMemo.contentReads();
+                assertThat(ClasspathFingerprint.entry(jar)).isEqualTo(fp);
+                assertThat(FileHashMemo.contentReads() - reads).isZero();
+                return null;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @Test

@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.testing.SysProps;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -14,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -28,12 +28,8 @@ import org.junit.jupiter.api.io.TempDir;
  * enumeration is covered by the git-client and engine unit tests (no forked worker here).
  */
 @Tag("integration")
+@SysProps.TempRoots("jk.m2.local")
 class OutdatedCommandTest {
-
-    @BeforeAll
-    static void isolateM2(@TempDir Path m2) {
-        System.setProperty("jk.m2.local", m2.toString());
-    }
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
@@ -48,7 +44,6 @@ class OutdatedCommandTest {
     @AfterEach
     void reset() {
         System.setOut(originalOut);
-        cc.jumpkick.config.SessionContext.reset();
         LockfileReader.clearCache();
     }
 

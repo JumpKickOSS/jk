@@ -4,6 +4,7 @@ package cc.jumpkick.publish;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.pom.PomXml;
@@ -79,7 +80,7 @@ public final class PublishablePom {
         StringBuilder sb = new StringBuilder(512);
         PomXml.appendPreamble(sb);
 
-        JkBuild.Project p = jkBuild.project();
+        Project p = jkBuild.project();
         sb.append("  <groupId>").append(PomXml.escape(p.group())).append("</groupId>\n");
         sb.append("  <artifactId>").append(PomXml.escape(p.name())).append("</artifactId>\n");
         sb.append("  <version>").append(PomXml.escape(p.version())).append("</version>\n");

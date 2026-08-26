@@ -3,6 +3,8 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewJkBuildRenderer;
 import java.nio.file.Path;
@@ -102,5 +104,35 @@ class NewJkBuildRendererTest {
         String toml = NewJkBuildRenderer.render(inputs);
         assertThat(toml).contains("scala    = \"latest\"");
         assertThat(toml).doesNotContain("java     =");
+    }
+
+    /**
+     * Render → parse, unchanged. The renderer used to splice raw text between two {@code "}
+     * characters at eleven sites, so a group or main class carrying a quote or a backslash — a
+     * Windows-style class path in {@code main} — produced a starter manifest jk could not read.
+     */
+    @Test
+    void a_metacharacter_bearing_value_round_trips_through_the_renderer() {
+        String group = "com.ex\"a\\mple";
+        String main = "com.example.Main\tWeird";
+        NewInputs inputs = new NewInputs(
+                group,
+                "demo",
+                "25",
+                25,
+                25,
+                Optional.empty(),
+                Optional.of(main),
+                false,
+                false,
+                NewInputs.Language.JAVA,
+                "simple",
+                Optional.empty(),
+                List.of(),
+                true,
+                Path.of("/tmp/demo"));
+        JkBuild parsed = JkBuildParser.parse(NewJkBuildRenderer.render(inputs));
+        assertThat(parsed.project().group()).isEqualTo(group);
+        assertThat(parsed.mainClass()).isEqualTo(main);
     }
 }

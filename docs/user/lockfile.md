@@ -60,6 +60,25 @@ JSON is an **array** of row objects (`module`, `dependency`, `display`, `scope`,
 `compatible`, `latest`, `tip`). `module` is empty for a single-project root. `display` is
 the catalog short name when known.
 
+## Toolchain pins
+
+`jk lock` records the JDK (and GraalVM, when one was in play) that resolved the graph:
+
+```toml
+[jdk]
+vendor  = "temurin"
+version = "25.0.4.1"
+
+[graal]                 # omitted when no Graal was used
+vendor  = "graalvm-ce"
+version = "25.0.4"
+```
+
+The hook prefers an install that matches that pin (exact vendor+version, then same vendor
+newer, then any vendor at the **same major or newer**). A lower major than the lock is a
+failure for `jk build` / `jk sync` (`jk jdk install …`); the shell hook stays silent and
+does not export a too-old JDK as if it satisfied the lock.
+
 ## Pre-release pins
 
 A lock that records an RC/M/beta is kept on conservative re-locks when it still satisfies
@@ -85,6 +104,22 @@ not a silent accept. `jk repo refresh <coord>` re-fetches a coordinate on purpos
 
 GPG/Sigstore for *your* publishes: [Publish](publish.md). First-write-wins and
 `--offline` never networking are the store policy.
+
+## What else the lock pins
+
+Not everything a build depends on is a classpath entry. Alongside `[[artifact]]` the lock
+carries the resolved Kotlin/Scala compiler versions, `[[plugin]]` and `[[sdk]]` rows, and:
+
+```toml
+[native]
+metadata-repository = "1.1.4"
+checksum = "sha256:…"
+```
+
+— the GraalVM reachability-metadata repository release, resolved from `[native]
+metadata-repository` in `jk.toml`. It is not an `[[artifact]]` row: it is on no classpath
+and in no scope. It *is* an input to `native-image`, so it is pinned like one. See
+[Native images](native.md#the-graalvm-metadata-repository).
 
 ## Related
 

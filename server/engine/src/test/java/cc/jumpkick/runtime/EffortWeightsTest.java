@@ -3,6 +3,16 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.AggregatedMetrics;
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -106,12 +116,12 @@ class EffortWeightsTest {
     @Test
     void predict_reserves_groovy_compile_until_the_stamp_holds(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                group = "t"
-                name = "g"
-                version = "0.1.0"
-                jdk = 25
-                groovy = "5.0.4"
-                """);
+            group = "t"
+            name = "g"
+            version = "0.1.0"
+            jdk = 25
+            groovy = "5.0.4"
+            """);
         Path src = Files.createDirectories(dir.resolve("src"));
         // Enough sources that the static compile weight (ceil(n/10)) clears the TOKEN floor.
         List<Path> sources = new ArrayList<>();
@@ -141,23 +151,15 @@ class EffortWeightsTest {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
-        var cas = new cc.jumpkick.cache.Cas(dir.resolve("cache"));
+                SessionContext.current());
+        var cas = new Cas(dir.resolve("cache"));
 
         var cold = EffortWeights.predict(in, cas, true, false, false, true, false);
         assertThat(cold.compileGroovy()).isGreaterThan(EffortWeights.TOKEN);
 
         // The groovy stamp lives in the merged classes dir (where write-stamp-groovy writes it).
-        var layout =
-                cc.jumpkick.layout.BuildLayout.of(dir, cc.jumpkick.config.JkBuildParser.parse(dir.resolve("jk.toml")));
-        cc.jumpkick.task.FreshnessStamp.write(
-                layout.classesDir(),
-                cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
-                "compile-groovy",
-                "",
-                sources,
-                List.of(),
-                21);
+        var layout = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
+        FreshnessStamp.write(layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", sources, List.of(), 21);
         var warm = EffortWeights.predict(in, cas, true, false, false, true, false);
         assertThat(warm.compileGroovy()).isEqualTo(EffortWeights.TOKEN);
     }
@@ -342,8 +344,7 @@ class EffortWeightsTest {
     }
 
     @Test
-    void heavy_step_blip_rejection_prefers_the_mean_over_a_fast_over_floor_last(
-            @org.junit.jupiter.api.io.TempDir Path state) throws Exception {
+    void heavy_step_blip_rejection_prefers_the_mean_over_a_fast_over_floor_last(@TempDir Path state) throws Exception {
         // The old `|| last >= 5_000` escape made the mean*0.25 rejection dead for heavy
         // steps — one 6s mostly-warmed native run replaced a stable 60s mean.
         String prev = System.getProperty("jk.env.JK_STATE_DIR");
@@ -351,21 +352,19 @@ class EffortWeightsTest {
         BuildMetrics.clearSessionAggregatesMemo();
         try {
             Path moduleDir = Files.createDirectories(state.resolve("app"));
-            Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(cc.jumpkick.util.JkDirs.builds(), null, moduleDir);
+            Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, moduleDir);
             Files.createDirectories(home);
-            String key = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(moduleDir.toString())
-                    + ".task.native-image.wall-ms";
-            Files.writeString(
-                    home.resolve(cc.jumpkick.builds.ProjectBuilds.PROJECT_METRICS), """
-                    [mean]
-                    %s = 60000
-                    [last]
-                    %s = 6000
-                    [count]
-                    %s = 5
-                    """.formatted(key, key, key));
-            long wall = cc.jumpkick.config.SessionContext.where(
-                    cc.jumpkick.config.Session.defaults().withWorkingDir(moduleDir),
+            String key = "module." + AggregatedMetrics.sanitize(moduleDir.toString()) + ".task.native-image.wall-ms";
+            Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
+                [mean]
+                %s = 60000
+                [last]
+                %s = 6000
+                [count]
+                %s = 5
+                """.formatted(key, key, key));
+            long wall = SessionContext.where(
+                    Session.defaults().withWorkingDir(moduleDir),
                     () -> EffortWeights.stepOkAvgMillisOwn(null, moduleDir.toString(), "native-image"));
             assertThat(wall).isEqualTo(60_000L);
         } finally {

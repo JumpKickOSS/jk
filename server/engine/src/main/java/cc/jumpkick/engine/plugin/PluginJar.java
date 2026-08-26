@@ -4,19 +4,21 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,7 +39,6 @@ public enum PluginJar {
     AUDITOR("jk-auditor", "jk.auditor.plugin.jar", ":auditor:installLocal"),
     PUBLISHER("jk-publisher", "jk.publisher.plugin.jar", ":publisher:installLocal"),
     IMAGE_BUILDER("jk-image-builder", "jk.image-builder.plugin.jar", ":image-builder:installLocal"),
-    COMPAT_BRIDGE("jk-compat-bridge", "jk.compat-bridge.plugin.jar", ":compat-bridge:installLocal"),
     FORMATTER("jk-formatter", "jk.formatter.plugin.jar", ":formatter:installLocal"),
     SPRING_BOOT("jk-spring-boot", "jk.spring-boot.plugin.jar", ":spring-boot:installLocal"),
     GRAILS("jk-grails", "jk.grails.plugin.jar", ":grails:installLocal"),
@@ -103,7 +104,7 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, RepositorySpec.CENTRAL)) {
             RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
@@ -135,7 +136,7 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, RepositorySpec.CENTRAL)) {
             var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
             if (result.isPresent()) return result.get();
         }
@@ -178,23 +179,23 @@ public enum PluginJar {
         }
         byte[] bytes = jarResp.body();
         String sha = Hashing.sha256Hex(bytes);
-        String published = null;
+        Optional<String> published = Optional.empty();
         try {
             HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"));
             if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
-                published = new String(sumResp.body()).strip().split("\\s+")[0];
+                published = Hashing.checksumFromSidecar(new String(sumResp.body(), StandardCharsets.UTF_8), 64);
             }
         } catch (IOException ignored) {
             // The .sha256 sidecar is optional — an absent or unreachable sidecar keeps the hash
             // we computed. The mismatch check below must stay OUTSIDE this catch: swallowing it
             // installed jars whose published checksum disagreed.
         }
-        if (published != null && published.length() == 64) {
-            if (!published.equalsIgnoreCase(sha)) {
+        if (published.isPresent()) {
+            if (!published.get().equals(sha)) {
                 throw new IOException(
-                        "checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
+                        "checksum mismatch for " + jarUri + " (expected " + published.get() + ", got " + sha + ")");
             }
-            sha = published.toLowerCase();
+            sha = published.get();
         }
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
         Files.createDirectories(cas.root());
@@ -230,7 +231,7 @@ public enum PluginJar {
         // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central) — not ~/.m2.
         MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas, RepoCredential.ANONYMOUS, false);
         MavenRepo central = new MavenRepo(
-                "central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
+                RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
         RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));
         PomRuntimeClasspath.fetchRuntimeClosure(coord, repos);
     }

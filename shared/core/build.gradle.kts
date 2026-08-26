@@ -2,17 +2,28 @@
 
 plugins {
     id("jk.java-conventions")
+    `java-test-fixtures`
 }
 
 description = "jk core foundations: TOML config parser, lockfile, layout, library catalog, deny " +
-        "policy, plus the shared filesystem/hashing/XML machinery (PathUtil, Hashing, TreeFingerprint, " +
-        "JkDirs, GitUrl, MinimalXml, AtomicWrites) absorbed from the former :support module"
+        "policy, plus the shared filesystem/XML machinery (JkDirs, GitUrl, MinimalXml, AtomicWrites) " +
+        "absorbed from the former :support module. Hashing/PathUtil/Errors moved down to :host so " +
+        "plugin workers can reach them without :core's tomlj."
 
 dependencies {
     api(project(":jk-api"))
-    // MiniJson / Jsonl live in :jsonl. Plugin tables on JkBuild use model.PluginConfig.
-    api(project(":jsonl"))
+    // MiniJson / Jsonl / Hashing / PathUtil / Errors live in :host. Plugin tables on JkBuild
+    // use model.PluginConfig.
+    api(project(":host"))
     api(libs.tomlj)
+    testImplementation(testFixtures(project(":host")))
+    // testFixtures: the shared session boundary the CLI and publisher suites autodetect.
+    // Test-only by construction — :core is unpublished, and this is never a production config.
+    testFixturesApi(libs.junit.jupiter)
+    // The boundary is a platform TestExecutionListener, not a Jupiter extension: listener
+    // discovery needs no per-task autodetection switch, so it reaches the unit tier too.
+    testFixturesApi(libs.junit.platform.launcher)
+    testFixturesApi(libs.junit.platform.engine)
 }
 
 // Built-in plugin manifests + scaffolds are engine-only (JK-2149). :core tests still

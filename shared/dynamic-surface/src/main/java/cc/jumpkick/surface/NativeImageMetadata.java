@@ -9,6 +9,7 @@ import static cc.jumpkick.surface.DynamicSurface.Kind.REFLECTIVE_TYPE;
 import static cc.jumpkick.surface.DynamicSurface.Kind.RESOURCE;
 import static cc.jumpkick.surface.DynamicSurface.Kind.SERIALIZATION_TYPE;
 
+import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +60,7 @@ public final class NativeImageMetadata {
     public static DynamicSurface parse(String entryName, String body, String origin) {
         Object root;
         try {
-            root = Json.parse(body);
+            root = MiniJson.parse(body);
         } catch (RuntimeException e) {
             return DynamicSurface.empty();
         }
@@ -72,13 +73,13 @@ public final class NativeImageMetadata {
             case "proxy-config.json" -> proxies(root, origin, out);
             case "resource-config.json" -> resources(root, origin, out);
             case "reachability-metadata.json" -> {
-                reflection(Json.list(root, "reflection"), origin, REFLECTIVE_TYPE, REFLECTIVE_MEMBER, out);
-                reflection(Json.list(root, "jni"), origin, JNI_TYPE, JNI_MEMBER, out);
-                reflection(Json.list(root, "serialization"), origin, SERIALIZATION_TYPE, null, out);
+                reflection(MiniJson.list(root, "reflection"), origin, REFLECTIVE_TYPE, REFLECTIVE_MEMBER, out);
+                reflection(MiniJson.list(root, "jni"), origin, JNI_TYPE, JNI_MEMBER, out);
+                reflection(MiniJson.list(root, "serialization"), origin, SERIALIZATION_TYPE, null, out);
                 // Not part of GraalVM's unified schema (proxies live inside "reflection"), but
                 // files jk emitted before  used this section — keep reading them.
-                proxies(Json.list(root, "reflection-proxies"), origin, out);
-                resources(Json.get(root, "resources"), origin, out);
+                proxies(MiniJson.list(root, "reflection-proxies"), origin, out);
+                resources(MiniJson.get(root, "resources"), origin, out);
             }
             default -> {}
         }
@@ -101,18 +102,18 @@ public final class NativeImageMetadata {
             List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object item : items) {
-            String name = Json.str(item, "name");
-            if (name == null) name = Json.str(item, "type");
+            String name = MiniJson.str(item, "name");
+            if (name == null) name = MiniJson.str(item, "type");
             if (name == null || name.isBlank()) {
                 // Unified-schema proxies are reflection entries with a map-shaped type:
                 // {"type": {"proxy": ["a.B", "c.D"]}}.
-                addProxy(Json.list(Json.map(item, "type"), "proxy"), origin, out);
+                addProxy(MiniJson.list(MiniJson.get(item, "type"), "proxy"), origin, out);
                 continue;
             }
 
             Set<String> members = new TreeSet<>();
-            for (Object field : Json.list(item, "fields")) addName(field, DynamicSurface::fieldMember, members);
-            for (Object method : Json.list(item, "methods")) addName(method, DynamicSurface::methodMember, members);
+            for (Object field : MiniJson.list(item, "fields")) addName(field, DynamicSurface::fieldMember, members);
+            for (Object method : MiniJson.list(item, "methods")) addName(method, DynamicSurface::methodMember, members);
 
             boolean wholeType = memberKind == null
                     || members.isEmpty()
@@ -127,7 +128,7 @@ public final class NativeImageMetadata {
                 // Serialization mode: the declared deserialization constructor rides along as a
                 // tagged member so it survives the round trip.
                 Set<String> extras = new TreeSet<>();
-                String ctor = Json.str(item, "customTargetConstructorClass");
+                String ctor = MiniJson.str(item, "customTargetConstructorClass");
                 if (ctor != null && !ctor.isBlank()) extras.add(DynamicSurface.customConstructorMember(ctor));
                 out.add(new DynamicSurface.Entry(typeKind, name, extras, origin));
                 continue;
@@ -147,9 +148,9 @@ public final class NativeImageMetadata {
      */
     private static void serialization(Object root, String origin, List<DynamicSurface.Entry> out) {
         if (root instanceof Map<?, ?>) {
-            reflection(Json.list(root, "types"), origin, SERIALIZATION_TYPE, null, out);
-            reflection(Json.list(root, "lambdaCapturingTypes"), origin, SERIALIZATION_TYPE, null, out);
-            proxies(Json.list(root, "proxies"), origin, out);
+            reflection(MiniJson.list(root, "types"), origin, SERIALIZATION_TYPE, null, out);
+            reflection(MiniJson.list(root, "lambdaCapturingTypes"), origin, SERIALIZATION_TYPE, null, out);
+            proxies(MiniJson.list(root, "proxies"), origin, out);
             return;
         }
         reflection(root, origin, SERIALIZATION_TYPE, null, out);
@@ -163,7 +164,7 @@ public final class NativeImageMetadata {
     private static void proxies(Object root, String origin, List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object item : items) {
-            addProxy(item instanceof List<?> bare ? bare : Json.list(item, "interfaces"), origin, out);
+            addProxy(item instanceof List<?> bare ? bare : MiniJson.list(item, "interfaces"), origin, out);
         }
     }
 
@@ -187,21 +188,22 @@ public final class NativeImageMetadata {
         if (root == null) return;
         Object includes = root;
         if (!(root instanceof List<?>)) {
-            Object holder = Json.map(root, "resources");
-            Object source = holder != null ? holder : root;
-            includes = Json.list(source, "includes");
-            excludes(Json.list(source, "excludes"), origin, out);
+            // The unified document nests the split schema's object under "resources"; the split
+            // file is that object already.
+            Object source = MiniJson.get(root, "resources") instanceof Map<?, ?> nested ? nested : root;
+            includes = MiniJson.list(source, "includes");
+            excludes(MiniJson.list(source, "excludes"), origin, out);
         }
         if (!(includes instanceof List<?> items)) return;
         for (Object include : items) {
-            String glob = Json.str(include, "glob");
+            String glob = MiniJson.str(include, "glob");
             if (glob != null && !glob.isBlank()) {
                 out.add(DynamicSurface.Entry.type(RESOURCE, glob, origin));
                 continue;
             }
             // Split-schema "pattern" entries are Java regexes; a regex re-emitted as a glob
             // matches nothing. Translate the faithful cases, keep the rest as regex.
-            String pattern = Json.str(include, "pattern");
+            String pattern = MiniJson.str(include, "pattern");
             if (pattern == null || pattern.isBlank()) continue;
             String translated = regexToGlob(pattern);
             out.add(
@@ -220,9 +222,9 @@ public final class NativeImageMetadata {
     private static void excludes(Object root, String origin, List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object exclude : items) {
-            String pattern = Json.str(exclude, "pattern");
+            String pattern = MiniJson.str(exclude, "pattern");
             if (pattern == null) {
-                String glob = Json.str(exclude, "glob");
+                String glob = MiniJson.str(exclude, "glob");
                 if (glob != null && !glob.isBlank()) pattern = globToRegex(glob);
             }
             if (pattern != null && !pattern.isBlank()) {
@@ -320,7 +322,7 @@ public final class NativeImageMetadata {
     }
 
     private static void addName(Object member, UnaryOperator<String> tag, Set<String> sink) {
-        String name = Json.str(member, "name");
+        String name = MiniJson.str(member, "name");
         if (name != null && !name.isBlank()) sink.add(tag.apply(name));
     }
 

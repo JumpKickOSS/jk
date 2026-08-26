@@ -1,23 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.BuildService;
+import cc.jumpkick.runtime.ImagePlans;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 public final class ImageVerb implements HostedVerb {
@@ -54,13 +67,13 @@ public final class ImageVerb implements HostedVerb {
     }
 
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+    public String decodeJob(JobSpec spec) {
         // No test toggle on the dashboard/agent surface: an image job's deliverable is the image.
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.imageRequest(
+        return ProtoSession.withTrigger(
+                ProtoJobs.imageRequest(
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.cache().toString(),
-                        cc.jumpkick.util.JkDirs.jdks().toString(),
+                        JkDirs.cache().toString(),
+                        JkDirs.jdks().toString(),
                         null,
                         null,
                         null,
@@ -74,43 +87,35 @@ public final class ImageVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+                String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
                 Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
                 boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-                JkConfig config = new JkConfig(
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                        Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(verbose),
-                        Optional.empty(),
-                        Optional.of(Jsonl.bool(requestLine, "force", false)),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                JkConfig config = JkConfig.empty()
+                        .withOffline(Jsonl.bool(requestLine, "offline", false))
+                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
+                        .withVerbose(verbose)
+                        .withForce(Jsonl.bool(requestLine, "force", false));
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache)
                         .withJdksDir(jdksDir)
                         .withCancel(cancelToken)
-                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
-                var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(entryDir);
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        // The request's toolchain selection belongs on it too: without this the SWITCH tier is
+                        // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                        .withToolchainSpecs(ProtoSession.jdkSpecOf(requestLine), ProtoSession.graalSpecOf(requestLine));
+                var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
-                    JkBuild rootBuild =
-                            cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
                     if (rootBuild.isWorkspaceRoot()
-                            && !cc.jumpkick.runtime.BuildGraph.canonicalPath(wsRoot.get())
-                                    .equals(cc.jumpkick.runtime.BuildGraph.canonicalPath(entryDir))) {
+                            && !BuildGraph.canonicalPath(wsRoot.get()).equals(BuildGraph.canonicalPath(entryDir))) {
                         // Workspace member: same orchestrator as jk build; image terminal on this
                         // module; prereqs package. Events are workspace-progress (not single-plan).
                         WorkspaceRequest req = new WorkspaceRequest(
@@ -131,29 +136,17 @@ public final class ImageVerb implements HostedVerb {
                                         req,
                                         host.workspaceListener(
                                                 writer, wsRoot.get().toString())));
-                        host.releaseExclusiveSlot();
-                        boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-                        cc.jumpkick.engine.jobs.JobOutcome outcome = cc.jumpkick.engine.jobs.JobOutcome.of(
-                                result.success() && !cancelled, result.exitCode());
-                        if (rid > 0) {
-                            if (result.success() && !cancelled) host.finishProgress(rid);
-                            host.emitWorkspaceProgress(rid, writer, true);
-                        }
-                        host.flushTimeline(rid, writer);
-                        host.sendQuiet(
-                                writer,
-                                ProtoEvents.workspaceFinish(
-                                        result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
-                        return outcome;
+                        return WorkspaceTerminal.finish(
+                                host, writer, wsRoot.get().toString(), result, cancelToken.cancelled());
                     }
                 }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Constructed in-session: the plan factory's BuildPlanner.Inputs captures the
                 // ambient SessionContext at construction, so building it outside where would
                 // silently pin this request to the engine's default config (dropping --force et al).
-                cc.jumpkick.run.BuildPlan plan = SessionContext.where(
+                BuildPlan plan = SessionContext.where(
                         session,
-                        () -> cc.jumpkick.runtime.ImagePlans.imageBuildPlan(
+                        () -> ImagePlans.imageBuildPlan(
                                 entryDir,
                                 cache,
                                 jdksDir,
@@ -164,15 +157,11 @@ public final class ImageVerb implements HostedVerb {
                                 Jsonl.str(requestLine, "tag"),
                                 Jsonl.str(requestLine, "tarball"),
                                 Jsonl.str(requestLine, "dockerExecutable")));
-                host.streamSinglePlan(plan, session, writer, result -> {
-                    cc.jumpkick.run.TestSummary testResult = plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                            .orElse(null);
-                    cc.jumpkick.image.ImageConfig cfg =
-                            plan.get(cc.jumpkick.runtime.ImagePlans.CONFIG).orElse(null);
-                    Path tarball = plan.get(cc.jumpkick.runtime.ImagePlans.TARBALL_PATH)
-                            .orElse(null);
-                    JkBuild project =
-                            plan.get(cc.jumpkick.runtime.BuildPlanner.PROJECT).orElse(null);
+                return host.streamSinglePlan(plan, session, writer, result -> {
+                    TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
+                    ImageConfig cfg = plan.get(ImagePlans.CONFIG).orElse(null);
+                    Path tarball = plan.get(ImagePlans.TARBALL_PATH).orElse(null);
+                    JkBuild project = plan.get(BuildPlanner.PROJECT).orElse(null);
                     boolean daemonMode = tarball == null
                             && (cfg == null
                                     || cfg.registry() == null
@@ -187,7 +176,7 @@ public final class ImageVerb implements HostedVerb {
                             testResult != null ? testResult.succeeded() : -1,
                             testResult != null ? testResult.failed() : -1,
                             testResult != null ? testResult.skipped() : -1,
-                            plan.get(cc.jumpkick.runtime.ImagePlans.IMAGE_REF).orElse(null),
+                            plan.get(ImagePlans.IMAGE_REF).orElse(null),
                             tarball != null ? tarball.toString() : null,
                             project != null ? project.project().name() : null,
                             project != null ? project.project().version() : null,
@@ -195,11 +184,11 @@ public final class ImageVerb implements HostedVerb {
                 });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

@@ -2,10 +2,14 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.PluginSlots;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
@@ -138,7 +142,7 @@ public final class JavaCompilerHost {
         private volatile boolean dead;
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
         // PluginSlots permit while idle (JK-2284). Touched only by the io thread.
-        private cc.jumpkick.engine.plugin.PluginSlots.Lease slot;
+        private PluginSlots.Lease slot;
         // Bounded ring of the worker's most recent non-protocol lines, surfaced on a crash (JK-2296).
         private static final int TAIL_MAX = 50;
         private final ConcurrentLinkedDeque<String> passthroughTail = new ConcurrentLinkedDeque<>();
@@ -190,16 +194,15 @@ public final class JavaCompilerHost {
 
         private void run(ForkedJavac.Request template) {
             try {
-                Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
-                boolean win = HostPlatform.isWindows();
-                Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+                Path hostJavaHome = JavaHomes.runningJavaHome();
+                Path javaExe = JdkFingerprint.java(hostJavaHome);
                 String workerCp = ForkedJavac.workerClasspath(template);
                 List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
                         hostJavaHome,
                         workerCp,
                         (aotOutput, scratch) ->
                                 ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
-                jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
+                jvmFlags.addAll(JvmOptions.batchFlags(1));
                 List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
                 new PluginClient(ForkedJavac.PREFIX)
                         .passthrough(this::recordTail)
@@ -212,7 +215,7 @@ public final class JavaCompilerHost {
             }
         }
 
-        private void onLine(String json, cc.jumpkick.engine.plugin.PluginProcess.Conversation convo) {
+        private void onLine(String json, PluginProcess.Conversation convo) {
             String t = Jsonl.str(json, PluginProtocol.T);
             if (PluginProtocol.READY.equals(t)) {
                 Work next;
@@ -231,7 +234,7 @@ public final class JavaCompilerHost {
                 }
                 // Take a worker slot only for the duration of this exchange; released on
                 // RESULT/ERROR/failure so an idle session holds none (JK-2284).
-                slot = cc.jumpkick.engine.plugin.PluginSlots.acquire();
+                slot = PluginSlots.acquire();
                 try {
                     next.spec = ForkedJavac.writeSpec(next.req);
                     inflight = next;
@@ -246,10 +249,13 @@ public final class JavaCompilerHost {
             Work w = inflight;
             if (w == null) return;
             if (PluginProtocol.DIAGNOSTIC.equals(t)) {
-                String file = Jsonl.str(json, "file");
-                w.diagnostics.add(new CompileResult.Diagnostic(
-                        CompileResult.Severity.fromName(Jsonl.str(json, "sev")),
-                        file == null ? null : Path.of(file),
+                // Through WorkerDiagnostics, never a bare `new Diagnostic(...)`: downstream
+                // consumers scrape the MESSAGE for the locus (PlannerCompile forwards
+                // describe(), which is message-only), so the worker's file/line has to be
+                // folded into a javac-style header here or the error never names its file.
+                w.diagnostics.add(WorkerDiagnostics.located(
+                        Jsonl.str(json, "sev"),
+                        Jsonl.str(json, "file"),
                         Jsonl.longValue(json, "line", 0),
                         Jsonl.longValue(json, "col", 0),
                         Jsonl.str(json, "msg")));
@@ -292,7 +298,7 @@ public final class JavaCompilerHost {
 
         /** Return the in-flight worker slot to the pool (idempotent; io thread only). */
         private void releaseSlot() {
-            cc.jumpkick.engine.plugin.PluginSlots.Lease s = slot;
+            PluginSlots.Lease s = slot;
             slot = null;
             if (s != null) s.close();
         }

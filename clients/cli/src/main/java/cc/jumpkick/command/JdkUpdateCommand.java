@@ -2,9 +2,17 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JdkDownloadBar;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -15,6 +23,7 @@ import cc.jumpkick.jdk.JdkGarbage;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.StableJdkPointer;
@@ -69,8 +78,7 @@ public final class JdkUpdateCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the install root. Default: the jk JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
                         .hide(),
                 Opt.value("<file>", "Override the catalog cache path (for tests).", "--cache-file")
@@ -99,10 +107,9 @@ public final class JdkUpdateCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
         this.assumeYes = in.isSet("yes");
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile =
-                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheFile = in.value("cache-file").map(CliPaths::abs).orElse(null);
 
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         // Reclaim any partial archive left by a previously canceled download.
@@ -110,10 +117,10 @@ public final class JdkUpdateCommand implements CliCommand {
 
         // Keyword specs → resolve to the major of the best installed match so
         // managedHits() can filter by that major (e.g. "lts" → "21").
-        if (cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)) {
-            var kw = cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, registry.managedHits(null));
+        if (JdkKeywords.isKeyword(spec)) {
+            var kw = JdkKeywords.bestInstalledMatch(spec, registry.managedHits(null));
             spec = kw.map(h -> {
-                        Integer m = cc.jumpkick.jdk.JdkKeywords.leadingMajor(h.version());
+                        Integer m = JdkKeywords.leadingMajor(h.version());
                         return m != null ? String.valueOf(m) : JdkRegistry.identifierFor(h.home());
                     })
                     .orElse(spec);
@@ -266,8 +273,7 @@ public final class JdkUpdateCommand implements CliCommand {
         String label = entry.vendor() + " " + entry.product() + " " + entry.majorVersion();
         long total = entry.archiveSize();
         InstalledJdk installed;
-        try (cc.jumpkick.cli.tui.JdkDownloadBar pb =
-                cc.jumpkick.cli.tui.JdkDownloadBar.show(CliOutput.stdout(), label)) {
+        try (JdkDownloadBar pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
             installed = installer.install(entry, bytes -> pb.update(bytes, total));
             pb.finish();
         }
@@ -325,8 +331,7 @@ public final class JdkUpdateCommand implements CliCommand {
                     + Theme.colorize(
                             u.target.installFolderName(), Theme.active().focused()));
         }
-        return cc.jumpkick.cli.tui.Confirm.of(
-                        Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " Proceed?", true)
+        return Confirm.of(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " Proceed?", true)
                 .ask();
     }
 
@@ -334,9 +339,9 @@ public final class JdkUpdateCommand implements CliCommand {
 
     private boolean hostSupported() {
         if (HostPlatform.supported()) return true;
-        cc.jumpkick.cli.tui.CommandWedge.printFail(
+        CommandWedge.printFail(
                 "JDK",
-                "host " + System.getProperty("os.name")
+                "host " + Os.name()
                         + "/"
                         + System.getProperty("os.arch")
                         + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");
@@ -350,13 +355,10 @@ public final class JdkUpdateCommand implements CliCommand {
         // throwaway ephemeralCachePath() below, which the engine has no way to share with this
         // process.
         if (feedUrl == null || cacheFile != null) {
-            cc.jumpkick.cli.engine.EngineClient.freshenCatalogIfRunning(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    "jdks",
-                    feedUrl != null ? feedUrl.toString() : null,
-                    cacheFile);
+            EngineClient.freshenCatalogIfRunning(
+                    EnginePaths.current(), "jdks", feedUrl != null ? feedUrl.toString() : null, cacheFile);
         }
-        boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        boolean refresh = SessionContext.current().config().forceOr(false);
         JdkCatalogClient client = (feedUrl != null
                         ? new JdkCatalogClient(
                                 new Http(),

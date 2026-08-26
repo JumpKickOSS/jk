@@ -3,19 +3,21 @@ package cc.jumpkick.builds;
 
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.MinimalToml;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -133,7 +135,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
     public static String mintId() {
         byte[] bytes = new byte[16];
         RANDOM.nextBytes(bytes);
-        return HexFormat.of().formatHex(bytes);
+        return Hashing.hex(bytes);
     }
 
     /** Normalize / validate an id string; reject path-like values. */
@@ -233,15 +235,15 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
      */
     public static String coordOf(Path projectDir) {
         Path dir = projectDir.toAbsolutePath().normalize();
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         var local = TomlScan.scan(toml, "group", "name");
         String g = blankToEmpty(local.get("group"));
         String n = blankToEmpty(local.get("name"));
         if (g.isEmpty()) {
             Optional<Path> root = WorkspaceScan.findRoot(dir);
             if (root.isPresent()) {
-                String inherited =
-                        TomlScan.scan(root.get().resolve("jk.toml"), "group").get("group");
+                String inherited = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "group")
+                        .get("group");
                 g = blankToEmpty(inherited);
             }
         }
@@ -253,19 +255,18 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         return s == null || s.isBlank() ? "" : s.strip();
     }
 
+    /**
+     * Root-level {@code id} — an unadvertised escape hatch, deliberately not on {@code
+     * Project}. Scanned, not parsed, for the same reason {@link #coordOf} is: identity is
+     * resolved on the client for history and dashboard routes, and {@code checkCliNoParseTypes}
+     * keeps {@link cc.jumpkick.config.JkBuildParser} — and tomlj with it — off the native image
+     * (JK-2151).
+     */
     private static Optional<String> explicitId(Path projectDir) {
-        Path toml = projectDir.resolve("jk.toml");
-        if (!Files.isRegularFile(toml)) return Optional.empty();
-        try {
-            // Read raw TOML so root-level `id` stays an unadvertised escape hatch without widening
-            // JkBuild.Project (rare override; not on the happy-path model).
-            var result = org.tomlj.Toml.parse(toml);
-            String id = result.getString("id");
-            if (id == null || id.isBlank()) return Optional.empty();
-            return Optional.of(normalizeId(id));
-        } catch (Exception e) {
-            return Optional.empty();
-        }
+        String id =
+                TomlScan.scan(projectDir.resolve(ManifestPaths.MANIFEST), "id").get("id");
+        if (id == null || id.isBlank()) return Optional.empty();
+        return Optional.of(normalizeId(id));
     }
 
     private static Optional<String> lockId(Path projectDir) {
@@ -282,9 +283,8 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
 
     private static String hashId(String material) {
         try {
-            byte[] dig = MessageDigest.getInstance("SHA-256").digest(material.getBytes(StandardCharsets.UTF_8));
             // 32 hex chars (128 bits) — URL-safe, distinct from minted random ids only by content
-            return HexFormat.of().formatHex(dig).substring(0, 32);
+            return Hashing.sha256Hex(material).substring(0, 32);
         } catch (Exception e) {
             return mintId();
         }
@@ -392,7 +392,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
                     int eq = line.indexOf('=');
                     if (eq < 0) continue;
                     String k = line.substring(0, eq).trim();
-                    String v = unquote(line.substring(eq + 1).trim());
+                    String v = MinimalToml.unquote(line.substring(eq + 1).trim());
                     switch (k) {
                         case "id" -> id = v;
                         case "coord" -> coord = v;
@@ -415,30 +415,25 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         public static void write(Path projectHome, ProjectIdentity identity) throws IOException {
             Files.createDirectories(projectHome);
             StringBuilder b = new StringBuilder();
-            b.append("id = ").append(q(identity.id())).append('\n');
-            b.append("coord = ").append(q(identity.coord())).append('\n');
-            b.append("path = ").append(q(identity.path().toString())).append('\n');
+            b.append("id = ").append(MinimalToml.quote(identity.id())).append('\n');
+            b.append("coord = ").append(MinimalToml.quote(identity.coord())).append('\n');
+            b.append("path = ")
+                    .append(MinimalToml.quote(identity.path().toString()))
+                    .append('\n');
             b.append("source = ")
-                    .append(q(identity.source().name().toLowerCase(Locale.ROOT)))
+                    .append(MinimalToml.quote(identity.source().name().toLowerCase(Locale.ROOT)))
                     .append('\n');
             if (identity.gitRemote() != null) {
-                b.append("git-remote = ").append(q(identity.gitRemote())).append('\n');
+                b.append("git-remote = ")
+                        .append(MinimalToml.quote(identity.gitRemote()))
+                        .append('\n');
             }
             if (identity.gitRelPath() != null) {
-                b.append("git-rel-path = ").append(q(identity.gitRelPath())).append('\n');
+                b.append("git-rel-path = ")
+                        .append(MinimalToml.quote(identity.gitRelPath()))
+                        .append('\n');
             }
-            cc.jumpkick.util.AtomicWrites.replace(projectHome.resolve(ProjectBuilds.IDENTITY), b.toString());
-        }
-
-        private static String q(String s) {
-            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-        }
-
-        private static String unquote(String v) {
-            if (v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
-                return v.substring(1, v.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
-            }
-            return v;
+            AtomicWrites.replace(projectHome.resolve(ProjectBuilds.IDENTITY), b.toString());
         }
     }
 }

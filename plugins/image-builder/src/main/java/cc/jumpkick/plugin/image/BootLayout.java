@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
@@ -54,18 +55,20 @@ final class BootLayout {
      * jar, but there is no reason to introduce a second JVM into the equation.
      */
     static Extracted extract(Path bootJar, Path dest, Path javaBin) throws IOException, InterruptedException {
-        deleteRecursively(dest);
+        PathUtil.deleteRecursivelyOrThrow(dest);
         Files.createDirectories(dest);
-        List<String> command = List.of(
-                javaBin.toString(),
-                "-Djarmode=tools",
-                "-jar",
-                bootJar.toAbsolutePath().toString(),
-                "extract",
-                "--force",
-                "--destination",
-                dest.toAbsolutePath().toString());
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        // start(), not run(): this fork needs the timeout below, and run() drains to EOF. The argv
+        // still comes from the SDK's one fork owner.
+        Process process = new TaskExec.ToolRun(javaBin)
+                .args(List.of(
+                        "-Djarmode=tools",
+                        "-jar",
+                        bootJar.toAbsolutePath().toString(),
+                        "extract",
+                        "--force",
+                        "--destination",
+                        dest.toAbsolutePath().toString()))
+                .start();
         // Drain on a separate thread: readAllBytes() on this thread blocks to EOF, which makes
         // the timeout below unreachable while the child holds its pipe open.
         StringBuilder captured = new StringBuilder();
@@ -105,15 +108,6 @@ final class BootLayout {
                     .sorted()
                     .findFirst()
                     .orElse(null);
-        }
-    }
-
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
-            }
         }
     }
 }

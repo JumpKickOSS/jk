@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -10,7 +20,6 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,8 +57,7 @@ public final class JshellCommand implements CliCommand {
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
                                 "--cache-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.flag("Skip tests during the preparatory build.", "--skip-tests"));
     }
 
@@ -68,7 +76,7 @@ public final class JshellCommand implements CliCommand {
 
         Path jshellBin = findJshell();
         if (jshellBin == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "JShell",
                     "jshell not found under java.home="
                             + System.getProperty("java.home")
@@ -77,7 +85,7 @@ public final class JshellCommand implements CliCommand {
         }
 
         boolean noBuild = in.isSet("no-build");
-        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(JkDirs.cache());
+        Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(JkDirs.cache());
 
         if (!noBuild) {
             // Quiet preparatory build so classes exist.
@@ -89,38 +97,35 @@ public final class JshellCommand implements CliCommand {
             if (in.value("cache-dir").isPresent()) {
                 bb.putValue("cache-dir", cacheDir.toString());
             }
-            if (in.value("jdks-dir").isPresent()) {
-                bb.putValue("jdks-dir", in.value("jdks-dir").get());
-            }
+            in.value(CommonOpts.JDKS_DIR).ifPresent(v -> bb.putValue(CommonOpts.JDKS_DIR, v));
             int code = new BuildCommand().run(bb.build());
             if (code != 0) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                CommandWedge.printFail(
                         "JShell", "preparatory build failed (exit " + code + "); try --no-build after a green build");
                 return code;
             }
         }
 
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cacheDir, global, "JShell");
+        int lockCode = EnsureFreshLock.ensure(dir, cacheDir, global, "JShell");
         if (lockCode != 0) return lockCode;
 
-        cc.jumpkick.engine.protocol.ExecPlan plan;
+        ExecPlan plan;
         try {
-            plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
-                    cc.jumpkick.engine.EnginePaths.current(), dir, cacheDir, "jshell", null, null);
+            plan = EngineClient.execPlan(EnginePaths.current(), dir, cacheDir, "jshell", null, null);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", e.getMessage());
+            CommandWedge.printFail("JShell", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (plan.error() != null && !plan.error().isBlank()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", plan.error());
+            CommandWedge.printFail("JShell", plan.error());
             return Exit.CONFIG;
         }
         if (plan.display() != null && !plan.display().isBlank()) {
-            cc.jumpkick.cli.tui.CommandWedge.printChipErr(cc.jumpkick.cli.tui.Glyphs.BANG, "JShell", plan.display());
+            CommandWedge.printChipErr(Glyphs.BANG, "JShell", plan.display());
         }
         List<String> cp =
                 plan.libPaths() == null || plan.libPaths().isEmpty() ? List.of(plan.mainJar()) : plan.libPaths();
-        String classpath = String.join(File.pathSeparator, cp);
+        String classpath = Classpaths.join(cp.stream().map(Path::of).toList());
 
         List<String> cmd = new ArrayList<>();
         cmd.add(jshellBin.toString());
@@ -136,19 +141,17 @@ public final class JshellCommand implements CliCommand {
         cmd.addAll(extra);
 
         if (global.verbose) {
-            cc.jumpkick.cli.tui.CommandWedge.printWorking(
+            CommandWedge.printWorking(
                     "JShell",
                     cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s).collect(Collectors.joining(" ")));
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(dir.toFile());
-        cc.jumpkick.terminal.Terminals.restoreForChild();
-        pb.inheritIO();
-        Process p = pb.start();
+        Process p = CliOutput.handOffTerminal(pb);
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
-        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
+        CliOutput.skipTrailingBlank();
         int exit = p.waitFor();
         return exit;
     }

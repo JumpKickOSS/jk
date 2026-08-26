@@ -1,0 +1,399 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.command;
+
+import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.run.AggregateContext;
+import cc.jumpkick.cli.run.AggregateModuleListener;
+import cc.jumpkick.cli.run.CliSessionTranscript;
+import cc.jumpkick.cli.run.CompositeBuildPlanListener;
+import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.DashboardCodeLink;
+import cc.jumpkick.cli.run.JsonlListener;
+import cc.jumpkick.cli.run.JsonlShape;
+import cc.jumpkick.cli.run.LiveProgress;
+import cc.jumpkick.cli.run.SessionMirrorListener;
+import cc.jumpkick.cli.run.TestFailureHighlight;
+import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.ModulePlan;
+import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.runtime.WorkspaceResult;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+
+/**
+ * The one workspace renderer. Every verb that drives an engine {@code buildWorkspace}-shaped RPC —
+ * {@code build}, {@code test}, {@code run}, {@code compile}, {@code image}, {@code native} — attaches
+ * its {@link WorkspaceBuildListener} from here and settles through here, so the module completion
+ * line, the buffered-output flush, the JSONL workspace vocabulary and the four-arm
+ * cancel/errors/failure/success ladder exist once.
+ *
+ * <p><b>Two renderers, not one.</b> {@link #live} paints into a {@link JkManager} region;
+ * {@link #headless} appends blocks under a print mutex and never opens a region. They are siblings on
+ * the <em>mode</em> axis, and a caller picks one — which is why {@code buffered} chrome may flush a
+ * block with {@link JkManager#writeAbove} while non-buffered chrome must not: a verb with no headless
+ * renderer of its own (today {@code compile} and {@code image}) hands us a dormant region under
+ * {@code --output json}, and anything written above it lands in the JSON stream.
+ *
+ * <p>What stays with the caller is <b>policy</b>: the tails ({@link Tails}), whatever it wants to
+ * observe per module ({@code observer}), and whatever it does after the ladder picks an arm
+ * ({@link Settled}). What lives here is <b>mechanism</b>. Nine hand-written copies of that mechanism
+ * had already drifted into three defects — {@code [01 of 01]} denominators, an unpainted test failure
+ * under {@code jk run}, and two verbs that emit no {@code workspace-*} events at all.
+ */
+final class WorkspaceRunView {
+
+    /**
+     * Per-verb rendering policy.
+     *
+     * @param planName the wedge/region name ({@code Build}, {@code Test}, …)
+     * @param events whether the JSONL {@code workspace-*} / {@code module-*} vocabulary is emitted
+     * @param buffered whether module output is captured per module and flushed as one block on
+     *     completion — also the flag that says this verb owns append-only output when the region is
+     *     not animating
+     */
+    record Chrome(String planName, boolean events, boolean buffered) {}
+
+    /** Which arm of the settle ladder fired. */
+    enum Settled {
+        CANCELLED,
+        GRAPH_ERRORS,
+        FAILED,
+        SUCCEEDED
+    }
+
+    /** The success wedge text for a finished workspace run. */
+    @FunctionalInterface
+    interface SuccessTail {
+        String of(WorkspaceResult result, int planned);
+    }
+
+    /** The failure wedge text for a workspace run that ran and failed. */
+    @FunctionalInterface
+    interface FailureTail {
+        String of(WorkspaceResult result);
+    }
+
+    /** The two per-verb strings the shared ladder cannot know. */
+    record Tails(SuccessTail success, FailureTail failure) {}
+
+    /**
+     * One print mutex per process: parallel modules finish concurrently and each flushes a
+     * multi-line block, so the block and its completion line must reach stdout together.
+     */
+    private static final Object OUT_LOCK = new Object();
+
+    private final Chrome chrome;
+    private final Path entryDir;
+    private final CliSessionTranscript session;
+    private final boolean toStdout;
+
+    private final Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
+    private final List<String> deferred = Collections.synchronizedList(new ArrayList<>());
+    private final AtomicInteger completed = new AtomicInteger();
+    private final AtomicInteger planned = new AtomicInteger();
+
+    /**
+     * @param session transcript to mirror module events into, or null when the verb keeps none
+     * @param toStdout {@code --output json}: JSONL events go to stdout as well as the transcript
+     */
+    WorkspaceRunView(Chrome chrome, Path entryDir, CliSessionTranscript session, boolean toStdout) {
+        this.chrome = chrome;
+        this.entryDir = entryDir;
+        this.session = session;
+        this.toStdout = toStdout;
+    }
+
+    /**
+     * Modules the engine entered. Grows only: {@code onPlan} states it and the engine's progress
+     * snapshots correct it upward when {@code -m} pulls in transitive prereqs the client never
+     * counted. A caller with its own pre-count seeds it before the run.
+     */
+    void seedPlanned(int modules) {
+        planned.accumulateAndGet(Math.max(0, modules), Math::max);
+    }
+
+    int planned() {
+        return planned.get();
+    }
+
+    /** Buffered module output in completion order, painted. Empty for non-buffered chrome. */
+    List<String> deferredOutput() {
+        synchronized (deferred) {
+            // paintLines is idempotent for already-styled content (stack frames re-highlight safely).
+            return new ArrayList<>(TestFailureHighlight.paintLines(deferred));
+        }
+    }
+
+    /** Live aggregate listener over an open {@link JkManager} region. */
+    WorkspaceBuildListener live(JkManager view, AggregateContext agg) {
+        return live(view, agg, o -> {});
+    }
+
+    /**
+     * As {@link #live(JkManager, AggregateContext)}, with {@code observer} called on every module
+     * completion — where a verb keeps its own per-module tally ({@code image}'s pushed reference,
+     * {@code native}'s built count).
+     */
+    WorkspaceBuildListener live(JkManager view, AggregateContext agg, Consumer<ModuleOutcome> observer) {
+        return new WorkspaceBuildListener() {
+            @Override
+            public void onPreflight(String stage, int done, int totalUnits, String label) {
+                // Labels only — aggregate % arrives via onWorkspaceProgress (engine tracker).
+                agg.preflight(stage, done, totalUnits, label);
+            }
+
+            @Override
+            public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
+                agg.applySnapshot(snap);
+                seedPlanned(snap.modulesTotal());
+                event(JsonlShape.workspaceProgress(
+                        entryDir.toString(),
+                        snap.numerator(),
+                        snap.denominator(),
+                        snap.phase(),
+                        snap.modulesComplete(),
+                        snap.modulesTotal()));
+            }
+
+            @Override
+            public void onPlan(List<ModulePlan> plan) {
+                // Engine calibrates the aggregate bar; the CLI only records plan size for the
+                // completion lines' denominator.
+                seedPlanned(plan.size());
+                event(JsonlShape.workspaceStart(plan.size()));
+            }
+
+            @Override
+            public void onEtaEstimate(long millis) {
+                // Engine reports remaining work (post-lock dirty schedule — the same figure as
+                // `jk explain`), so preflight/lock elapsed is not double-counted and the countdown
+                // finishes near 0 when the estimate holds.
+                view.setRemainingWorkEstimate(millis);
+            }
+
+            @Override
+            public BuildPlanListener onModuleStart(ModulePlan m) {
+                // Composed into the *returned* listener rather than attached to m.plan directly:
+                // an engine-hosted module's plan is a client-side reconstruction that is never run,
+                // and only the returned listener is driven by wire-replayed events.
+                var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
+                if (chrome.buffered()) lis.bufferOutputInto(buffer(m.dir()));
+                event(JsonlShape.moduleStart(m.dir().toString(), m.coord()));
+                return withMirror(lis);
+            }
+
+            @Override
+            public void onModuleFinish(ModuleOutcome o) {
+                event(JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()));
+                observer.accept(o);
+                String completion = completionLineFor(o);
+                if (view.animating()) {
+                    view.addCompletion(completion);
+                    // Paint with this module's link context now; the deferredOutput() re-paint is a
+                    // no-op on already-styled lines.
+                    if (chrome.buffered()) deferred.addAll(paint(o.dir()));
+                    return;
+                }
+                if (!chrome.buffered()) return; // see the class javadoc: dormant region, JSON stream
+                StringBuilder block = new StringBuilder();
+                for (String l : paint(o.dir())) block.append(l).append('\n');
+                block.append(completion);
+                view.writeAbove(block.toString());
+            }
+        };
+    }
+
+    /**
+     * Append-only listener for {@code --output json} / {@code --verbose}: no region, one buffered
+     * block plus a {@code ✓ [k of N]} line per module, printed under the shared mutex.
+     */
+    WorkspaceBuildListener headless() {
+        return new WorkspaceBuildListener() {
+            @Override
+            public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
+                // Engine tracker owns the aggregate rider; module listeners stay local.
+                LiveProgress.get().apply(snap);
+                event(JsonlShape.workspaceProgress(
+                        entryDir.toString(),
+                        snap.numerator(),
+                        snap.denominator(),
+                        snap.phase(),
+                        snap.modulesComplete(),
+                        snap.modulesTotal()));
+            }
+
+            @Override
+            public void onPlan(List<ModulePlan> plan) {
+                seedPlanned(plan.size());
+                event(JsonlShape.workspaceStart(plan.size()));
+            }
+
+            @Override
+            public BuildPlanListener onModuleStart(ModulePlan m) {
+                event(JsonlShape.moduleStart(m.dir().toString(), m.coord()));
+                if (toStdout) {
+                    // Live step/progress events for agents (same shape as the single-module stream).
+                    // Workspace member: no aggregate-rider writes (the engine snapshot owns it).
+                    return new JsonlListener(System.out, false);
+                }
+                List<String> buf = buffer(m.dir());
+                return withMirror(new BuildPlanListener() {
+                    @Override
+                    public synchronized void output(String step, String line) {
+                        buf.add(line);
+                    }
+
+                    @Override
+                    public synchronized void warn(String step, String code, String message) {
+                        buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
+                    }
+
+                    @Override
+                    public synchronized void error(String step, String code, String message) {
+                        // test-failure renders as the styled output block, not an error line.
+                        if ("test-failure".equals(code)) return;
+                        buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
+                    }
+                });
+            }
+
+            @Override
+            public void onModuleFinish(ModuleOutcome o) {
+                event(JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()));
+                if (toStdout) return;
+                List<String> painted = paint(o.dir());
+                String completion = completionLineFor(o);
+                synchronized (OUT_LOCK) {
+                    for (String line : painted) CliOutput.out(line);
+                    CliOutput.out(completion);
+                }
+            }
+        };
+    }
+
+    /**
+     * The four-arm ladder every live workspace verb ends on, in the one order that is correct:
+     * a cancel is not a failure, a graph/lock error never reached a module listener so it has no
+     * module to blame, a module failure names one, and only what survives all three succeeded.
+     *
+     * <p>{@code after} runs once with the arm that fired — desktop notification, an exit-code
+     * override, anything the verb owes its own surface. The return value is the process exit code.
+     */
+    int settleLive(
+            JkManager view,
+            AggregateContext agg,
+            WorkspaceResult result,
+            long elapsedMs,
+            Tails tails,
+            Consumer<Settled> after) {
+        absorb(agg, result);
+        List<String> above = deferredOutput();
+        if (result.cancelled()) {
+            view.finishBuildPlanCancelled(above);
+            if (session != null) session.wedge(chrome.planName() + " job was cancelled");
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            after.accept(Settled.CANCELLED);
+            return 1;
+        }
+        if (!result.errors().isEmpty()) {
+            List<String> errs = new ArrayList<>(above);
+            for (String err : result.errors()) errs.add(ConsoleSpec.errorLine("composite", err));
+            view.finishBuildPlanFailure("dependency resolution failed", errs);
+            if (session != null) session.wedge("dependency resolution failed");
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            after.accept(Settled.GRAPH_ERRORS);
+            // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
+            return result.exitCode();
+        }
+        if (!result.success()) {
+            // Buffered sub-process output first, then the error diagnostics just above the failure
+            // line — which stays last so the outcome is visible without scrolling.
+            List<String> failAbove = new ArrayList<>(above);
+            List<BuildPlanResult.Diagnostic> settleErrors = new ArrayList<>();
+            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
+                if ("test-failure".equals(d.code())) continue; // already printed by run-tests
+                settleErrors.add(d);
+            }
+            ConsoleSpec.appendErrors(failAbove, settleErrors);
+            String failTail = tails.failure().of(result);
+            view.finishBuildPlanFailure(failTail, failAbove);
+            if (session != null) session.wedge(failTail);
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            after.accept(Settled.FAILED);
+            return result.exitCode();
+        }
+        // An empty execute plan (planned == 0) is the engine finding nothing dirty; an explicit
+        // empty module selection settles here too, as up to date.
+        String okTail = tails.success().of(result, planned());
+        view.finishBuildPlanSuccess(okTail, above);
+        if (session != null) session.wedge(okTail);
+        event(JsonlShape.workspaceFinish(true, elapsedMs, planned()));
+        after.accept(Settled.SUCCEEDED);
+        return 0;
+    }
+
+    /** Mirror the run's modules and errors into the transcript, once, before the ladder picks an arm. */
+    void absorb(AggregateContext agg, WorkspaceResult result) {
+        if (session == null) return;
+        for (var m : result.modules()) session.module(m.coord());
+        for (String err : result.errors()) session.error(err);
+        if (agg == null) return;
+        for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
+            session.error(d.step(), d.code(), d.message());
+        }
+    }
+
+    /** Emit the terminal {@code workspace-finish} for a run that never reached the ladder. */
+    void finishEvent(boolean success, long elapsedMs) {
+        event(JsonlShape.workspaceFinish(success, elapsedMs, planned()));
+    }
+
+    /** First failing module's coordinate, or {@code fallback} when the engine named none. */
+    static String failedCoord(WorkspaceResult result, String fallback) {
+        if (result.modules() == null) return fallback;
+        return result.modules().stream()
+                .filter(m -> !m.success())
+                .map(ModuleOutcome::coord)
+                .findFirst()
+                .orElse(fallback);
+    }
+
+    private String completionLineFor(ModuleOutcome o) {
+        int index = completed.incrementAndGet();
+        return BuildTails.completionLine(o.success(), index, Math.max(planned(), index), o.coord(), o.millis());
+    }
+
+    private List<String> paint(Path moduleDir) {
+        List<String> buf = buffers.getOrDefault(moduleDir, List.of());
+        synchronized (buf) {
+            if (buf.isEmpty()) return List.of();
+            try (var link = DashboardCodeLink.open(entryDir, moduleDir)) {
+                return TestFailureHighlight.paintLines(buf);
+            }
+        }
+    }
+
+    private List<String> buffer(Path moduleDir) {
+        return buffers.computeIfAbsent(moduleDir, d -> Collections.synchronizedList(new ArrayList<>()));
+    }
+
+    private BuildPlanListener withMirror(BuildPlanListener lis) {
+        return session == null ? lis : CompositeBuildPlanListener.of(lis, new SessionMirrorListener(session));
+    }
+
+    private void event(String line) {
+        if (!chrome.events()) return;
+        JsonlShape.emitJsonl(line, toStdout);
+    }
+}

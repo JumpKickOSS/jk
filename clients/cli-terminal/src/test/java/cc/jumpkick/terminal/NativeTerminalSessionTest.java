@@ -4,6 +4,7 @@ package cc.jumpkick.terminal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.terminal.posix.PosixTty;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -172,7 +175,7 @@ public final class BuildMetrics {
 
     /** Hydrate invocation/task stats from {@code project-metrics.toml} / {@code host-metrics.toml}. */
     static BuildMetrics fromAggregates() {
-        cc.jumpkick.builds.AggregatedMetrics agg = aggregatesForSession();
+        AggregatedMetrics agg = aggregatesForSession();
         Map<String, Entry> inv = new LinkedHashMap<>();
         Map<String, Entry> steps = new LinkedHashMap<>();
         long now = System.currentTimeMillis();
@@ -199,7 +202,7 @@ public final class BuildMetrics {
      * this (own + host tiers), so one ETA seed on a dirty monorepo issued hundreds of identical
      * TOML parses. Harvest rewrites land between builds, well past the TTL.
      */
-    static cc.jumpkick.builds.AggregatedMetrics aggregatesForSession() {
+    static AggregatedMetrics aggregatesForSession() {
         Path builds = JkDirs.builds();
         Path work = null;
         try {
@@ -209,7 +212,7 @@ public final class BuildMetrics {
             // no session / bad path — global merge below
         }
         // Only a real jk checkout is a project session; engine CWD / random dirs use loadAll.
-        boolean projectSession = work != null && Files.isRegularFile(work.resolve("jk.toml"));
+        boolean projectSession = work != null && Files.isRegularFile(work.resolve(ManifestPaths.MANIFEST));
         Path memoKey = projectSession ? work : null;
         long now = System.currentTimeMillis();
         AggMemo memo = AGG_MEMO.get();
@@ -219,14 +222,13 @@ public final class BuildMetrics {
                 && now - memo.atMillis() < AGG_MEMO_TTL_MS) {
             return memo.agg();
         }
-        cc.jumpkick.builds.AggregatedMetrics agg = projectSession
-                ? cc.jumpkick.builds.AggregatedMetrics.load(builds, null, work)
-                : cc.jumpkick.builds.AggregatedMetrics.loadAll(builds);
+        AggregatedMetrics agg =
+                projectSession ? AggregatedMetrics.load(builds, null, work) : AggregatedMetrics.loadAll(builds);
         AGG_MEMO.set(new AggMemo(builds, memoKey, now, agg));
         return agg;
     }
 
-    private record AggMemo(Path builds, Path work, long atMillis, cc.jumpkick.builds.AggregatedMetrics agg) {}
+    private record AggMemo(Path builds, Path work, long atMillis, AggregatedMetrics agg) {}
 
     private static final AtomicReference<AggMemo> AGG_MEMO = new AtomicReference<>();
     private static final long AGG_MEMO_TTL_MS = 3_000;
@@ -243,7 +245,7 @@ public final class BuildMetrics {
      */
     private static void foldAggregateEntries(
             Map<String, Double> source,
-            cc.jumpkick.builds.AggregatedMetrics agg,
+            AggregatedMetrics agg,
             Map<String, Entry> inv,
             Map<String, Entry> steps,
             long now,
@@ -360,7 +362,7 @@ public final class BuildMetrics {
 
     /** Canonical metrics dir key: forward slashes + folded drive-letter case (see DirKeys). */
     public static String slashKey(String dir) {
-        return dir == null ? "" : cc.jumpkick.util.DirKeys.key(dir);
+        return dir == null ? "" : DirKeys.key(dir);
     }
 
     /**

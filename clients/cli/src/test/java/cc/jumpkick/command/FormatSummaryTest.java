@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.command.Exit;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -40,6 +41,16 @@ class FormatSummaryTest {
         assertThat(FormatCommand.summarize(true, 0, 10, 2, "took 1s").failed()).isTrue();
         assertThat(FormatCommand.summarize(false, 3, 10, 2, "took 1s").failed()).isTrue();
         assertThat(FormatCommand.summarize(false, 3, 10, 1, "took 1s").body()).contains("1 error ");
+    }
+
+    /**
+     * A plan failure and {@code --check} drift must not arrive at the shell as the same number.
+     * Drift exits with the worker's own {@code 1}; a plan that did not run to completion exits
+     * {@link Exit#SOFTWARE}.
+     */
+    @Test
+    void a_failed_plan_and_check_drift_do_not_share_an_exit_code() {
+        assertThat(FormatCommand.PLAN_FAILED).isEqualTo(Exit.SOFTWARE).isNotEqualTo(Exit.FAILURE);
     }
 
     @Test

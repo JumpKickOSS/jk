@@ -4,7 +4,9 @@ package cc.jumpkick.command;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -162,8 +164,8 @@ public sealed interface NewJdkCandidate {
             String os,
             String arch,
             Function<NewJdkOptions.Option, JdkVendor> vendorResolver) {
-        var seen = new java.util.LinkedHashSet<DedupKey>();
-        var out = new java.util.ArrayList<NewJdkCandidate>();
+        var seen = new LinkedHashSet<DedupKey>();
+        var out = new ArrayList<NewJdkCandidate>();
         for (var opt : installed) {
             var c = new Installed(opt, vendorResolver.apply(opt));
             if (seen.add(keyOf(c))) out.add(c);
@@ -218,7 +220,7 @@ public sealed interface NewJdkCandidate {
                 .filter(c -> c.vendor() == JdkVendor.TEMURIN && c.major() == latestLtsMajor)
                 .findFirst();
         if (temurinLts.isEmpty()) return all;
-        var reordered = new java.util.ArrayList<NewJdkCandidate>(all.size());
+        var reordered = new ArrayList<NewJdkCandidate>(all.size());
         reordered.add(temurinLts.get());
         for (var c : all) {
             if (c != temurinLts.get()) reordered.add(c);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.terminal;
 
+import cc.jumpkick.host.Os;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.GroupLayout;
@@ -153,7 +154,7 @@ public final class Size {
     }
 
     static long tiocgwinszConstant() {
-        String os = System.getProperty("os.name", "");
+        String os = Os.name();
         String arch = System.getProperty("os.arch", "");
         if (os.startsWith("Linux")) {
             boolean isMipsPpcOrSparc = arch.equals("mips")

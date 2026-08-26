@@ -2,17 +2,23 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -20,6 +26,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -85,7 +92,7 @@ public final class LockCommand implements CliCommand {
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.sources = in.isSet("sources");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.libraryRegistryUrl =
                 in.value("library-registry-url").map(URI::create).orElse(null);
         this.libraryCacheFile = in.value("library-cache-file").map(Path::of).orElse(null);
@@ -100,8 +107,8 @@ public final class LockCommand implements CliCommand {
         // before anything parses jk.toml short names. Engine-hosted (JIT, no client-side TTL): the
         // CLI never talks to the library registry's network itself, and the engine reads the same
         // on-disk file this writes, closing the race with background StoreFeedRefresh.
-        cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
-                cc.jumpkick.engine.EnginePaths.current(),
+        EngineClient.freshenCatalog(
+                EnginePaths.current(),
                 "libraries",
                 global.offline,
                 libraryRegistryUrl != null ? libraryRegistryUrl.toString() : null,
@@ -112,14 +119,14 @@ public final class LockCommand implements CliCommand {
 
         // Optimize/start the engine before the Lock plan console so a one-time AOT training shows the
         // "Engine — optimizing…" wedge first, then the Lock TUI takes over (never interleaved).
-        cc.jumpkick.cli.engine.EnginePrewarm.ensure();
+        EnginePrewarm.ensure();
         return live ? runHostedLive(dir, cache, mode) : runHostedPlain(dir, cache, mode);
     }
 
     // ---- engine-hosted paths -------------------------------------------------
 
     private EngineRequests.LockRequest lockRequest(Path dir, Path cache) {
-        var session = cc.jumpkick.config.SessionContext.current();
+        var session = SessionContext.current();
         return new EngineRequests.LockRequest(
                 dir,
                 cache,
@@ -212,7 +219,7 @@ public final class LockCommand implements CliCommand {
 
         EngineRequests.LockOutcome outcome;
         try {
-            outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
+            outcome = EngineClient.runLock(EnginePaths.current(), lockRequest(dir, cache), handler);
         } catch (IOException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
             return Exit.SOFTWARE;
@@ -241,19 +248,19 @@ public final class LockCommand implements CliCommand {
             public void onPackage(String moduleDir, String name, String version) {
                 // The engine sends structured lock-package events instead of pre-themed labels;
                 // colorize here, client-side, exactly as the in-process plan labels itself.
-                current.label("resolve-deps", "Resolved " + Coords.module(name, version));
+                current.label(TaskNames.RESOLVE_DEPS, "Resolved " + Coords.module(name, version));
             }
         };
 
         EngineRequests.LockOutcome outcome;
         try {
-            outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
+            outcome = EngineClient.runLock(EnginePaths.current(), lockRequest(dir, cache), handler);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Lock", e.getMessage());
+            CommandWedge.printFail("Lock", e.getMessage());
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Lock", err);
+            CommandWedge.printFail("Lock", err);
         }
         return outcome.exitCode();
     }
@@ -270,18 +277,12 @@ public final class LockCommand implements CliCommand {
      * lock successful.…} when the project is a workspace root or member.
      */
     static String lockSuccessTail(int pkgs, long startNanos, Path projectDir) {
-        boolean workspace = cc.jumpkick.lock.LockPaths.isWorkspaceLock(projectDir);
+        boolean workspace = LockPaths.isWorkspaceLock(projectDir);
         String title = workspace ? "Workspace lock successful" : "Lock successful";
         return Theme.colorize(title, Theme.active().success())
                 + ". Resolved "
                 + Theme.colorize(String.valueOf(pkgs), Theme.active().focused())
                 + " dependenc" + (pkgs == 1 ? "y" : "ies") + " "
                 + ConsoleSpec.took(Duration.ofMillis((System.nanoTime() - startNanos) / 1_000_000));
-    }
-
-    /** @deprecated tests may call the 2-arg form */
-    @Deprecated
-    static String lockSuccessTail(int pkgs, long startNanos) {
-        return lockSuccessTail(pkgs, startNanos, Path.of("."));
     }
 }

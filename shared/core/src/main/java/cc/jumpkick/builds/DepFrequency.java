@@ -206,7 +206,8 @@ public final class DepFrequency {
         }
     }
 
+    /** {@link MinimalToml#unquote} over a regex capture that carries the quote body without its quotes. */
     private static String unescape(String s) {
-        return s.replace("\\\"", "\"").replace("\\\\", "\\");
+        return MinimalToml.unquote('"' + s + '"');
     }
 }

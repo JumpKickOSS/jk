@@ -54,7 +54,7 @@ class CompilerLocusTest {
         assertThat(CompilerLocus.parse("")).isNull();
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void real_groovyc_header_with_space_and_column_trailer_parses() {
         // JK-2113: groovyc writes "path: 5: message @ line 5, column 1." — space after the
         // first colon, column only in the trailer. This never matched on either surface.

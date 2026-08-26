@@ -4,6 +4,9 @@ package cc.jumpkick.cache;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,7 +44,7 @@ class EngineInstallTest {
                 .containsEntry("jar", "jk-engine-0.12.0.jar")
                 .containsEntry("version", "0.12.0");
         assertThat(m.engineJar()).isEqualTo(store.engineJarPath());
-        assertThat(Files.isSameFile(m.engineJar(), cas.pathFor(cc.jumpkick.util.Hashing.sha256Hex(jar))))
+        assertThat(Files.isSameFile(m.engineJar(), cas.pathFor(Hashing.sha256Hex(jar))))
                 .isFalse();
 
         var again = store.materializeFromFiles("0.12.0", cas, jar);
@@ -83,7 +86,7 @@ class EngineInstallTest {
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
         EngineInstall store = install(home);
         Path jar = Files.writeString(tmp.resolve("jk-engine-0.12.0.jar"), "engine-bytes");
-        String realSha = cc.jumpkick.util.Hashing.sha256Hex(jar);
+        String realSha = Hashing.sha256Hex(jar);
         System.setProperty("jk-config.engine-sha256", "deadbeef");
         try {
             store.materializeFromFiles("0.12.0", cas, jar);
@@ -107,10 +110,6 @@ class EngineInstallTest {
         Path release = Files.writeString(tmp.resolve("engine-release.jar"), "e-release");
         store.materializeFromFiles("0.12.0", cas, release);
         assertThat(store.newest().orElseThrow().version()).isEqualTo("0.12.0");
-
-        assertThat(EngineInstall.compare("0.10.0", "0.9.9")).isPositive();
-        assertThat(EngineInstall.compare("1.0.0-SNAPSHOT", "1.0.0")).isNegative();
-        assertThat(EngineInstall.compare("1.0.0", "1.0")).isZero();
     }
 
     @Test
@@ -199,6 +198,83 @@ class EngineInstallTest {
                 .hasMessageContaining("refusing to replace")
                 .hasMessageContaining("0.13.0");
         assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.13.0");
+    }
+
+    /**
+     * Every engine-install version shape, ascending. Ordering is {@link Versions#compare} — the
+     * product's one version comparator — so this table is the contract the downgrade guard and the
+     * lock's {@code jk-min} floor both read. Maven order: alpha &lt; beta &lt; milestone &lt; rc
+     * &lt; snapshot &lt; release.
+     */
+    private static final String[] ASCENDING = {
+        "0.9.2",
+        "0.10.1",
+        "0.11.0",
+        "0.12.0-alpha1",
+        "0.12.0-beta1",
+        "0.12.0-M1",
+        "0.12.0-rc2",
+        "0.12.0-rc9",
+        "0.12.0-rc10",
+        "0.12.0-SNAPSHOT",
+        "0.12.0",
+        "0.12.1",
+        "0.13.0",
+        "1.0.0",
+    };
+
+    @Test
+    void engine_install_versions_are_a_total_order_under_the_one_comparator() {
+        for (int i = 0; i < ASCENDING.length; i++) {
+            for (int j = 0; j < ASCENDING.length; j++) {
+                String a = ASCENDING[i];
+                String b = ASCENDING[j];
+                int expected = Integer.compare(i, j);
+                assertThat(Integer.signum(Versions.compare(a, b)))
+                        .as("%s vs %s", a, b)
+                        .isEqualTo(expected);
+            }
+        }
+    }
+
+    @Test
+    void release_synonyms_and_qualifier_case_are_the_same_engine_version() {
+        for (String same : new String[] {"0.12", "0.12.0", "0.12.0-final", "0.12.0-ga", "0.12.0-release"}) {
+            assertThat(Versions.compare(same, "0.12.0")).as(same).isZero();
+        }
+        assertThat(Versions.compare("0.12.0-RC2", "0.12.0-rc2")).isZero();
+        assertThat(Versions.compare("0.12.0-SNAPSHOT", "0.12.0-snapshot")).isZero();
+    }
+
+    @Test
+    void the_downgrade_guard_reads_rc_numbers_numerically(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        var store = install(home);
+        Path rc9 = Files.writeString(dir.resolve("rc9.jar"), "rc9");
+        Path rc10 = Files.writeString(dir.resolve("rc10.jar"), "rc10");
+
+        store.materializeFromFiles("0.12.0-rc9", cas, rc9);
+        store.materializeFromFiles("0.12.0-rc10", cas, rc10);
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.12.0-rc10");
+
+        assertThatThrownBy(() -> store.materializeFromFiles("0.12.0-rc9", cas, rc9))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("refusing to replace")
+                .hasMessageContaining("0.12.0-rc10");
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.12.0-rc10");
+    }
+
+    @Test
+    void a_final_tag_is_not_a_downgrade_from_its_own_release(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        var store = install(home);
+        store.materializeFromFiles("0.12.0", cas, Files.writeString(dir.resolve("ga.jar"), "ga"));
+
+        var relabelled = store.materializeFromFiles("0.12.0-final", cas, Files.writeString(dir.resolve("f.jar"), "f"));
+        assertThat(relabelled.version()).isEqualTo("0.12.0-final");
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.12.0-final");
     }
 
     @Test
@@ -311,9 +387,9 @@ class EngineInstallTest {
         Path legacyWorker = Files.writeString(aot.resolve("java-compiler-dddddddddddddddd.aot"), "legacy");
         Path snap = Files.writeString(aot.resolve("engine-0.12.0-SNAPSHOT-eeeeeeeeeeeeeeee.aot"), "snap");
         Path lock = Files.writeString(aot.resolve("aot.toml.lock"), "");
-        cc.jumpkick.util.AotManifest.upsert(
+        AotManifest.upsert(
                 aot,
-                cc.jumpkick.util.AotManifest.Entry.builder("engine-0.10.1-cccccccccccccccc.aot")
+                AotManifest.Entry.builder("engine-0.10.1-cccccccccccccccc.aot")
                         .tool("engine")
                         .status("ready")
                         .build());

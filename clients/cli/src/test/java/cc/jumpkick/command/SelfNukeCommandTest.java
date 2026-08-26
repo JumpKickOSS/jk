@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.SelfNukeCommand.Target;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -28,7 +30,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Runs against a per-test {@code JK_HOME}/{@code JK_STATE_DIR} overlay ({@code jk.env.*} seam,
- * same as {@link cc.jumpkick.cli.engine.IsolatedStoreExtension}) — NOT the suite-shared home.
+ * same as {@link cc.jumpkick.cli.engine.IsolatedRootsExtension}) — NOT the suite-shared home.
  * These tests genuinely nuke the store and stub a nested engine under {@code lib/jk-engine/};
  * against the shared home that wiped the CAS/worker libs and poisoned every later class's nested
  * engine spawn with a stub jar (mass exit-70s across the integration phase).
@@ -169,6 +171,78 @@ class SelfNukeCommandTest {
         assertThat(foreign).exists();
     }
 
+    /**
+     * Every row of the confirm table, not one of them. The "Path to Delete" column may only list
+     * paths that are gone <em>as directories</em> afterwards; JK-2455 made that true for the cache
+     * and state roots and left the artifact store emptied-but-standing, which is the same table
+     * saying "delete" and meaning "empty". {@code wipeRoots} is the row set the table prints for
+     * {@code --data}: the delegated store row plus every unguarded child of the data root.
+     */
+    @Test
+    @Tag("integration")
+    void data_nuke_removes_every_path_the_confirm_table_listed() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Files.createDirectories(dirs.productLibDir().resolve("jk-engine"));
+        Path cas = dirs.storeDir().resolve("sha256/ab");
+        Files.createDirectories(cas);
+        Files.writeString(cas.resolve("blob"), "cas");
+        Path tools = dirs.libDir().resolve("jk-java-compiler"); // <store>/lib — a child of the store
+        Files.createDirectories(tools);
+        Files.writeString(tools.resolve("plugin.jar"), "plugin");
+        Files.createDirectories(dirs.dataDir().resolve("completions"));
+        Files.writeString(dirs.dataDir().resolve("completions/zsh"), "#compdef jk");
+        Files.createDirectories(dirs.dataDir().resolve("android-sdk"));
+        Path creds = dirs.dataDir().resolve("credentials");
+        Files.createDirectories(creds);
+        Files.writeString(creds.resolve("github.json"), "{}");
+        Path repoCreds = dirs.dataDir().resolve("repo-credentials");
+        Files.createDirectories(repoCreds);
+        Files.writeString(repoCreds.resolve("central.json"), "{}");
+        Files.createDirectories(dirs.binDirectory());
+        Path foreign = dirs.binDirectory().resolve("uv");
+        Files.writeString(foreign, "foreign-tool");
+
+        // Captured before the nuke: planData enumerates the data root's children as they are now.
+        List<Path> tableRows = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
+        assertThat(tableRows).contains(dirs.storeDir().toAbsolutePath().normalize());
+
+        assertThat(capture(() -> Jk.execute("self", "nuke", "--data", "-y"))).isZero();
+
+        for (Path row : tableRows) {
+            assertThat(row).as("row printed under Path to Delete: %s", row).doesNotExist();
+        }
+        // The guards the table promises to keep, and every one of them is a sibling of the store.
+        assertThat(dirs.productLibDir().resolve("jk-engine")).isDirectory();
+        assertThat(creds.resolve("github.json")).exists();
+        assertThat(repoCreds.resolve("central.json")).exists();
+        assertThat(foreign).as("PATH binaries are never a row").exists();
+    }
+
+    /**
+     * The STATE rows delete the sockets and AOT cache an engine holds open, so a stopped fleet is
+     * a precondition of that delete, not a courtesy performed once at the top. {@code jk storage
+     * nuke} does its wipe engine-side: the {@code wipe-store} request calls {@code ensureRunning}
+     * and the engine it boots outlives the call. That engine was still there when the STATE rows
+     * went, and it wrote the state dir straight back under a command that had reported it deleted.
+     */
+    @Test
+    @Tag("integration")
+    void data_and_state_nuke_leaves_no_engine_to_write_the_state_dir_back() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cas = dirs.storeDir().resolve("sha256");
+        Files.createDirectories(dirs.productLibDir().resolve("jk-engine"));
+        Files.createDirectories(cas.resolve("ab"));
+        Files.writeString(cas.resolve("ab/blob"), "cas");
+        Files.createDirectories(dirs.stateDir().resolve("aot"));
+        Files.writeString(dirs.stateDir().resolve("aot/marker"), "aot");
+
+        int exit = capture(() -> Jk.execute("self", "nuke", "--data", "--state", "-y"));
+
+        assertThat(exit).isZero();
+        assertThat(EngineFleet.listThisHome()).isEmpty();
+        assertThat(dirs.stateDir()).doesNotExist();
+    }
+
     @Test
     void data_flag_keeps_store_as_a_hidden_alias_on_the_same_key() {
         var opt = new SelfNukeCommand()
@@ -207,6 +281,31 @@ class SelfNukeCommandTest {
         assertThat(Files.exists(state.resolve("aot/marker"))).isFalse();
         assertThat(Files.exists(jkBin)).isTrue();
         assertThat(Files.exists(foreign)).isTrue();
+    }
+
+    /**
+     * The confirm table lists {@code cacheDir()} under "Path to Delete". After the nuke that path
+     * is gone — no empty tier skeleton left behind by a wipe that recreated what it deleted, and
+     * no survivors among the trees the tier table does not name.
+     */
+    @Test
+    void cache_nuke_removes_the_cache_root_not_just_the_tiers_under_it() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Files.createDirectories(CacheTree.ACTIONS.under(cache));
+        Files.writeString(CacheTree.ACTIONS.under(cache).resolve("marker"), "x");
+        Files.createDirectories(CacheTree.HASH_MEMO.under(cache).resolve("aa"));
+        Files.writeString(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo"), "y");
+        Files.createDirectories(cache.resolve("repos/central")); // not a tier — must not survive
+        Files.writeString(cache.resolve("repos/central/lib.jar"), "z");
+        Files.createDirectories(dirs.stateDir());
+
+        // --cache --state takes the in-process wipe (the fleet is stopped first), which is the
+        // leg default --all uses; the hosted purge is covered by CacheCommandTest.
+        int exit = capture(() -> Jk.execute("self", "nuke", "--cache", "--state", "-y"));
+
+        assertThat(exit).isZero();
+        assertThat(cache).doesNotExist();
     }
 
     @Test

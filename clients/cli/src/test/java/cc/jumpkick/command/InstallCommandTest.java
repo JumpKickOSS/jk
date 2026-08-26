@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -103,7 +104,7 @@ class InstallCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
         // [m2] install = false (integration still default true): repos/jk-local, not ~/.m2.
-        assertThat(cc.jumpkick.cache.JkStores.resolve(cache, "repos")
+        assertThat(JkStores.resolve(cache, "repos")
                         .resolve("jk-local")
                         .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
                 .exists();

@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeKind;
@@ -59,8 +60,8 @@ public final class AuthStatusCommand implements CliCommand {
 
         Theme t = Theme.active();
         // Wedge header + status rows: chrome up top, per-forge lines below.
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Auth status"));
+        CommandWedge.envelopeStart();
+        CliOutput.out(CommandWedge.menu("Auth status"));
         for (ForgeKind kind : kinds) {
             if (host == null && kind.defaultHost().isEmpty()) {
                 CliOutput.out(label(kind, t, "(pass --host to check)"));

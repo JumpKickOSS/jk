@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import java.util.Map;
@@ -201,18 +202,13 @@ public final class ProtoSession {
      * forks workers, not an arbitrary subset), and an empty envelope leaves the line byte-
      * identical. The splice is validated: {@code request} must be a one-line encoded object.
      */
-    public static String withSession(
-            String request, String variant, Map<String, String> clientEnv, cc.jumpkick.config.PluginTuning t) {
+    public static String withSession(String request, String variant, Map<String, String> clientEnv, PluginTuning t) {
         return withSession(request, variant, clientEnv, t, false, false);
     }
 
     /** As above, additionally carrying the session's {@code rebuild} distrust flag when set. */
     public static String withSession(
-            String request,
-            String variant,
-            Map<String, String> clientEnv,
-            cc.jumpkick.config.PluginTuning t,
-            boolean rebuild) {
+            String request, String variant, Map<String, String> clientEnv, PluginTuning t, boolean rebuild) {
         return withSession(request, variant, clientEnv, t, rebuild, false);
     }
 
@@ -224,7 +220,7 @@ public final class ProtoSession {
             String request,
             String variant,
             Map<String, String> clientEnv,
-            cc.jumpkick.config.PluginTuning t,
+            PluginTuning t,
             boolean rebuild,
             boolean noTimeline) {
         return withSession(request, variant, clientEnv, t, rebuild, noTimeline, null);
@@ -238,16 +234,10 @@ public final class ProtoSession {
             String request,
             String variant,
             Map<String, String> clientEnv,
-            cc.jumpkick.config.PluginTuning t,
+            PluginTuning t,
             boolean rebuild,
             boolean noTimeline,
             String assemblyOverride) {
-        if (request == null
-                || request.length() < 2
-                || request.charAt(0) != '{'
-                || request.charAt(request.length() - 1) != '}') {
-            throw new IllegalArgumentException("withSession needs an encoded single-line request object");
-        }
         boolean hasVariant = variant != null && !variant.isBlank();
         boolean hasEnv = clientEnv != null && !clientEnv.isEmpty();
         boolean hasJvm = t != null
@@ -256,8 +246,7 @@ public final class ProtoSession {
                         || t.stringDedup() != null
                         || !t.extraArgs().isEmpty());
         boolean hasAssembly = assemblyOverride != null && !assemblyOverride.isBlank();
-        if (!hasVariant && !hasEnv && !hasJvm && !rebuild && !noTimeline && !hasAssembly) return request;
-        StringBuilder b = new StringBuilder(request.substring(0, request.length() - 1));
+        StringBuilder b = new StringBuilder();
         if (rebuild) b.append(",\"rebuild\":true");
         if (noTimeline) b.append(",\"noTimeline\":true");
         if (hasVariant) b.append(",\"variant\":").append(Jsonl.quote(variant));
@@ -271,7 +260,36 @@ public final class ProtoSession {
                 b.append(",\"jvmStringDedup\":\"").append(t.stringDedup()).append('\"');
             if (!t.extraArgs().isEmpty()) b.append(",\"jvmArgs\":").append(quoteArray(t.extraArgs()));
         }
-        return b.append('}').toString();
+        // Each fragment carries its own leading comma so the chain reads uniformly; the splicer
+        // owns the one that joins them to the request, and that one depends on whether the
+        // request is `{}`.
+        return Jsonl.append(request, b.isEmpty() ? "" : b.substring(1));
+    }
+
+    /**
+     * Attach the request's <strong>toolchain selection</strong> to an encoded request line.
+     *
+     * <p>{@code jdk} and {@code graal} are the top-tier selections — {@code --jdk} / {@code --graal},
+     * with the {@code JK_JDK} / {@code JK_GRAAL} environment spellings already folded in by the
+     * client. They have to ride the request: the engine is a daemon, so a selection that stayed on
+     * the client's {@code Session} was invisible to it, and every engine-side resolver fell through
+     * to whichever JDK the shell that started the daemon happened to name (JK-1021).
+     *
+     * <p>Folding the switch and the env spelling into one field loses no fidelity.
+     * {@code JdkResolution} walks {@code SWITCH} then {@code JK_ENV} with no tier between them, so
+     * "switch, else env" picks exactly what the two-tier walk picks — and the client is the one place
+     * where {@code System.getenv} genuinely means the caller.
+     *
+     * <p>A separate splice rather than two more {@code withSession} parameters: the envelope has four
+     * arities and only some callers reach the widest, so threading it there would have added two
+     * arguments to every one of them. Nothing selected → the line rides unchanged.
+     */
+    public static String withToolchain(String request, String jdk, String graal) {
+        StringBuilder b = new StringBuilder();
+        if (jdk != null && !jdk.isBlank()) b.append(",\"jdk\":").append(Jsonl.quote(jdk));
+        if (graal != null && !graal.isBlank()) b.append(",\"graal\":").append(Jsonl.quote(graal));
+        if (b.isEmpty()) return request;
+        return Jsonl.append(request, b.substring(1));
     }
 
     /**
@@ -282,13 +300,7 @@ public final class ProtoSession {
      */
     public static String withTrigger(String request, String trigger) {
         if (trigger == null || trigger.isBlank()) return request;
-        if (request == null
-                || request.length() < 2
-                || request.charAt(0) != '{'
-                || request.charAt(request.length() - 1) != '}') {
-            throw new IllegalArgumentException("withTrigger needs an encoded single-line request object");
-        }
-        return request.substring(0, request.length() - 1) + ",\"trigger\":" + Jsonl.quote(trigger) + "}";
+        return Jsonl.append(request, "\"trigger\":" + Jsonl.quote(trigger));
     }
 
     /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code minified}/empty). */
@@ -305,6 +317,23 @@ public final class ProtoSession {
      * it). Nothing selected and no env → the line rides unchanged.
      */
 
+    /**
+     * Decode side of {@link #withToolchain}: the request's JDK selection, or {@code null}.
+     *
+     * <p>Engine verbs feed this to {@code Session.withToolchainSpecs} so {@code JdkResolution}'s
+     * {@code SWITCH} tier sees the caller's choice instead of an empty one.
+     */
+    public static String jdkSpecOf(String request) {
+        String v = Jsonl.str(request, "jdk");
+        return v == null || v.isBlank() ? null : v;
+    }
+
+    /** Decode side of {@link #withToolchain}: the request's GraalVM selection, or {@code null}. */
+    public static String graalSpecOf(String request) {
+        String v = Jsonl.str(request, "graal");
+        return v == null || v.isBlank() ? null : v;
+    }
+
     /** Decode side of {@link #withSession}: the selection, or {@code ""}. */
     public static String variantOf(String request) {
         String v = Jsonl.str(request, "variant");
@@ -317,13 +346,13 @@ public final class ProtoSession {
     }
 
     /** Decode side of {@link #withSession}; NONE when the request carries no tuning fields. */
-    public static cc.jumpkick.config.PluginTuning jvmTuning(String request) {
+    public static PluginTuning jvmTuning(String request) {
         String maxRam = Jsonl.str(request, "jvmMaxRam");
         String gc = Jsonl.str(request, "jvmGc");
         String dedup = Jsonl.str(request, "jvmStringDedup");
         List<String> args = Jsonl.strArray(request, "jvmArgs");
         if (maxRam == null && gc == null && dedup == null && args.isEmpty()) {
-            return cc.jumpkick.config.PluginTuning.NONE;
+            return PluginTuning.NONE;
         }
         Double ram = null;
         try {
@@ -331,7 +360,7 @@ public final class ProtoSession {
         } catch (NumberFormatException ignored) {
             // a malformed number degrades to absent, like every tolerant config read
         }
-        return new cc.jumpkick.config.PluginTuning(ram, gc, dedup == null ? null : Boolean.valueOf(dedup), args);
+        return new PluginTuning(ram, gc, dedup == null ? null : Boolean.valueOf(dedup), args);
     }
 
     /** {@code Jsonl} only reads string arrays; it has no writer half, so this is the encode side. */

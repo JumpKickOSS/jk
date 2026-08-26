@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,8 +34,25 @@ public final class TomlScan {
     /**
      * Scan {@code file} for {@code keys}, each spelled {@code "section.key"} (or just
      * {@code "key"} for top-level). Missing file → an empty result (every lookup absent).
+     * {@code [[array-of-tables]]} bodies are skipped, not read as scalars — and scanning
+     * continues past them, since TOML imposes no section ordering.
      */
     public static TomlScan scan(Path file, String... keys) {
+        return scan(file, false, keys);
+    }
+
+    /**
+     * As {@link #scan}, but stops at the first {@code [[array-of-tables]]} header. Only for files
+     * whose wanted scalars all precede the array tables <em>by construction</em> — jk-lock.toml,
+     * whose writer emits the toolchain tables and top-level scalars before {@code [[artifact]]} —
+     * so a missing optional key does not read thousands of artifact lines on a hot path.
+     * User-authored TOML carries no such ordering; use {@link #scan}.
+     */
+    public static TomlScan scanScalarHead(Path file, String... keys) {
+        return scan(file, true, keys);
+    }
+
+    private static TomlScan scan(Path file, boolean stopAtArrayTable, String... keys) {
         Map<String, String> values = new HashMap<>();
         Map<String, List<String>> arrays = new HashMap<>();
         Set<String> sections = new HashSet<>();
@@ -42,6 +60,7 @@ public final class TomlScan {
         if (!Files.isRegularFile(file)) return new TomlScan(values, arrays, sections);
         try {
             String section = "";
+            boolean inArrayTable = false;
             String arrayKey = null; // a wanted key whose `[ … ]` array spans lines
             for (String raw : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 String line = raw.strip();
@@ -55,13 +74,19 @@ public final class TomlScan {
                 if (line.startsWith("[")) {
                     int close = line.indexOf(']');
                     if (close > 1) {
-                        section = line.substring(line.startsWith("[[") ? 2 : 1, close)
+                        boolean arrayTable = line.startsWith("[[");
+                        section = line.substring(arrayTable ? 2 : 1, close)
                                 .replace("]", "")
                                 .strip();
                         sections.add(section);
+                        if (arrayTable && stopAtArrayTable) break;
+                        inArrayTable = arrayTable;
                     }
                     continue;
                 }
+                // Keys inside an [[…]] body are per-element values, not the flat scalars this
+                // scanner serves — a same-named key there must not satisfy a wanted lookup.
+                if (inArrayTable) continue;
                 int eq = line.indexOf('=');
                 if (eq <= 0) continue;
                 String key = line.substring(0, eq).strip();
@@ -138,6 +163,6 @@ public final class TomlScan {
      * trailing same-line comment on unquoted values.
      */
     static String scalar(String v) {
-        return cc.jumpkick.util.MinimalToml.unquote(v);
+        return MinimalToml.unquote(v);
     }
 }

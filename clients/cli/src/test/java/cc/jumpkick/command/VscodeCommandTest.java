@@ -3,7 +3,14 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -163,13 +170,19 @@ class VscodeCommandTest {
                 jdk = 25
                 """);
 
-        String hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        // Pinned to the real digest of the stub JAR staged below — the store hash-verifies every
+        // artifact it hands back.
+        byte[] processorJar = "dummy-jar".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(processorJar);
         Files.writeString(ws.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
-                jdk = "temurin-25.0.3"
                 manifests-sha256 = "%s"
+
+                [jdk]
+                vendor  = "temurin"
+                version = "25.0.3"
 
                 [[artifact]]
                 name = "org.example:myprocessor"
@@ -180,11 +193,15 @@ class VscodeCommandTest {
                 """
                 // Digest-stamped so the invisible freshen sees a fresh lock and keeps the
                 // processor row (the fixture manifest never declares it).
-                .formatted(cc.jumpkick.lock.LockManifestDigest.compute(ws), hex));
+                .formatted(LockManifestDigest.compute(ws), hex));
 
+        // Stage the processor JAR exactly where a real `jk sync` leaves it: a Maven-layout entry
+        // under <store>/repos/<repo>/. That tree — not a bare CAS blob — is what ArtifactLocator
+        // resolves locked deps out of, so seeding a blob left the model with no processors at all.
         Path cache = tmp.resolve("cache");
-        // Seed via JkStores: the engine's CAS root is the ambient store, not the raw cache dir.
-        cc.jumpkick.cache.JkStores.cas(cache).put("dummy-jar".getBytes(StandardCharsets.UTF_8), hex);
+        Coordinate processor = Coordinate.of("org.example", "myprocessor", "1.0.0");
+        RepoArtifactStore.forRepoName(JkStores.store(), "central")
+                .materialize(MavenLayout.artifactPath(processor), new Cas(cache).put(processorJar), hex);
 
         Path jdks = tmp.resolve("jdks");
         fakeJdk(jdks, "temurin-25.0.3", "25.0.3");

@@ -2,6 +2,7 @@
 package cc.jumpkick.git;
 
 import cc.jumpkick.forge.ForgeGitCredentials;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.util.GitUrl;
@@ -200,6 +201,6 @@ public final class JGitExtension implements GitBackend {
     }
 
     static void deleteRecursively(Path root) {
-        cc.jumpkick.util.PathUtil.deleteRecursively(root);
+        PathUtil.deleteRecursively(root);
     }
 }

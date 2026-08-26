@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import org.junit.jupiter.api.Test;
@@ -28,8 +29,8 @@ class JobWatchdogConfigTest {
     @Test
     void defaults_without_env() {
         // Defaults when env vars unset (test JVM typically has none).
-        assertThat(EngineServer.jobHeartbeatMs()).isEqualTo(30_000L);
-        assertThat(EngineServer.jobDeadlineMs()).isEqualTo(0L);
-        assertThat(EngineServer.jobDeadlineGraceMs()).isEqualTo(30_000L);
+        assertThat(JobEnvelope.jobHeartbeatMs()).isEqualTo(30_000L);
+        assertThat(JobEnvelope.jobDeadlineMs()).isEqualTo(0L);
+        assertThat(JobEnvelope.jobDeadlineGraceMs()).isEqualTo(30_000L);
     }
 }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.IOException;
 import java.net.URI;
@@ -10,7 +12,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -43,6 +44,12 @@ final class AndroidCommand {
 
     private static int licenses(PluginCommandExec exec, boolean yes) throws Exception {
         Path root = exec.requireExtra("sdk-root");
+        // The license texts come off Google's repository feed; there is no cached copy to accept
+        // from, so an offline run refuses rather than reaching out behind the flag's back.
+        String feedUrl = System.getenv().getOrDefault("JK_ANDROID_FEED_URL", FEED_URL);
+        if (exec.offline() && !feedUrl.startsWith("file:")) {
+            throw new IOException(Errors.offlineRefusal(feedUrl));
+        }
         Map<String, String> licenses = fetchLicenses();
         if (licenses.isEmpty()) {
             exec.out("no licenses found in the SDK repository feed");
@@ -124,11 +131,12 @@ final class AndroidCommand {
         Files.writeString(file, existing + hash + "\n");
     }
 
-    private static String hash(String text) throws Exception {
-        MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
-        byte[] digest = sha1.digest(text.strip().getBytes(StandardCharsets.UTF_8));
-        StringBuilder hex = new StringBuilder(digest.length * 2);
-        for (byte b : digest) hex.append(String.format("%02x", b));
-        return hex.toString();
+    /**
+     * The licence hash sdkmanager writes into {@code licenses/<id>}: SHA-1 of the stripped licence
+     * text. SHA-1 is Google's choice, not jk's — the file is read by the Android SDK tooling, so the
+     * algorithm is part of that format and is named here rather than hidden behind jk's own digest.
+     */
+    private static String hash(String text) {
+        return Hashing.hashHex("SHA-1", text.strip().getBytes(StandardCharsets.UTF_8));
     }
 }

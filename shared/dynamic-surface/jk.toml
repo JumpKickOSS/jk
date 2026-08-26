@@ -1,6 +1,9 @@
 name = "jk-dynamic-surface"
 description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 
+[dependencies]
+jk-host.workspace = true
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

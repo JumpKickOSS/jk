@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
-import java.util.Locale;
+import cc.jumpkick.host.Os;
 
 /**
  * External tools for {@code jk mvn}/{@code jk gradle} passthroughs: cache slug and bin names.
@@ -28,7 +28,6 @@ public enum BuildTool {
 
     /** Binary name under {@code <home>/bin/} on the current OS. */
     public String binaryName() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        return os.contains("win") ? windowsBinary : posixBinary;
+        return Os.isWindows() ? windowsBinary : posixBinary;
     }
 }

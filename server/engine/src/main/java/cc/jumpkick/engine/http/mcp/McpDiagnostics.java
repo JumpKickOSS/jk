@@ -2,10 +2,10 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.diagnostic.CompilerLocus;
-import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -56,7 +56,7 @@ public final class McpDiagnostics {
         if (historyRaw == null) return null;
         boolean lastFail = run == null || run.isBlank() || "last-fail".equalsIgnoreCase(run);
         for (String raw : historyRaw) {
-            Map<String, Object> rec = parse(raw);
+            Map<String, Object> rec = McpHistoryViews.parseRecord(raw);
             if (rec == null) continue;
             if (McpHistoryViews.bool(rec, "running")) continue;
             if (lastFail) {
@@ -74,7 +74,7 @@ public final class McpDiagnostics {
     public static @Nullable Map<String, Object> findByRequestId(List<String> historyRaw, long jid) {
         if (historyRaw == null || jid <= 0) return null;
         for (String raw : historyRaw) {
-            Map<String, Object> rec = parse(raw);
+            Map<String, Object> rec = McpHistoryViews.parseRecord(raw);
             if (rec == null) continue;
             if (McpHistoryViews.lng(rec, "requestId") != jid) continue;
             if (McpHistoryViews.bool(rec, "running")) continue;
@@ -87,7 +87,7 @@ public final class McpDiagnostics {
     public static @Nullable Map<String, Object> findNewest(List<String> historyRaw, @Nullable String dir) {
         if (historyRaw == null) return null;
         for (String raw : historyRaw) {
-            Map<String, Object> rec = parse(raw);
+            Map<String, Object> rec = McpHistoryViews.parseRecord(raw);
             if (rec == null) continue;
             if (McpHistoryViews.bool(rec, "running")) continue;
             if (!McpHistoryViews.matches(rec, dir, null, null, null)) continue;
@@ -149,13 +149,71 @@ public final class McpDiagnostics {
         return nl < 0 ? "" : message.substring(nl + 1);
     }
 
-    @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, Object> parse(String raw) {
-        try {
-            Object o = MiniJson.parse(raw);
-            return o instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
-        } catch (RuntimeException e) {
-            return null;
+    /**
+     * Which diagnostics a caller wants. {@code jk_diagnostics} fills all seven; {@code jk_run
+     * wait=true} attaching a failed job's errors uses {@link #Query(String, String)}.
+     *
+     * @param run {@code null} / {@code last-fail} for the newest failed run, else a history id
+     * @param dir checkout filter, already defaulted to the bound dir
+     * @param module substring match on the module dir or the file path
+     * @param severity {@code error} / {@code warning}
+     * @param unique collapse duplicate file:line:col + first message line
+     * @param limit page size
+     * @param skip rows to skip, from a prior page's {@code next}
+     */
+    public record Query(
+            @Nullable String run,
+            @Nullable String dir,
+            @Nullable String module,
+            @Nullable String severity,
+            boolean unique,
+            int limit,
+            int skip) {
+
+        /** The default page: unique rows, first 20, no severity or module narrowing. */
+        public Query(@Nullable String run, @Nullable String dir) {
+            this(run, dir, null, null, true, 20, 0);
         }
+    }
+
+    /** One page of {@link #page}: the rows plus the cursor a caller needs to ask for more. */
+    public record Page(
+            String run,
+            List<Map<String, Object>> rows,
+            int totalMatched,
+            @Nullable Integer next) {
+
+        public boolean truncated() {
+            return next != null;
+        }
+    }
+
+    /** The rows for one run, filtered and paged. {@code null} when no record matches. */
+    public static @Nullable Page page(List<String> historyRaw, Query q) {
+        Map<String, Object> rec = findRun(historyRaw, q.run(), q.dir());
+        if (rec == null) return null;
+        List<Map<String, Object>> rows = unique(fromRecord(rec), q.unique());
+        if (q.severity() != null && !q.severity().isBlank()) {
+            String sev = q.severity();
+            rows = rows.stream()
+                    .filter(r -> sev.equalsIgnoreCase(String.valueOf(r.getOrDefault("severity", ""))))
+                    .toList();
+        }
+        if (q.module() != null && !q.module().isBlank()) {
+            String needle = q.module().toLowerCase(Locale.ROOT);
+            rows = rows.stream()
+                    .filter(r -> String.valueOf(r.getOrDefault("module", ""))
+                                    .toLowerCase(Locale.ROOT)
+                                    .contains(needle)
+                            || String.valueOf(r.getOrDefault("file", ""))
+                                    .toLowerCase(Locale.ROOT)
+                                    .contains(needle))
+                    .toList();
+        }
+        int total = rows.size();
+        int from = Math.min(q.skip(), total);
+        int to = Math.min(from + q.limit(), total);
+        List<Map<String, Object>> visible = new ArrayList<>(rows.subList(from, to));
+        return new Page(McpHistoryViews.str(rec, "id"), visible, total, to < total ? Integer.valueOf(to) : null);
     }
 }

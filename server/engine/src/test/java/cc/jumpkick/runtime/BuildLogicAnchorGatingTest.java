@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
@@ -114,11 +115,11 @@ class BuildLogicAnchorGatingTest {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         // Core + tails, same as jk build: since JK-2211 run-tests is a terminal LEAF joined by
         // the tails (never a package prerequisite), so a core-only build would prune it.
-        cc.jumpkick.run.BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
-        BuildPlanner.appendDeclaredTails(b, in);
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
+        PlannerTails.appendDeclaredTails(b, in);
         return b.build();
     }
 

@@ -1,18 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.SearchPath;
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Trains a JVM AOT cache (JEP 514) for an image by running the application inside the image's own
@@ -54,7 +67,7 @@ final class AotCacheTrainer {
      * from a fixed directory matches wherever the tree ends up.
      */
     /** {@code stagedFiles} = staging-relative paths present BEFORE the record run. */
-    record Result(Path stagingRoot, List<String> runArgs, Path cache, java.util.Set<String> stagedFiles) {}
+    record Result(Path stagingRoot, List<String> runArgs, Path cache, Set<String> stagedFiles) {}
 
     private static final long TRAIN_TIMEOUT_SECONDS = 300;
 
@@ -100,16 +113,21 @@ final class AotCacheTrainer {
      * Stage the image's layout, train inside the base image, and verify the result loads. Returns
      * the cache file, or throws with the reason it could not be produced.
      *
-     * @param classpath the classpath string the image entrypoint will use — the training run must
-     *     be given the identical string, in the identical order, or the JVM rejects the cache
+     * @param workDir the module's staging root — {@code aot-train/} lives here and {@code jk clean}
+     *     is welcome to it
+     * @param cacheRoot jk's cache root: the extracted base JRE is 50–200 MB and is shared by every
+     *     module that builds on the same base, so it belongs under the bound {@code
+     *     CacheTier} declares for CacheTree.BASE_JRE, not in module build output nothing reclaims
+     * @param auth the credential for the base image's registry — the JRE this trains with is
+     *     extracted from that image, so a private base has to authenticate here too
      */
-    static Result train(ImageBuilder.Plan plan, Path workDir, Consumer<String> log)
+    static Result train(ImageBuilder.Plan plan, Path workDir, Path cacheRoot, RegistryAuth auth, Consumer<String> log)
             throws IOException, InterruptedException {
         String blocked = unsupportedReason(plan);
         if (blocked != null) throw new IOException(blocked);
 
         String base = qualify(plan.config().base());
-        Path localJre = localBaseJre(plan, base, workDir, log);
+        Path localJre = localBaseJre(plan, base, cacheRoot, auth, log);
         Path staging = workDir.resolve("aot-train");
 
         // Boot nests its jars under BOOT-INF and loads them itself, so nothing useful reaches the
@@ -136,13 +154,13 @@ final class AotCacheTrainer {
         // Snapshot what was staged before any training process runs: whatever the app writes
         // during record/assemble (logs, embedded-DB files) is not application content and must
         // not become image bytes.
-        java.util.Set<String> stagedFiles = snapshotRelative(staging);
+        Set<String> stagedFiles = snapshotRelative(staging);
 
         // A container has to be addressable to be stopped; the local path signals the process
         // directly. Each run gets its own name so the training and verifying containers cannot
         // collide.
         String runtime = localJre == null ? containerRuntime(plan.config().dockerExecutable()) : null;
-        java.util.function.Function<String, List<String>> prefixFor = name -> {
+        Function<String, List<String>> prefixFor = name -> {
             if (localJre != null) return new ArrayList<>(List.of(localJre.toString()));
             List<String> cmd = new ArrayList<>(containerPrefix(runtime, staging, base, name));
             cmd.add("java");
@@ -153,9 +171,9 @@ final class AotCacheTrainer {
                         ? "training the AOT cache with " + base + "'s JVM, on this host"
                         : "training the AOT cache in " + base);
 
-        String trainName = "jk-aot-train-" + java.util.UUID.randomUUID();
-        String assembleName = "jk-aot-create-" + java.util.UUID.randomUUID();
-        String verifyName = "jk-aot-verify-" + java.util.UUID.randomUUID();
+        String trainName = "jk-aot-train-" + UUID.randomUUID();
+        String assembleName = "jk-aot-create-" + UUID.randomUUID();
+        String verifyName = "jk-aot-verify-" + UUID.randomUUID();
         List<String> prefix = prefixFor.apply(trainName);
 
         // Two steps, deliberately. The one-step -XX:AOTCacheOutput assembles the cache from a child
@@ -198,8 +216,9 @@ final class AotCacheTrainer {
         verify.add("-XX:AOTCache=" + CACHE_FILE);
         verify.addAll(runArgs);
 
-        String refusal = refusal(runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log)
-                .text());
+        String refusal = AotCacheFiles.refusal(
+                runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log)
+                        .text());
         if (refusal != null) {
             throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
         }
@@ -207,8 +226,8 @@ final class AotCacheTrainer {
         return new Result(staging, runArgs, cache, stagedFiles);
     }
 
-    private static java.util.Set<String> snapshotRelative(Path root) throws IOException {
-        java.util.Set<String> out = new java.util.TreeSet<>();
+    private static Set<String> snapshotRelative(Path root) throws IOException {
+        Set<String> out = new TreeSet<>();
         try (var walk = Files.walk(root)) {
             for (Path f : walk.toList()) {
                 if (Files.isRegularFile(f)) {
@@ -229,7 +248,7 @@ final class AotCacheTrainer {
 
     /** The JVM running this worker — good enough to rewrite a jar with Boot's jarmode tool. */
     private static Path hostJava() {
-        return Path.of(System.getProperty("java.home"), "bin", "java");
+        return JdkFingerprint.java(Path.of(System.getProperty("java.home")));
     }
 
     /**
@@ -237,10 +256,11 @@ final class AotCacheTrainer {
      * container path produces the same cache, so a base image jk cannot unpack is a slower build
      * rather than a failed one.
      */
-    private static Path localBaseJre(ImageBuilder.Plan plan, String base, Path workDir, Consumer<String> log) {
+    static Path localBaseJre(
+            ImageBuilder.Plan plan, String base, Path cacheRoot, RegistryAuth auth, Consumer<String> log) {
         if (!BaseJre.hostCanExecute(plan.config().platforms())) return null;
         try {
-            Path java = BaseJre.javaBinary(base, workDir.resolve("jk-image"));
+            Path java = BaseJre.javaBinary(base, cacheRoot, auth);
             return java != null && Files.isExecutable(java) ? java : null;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -251,7 +271,7 @@ final class AotCacheTrainer {
 
     /** Copy a tree verbatim — the staged copy is what gets trained and what ships. */
     private static void copyTree(Path from, Path to) throws IOException {
-        deleteRecursively(to);
+        PathUtil.deleteRecursivelyOrThrow(to);
         try (var walk = Files.walk(from)) {
             for (Path p : walk.toList()) {
                 Path target = to.resolve(from.relativize(p).toString());
@@ -259,7 +279,7 @@ final class AotCacheTrainer {
                     Files.createDirectories(target);
                 } else {
                     Files.createDirectories(target.getParent());
-                    Files.copy(p, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
         }
@@ -267,7 +287,7 @@ final class AotCacheTrainer {
 
     /** Lay out exactly what the image will contain, at the paths the image will use. */
     private static void stageLayout(ImageBuilder.Plan plan, Path staging) throws IOException {
-        deleteRecursively(staging);
+        PathUtil.deleteRecursivelyOrThrow(staging);
         Path classpathDir = Files.createDirectories(staging.resolve("classpath"));
         Path libs = Files.createDirectories(staging.resolve("libs"));
         Files.copy(
@@ -296,7 +316,7 @@ final class AotCacheTrainer {
         entries.add("classpath/" + plan.mainJar().getFileName());
         List<String> libs = new ArrayList<>();
         for (Path jar : allDependencyJars(plan)) libs.add("libs/" + plan.nameOf(jar));
-        java.util.Collections.sort(libs);
+        Collections.sort(libs);
         entries.addAll(libs);
         return String.join(":", entries);
     }
@@ -342,8 +362,8 @@ final class AotCacheTrainer {
             Process p = new ProcessBuilder(runtime, "info", "--format", "{{.SecurityOptions}}")
                     .redirectErrorStream(true)
                     .start();
-            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor(5, TimeUnit.SECONDS);
             return !out.contains("rootless");
         } catch (IOException e) {
             return true;
@@ -375,32 +395,6 @@ final class AotCacheTrainer {
         });
     }
 
-    /** The line explaining why the JVM would not use the cache, or null when it mapped. */
-    /**
-     * A line proving the JVM refused the cache, or null. Matches the specific refusal shapes
-     * {@code -Xlog:aot} emits (cache not loaded/used/mapped, identity mismatches) rather than any
-     * line containing "failed" — AOT logging also narrates non-fatal per-item failures ("failed to
-     * load class ...") on runs where the cache itself mapped fine.
-     */
-    static String refusal(String log) {
-        for (String line : log.split("\n")) {
-            if (!line.contains("[aot")) continue;
-            String lower = line.toLowerCase(Locale.ROOT);
-            // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
-            // load class X", which appears on runs where the cache mapped fine.
-            if (lower.contains("mismatch")
-                    || lower.contains("different version")
-                    || lower.contains("unable to map")
-                    || lower.contains("unable to use")
-                    || lower.contains("cannot be used")
-                    || lower.contains("disabled")
-                    || ((lower.contains("archive") || lower.contains("cache")) && lower.contains("failed"))) {
-                return line.trim();
-            }
-        }
-        return null;
-    }
-
     private static boolean isSelinux() {
         return Files.isDirectory(Path.of("/sys/fs/selinux"));
     }
@@ -417,9 +411,8 @@ final class AotCacheTrainer {
     private static boolean onPath(String exe) {
         String path = System.getenv("PATH");
         if (path == null) return false;
-        boolean windows =
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        for (String dir : path.split(java.io.File.pathSeparator)) {
+        boolean windows = Os.isWindows();
+        for (String dir : SearchPath.entries(path)) {
             Path base = Path.of(dir, exe);
             if (Files.isExecutable(base)) return true;
             // Windows PATHEXT: docker.exe / docker.cmd / docker.bat (chocolatey shims and corp
@@ -458,8 +451,7 @@ final class AotCacheTrainer {
         if (cwd != null) pb.directory(cwd.toFile());
         Process process = pb.start();
         StringBuilder out = new StringBuilder();
-        java.util.concurrent.atomic.AtomicLong lastOutput =
-                new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+        AtomicLong lastOutput = new AtomicLong(System.nanoTime());
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {
@@ -531,15 +523,6 @@ final class AotCacheTrainer {
     private static String tail(String text) {
         String[] lines = text.split("\n");
         int from = Math.max(0, lines.length - 20);
-        return String.join("\n", java.util.Arrays.copyOfRange(lines, from, lines.length));
-    }
-
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
-            }
-        }
+        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
     }
 }

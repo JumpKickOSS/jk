@@ -5,6 +5,7 @@ import cc.jumpkick.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.runtime.progress.HeaderProgressState;
 import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.runtime.progress.SharedPeak;
 import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
 import java.util.HashMap;
 import java.util.Map;
@@ -60,7 +61,7 @@ public final class WorkspaceProgressTracker {
         this.mode = mode == null ? ProgressBarMode.fromEnvironment() : mode;
     }
     /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
-    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak = new cc.jumpkick.runtime.progress.SharedPeak();
+    private final SharedPeak displayedPeak = new SharedPeak();
 
     private final ClockProgressStrategy clock = new ClockProgressStrategy(displayedPeak);
     private final WeightedProgressStrategy weighted = new WeightedProgressStrategy(displayedPeak);

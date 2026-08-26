@@ -2,11 +2,14 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -15,9 +18,11 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.JkDirs;
@@ -79,8 +84,8 @@ public final class StatusCommand implements CliCommand {
         CacheSnapshot cache = null;
 
         // Fresh lock before forecast / module pins — never make the user run `jk lock` for status.
-        if (!globalOnly && Files.isRegularFile(cwd.resolve("jk.toml"))) {
-            int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
+        if (!globalOnly && Files.isRegularFile(cwd.resolve(ManifestPaths.MANIFEST))) {
+            int lockCode = EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
             if (lockCode != 0) return lockCode;
         }
 
@@ -138,10 +143,8 @@ public final class StatusCommand implements CliCommand {
         int sources = forecast != null ? forecast.sourceCount : project.sourceCount;
         int tests = forecast != null ? forecast.testCount : project.testCount;
         // Prefer last history test totals when the journal recorded them.
-        if (lastHistory != null) {
-            long ht = Jsonl.longValue(lastHistory, "testsTotal", -1);
-            if (ht >= 0) tests = (int) ht;
-        }
+        TestSummary lastTests = TestSummary.readCounts(lastHistory);
+        if (lastTests != null) tests = (int) lastTests.total();
         kv("Sources", formatCount(sources));
         kv("Tests", formatCount(tests));
     }
@@ -208,8 +211,8 @@ public final class StatusCommand implements CliCommand {
             }
         }
 
-        kv("Full Build Time", dashDuration(fullMs));
-        kv("Last Build Time", dashDuration(lastMs));
+        kv("Full Build Time", formatDuration(fullMs));
+        kv("Last Build Time", formatDuration(lastMs));
         kv("Next Build Time", nextMs >= 0 ? "~" + formatDuration(nextMs) : "—");
         kv("Modules Cached", modulesCached);
         kv("Artifacts Cached", artifactsCached);
@@ -226,9 +229,9 @@ public final class StatusCommand implements CliCommand {
             kv("Total Build Time", "—");
             return;
         }
-        kv("Avg Build Time", dashDuration(g.okCount > 0 ? g.okAvgMillis : -1));
-        kv("Min Build Time", dashDuration(g.okCount > 0 ? g.okMinMillis : -1));
-        kv("Max Build Time", dashDuration(g.okCount > 0 ? g.okMaxMillis : -1));
+        kv("Avg Build Time", formatDuration(g.okCount > 0 ? g.okAvgMillis : -1));
+        kv("Min Build Time", formatDuration(g.okCount > 0 ? g.okMinMillis : -1));
+        kv("Max Build Time", formatDuration(g.okCount > 0 ? g.okMaxMillis : -1));
         long total = g.okCount + g.failCount + g.cancelCount;
         StringBuilder outcomes = new StringBuilder(formatCount(total));
         outcomes.append(" (");
@@ -249,16 +252,17 @@ public final class StatusCommand implements CliCommand {
     private static CacheSnapshot loadCacheSnapshot() {
         Path root = JkDirs.cache();
         try {
-            Path storeRoot = cc.jumpkick.cache.JkStores.storeRootFor(root);
-            if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
+            if (!Files.isDirectory(root)) {
                 return new CacheSnapshot("—", "0", "0");
             }
-            // Exclusive sizes: leftover shared inodes under repos/ + sha256/ counted once.
+            // Cache only. The artifact store lives under JK_STORE_DIR, survives a nuke, and has
+            // its own report in `jk storage usage`; folding it in here made "Size on Disk" name a
+            // number no cache command can act on. Shared inodes inside the root count once.
             CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
             return new CacheSnapshot(
-                    CacheCommand.fmtBytes(s.totalBytes()),
-                    formatCount(s.cas().files()),
-                    formatCount(s.actions().files()));
+                    CacheCommand.fmtBytes(s.root().bytes()),
+                    formatCount(s.cacheCas().files()),
+                    formatCount(s.actionKeys().files()));
         } catch (IOException e) {
             return new CacheSnapshot("—", "—", "—");
         }
@@ -430,10 +434,10 @@ public final class StatusCommand implements CliCommand {
             long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
 
     private static ProjectSnapshot loadProject(Path cwd) {
-        Path buildFile = cwd.resolve("jk.toml");
+        Path buildFile = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(buildFile)) return null;
         try {
-            var info = BuildCommand.projectInfoOrNull(cwd, true);
+            var info = ProjectInfos.orNull(cwd, true);
             if (info == null) {
                 return new ProjectSnapshot(cwd.getFileName().toString(), "—", "—", 0, 0, 0);
             }
@@ -513,27 +517,9 @@ public final class StatusCommand implements CliCommand {
 
     // ── formatting ───────────────────────────────────────────────────────────
 
+    /** Status-table duration, zero components omitted; {@code —} when negative. */
     static String formatDuration(long millis) {
-        if (millis < 0) return "—";
-        if (millis < 1000) return millis + "ms";
-        long totalSec = millis / 1000;
-        long days = totalSec / 86_400;
-        totalSec %= 86_400;
-        long hours = totalSec / 3_600;
-        totalSec %= 3_600;
-        long mins = totalSec / 60;
-        long secs = totalSec % 60;
-        // Omit zero components: "1d 4h 12s", "3m 12s", "22s".
-        ArrayList<String> parts = new ArrayList<>(4);
-        if (days > 0) parts.add(days + "d");
-        if (hours > 0) parts.add(hours + "h");
-        if (mins > 0) parts.add(mins + "m");
-        if (secs > 0 || parts.isEmpty()) parts.add(secs + "s");
-        return String.join(" ", parts);
-    }
-
-    private static String dashDuration(long millis) {
-        return millis < 0 ? "—" : formatDuration(millis);
+        return DurationText.omitZero(millis);
     }
 
     private static String formatCount(long n) {

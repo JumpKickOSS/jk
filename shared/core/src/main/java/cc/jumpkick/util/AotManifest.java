@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
-import java.io.File;
+import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Classpaths;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -21,7 +22,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.regex.Pattern;
 import lombok.Builder;
 
 /**
@@ -85,16 +85,8 @@ public final class AotManifest {
 
             /** Split a platform classpath string into entries. */
             public Builder classpathString(String cp) {
-                if (cp == null || cp.isBlank()) {
-                    this.classpath = List.of();
-                    return this;
-                }
-                String sep = File.pathSeparator;
-                List<String> parts = new ArrayList<>();
-                for (String p : cp.split(Pattern.quote(sep), -1)) {
-                    if (!p.isBlank()) parts.add(p);
-                }
-                this.classpath = List.copyOf(parts);
+                this.classpath =
+                        Classpaths.split(cp).stream().map(Path::toString).toList();
                 return this;
             }
         }
@@ -160,29 +152,67 @@ public final class AotManifest {
     }
 
     /**
-     * Drop entries whose on-disk file (and optional {@code .noaot} marker) no longer exist. A
-     * {@code pending} row is the documented state of a train still running (its {@code .aot}
-     * intentionally doesn't exist yet) — those stay. Never throws.
+     * How long a {@code pending} row is believed. A pending row is a claim that a train is running
+     * right now, and both trainers bound themselves: the worker trainer kills its fork after two
+     * minutes, and the engine's {@code --aot-training} sidecar carries a two-minute hard limit and
+     * a watchdog. So a row that has outlived this window is not a train, it is a killed trainer's
+     * leftover — the process that would have replaced the row died before it could.
+     *
+     * <p>The window is a wide multiple of that limit, not a tight one, because the cost of the two
+     * errors is not symmetric: dropping a live train's row loses one line of documentation until
+     * the train writes its own, while keeping a dead one keeps it forever. Forever is what this
+     * file measured — a manifest reached 371 rows and 187 KB, 370 of them {@code engine-*} rows
+     * marked pending, because nothing here would drop one and the on-disk sweep only sees names
+     * that still have a file.
+     *
+     * <p>Not the window a refusal marker lives under ({@link AotCacheFiles#MARKER_TTL_MILLIS},
+     * seven days). That one asks how long a <em>finished failure</em> stays believed, and its
+     * answer is a policy about retry cost. This one asks how long a claim about the present stays
+     * credible, and its answer is read off the trainers' own timeout. Same directory, two
+     * questions; one constant would have to be wrong for one of them.
+     */
+    static final long PENDING_TTL_MILLIS = 60L * 60 * 1_000;
+
+    /**
+     * Drop entries that no longer describe anything on disk: no {@code .aot} file, no refusal
+     * marker, and — for a {@code pending} row — no train that could still be running.
+     *
+     * <p>A {@code pending} row is the documented state of a train in flight, so its {@code .aot}
+     * is intentionally absent and the file test alone can never retire it. Age is the test that
+     * can: past {@link #PENDING_TTL_MILLIS} from {@code created} the trainer is gone. A pending row
+     * with no readable {@code created} is undatable and therefore unbounded, which is the shape
+     * this rule exists to remove, so it goes too — the next train writes a fresh row with a
+     * timestamp. Never throws.
      */
     public static void reconcile(Path aotDir) {
         if (aotDir == null || !Files.isDirectory(aotDir)) return;
         withLock(aotDir, () -> {
             Map<String, Entry> map = loadMap(aotDir);
+            long now = System.currentTimeMillis();
             List<String> gone = new ArrayList<>();
             for (Map.Entry<String, Entry> me : map.entrySet()) {
-                if ("pending".equals(me.getValue().status())) continue;
+                Entry e = me.getValue();
                 String file = me.getKey();
                 Path p = aotDir.resolve(file);
-                Path noaotSibling = aotDir.resolve(file + ".noaot");
-                Path noaotAlt = stemNoaot(aotDir, file);
-                if (!Files.exists(p) && !Files.exists(noaotSibling) && (noaotAlt == null || !Files.exists(noaotAlt))) {
-                    gone.add(file);
-                }
+                if (Files.exists(p) || Files.exists(AotCacheFiles.marker(p))) continue;
+                if ("pending".equals(e.status()) && trainCouldBeRunning(e, now)) continue;
+                gone.add(file);
             }
             if (gone.isEmpty()) return;
             for (String g : gone) map.remove(g);
             writeMap(aotDir, map);
         });
+    }
+
+    /** Is {@code pending} still a claim about the present? See {@link #PENDING_TTL_MILLIS}. */
+    private static boolean trainCouldBeRunning(Entry e, long now) {
+        String created = e.created();
+        if (created == null || created.isBlank()) return false;
+        try {
+            return now - Instant.from(ISO.parse(created)).toEpochMilli() <= PENDING_TTL_MILLIS;
+        } catch (RuntimeException unparsable) {
+            return false;
+        }
     }
 
     /** Read all entries (empty if missing/corrupt). Never throws. */
@@ -227,22 +257,12 @@ public final class AotManifest {
                         }
                     }
                     map.put(name, b.build());
-                } else if (name.endsWith(".aot.noaot") && Files.isRegularFile(p)) {
-                    // worker sticky marker: <file>.aot.noaot
-                    String primary = name.substring(0, name.length() - ".noaot".length());
+                } else if (AotCacheFiles.isMarker(name) && Files.isRegularFile(p)) {
+                    // Sticky refusal marker — engine and worker keys alike.
+                    String primary = AotCacheFiles.cacheOf(name);
                     if (!map.containsKey(primary)
                             || "pending".equals(map.get(primary).status())
                             || !Files.exists(aotDir.resolve(primary))) {
-                        map.put(primary, noaotRow(map.get(primary), primary));
-                    }
-                } else if (name.endsWith(".noaot")
-                        && !name.endsWith(".aot.noaot")
-                        && Files.isRegularFile(p)
-                        && name.startsWith("engine-")) {
-                    // engine sticky: engine-<ver>-<key>.noaot
-                    String stem = name.substring(0, name.length() - ".noaot".length());
-                    String primary = stem.endsWith(".aot") ? stem : stem + ".aot";
-                    if (!map.containsKey(primary) || !Files.exists(aotDir.resolve(primary))) {
                         map.put(primary, noaotRow(map.get(primary), primary));
                     }
                 }
@@ -275,14 +295,6 @@ public final class AotManifest {
     }
 
     // ---- internals --------------------------------------------------------------------------
-
-    private static Path stemNoaot(Path aotDir, String file) {
-        // engine uses engine-<ver>-<key>.noaot (strip .aot); workers use file.aot.noaot
-        if (file.endsWith(".aot")) {
-            return aotDir.resolve(file.substring(0, file.length() - ".aot".length()) + ".noaot");
-        }
-        return null;
-    }
 
     private static boolean blank(String s) {
         return s == null || s.isBlank();
@@ -516,53 +528,15 @@ public final class AotManifest {
         }
     }
 
-    private static boolean isHex(String s) {
-        for (int i = 0; i < s.length(); i++) {
-            if (Character.digit(s.charAt(i), 16) < 0) return false;
-        }
-        return true;
-    }
-
     private static String stripComma(String s) {
         String t = s.strip();
         if (t.endsWith(",")) t = t.substring(0, t.length() - 1).strip();
         return t;
     }
 
+    /** {@link MinimalToml#unquote}, after the {@code strip} the pre-tokenized call sites rely on. */
     private static String unquote(String s) {
-        String t = s.strip();
-        if (t.length() >= 2 && t.startsWith("\"") && t.endsWith("\"")) {
-            StringBuilder sb = new StringBuilder(t.length());
-            for (int i = 1; i < t.length() - 1; i++) {
-                char c = t.charAt(i);
-                if (c == '\\' && i + 1 < t.length() - 1) {
-                    char n = t.charAt(++i);
-                    switch (n) {
-                        case 'n' -> sb.append('\n');
-                        case 'r' -> sb.append('\r');
-                        case 't' -> sb.append('\t');
-                        case '"' -> sb.append('"');
-                        case '\\' -> sb.append('\\');
-                        case 'u' -> {
-                            // A hand-edited Windows path like "C:{backslash}upgrade" puts non-hex
-                            // after the unicode escape; treat it as literal text, don't throw.
-                            String hex = i + 4 < t.length() - 1 ? t.substring(i + 1, i + 5) : null;
-                            if (hex != null && isHex(hex)) {
-                                sb.append((char) Integer.parseInt(hex, 16));
-                                i += 4;
-                            } else {
-                                sb.append('u');
-                            }
-                        }
-                        default -> sb.append(n);
-                    }
-                } else {
-                    sb.append(c);
-                }
-            }
-            return sb.toString();
-        }
-        return t;
+        return MinimalToml.unquote(s.strip());
     }
 
     private static void writeMap(Path aotDir, Map<String, Entry> map) throws IOException {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
@@ -26,7 +27,7 @@ import org.jspecify.annotations.Nullable;
 public final class McpDetails {
 
     /** Default event-type filter: what an agent acts on first. */
-    public static final List<String> DEFAULT_TYPES = List.of("error", "task-finish");
+    public static final List<String> DEFAULT_TYPES = List.of("error", EngineProtocol.TASK_FINISH);
 
     public static final int DEFAULT_TAIL = 80;
     public static final int MAX_TAIL = 400;

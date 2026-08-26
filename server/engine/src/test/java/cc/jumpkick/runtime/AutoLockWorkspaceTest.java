@@ -3,7 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.resolver.ResolveObserver;
 import java.nio.file.Files;
@@ -100,7 +102,7 @@ class AutoLockWorkspaceTest {
         // An existing root lock; contents only feed conservative preferences. write() stamps a
         // live manifests-sha256, so staleness must come from a real manifest edit — mtimes are
         // irrelevant since the invisible-freshen change (LockFreshness digest regime).
-        Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(ws);
+        Path rootLock = LockPaths.lockFile(ws);
         LockfileWriter.write(new Lockfile(1, "test", "jk-test", List.of()), rootLock);
         // Now app grows a dep: the workspace digest no longer matches the stamp → stale.
         Files.writeString(ws.resolve("app/jk.toml"), """
@@ -114,7 +116,7 @@ class AutoLockWorkspaceTest {
                 extra = { group = "com.acme", name = "extra", version = "1.0.0" }
                 """);
 
-        Lockfile existing = cc.jumpkick.lock.LockfileReader.read(rootLock);
+        Lockfile existing = LockfileReader.read(rootLock);
         Lockfile updated = AutoLock.maybeReLock(
                 ws.resolve("app"),
                 existing,
@@ -153,10 +155,10 @@ class AutoLockWorkspaceTest {
                 """);
 
         // The on-disk lock pins 1.0.0 identity (digest stamped against the 1.0.0 manifest).
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(proj);
+        Path lockFile = LockPaths.lockFile(proj);
         Lockfile stale = new Lockfile(1, "test", "jk-test", List.of())
                 .withModules(List.of(new Lockfile.ModuleEntry(
-                        ".", "com.example", "solo", "1.0.0", "21", 21, null, null, null, null, null, null)));
+                        ".", "com.example", "solo", "1.0.0", 21, null, null, null, null, null)));
         LockfileWriter.write(stale, lockFile);
 
         // Then the project bumps its version: content digest diverges (mtimes are irrelevant
@@ -171,7 +173,7 @@ class AutoLockWorkspaceTest {
 
         Lockfile updated = AutoLock.maybeReLock(
                 proj,
-                cc.jumpkick.lock.LockfileReader.read(lockFile),
+                LockfileReader.read(lockFile),
                 lockFile,
                 tmp.resolve("cache"),
                 repo.toUri(),
@@ -186,7 +188,7 @@ class AutoLockWorkspaceTest {
                 .as("auto-relock IS a re-lock — [[module]] identity must be restamped")
                 .anyMatch(m -> m.path().equals(".") && m.version().equals("2.0.0"));
         // And the write that landed on disk agrees.
-        Lockfile onDisk = cc.jumpkick.lock.LockfileReader.read(lockFile);
+        Lockfile onDisk = LockfileReader.read(lockFile);
         assertThat(onDisk.modules()).anyMatch(m -> m.version().equals("2.0.0"));
     }
 }

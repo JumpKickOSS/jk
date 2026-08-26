@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class ModuleScopeHintTest {
@@ -44,21 +46,19 @@ class ModuleScopeHintTest {
 
     @Test
     void print_prefixes_plain_caption_with_jk() {
-        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
-        cc.jumpkick.config.SessionContext.runWhere(
-                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
-                    CliOutput.beginCommand(false);
-                    var buf = new ByteArrayOutputStream();
-                    var prev = System.out;
-                    try {
-                        System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
-                        ModuleScopeHint.print("building", List.of("jk-engine", "jk-cli"), false);
-                    } finally {
-                        System.setOut(prev);
-                    }
-                    assertThat(buf.toString(StandardCharsets.UTF_8))
-                            .contains("jk: ...building modules jk-engine, jk-cli...");
-                });
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
+        SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
+            CliOutput.beginCommand(false);
+            var buf = new ByteArrayOutputStream();
+            var prev = System.out;
+            try {
+                System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+                ModuleScopeHint.print("building", List.of("jk-engine", "jk-cli"), false);
+            } finally {
+                System.setOut(prev);
+            }
+            assertThat(buf.toString(StandardCharsets.UTF_8)).contains("jk: ...building modules jk-engine, jk-cli...");
+        });
     }
 
     @Test

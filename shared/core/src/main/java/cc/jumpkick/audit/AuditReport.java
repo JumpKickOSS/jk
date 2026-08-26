@@ -17,19 +17,38 @@ public final class AuditReport {
         HIGH,
         MEDIUM,
         LOW,
+        /** No label the feed gave us could be classified. Treated as gating — see {@link #atLeast}. */
         UNKNOWN;
 
+        /**
+         * Classify a feed-supplied severity <em>label</em>.
+         *
+         * <p>Only a label is accepted. A CVSS vector ({@code CVSS:3.1/AV:N/...}) carries no label, so
+         * it maps to {@link #UNKNOWN} rather than being pattern-matched: substring matching over a
+         * vector is how every advisory silently became {@code UNKNOWN}. {@code MODERATE} is the
+         * GitHub spelling of {@link #MEDIUM} and is accepted as an alias.
+         */
         public static Severity parse(String raw) {
             if (raw == null) return UNKNOWN;
-            String upper = raw.trim().toUpperCase(Locale.ROOT);
-            for (Severity s : values()) {
-                if (upper.contains(s.name())) return s;
-            }
-            return UNKNOWN;
+            String token = raw.trim().toUpperCase(Locale.ROOT);
+            return switch (token) {
+                case "CRITICAL" -> CRITICAL;
+                case "HIGH" -> HIGH;
+                case "MEDIUM", "MODERATE" -> MEDIUM;
+                case "LOW" -> LOW;
+                default -> UNKNOWN;
+            };
         }
 
-        /** True if this severity is at least as severe as {@code threshold}. */
+        /**
+         * True if this severity is at least as severe as {@code threshold}.
+         *
+         * <p>{@link #UNKNOWN} <strong>fails closed</strong>: an advisory we could not classify is
+         * reported at every threshold rather than silently dropped. A security tool that hides what
+         * it does not understand is worse than one that errs loudly.
+         */
         public boolean atLeast(Severity threshold) {
+            if (this == UNKNOWN) return true;
             return ordinal() <= threshold.ordinal();
         }
     }

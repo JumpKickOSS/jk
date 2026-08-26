@@ -3,11 +3,17 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.androidsdk.AndroidRepoFeed;
+import cc.jumpkick.androidsdk.AndroidSdk;
+import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.SysProps;
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -20,6 +26,7 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -34,6 +41,7 @@ import org.junit.jupiter.api.io.TempDir;
  * (the platform jar is ~115MB once).
  */
 @Tag("slow")
+@ExtendWith(SysProps.class)
 class AndroidSpikeTest {
 
     @Test
@@ -42,18 +50,17 @@ class AndroidSpikeTest {
         // A persistent CAS + SDK root across runs — the platform is a one-time download.
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(cc.jumpkick.androidsdk.AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);
 
         // Accept the SDK licenses exactly as `jk android licenses --yes` does — the installer
         // refuses to download otherwise (the gate the AndroidSdkTest covers in isolation).
-        var sdk = cc.jumpkick.androidsdk.AndroidSdk.resolve();
-        var installer = new cc.jumpkick.androidsdk.AndroidSdkInstaller(sdk);
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
         if (!sdk.installed("platforms;android-28")) {
             for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(
-                        license.getKey(), cc.jumpkick.androidsdk.AndroidRepoFeed.licenseHash(license.getValue()));
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
             }
         }
 
@@ -87,7 +94,7 @@ class AndroidSpikeTest {
                 false,
                 false,
                 Set.of(),
-                cc.jumpkick.config.SessionContext.current());
+                SessionContext.current());
         BuildPlan plan = BuildPlanner.fullPlan(in);
 
         assertThat(plan.steps().stream().map(p -> p.name()))
@@ -248,7 +255,7 @@ class AndroidSpikeTest {
             assertThat(workerJar)
                     .as("jk.android.apksig.classpath or jk.android.plugin.jar system property")
                     .isNotBlank();
-            for (Path p : cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(Path.of(workerJar))) {
+            for (Path p : WorkerLaunchClasspath.paths(Path.of(workerJar))) {
                 urls.add(p.toUri().toURL());
             }
         }

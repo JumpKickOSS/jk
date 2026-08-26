@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -115,7 +116,7 @@ class FileHashMemoTest {
         // What keeps stamps and package keys cheap after `jk clean` + an action-cache restore:
         // the bytes are known, so the digest is usable immediately rather than 2s later.
         Path f = Files.writeString(dir.resolve("restored.jar"), "AA");
-        String known = cc.jumpkick.util.Hashing.sha256Hex(f);
+        String known = Hashing.sha256Hex(f);
         withCache(dir.resolve("cache"), () -> {
             try {
                 FileHashMemo.rememberContent(f, known);
@@ -199,7 +200,7 @@ class FileHashMemoTest {
         Files.writeString(cache.resolve("hash-memo/memo.v1"), "not\na\0store\nat all\n");
         withCache(cache, () -> {
             try {
-                assertThat(FileHashMemo.contentHash(f)).isEqualTo(cc.jumpkick.util.Hashing.sha256Hex(f));
+                assertThat(FileHashMemo.contentHash(f)).isEqualTo(Hashing.sha256Hex(f));
                 assertThat(FileHashMemo.contentReads()).isEqualTo(1);
             } catch (Exception e) {
                 throw new RuntimeException(e);

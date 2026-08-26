@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
@@ -48,7 +49,7 @@ class BuildPlannerStagedClassesTest {
         Files.createDirectories(stage);
         Files.writeString(stage.resolve("Stale.class"), "stale");
 
-        Path staged = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        Path staged = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
 
         assertThat(staged).isEqualTo(stage);
         assertThat(stage.resolve("Stale.class")).doesNotExist();
@@ -64,7 +65,7 @@ class BuildPlannerStagedClassesTest {
         Files.createDirectories(f.contributed.resolve("com/example/aot"));
         Files.writeString(f.contributed.resolve("com/example/aot/Optimized.class"), "opt");
 
-        Path staged = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        Path staged = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
 
         assertThat(staged.resolve("com/example/App.class")).hasContent("app");
         assertThat(staged.resolve("com/example/aot/Optimized.class")).hasContent("opt");
@@ -75,9 +76,9 @@ class BuildPlannerStagedClassesTest {
         Fixture f = fixture(tmp);
         Files.writeString(f.classes.resolve("Kept.class"), "kept");
         // The declared step exists but never ran, so its scratch dir is absent.
-        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(f.contributed);
+        PathUtil.deleteRecursivelyOrThrow(f.contributed);
 
-        Path staged = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        Path staged = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
 
         assertThat(staged).isEqualTo(f.classes);
         assertThat(f.layout.moduleTargetDir().resolve("package-classes")).doesNotExist();
@@ -87,7 +88,7 @@ class BuildPlannerStagedClassesTest {
     void no_active_plugin_leaves_the_classes_dir_alone(@TempDir Path tmp) throws Exception {
         Fixture f = fixture(tmp);
 
-        assertThat(BuildPlanner.stageClassesWithContributions(ctx, f.classes, List.of(), f.layout))
+        assertThat(PlannerSupport.stageClassesWithContributions(ctx, f.classes, List.of(), f.layout))
                 .isEqualTo(f.classes);
     }
 
@@ -98,12 +99,12 @@ class BuildPlannerStagedClassesTest {
         Files.writeString(f.contributed.resolve("Generated.class"), "generated");
 
         // package-jar stages, publishing the inputs it staged from…
-        Path first = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        Path first = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
         Path marker = first.resolve("App.class");
         Files.writeString(marker, "touched-by-nobody"); // a re-stage would overwrite this
 
         // …and assembly, running behind package-jar's requires edge, reuses it.
-        Path second = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        Path second = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
 
         assertThat(second).isEqualTo(first);
         assertThat(marker).hasContent("touched-by-nobody");
@@ -115,11 +116,11 @@ class BuildPlannerStagedClassesTest {
         Files.writeString(f.classes.resolve("App.class"), "app");
         Files.writeString(f.contributed.resolve("Generated.class"), "v1");
 
-        Path stage = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        Path stage = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
         assertThat(stage.resolve("Generated.class")).hasContent("v1");
 
         Files.writeString(f.contributed.resolve("Generated.class"), "v2");
-        BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
 
         assertThat(stage.resolve("Generated.class")).hasContent("v2");
     }
@@ -132,17 +133,17 @@ class BuildPlannerStagedClassesTest {
         Files.writeString(f.classes.resolve("App.class"), "app");
         Files.writeString(f.contributed.resolve("Generated.class"), "generated");
 
-        Path stage = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
-        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(stage);
+        Path stage = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+        PathUtil.deleteRecursivelyOrThrow(stage);
 
-        assertThat(BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout))
+        assertThat(PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout))
                 .isEqualTo(stage);
         assertThat(stage.resolve("App.class")).hasContent("app");
         assertThat(stage.resolve("Generated.class")).hasContent("generated");
     }
 
     private static List<Path> contributed(Fixture f) {
-        return BuildPlanner.existingContributedDirs(f.decls, f.layout);
+        return PlannerSupport.existingContributedDirs(f.decls, f.layout);
     }
 
     private record Fixture(BuildLayout layout, Path classes, Path contributed, PluginBuild.Declarations decls) {}

@@ -4,6 +4,7 @@ package cc.jumpkick.command.ide;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
@@ -325,7 +326,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         LinkedHashSet<String> extra = new LinkedHashSet<>();
         for (Path mod : model.allModules().keySet()) {
             for (String suite : IdeSourceRoots.discoveredSuites(mod)) {
-                if (!cc.jumpkick.layout.TestSuites.DEFAULT.equals(suite)) extra.add(suite);
+                if (!TestSuites.DEFAULT.equals(suite)) extra.add(suite);
             }
         }
         for (String suite : extra) {

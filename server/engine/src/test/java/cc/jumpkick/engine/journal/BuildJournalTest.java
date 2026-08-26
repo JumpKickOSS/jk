@@ -160,6 +160,30 @@ class BuildJournalTest {
     }
 
     /**
+     * A row left {@code running} by an engine that died is closed out as a failure the user cannot
+     * act on, NOT as a cancellation. Until JK-2417 it was stamped {@code cancelled=true} with exit
+     * 130 — {@code 128 + SIGINT} — so `jk history` reported a crashed machine as "the user pressed
+     * Ctrl-C". 70 is {@code Exit.SOFTWARE}, spelled here as the literal a reader of the record sees.
+     */
+    @Test
+    void an_abandoned_run_is_a_software_failure_not_a_user_cancel() {
+        BuildJournal j = new BuildJournal(dir);
+        String locator =
+                j.begin(BuildRecord.running(31, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli"));
+        assertThat(j.get(locator).orElseThrow().running()).isTrue();
+
+        assertThat(j.abandonStaleRunning("9.9")).isEqualTo(1);
+
+        BuildRecord abandoned = j.get(locator).orElseThrow();
+        assertThat(abandoned.running()).isFalse();
+        assertThat(abandoned.success()).isFalse();
+        assertThat(abandoned.cancelled()).isFalse();
+        assertThat(abandoned.exitCode()).isEqualTo(70);
+        // Nothing else claims it, so a second sweep is a no-op.
+        assertThat(j.abandonStaleRunning("9.9")).isZero();
+    }
+
+    /**
      * The rollup buckets by the stage the plan <em>declared</em>, not by re-guessing from the task
      * name. Those disagreed: a plugin source generator reports {@code generate} on the wire and was
      * bucketed {@code compile} here, and every {@code stage(RESOLVE)} task in ScriptPlans landed in
@@ -244,7 +268,7 @@ class BuildJournalTest {
         BuildJournal j = new BuildJournal(dir);
         String id = j.append(record(1_700_000_000_000L, true, "g:a"), new BuildJournal.Snapshot(md, lock, "boom\n"));
         assertThat(j.artifact(id, BuildJournal.RESULTS_MD)).isPresent();
-        assertThat(j.artifact(id, BuildJournal.LOCKFILE)).isPresent();
+        assertThat(j.artifact(id, "jk-lock.toml")).isPresent();
         assertThat(j.artifact(id, BuildJournal.DIAGNOSTICS_TXT)).isPresent();
         assertThat(Files.readString(j.artifact(id, BuildJournal.RESULTS_MD).get()))
                 .contains("all good");
@@ -269,7 +293,7 @@ class BuildJournalTest {
         assertThat(j.get("../secret")).isEmpty();
         assertThat(j.delete("../secret")).isFalse();
         assertThat(j.get("a/b")).isEmpty();
-        assertThat(j.artifact("..", BuildJournal.LOCKFILE)).isEmpty();
+        assertThat(j.artifact("..", "jk-lock.toml")).isEmpty();
     }
 
     @Test

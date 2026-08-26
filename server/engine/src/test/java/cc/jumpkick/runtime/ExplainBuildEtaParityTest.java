@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.test.TestWorkers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -17,14 +19,14 @@ import org.junit.jupiter.api.Test;
 class ExplainBuildEtaParityTest {
 
     @Test
-    void bare_explain_workers_default_matches_bare_build_auto() {
-        // BuildCommand: omit -w → 0 (auto). ExplainCommand must not use 1.
-        int buildDefaultWorkers = 0;
-        int explainDefaultWorkers = 0; // ExplainCommand.orElse(0)
-        assertThat(explainDefaultWorkers).isEqualTo(buildDefaultWorkers);
-        // Auto resolution must not force serial tests when classes > 1.
-        int auto = cc.jumpkick.test.TestWorkers.resolve(0, 24, 8);
-        int forcedOne = cc.jumpkick.test.TestWorkers.resolve(1, 24, 8);
+    void auto_workers_resolve_wider_than_forced_serial() {
+        // Both commands pass 0 ("auto") when -w is omitted, and 0 must not resolve like 1: an
+        // explain that priced 24 test classes as serial would seed a countdown the build beats by
+        // the parallel factor. The claim that the two defaults ARE both 0 is not testable from
+        // :engine — BuildCommand and ExplainCommand live in clients/cli — and the test that
+        // pretended otherwise wrote `int a = 0; int b = 0; assertThat(a).isEqualTo(b)` (JK-2410).
+        int auto = TestWorkers.resolve(0, 24, 8);
+        int forcedOne = TestWorkers.resolve(1, 24, 8);
         assertThat(auto).isGreaterThan(forcedOne);
         assertThat(forcedOne).isEqualTo(1);
     }
@@ -74,7 +76,7 @@ class ExplainBuildEtaParityTest {
                 [workspace]
                 modules = ["m"]
                 """);
-        var graph = BuildGraph.resolve(tmp, cc.jumpkick.config.JkBuildParser.parse(tmp.resolve("jk.toml")));
+        var graph = BuildGraph.resolve(tmp, JkBuildParser.parse(tmp.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
         ExplainPlan plan = BuildService.fullyCachedExplainPlan(graph);
         assertThat(plan.modules()).isNotEmpty();

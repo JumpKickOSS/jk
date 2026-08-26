@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -11,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -48,7 +51,7 @@ public final class PluginProcess {
     public static int run(
             List<String> command, String prefix, Consumer<String> onProtocol, Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(command, java.util.Map.of(), prefix, onProtocol, onPassthrough);
+        return run(command, Map.of(), prefix, onProtocol, onPassthrough);
     }
 
     /**
@@ -57,7 +60,7 @@ public final class PluginProcess {
      */
     public static int run(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             String prefix,
             Consumer<String> onProtocol,
             Consumer<String> onPassthrough)
@@ -74,7 +77,7 @@ public final class PluginProcess {
      */
     public static int run(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             Consumer<String> onProtocol,
@@ -108,7 +111,7 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(command, java.util.Map.of(), prefix, onProtocol, onPassthrough);
+        return converse(command, Map.of(), prefix, onProtocol, onPassthrough);
     }
 
     /**
@@ -117,7 +120,7 @@ public final class PluginProcess {
      */
     public static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             Consumer<String> onPassthrough)
@@ -131,7 +134,7 @@ public final class PluginProcess {
      */
     public static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -142,7 +145,7 @@ public final class PluginProcess {
 
     private static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -178,7 +181,7 @@ public final class PluginProcess {
      */
     public static int converse(
             List<String> command,
-            java.util.Map<String, String> extraEnv,
+            Map<String, String> extraEnv,
             Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -204,7 +207,7 @@ public final class PluginProcess {
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
-        Process process = cc.jumpkick.engine.JobWorkers.start(pb);
+        Process process = JobWorkers.start(pb);
         final AtomicLong lastLineAt = new AtomicLong(System.currentTimeMillis());
         Thread watchdog = null;
         if (idleTimeoutMs > 0) {
@@ -232,8 +235,8 @@ public final class PluginProcess {
         // produces neither EOF nor a visible descendant — descendants() of a dead process is
         // empty, and closing the fd does not wake a blocked native pipe read. The job thread
         // waits root-exit + a drain grace, then abandons the reader instead of hanging forever.
-        BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        BufferedReader reader =
+                new BoundedLineReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         AtomicBoolean abandoned = new AtomicBoolean();
         AtomicReference<IOException> pumpError = new AtomicReference<>();
         CountDownLatch pumpDone = new CountDownLatch(1);
@@ -330,7 +333,7 @@ public final class PluginProcess {
                     forceStop(process);
                 }
             } finally {
-                cc.jumpkick.engine.JobWorkers.unregister(process);
+                JobWorkers.unregister(process);
             }
         }
         return process.waitFor();
@@ -348,7 +351,7 @@ public final class PluginProcess {
      * cannot stay blocked on an orphan still holding the write end of the pipe.
      */
     private static void forceStop(Process process) {
-        cc.jumpkick.engine.JobWorkers.destroyTree(process);
+        JobWorkers.destroyTree(process);
         try {
             process.getInputStream().close();
         } catch (IOException ignored) {

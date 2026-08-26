@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.engine.JobWorkers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -127,7 +128,7 @@ class ForkedJavacTest {
                 work);
 
         long job = 8801L;
-        cc.jumpkick.engine.JobWorkers.open(job);
+        JobWorkers.open(job);
         try {
             ForkedJavac.Result compiled = ForkedJavac.compile(req);
             assertThat(compiled.success()).as("%s", compiled.diagnostics()).isTrue();
@@ -137,8 +138,8 @@ class ForkedJavacTest {
             assertThat(plan.sources()).isNotEmpty();
         } finally {
             JavaCompilerHost.end(job);
-            cc.jumpkick.engine.JobWorkers.shutdownForRequest(job, 0L);
-            cc.jumpkick.engine.JobWorkers.close();
+            JobWorkers.shutdownForRequest(job, 0L);
+            JobWorkers.close();
         }
     }
 

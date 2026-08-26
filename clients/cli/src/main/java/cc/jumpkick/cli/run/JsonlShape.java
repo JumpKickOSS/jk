@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -30,7 +33,12 @@ public final class JsonlShape {
     public static final int SCHEMA = 1;
 
     /** Hot-tick event types: heartbeat flush to disk (M4/M5); everything else flushes per line. */
-    static final Set<String> HOT_TYPES = Set.of("progress", "tick-update", "workspace-progress", "label", "output");
+    static final Set<String> HOT_TYPES = Set.of(
+            EngineProtocol.PROGRESS,
+            EngineProtocol.TICK_UPDATE,
+            EngineProtocol.WORKSPACE_PROGRESS,
+            EngineProtocol.LABEL,
+            EngineProtocol.OUTPUT);
 
     private static final Object STDOUT_LOCK = new Object();
 
@@ -85,7 +93,7 @@ public final class JsonlShape {
         StringBuilder sb = new StringBuilder(line.length() + 24);
         sb.append(line, 0, end);
         sb.append(",\"progress\":");
-        sb.append(progress == null ? "null" : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progress));
+        sb.append(progress == null ? "null" : WorkspaceProgressTracker.progressToken(progress));
         sb.append('}');
         return sb.toString();
     }
@@ -119,7 +127,7 @@ public final class JsonlShape {
 
     /** ETA estimate event (ms wall). */
     public static String eta(long etaMs) {
-        return open("eta")
+        return open(EngineProtocol.ETA)
                 .append(",\"etaMs\":")
                 .append(Math.max(0, etaMs))
                 .append('}')
@@ -146,7 +154,7 @@ public final class JsonlShape {
     }
 
     static String planStart(BuildPlanView v) {
-        return open("buildplan-start")
+        return open(EngineProtocol.BUILDPLAN_START)
                 .append(",\"plan\":")
                 .append(js(v.planName()))
                 .append(",\"denominator\":")
@@ -158,7 +166,7 @@ public final class JsonlShape {
     }
 
     static String stepStart(String step, String group, int ticks) {
-        return open("task-start")
+        return open(EngineProtocol.TASK_START)
                 .append(",\"task\":")
                 .append(js(step))
                 .append(",\"stage\":")
@@ -170,7 +178,7 @@ public final class JsonlShape {
     }
 
     static String progress(String step, int delta, BuildPlanView v) {
-        return open("progress")
+        return open(EngineProtocol.PROGRESS)
                 .append(",\"task\":")
                 .append(js(step))
                 .append(",\"delta\":")
@@ -184,7 +192,7 @@ public final class JsonlShape {
     }
 
     static String tickUpdate(String step, int delta, BuildPlanView v) {
-        return open("tick-update")
+        return open(EngineProtocol.TICK_UPDATE)
                 .append(",\"task\":")
                 .append(js(step))
                 .append(",\"delta\":")
@@ -196,7 +204,7 @@ public final class JsonlShape {
     }
 
     static String label(String step, String label) {
-        return open("label")
+        return open(EngineProtocol.LABEL)
                 .append(",\"task\":")
                 .append(js(step))
                 .append(",\"label\":")
@@ -206,7 +214,7 @@ public final class JsonlShape {
     }
 
     static String output(String step, String line) {
-        return open("output")
+        return open(EngineProtocol.OUTPUT)
                 .append(",\"task\":")
                 .append(js(step))
                 .append(",\"line\":")
@@ -216,7 +224,7 @@ public final class JsonlShape {
     }
 
     static String warn(String step, String code, String msg) {
-        return open("warn")
+        return open(EngineProtocol.WARN)
                 .append(",\"task\":")
                 .append(js(step))
                 .append(",\"code\":")
@@ -254,7 +262,7 @@ public final class JsonlShape {
      * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
      * exceptionClass, and a single top-level stack (no nested throwable duplicate —).
      */
-    static String error(String step, String code, String msg, cc.jumpkick.run.TestFailureInfo failure) {
+    static String error(String step, String code, String msg, TestFailureInfo failure) {
         if (failure == null) return error(step, code, msg);
         String message = msg == null || msg.isEmpty() ? failure.message() : msg;
         StringBuilder sb = open("error")
@@ -289,7 +297,7 @@ public final class JsonlShape {
     }
 
     static String stepFinish(String step, String group, TaskStatus status, Duration duration) {
-        return open("task-finish")
+        return open(EngineProtocol.TASK_FINISH)
                 .append(",\"task\":")
                 .append(js(step))
                 .append(",\"stage\":")
@@ -303,7 +311,7 @@ public final class JsonlShape {
     }
 
     static String planFinish(BuildPlanResult r) {
-        return open("buildplan-finish")
+        return open(EngineProtocol.BUILDPLAN_FINISH)
                 .append(",\"plan\":")
                 .append(js(r.planName()))
                 .append(",\"success\":")
@@ -324,7 +332,7 @@ public final class JsonlShape {
      */
     public static String workspaceProgress(
             String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
-        return open("workspace-progress")
+        return open(EngineProtocol.WORKSPACE_PROGRESS)
                 .append(",\"dir\":")
                 .append(js(dir == null ? "" : dir))
                 .append(",\"numerator\":")
@@ -351,7 +359,7 @@ public final class JsonlShape {
 
     /** Workspace graph finished (all modules done or aborted on graph error). */
     public static String workspaceFinish(boolean success, long durationMs, int modules) {
-        return open("workspace-finish")
+        return open(EngineProtocol.WORKSPACE_FINISH)
                 .append(",\"success\":")
                 .append(success)
                 .append(",\"duration_ms\":")
@@ -364,7 +372,7 @@ public final class JsonlShape {
 
     /** A workspace module is about to run its plan (brackets nested step events). */
     public static String moduleStart(String dir, String coord) {
-        return open("module-start")
+        return open(EngineProtocol.MODULE_START)
                 .append(",\"dir\":")
                 .append(js(dir))
                 .append(",\"coord\":")
@@ -375,7 +383,7 @@ public final class JsonlShape {
 
     /** A workspace module finished (success or failure). */
     public static String moduleFinish(String dir, String coord, boolean success, long durationMs) {
-        return open("module-finish")
+        return open(EngineProtocol.MODULE_FINISH)
                 .append(",\"dir\":")
                 .append(js(dir))
                 .append(",\"coord\":")

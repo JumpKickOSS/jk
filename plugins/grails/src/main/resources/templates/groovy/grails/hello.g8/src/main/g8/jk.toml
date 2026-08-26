@@ -1,6 +1,7 @@
 name = "$name$"
 group = "$organization$"
 version = "0.1.0"
+java = $java$
 groovy = "latest"
 
 [application]

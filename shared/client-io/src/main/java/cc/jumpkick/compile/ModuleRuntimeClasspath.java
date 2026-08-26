@@ -9,6 +9,7 @@ import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
@@ -98,13 +99,13 @@ public final class ModuleRuntimeClasspath {
             var rootOpt = WorkspaceLocator.findRoot(moduleDir);
             if (rootOpt.isEmpty()) return List.of();
             root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+            rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
             if (!rootManifest.isWorkspaceRoot()) return List.of();
         }
         List<JkBuild> out = new ArrayList<>();
         for (String moduleName : rootManifest.workspace().modules()) {
             Path unitDir = root.resolve(moduleName);
-            Path manifest = unitDir.resolve("jk.toml");
+            Path manifest = unitDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(manifest)) continue;
             JkBuild unit;
             try {

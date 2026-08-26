@@ -3,8 +3,12 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.WhyReport;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.runtime.GraphOps;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -37,21 +41,19 @@ public final class WhyVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            cc.jumpkick.engine.protocol.WhyReport report;
+            WhyReport report;
             try {
-                report = cc.jumpkick.runtime.GraphOps.why(
-                        Path.of(Jsonl.str(requestLine, "dir")), Jsonl.str(requestLine, "query"));
+                report = GraphOps.why(Path.of(Jsonl.str(requestLine, "dir")), Jsonl.str(requestLine, "query"));
             } catch (RuntimeException e) {
-                report = cc.jumpkick.engine.protocol.WhyReport.error(cc.jumpkick.util.Errors.text(e));
+                report = WhyReport.error(Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

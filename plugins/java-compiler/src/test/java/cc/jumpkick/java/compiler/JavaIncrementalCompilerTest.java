@@ -3,6 +3,9 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -78,20 +81,18 @@ class JavaIncrementalCompilerTest {
         Path spec = dir.resolve("spec.txt");
         Files.write(
                 spec,
-                new cc.jumpkick.plugin.protocol.SpecWriter()
-                        .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                         .configInt("release", 21)
                         .layout(Map.of("classesDir", classOut, "sourceOutput", genOut))
                         .source(src.toAbsolutePath())
-                        .cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE) // resolves @gen.Gen
-                        .cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_PROCESSOR)
+                        .cp(procDir, PluginProtocol.ROLE_COMPILE) // resolves @gen.Gen
+                        .cp(procDir, PluginProtocol.ROLE_PROCESSOR)
                         .lines());
 
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         int code = JavaIncrementalCompiler.compileSpec(
-                spec,
-                new cc.jumpkick.plugin.protocol.ProtocolWriter(
-                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+                spec, new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
         String out = buf.toString(StandardCharsets.UTF_8);
 
         assertThat(code).isZero();
@@ -145,8 +146,8 @@ class JavaIncrementalCompilerTest {
         Path spec = dir.resolve("spec.txt");
         Files.write(
                 spec,
-                new cc.jumpkick.plugin.protocol.SpecWriter()
-                        .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                         .configInt("release", 25)
                         .layout(Map.of("classesDir", classOut, "sourceOutput", dir.resolve("gen"), "workdir", workdir))
                         .source(src.toAbsolutePath())
@@ -154,9 +155,7 @@ class JavaIncrementalCompilerTest {
 
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         int code = JavaIncrementalCompiler.compileSpec(
-                spec,
-                new cc.jumpkick.plugin.protocol.ProtocolWriter(
-                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+                spec, new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
         String out = buf.toString(StandardCharsets.UTF_8);
 
         assertThat(code).isZero();
@@ -166,6 +165,82 @@ class JavaIncrementalCompilerTest {
         assertThat(out).contains("Hello.java");
         assertThat(classOut.resolve("a/Hello.class")).isRegularFile();
         assertThat(workdir.resolve("zinc")).isRegularFile();
+    }
+
+    @Test
+    void a_generated_file_whose_annotation_was_removed_is_pruned(@TempDir Path dir) throws Exception {
+        // GeneratedProvenance is the only thing that can do this. Generated files are not in Zinc's
+        // source set, so WidgetGen.class is an unattributed product Zinc never prunes: without the
+        // provenance map from the previous run, dropping @gen.Gen leaves a stale class in the jar.
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+
+        Path src = dir.resolve("src/app/Widget.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package app; @gen.Gen public class Widget {}");
+
+        Path classOut = dir.resolve("classes");
+        Path genOut = dir.resolve("gen-src");
+        Path workdir = dir.resolve("zinc-work");
+
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("first compile")
+                .isZero();
+        assertThat(genOut.resolve("app/WidgetGen.java")).isRegularFile();
+        assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
+        assertThat(workdir.resolve("provenance.tsv")).isRegularFile();
+
+        // Same class, no annotation: the processor generates nothing this round.
+        Files.writeString(src, "package app; public class Widget {}");
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("second compile")
+                .isZero();
+
+        assertThat(genOut.resolve("app/WidgetGen.java")).doesNotExist();
+        assertThat(classOut.resolve("app/WidgetGen.class")).doesNotExist();
+        assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
+    }
+
+    @Test
+    void a_generated_file_is_pruned_when_the_output_root_is_reached_through_a_symlink(@TempDir Path dir)
+            throws Exception {
+        // The same prune, with one link between the build's idea of the output root and the real
+        // one. javac real-paths the URIs it hands back from Filer, so provenance holds
+        // <real>/gen-src/app/WidgetGen.java while the spec's sourceOutput says <link>/gen-src; a
+        // containment test that compares those textually is false and the class file outlives the
+        // source it was generated from. macOS gets here unaided — $TMPDIR is under the
+        // /var -> /private/var link, so the test above is already this test there — which is
+        // exactly why the link is explicit here: on every other platform that one is a green test
+        // of a path this defect never takes.
+        Path real = Files.createDirectories(dir.resolve("real"));
+        Path link = Files.createSymbolicLink(dir.resolve("link"), real);
+
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+
+        Path src = link.resolve("src/app/Widget.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package app; @gen.Gen public class Widget {}");
+
+        Path classOut = link.resolve("classes");
+        Path genOut = link.resolve("gen-src");
+        Path workdir = link.resolve("zinc-work");
+
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("first compile")
+                .isZero();
+        assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
+
+        Files.writeString(src, "package app; public class Widget {}");
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, src))
+                .as("second compile")
+                .isZero();
+
+        // Through the link and through the real path: one file, and it is gone either way.
+        assertThat(classOut.resolve("app/WidgetGen.class")).doesNotExist();
+        assertThat(real.resolve("classes/app/WidgetGen.class")).doesNotExist();
+        assertThat(genOut.resolve("app/WidgetGen.java")).doesNotExist();
+        assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
     }
 
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {
@@ -248,18 +323,15 @@ class JavaIncrementalCompilerTest {
             ByteArrayOutputStream buf,
             Path... sources)
             throws Exception {
-        var spec = new cc.jumpkick.plugin.protocol.SpecWriter()
-                .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+        var spec = new SpecWriter()
+                .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", 21)
                 .layout(Map.of("classesDir", classOut, "sourceOutput", genOut, "workdir", workdir));
         for (Path s : sources) spec = spec.source(s.toAbsolutePath());
-        spec = spec.cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE)
-                .cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_PROCESSOR);
+        spec = spec.cp(procDir, PluginProtocol.ROLE_COMPILE).cp(procDir, PluginProtocol.ROLE_PROCESSOR);
         Path specFile = Files.createTempFile(dir, "spec", ".txt");
         Files.write(specFile, spec.lines());
         return JavaIncrementalCompiler.compileSpec(
-                specFile,
-                new cc.jumpkick.plugin.protocol.ProtocolWriter(
-                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+                specFile, new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
     }
 }

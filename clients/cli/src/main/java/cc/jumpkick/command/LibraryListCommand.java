@@ -3,7 +3,10 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -51,22 +54,15 @@ public final class LibraryListCommand implements CliCommand {
 
         CatalogReadAck ack;
         try {
-            ack = cc.jumpkick.cli.engine.EngineClient.catalogRead(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    global.workingDir(),
-                    null,
-                    "list",
-                    List.of(),
-                    global.offline,
-                    false,
-                    false);
+            ack = EngineClient.catalogRead(
+                    EnginePaths.current(), global.workingDir(), null, "list", List.of(), global.offline, false, false);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
+            CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
             return 1;
         }
         for (String w : ack.warnings()) CliOutput.stderr().println(w);
         if (ack.error() != null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", ack.error());
+            CommandWedge.printFail("Library", ack.error());
             return 1;
         }
         List<CatalogReadAck.Entry> entries = ack.entries();

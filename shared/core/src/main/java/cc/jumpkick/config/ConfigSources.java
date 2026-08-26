@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ordered TOML config file layers, lowest precedence first: user-global
@@ -36,12 +37,12 @@ public final class ConfigSources {
      * file layers — env vars and CLI flags still apply. {@code explicitConfigFile} ({@code
      * --config-file}) replaces the project layer; the user-global layer still merges underneath.
      */
-    public static ConfigSources discover(Path startDir, boolean noConfig, Optional<Path> explicitConfigFile) {
+    public static ConfigSources discover(Path startDir, boolean noConfig, @Nullable Path explicitConfigFile) {
         if (noConfig) return new ConfigSources(List.of());
         List<Path> out = new ArrayList<>(2);
         out.add(JkDirs.userConfigFile());
-        if (explicitConfigFile.isPresent()) {
-            out.add(explicitConfigFile.get());
+        if (explicitConfigFile != null) {
+            out.add(explicitConfigFile);
         } else {
             Path project = findProjectConfig(startDir);
             if (project != null) out.add(project);
@@ -61,7 +62,7 @@ public final class ConfigSources {
     public static Path findProjectConfig(Path startDir) {
         Path here = startDir == null ? null : startDir.toAbsolutePath().normalize();
         while (here != null) {
-            Path candidate = here.resolve("jk.toml");
+            Path candidate = here.resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(candidate)) return candidate;
             here = here.getParent();
         }

@@ -64,7 +64,7 @@ class WorkspaceMergeTest {
     void workspace_dep_resolves_against_workspace_dependencies_when_no_sibling() {
         Workspace.WorkspaceDependency wsDep = new Workspace.WorkspaceDependency(
                 "org.junit.jupiter", "junit-jupiter", VersionSelector.parse("6.1.0"), null);
-        JkBuild root = JkBuild.builder(new JkBuild.Project("cc.jumpkick", "jk", "0.1.0", 0))
+        JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "jk", "0.1.0", 0))
                 .workspace(new Workspace(List.of("core"), Map.of("junit-jupiter", wsDep)))
                 .build();
 
@@ -160,7 +160,7 @@ class WorkspaceMergeTest {
                                         Map.of(Scope.MAIN, List.of(dep("prod-only", "com.foo:prod-only", "1.0"))),
                                         Map.of())))));
         JkBuild root = workspaceRoot("jk", List.of("app", "network"));
-        JkBuild network = JkBuild.builder(new JkBuild.Project("cc.jumpkick", "network", "0.1.0", 0))
+        JkBuild network = JkBuild.builder(new Project("cc.jumpkick", "network", "0.1.0", 0))
                 .variants(variants)
                 .build();
         JkBuild app = newProject("app", Map.of(Scope.MAIN, List.of(workspacePlaceholder("network"))));
@@ -189,11 +189,11 @@ class WorkspaceMergeTest {
     private static JkBuild newProject(String artifact, Map<Scope, List<Dependency>> depsByScope) {
         EnumMap<Scope, List<Dependency>> by = new EnumMap<>(Scope.class);
         depsByScope.forEach(by::put);
-        return new JkBuild(new JkBuild.Project("cc.jumpkick", artifact, "0.1.0", 0), new JkBuild.Dependencies(by));
+        return new JkBuild(new Project("cc.jumpkick", artifact, "0.1.0", 0), new JkBuild.Dependencies(by));
     }
 
     private static JkBuild workspaceRoot(String artifact, List<String> modules) {
-        return JkBuild.builder(new JkBuild.Project("cc.jumpkick", artifact, "0.1.0", 0))
+        return JkBuild.builder(new Project("cc.jumpkick", artifact, "0.1.0", 0))
                 .workspace(new Workspace(modules))
                 .build();
     }

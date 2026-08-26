@@ -31,6 +31,11 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
 
     private static final String AOT_PROCESSOR = "org.springframework.boot.SpringApplicationAotProcessor";
 
+    /** The engine-fetched jarmode tools artifact, and the group it belongs to. */
+    private static final String TOOLS_EXTRA = "spring-boot-jarmode-tools";
+
+    private static final String BOOT_GROUP = "org.springframework.boot";
+
     @Override
     public PluginManifest manifest() {
         return new PluginManifest("jk-spring-boot", "##JKSB:");
@@ -126,25 +131,19 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
 
     // ---- boot-jar packager ------------------------------------------------------------------
 
-    private static void produceBootJar(PackageIo io) throws Exception {
+    static void produceBootJar(PackageIo io) throws Exception {
         PluginConfig boot = io.config();
-        String bootVersion = boot.string("version");
-        String startClass = io.project().mainClass();
-        if (startClass == null || startClass.isBlank()) {
-            throw new IOException("no application main class — the boot jar needs a Start-Class");
-        }
-        Path loaderJar = io.extra("spring-boot-loader")
-                .orElseThrow(() -> new IOException("spring-boot-loader artifact missing from the packager inputs"));
-
-        List<BootJarPackager.Lib> libs = new ArrayList<>();
-        for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
-            libs.add(new BootJarPackager.Lib(entry.fileName(), entry.jar(), entry.snapshot()));
-        }
+        BootJarInputs inputs = BootJarInputs.read(io);
+        List<BootJarPackager.Lib> libs = new ArrayList<>(inputs.libs());
         if (boot.bool("include-tools", true)) {
-            Path tools = io.extra("spring-boot-jarmode-tools")
-                    .orElseThrow(() -> new IOException("spring-boot-jarmode-tools artifact missing from the packager"
-                            + " inputs (include-tools is on)"));
-            libs.add(new BootJarPackager.Lib("spring-boot-jarmode-tools-" + bootVersion + ".jar", tools, false));
+            Path tools = io.extra(TOOLS_EXTRA)
+                    .orElseThrow(() -> new IOException(
+                            TOOLS_EXTRA + " artifact missing from the packager inputs (include-tools is on)"));
+            // Unversioned deliberately. The tools jar is fetched against its own `^` selector, so
+            // its version need not equal the closure's Boot version — stamping either one into the
+            // entry name would be a claim about bytes nobody checked. Nothing reads this name;
+            // `-Djarmode=tools` finds the jar by its classes.
+            libs.add(new BootJarPackager.Lib(TOOLS_EXTRA + ".jar", tools, false, BOOT_GROUP));
         }
 
         // Build-info (opt-in): the coordinates BuildProperties surfaces via /actuator/info.
@@ -195,10 +194,10 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                 .packageBootJar(new BootJarPackager.BootJarRequest(
                         io.classesDir(),
                         libs,
-                        loaderJar,
+                        inputs.loaderJar(),
                         io.artifactPath(),
-                        startClass,
-                        bootVersion,
+                        inputs.startClass(),
+                        inputs.bootVersion(),
                         attributes,
                         buildInfo,
                         sbom,

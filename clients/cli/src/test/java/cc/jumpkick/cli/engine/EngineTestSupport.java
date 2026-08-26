@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -56,7 +57,7 @@ public final class EngineTestSupport {
                 // The old presence-check skipped the refresh, so a persistent test JK_HOME
                 // kept serving a STALE engine across rebuilds (every
                 // :cli:integrationTest run tonight resolved with last week's resolver).
-                String wantSha = cc.jumpkick.util.Hashing.sha256Hex(engineJar);
+                String wantSha = Hashing.sha256Hex(engineJar);
                 boolean bitsChanged = !install.engineSha(JkVersion.VERSION)
                         .map(wantSha::equals)
                         .orElse(false);

@@ -2,18 +2,37 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PlannerNative.groovySources;
+import static cc.jumpkick.runtime.PlannerNative.javaSources;
+import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
+import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
+import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
+import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
+import static cc.jumpkick.runtime.PlannerSupport.copyResources;
+import static cc.jumpkick.runtime.PlannerSupport.existingContributedDirs;
+import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
+import static cc.jumpkick.runtime.PlannerSupport.mainStampClasspath;
+import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
+import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
+import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.FreshnessStamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -78,7 +97,7 @@ public final class PlannerPackage {
                     List<Path> contributed = new ArrayList<>(existingContributedDirs(pluginDecls, layout));
                     contributed.addAll(PlannerSupport.workerCodecClassDirs(in.dir(), project));
                     Files.createDirectories(jarPath.getParent());
-                    String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(in.dir(), project);
+                    String mainClass = PluginModule.mainClass(in.dir(), project);
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
                     // their consumers' lockfiles are the truth for the final classpath).
                     byte[] sbom = null;
@@ -91,14 +110,13 @@ public final class PlannerPackage {
                     // them, the main-class, the manifest, and the SBOM content (a lock change
                     // re-embeds).
                     List<String> tokens = List.of(
-                            "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
+                            "classes:" + ClasspathFingerprint.entry(classes),
                             "contrib:" + contributionsToken(contributed),
                             "main:" + (mainClass == null ? "" : mainClass),
-                            "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
+                            "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
                             "manifest:" + project.manifest());
                     String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
-                    String pkgKey =
-                            ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
+                    String pkgKey = ActionKey.forArtifact(pkgTask, BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
                         ctx.put(JAR_PATH, jarPath);
                         writeSidecarPom(project, layout, jarPath);
@@ -224,10 +242,10 @@ public final class PlannerPackage {
                             cx.mixedGroovy() ? groovyCompileJar(ctx, cx.cas()) : null));
                     stampInputs.addAll(PlannerSupport.scalaStampLibs(ctx, in.dir(), compact, cas));
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
-                    cc.jumpkick.task.FreshnessStamp.write(
+                    FreshnessStamp.write(
                             javaOut,
-                            cc.jumpkick.task.FreshnessStamp.JAVA_STAMP,
-                            "compile-main",
+                            BuildStamps.JAVA,
+                            TaskNames.COMPILE_MAIN,
                             actionKey,
                             sources,
                             stampInputs,
@@ -269,9 +287,9 @@ public final class PlannerPackage {
                     List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
                     List<Path> freshInputs = new ArrayList<>(kotlinSources(ctx));
                     if (mixedWithJava) freshInputs.addAll(javaSources(ctx));
-                    cc.jumpkick.task.FreshnessStamp.write(
+                    FreshnessStamp.write(
                             classes,
-                            cc.jumpkick.task.FreshnessStamp.KOTLIN_STAMP,
+                            BuildStamps.KOTLIN,
                             TaskNames.COMPILE_KOTLIN,
                             "",
                             freshInputs,
@@ -305,9 +323,9 @@ public final class PlannerPackage {
                     List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
                     List<Path> freshInputs = new ArrayList<>(groovySources(ctx));
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
-                    cc.jumpkick.task.FreshnessStamp.write(
+                    FreshnessStamp.write(
                             classes,
-                            cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
+                            BuildStamps.GROOVY,
                             TaskNames.COMPILE_GROOVY,
                             "",
                             freshInputs,

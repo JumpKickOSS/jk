@@ -19,7 +19,7 @@ val bundledCodec by configurations.creating {
 dependencies {
     compileOnly(project(":plugin-sdk"))
     bundledCodec(project(":plugin-sdk"))
-    bundledCodec(project(":jsonl"))
+    bundledCodec(project(":host"))
     implementation(libs.zinc)
     testImplementation(project(":plugin-sdk"))
     // Mixed compile tests load a real Scala 3 compiler; the worker's production -cp stays Zinc-only.

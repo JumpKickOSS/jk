@@ -44,7 +44,14 @@ intellijPlatform {
         )
         ideaVersion {
             sinceBuild.set("241")
-            untilBuild.set("252.*")
+            // No upper bound (`provider { null }` is the documented way to unset until-build).
+            // A pinned untilBuild expires on JetBrains' release cadence, not ours: "252.*" says
+            // "build 252 or older", and IDEA Community 2025.3 is build 253 (shipped 2025-12-08,
+            // and the newest release the JetBrains releases API lists) — so the plugin refused to
+            // install on every IDEA a user can download. This plugin is wire-only: it shells out
+            // to the `jk` binary and never touches an internal platform API, so there is no
+            // version it can silently outgrow. G22 keeps the bound off.
+            untilBuild = provider { null }
         }
     }
 }
@@ -56,8 +63,10 @@ tasks {
     withType<JavaCompile>().configureEach {
         options.release.set(17)
     }
-    // Packaging guard: plugin must not ship engine/server jars (JK-1511).
-    test {
+    // Packaging guard: plugin must not ship engine/server jars (JK-1511). On `buildPlugin`, not
+    // `test`: `scripts/package-intellij.sh` runs `buildPlugin` and nothing else, so hanging the
+    // scan off `test` meant it had never run against a distribution it was written to inspect.
+    buildPlugin {
         doLast {
             val distJar = layout.buildDirectory.file("libs/jumpkick-intellij-${project.version}.jar")
             // Also scan composed plugin lib if present after buildPlugin.

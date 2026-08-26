@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
-import java.util.ArrayList;
+import cc.jumpkick.runtime.progress.ProgressBarMode;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Client → server request builders for artifact-producing verbs. Session attachment
- * ({@link ProtoSession#withSession}) is separate; this file is the request bodies
- * (scoreboard 800–1,200).
+ * ({@link ProtoSession#withSession}) is separate; this file is the request bodies (scoreboard 800–1,200).
  */
 public final class ProtoJobs {
 
     private ProtoJobs() {}
+
+    /**
+     * The wire field carrying {@code --jdks-dir}. Written by seven request builders here and in
+     * {@link ProtoReads}, read by nine engine verbs; before it had a name, sixteen sites typed
+     * {@code "jdksDir"} by hand and a client that shipped a typo would simply have had its JDK
+     * override ignored, silently, on a resident engine that answered normally. CLI-side the same
+     * option is {@code cc.jumpkick.cli.CommonOpts.JDKS_DIR} — a different vocabulary (a flag name,
+     * not a JSON field), so each owns its own spelling.
+     */
+    public static final String JDKS_DIR = "jdksDir";
 
     public static String buildRequest(
             String dir,
@@ -143,7 +154,7 @@ public final class ProtoJobs {
             boolean ephemeralActions,
             boolean testOnly,
             List<String> dirtyHint,
-            cc.jumpkick.config.TestSelection selection) {
+            TestSelection selection) {
         return buildRequest(
                 dir,
                 cache,
@@ -184,7 +195,7 @@ public final class ProtoJobs {
             boolean ephemeralActions,
             boolean testOnly,
             List<String> dirtyHint,
-            cc.jumpkick.config.TestSelection selection,
+            TestSelection selection,
             List<String> modules) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
@@ -194,7 +205,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"workers\":"
                 + workers
@@ -217,9 +228,7 @@ public final class ProtoJobs {
                 + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
                 + (testOnly ? ",\"testOnly\":true" : "")
                 + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + jsonStringArray(dirtyHint) : "")
-                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
-                        ? testSelectionFields(selection)
-                        : "")
+                + (selection != null && !selection.equals(TestSelection.DEFAULT) ? testSelectionFields(selection) : "")
                 + (modules != null && !modules.isEmpty() ? ",\"modules\":" + jsonStringArray(modules) : "")
                 + triggerJsonSuffix()
                 + progressModeJsonSuffix()
@@ -232,16 +241,16 @@ public final class ProtoJobs {
      * Emitted only when non-AUTO so older engines see an unchanged request.
      */
     static String progressModeJsonSuffix() {
-        var mode = cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
-        if (mode == cc.jumpkick.runtime.progress.ProgressBarMode.AUTO) return "";
+        var mode = ProgressBarMode.fromEnvironment();
+        if (mode == ProgressBarMode.AUTO) return "";
         return ",\"progressMode\":" + Jsonl.quote(mode.wireName());
     }
 
     /** Per-request progress mode; engine-env fallback when the client sent none. */
-    public static cc.jumpkick.runtime.progress.ProgressBarMode progressModeOf(String json) {
+    public static ProgressBarMode progressModeOf(String json) {
         String raw = Jsonl.str(json, "progressMode");
-        if (raw == null || raw.isBlank()) return cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
-        return cc.jumpkick.runtime.progress.ProgressBarMode.parse(raw);
+        if (raw == null || raw.isBlank()) return ProgressBarMode.fromEnvironment();
+        return ProgressBarMode.parse(raw);
     }
 
     /**
@@ -315,7 +324,7 @@ public final class ProtoJobs {
             boolean offline,
             boolean force,
             boolean parallelTests,
-            cc.jumpkick.config.TestSelection selection) {
+            TestSelection selection) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"type\":\""
                 + EngineProtocol.TEST_REQUEST
@@ -323,7 +332,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"workers\":"
                 + workers
@@ -344,8 +353,8 @@ public final class ProtoJobs {
     }
 
     /** Encode suite/tag fields for {@link EngineProtocol#TEST_REQUEST} (and siblings that carry the same shape). */
-    public static String testSelectionFields(cc.jumpkick.config.TestSelection selection) {
-        cc.jumpkick.config.TestSelection s = selection == null ? cc.jumpkick.config.TestSelection.DEFAULT : selection;
+    public static String testSelectionFields(TestSelection selection) {
+        TestSelection s = selection == null ? TestSelection.DEFAULT : selection;
         StringBuilder sb = new StringBuilder();
         sb.append(",\"allSuites\":").append(s.allSuites());
         sb.append(",\"suites\":").append(jsonStringArray(s.suites()));
@@ -356,13 +365,13 @@ public final class ProtoJobs {
     }
 
     /** Parse suite/tag selection from a test/build request line. */
-    public static cc.jumpkick.config.TestSelection testSelectionOf(String json) {
+    public static TestSelection testSelectionOf(String json) {
         boolean all = Jsonl.bool(json, "allSuites", false);
         List<String> suites = stringArrayField(json, "suites");
         List<String> include = stringArrayField(json, "includeTags");
         List<String> exclude = stringArrayField(json, "excludeTags");
         boolean tagsResolved = Jsonl.bool(json, "tagsResolved", false);
-        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude, tagsResolved);
+        return TestSelection.of(suites, all, include, exclude, tagsResolved);
     }
 
     private static String jsonStringArray(List<String> values) {
@@ -370,41 +379,17 @@ public final class ProtoJobs {
     }
 
     /** Best-effort parse of a JSON string array field (flat list of quoted strings). */
+    /**
+     * Delegates to {@link Jsonl#strArray} — the one string-array reader.
+     *
+     * <p>This used to be a private copy whose closing bracket was {@code json.indexOf(']')}, i.e.
+     * the first {@code ]} in the document rather than the first one outside a quoted element. Any
+     * value containing {@code ]} truncated the array, so an {@code excludeTags} entry like
+     * {@code "[slow]"} decoded to garbage and the tag stopped matching — excluded tests ran.
+     * {@code Jsonl.strArray} already documents and handles that case.
+     */
     private static List<String> stringArrayField(String json, String key) {
-        if (json == null) return List.of();
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return List.of();
-        start += needle.length();
-        while (start < json.length() && json.charAt(start) == ' ') start++;
-        if (start >= json.length() || json.charAt(start) != '[') return List.of();
-        int end = json.indexOf(']', start);
-        if (end < 0) return List.of();
-        String body = json.substring(start + 1, end).trim();
-        if (body.isEmpty()) return List.of();
-        List<String> out = new ArrayList<>();
-        int i = 0;
-        while (i < body.length()) {
-            while (i < body.length() && (body.charAt(i) == ' ' || body.charAt(i) == ',')) i++;
-            if (i >= body.length()) break;
-            if (body.charAt(i) != '"') break;
-            int j = i + 1;
-            StringBuilder s = new StringBuilder();
-            while (j < body.length()) {
-                char c = body.charAt(j);
-                if (c == '\\' && j + 1 < body.length()) {
-                    s.append(body.charAt(j + 1));
-                    j += 2;
-                    continue;
-                }
-                if (c == '"') break;
-                s.append(c);
-                j++;
-            }
-            out.add(s.toString());
-            i = j + 1;
-        }
-        return List.copyOf(out);
+        return Jsonl.strArray(json, key);
     }
 
     /** Start a single-project build (see {@link EngineProtocol#SINGLE_BUILD_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */
@@ -435,7 +420,7 @@ public final class ProtoJobs {
             boolean verbose,
             boolean offline,
             boolean force,
-            cc.jumpkick.config.TestSelection selection) {
+            TestSelection selection) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"type\":\""
                 + EngineProtocol.SINGLE_BUILD_REQUEST
@@ -443,7 +428,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"workers\":"
                 + workers
@@ -457,9 +442,7 @@ public final class ProtoJobs {
                 + offline
                 + ",\"force\":"
                 + force
-                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
-                        ? testSelectionFields(selection)
-                        : "")
+                + (selection != null && !selection.equals(TestSelection.DEFAULT) ? testSelectionFields(selection) : "")
                 + "}";
     }
 
@@ -596,7 +579,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"repoUrl\":"
                 + Jsonl.quote(repoUrl)
@@ -617,10 +600,12 @@ public final class ProtoJobs {
      * Scan the lockfile against OSV (see {@link EngineProtocol#AUDIT_REQUEST}). {@code severity} is the client's
      * threshold, carried only for the evaluate step's label (the client applies the threshold
      * itself); {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides and may be
-     * {@code null}.
+     * {@code null}. {@code offline} reconstructs the session config engine-side, as on {@link
+     * #buildRequest} — the audit worker queries OSV over the network and must refuse rather than
+     * do it behind an offline run's back.
      */
     public static String auditRequest(
-            String dir, String cache, String severity, String osvBatchUrl, String osvVulnsUrl) {
+            String dir, String cache, String severity, String osvBatchUrl, String osvVulnsUrl, boolean offline) {
         return "{\"type\":\""
                 + EngineProtocol.AUDIT_REQUEST
                 + "\",\"dir\":"
@@ -633,13 +618,14 @@ public final class ProtoJobs {
                 + Jsonl.quote(osvBatchUrl)
                 + ",\"osvVulnsUrl\":"
                 + Jsonl.quote(osvVulnsUrl)
+                + ",\"offline\":"
+                + offline
                 + "}";
     }
 
     /**
      * Format sources (see {@link EngineProtocol#FORMAT_REQUEST}). Style names and hygiene toggles arrive already
-     * resolved (flags + env + the {@code [format]} block are client-side concerns); {@code
-     * rewriteConfig} may be {@code null}.
+     * resolved (flags + env + the {@code [format]} block are client-side concerns).
      */
     public static String formatRequest(
             String dir,
@@ -650,7 +636,6 @@ public final class ProtoJobs {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
-            String rewriteConfig,
             boolean offline,
             boolean verbose) {
         return "{\"type\":\""
@@ -671,8 +656,6 @@ public final class ProtoJobs {
                 + importOrder
                 + ",\"removeUnusedImports\":"
                 + removeUnusedImports
-                + ",\"rewriteConfig\":"
-                + Jsonl.quote(rewriteConfig)
                 + ",\"offline\":"
                 + offline
                 + ",\"verbose\":"
@@ -684,6 +667,8 @@ public final class ProtoJobs {
      * Publish artifacts (see {@link EngineProtocol#PUBLISH_REQUEST}). The credential fields ({@code authType} =
      * {@code basic}/{@code bearer}/{@code anonymous} + {@code user}/{@code pass}/{@code token}) and
      * {@code gpgPassphrase} were resolved client-side; nullable string fields may be {@code null}.
+     * {@code offline} reconstructs the session config engine-side, as on {@link #buildRequest} — a
+     * publish uploads to someone else's server, so an offline run refuses instead of PUTting.
      */
     public static String publishRequest(
             String dir,
@@ -703,6 +688,7 @@ public final class ProtoJobs {
             String user,
             String pass,
             String token,
+            boolean offline,
             boolean verbose) {
         return "{\"type\":\""
                 + EngineProtocol.PUBLISH_REQUEST
@@ -740,6 +726,8 @@ public final class ProtoJobs {
                 + Jsonl.quote(pass)
                 + ",\"token\":"
                 + Jsonl.quote(token)
+                + ",\"offline\":"
+                + offline
                 + ",\"verbose\":"
                 + verbose
                 + "}";
@@ -771,7 +759,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"mainClass\":"
                 + Jsonl.quote(mainClass)
@@ -824,13 +812,10 @@ public final class ProtoJobs {
      * Provision a Maven/Gradle distribution (see {@link EngineProtocol#PROVISION_REQUEST}). Project directory
      * field is {@code dir} — same spelling as every other hosted request.
      */
-    public static String provisionRequest(
-            String cache, String dir, String toolsRoot, boolean noDiscover, boolean gradle) {
+    public static String provisionRequest(String dir, String toolsRoot, boolean noDiscover, boolean gradle) {
         return "{\"type\":\""
                 + EngineProtocol.PROVISION_REQUEST
-                + "\",\"cache\":"
-                + Jsonl.quote(cache)
-                + ",\"dir\":"
+                + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"toolsRoot\":"
                 + Jsonl.quote(toolsRoot)
@@ -903,7 +888,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"graalHome\":"
                 + Jsonl.quote(graalHome)
@@ -937,7 +922,7 @@ public final class ProtoJobs {
             boolean force,
             boolean verbose,
             List<String> extraArgs,
-            java.util.Map<String, String> graalHomes) {
+            Map<String, String> graalHomes) {
         return nativeRequest(
                 dir, cache, jdksDir, mainClass, skipTests, offline, force, verbose, extraArgs, graalHomes, List.of());
     }
@@ -957,7 +942,7 @@ public final class ProtoJobs {
             boolean force,
             boolean verbose,
             List<String> extraArgs,
-            java.util.Map<String, String> graalHomes,
+            Map<String, String> graalHomes,
             List<String> moduleDirs) {
         return "{\"type\":\""
                 + EngineProtocol.NATIVE_REQUEST
@@ -965,7 +950,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"mainClass\":"
                 + Jsonl.quote(mainClass)

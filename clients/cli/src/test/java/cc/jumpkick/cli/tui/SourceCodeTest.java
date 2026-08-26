@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.theme.Theme;
 import org.junit.jupiter.api.Test;
 
 class SourceCodeTest {
@@ -25,7 +26,7 @@ class SourceCodeTest {
 
     @Test
     void ansi_highlights_keywords_when_color_is_on() {
-        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
+        if (!Theme.active().isAnsi()) return;
         String painted =
                 SourceCode.java("class Foo {}").render(RenderContext.current()).getFirst();
         assertThat(painted).contains("class").contains("\u001B[");

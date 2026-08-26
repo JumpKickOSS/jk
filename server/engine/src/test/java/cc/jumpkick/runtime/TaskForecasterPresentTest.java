@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,7 +47,7 @@ class TaskForecasterPresentTest {
         Path jar = tmp.resolve("out/app.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "payload-bytes");
-        String sha = cc.jumpkick.util.Hashing.sha256Hex(Files.readAllBytes(jar));
+        String sha = Hashing.sha256Hex(Files.readAllBytes(jar));
         cas.put(Files.readAllBytes(jar), sha);
         ac.storeWithOutputs("package-jar@x", key, Map.of(), Map.of("app.jar", sha));
         assertThat(TaskForecaster.present(ac, key)).isTrue();

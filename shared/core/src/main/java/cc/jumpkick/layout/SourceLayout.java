@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
+import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Resolves Mill-like vs Maven source roots. {@link JkBuild.Layout#AUTO} (the default) probes the
+ * Resolves Mill-like vs Maven source roots. {@link Layout#AUTO} (the default) probes the
  * tree; {@code simple} / {@code traditional} in {@code jk.toml} override when the tree is
  * ambiguous.
  */
@@ -20,7 +21,7 @@ public final class SourceLayout {
 
     /**
      * True for the Mill-like tree when {@code layout} is AUTO and no Maven marker dirs exist.
-     * Prefer {@link #isSimpleLayout(JkBuild.Project, Path)} when a parsed project is available.
+     * Prefer {@link #isSimpleLayout(Project, Path)} when a parsed project is available.
      */
     public static boolean isSimpleLayout(Path projectDir) {
         return !looksTraditional(projectDir);
@@ -30,7 +31,7 @@ public final class SourceLayout {
      * True for simple Mill-like layout ({@code src/} + {@code test/src/}): always for SIMPLE, never
      * for TRADITIONAL, AUTO when no traditional Maven markers are present.
      */
-    public static boolean isSimpleLayout(JkBuild.Project project, Path projectDir) {
+    public static boolean isSimpleLayout(Project project, Path projectDir) {
         return switch (project.layout()) {
             case SIMPLE -> true;
             case TRADITIONAL -> false;

@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -74,7 +75,7 @@ class IdeCommandTest {
         } finally {
             System.setOut(prev);
         }
-        String visible = cc.jumpkick.cli.TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(visible).contains("IDE");
         assertThat(visible).contains("The widget project is ready");
         // One command chip — not a Sync / IDEA / Code / BSP stack.

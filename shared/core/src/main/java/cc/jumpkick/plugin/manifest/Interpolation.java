@@ -2,8 +2,9 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.Project;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -50,9 +51,8 @@ final class Interpolation {
 
     /** Host OS classifier: {@code linux} / {@code osx} / {@code windows}. */
     static String hostOs() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("mac") || os.contains("darwin")) return "osx";
-        if (os.contains("win")) return "windows";
+        if (Os.isDarwin()) return "osx";
+        if (Os.isWindows()) return "windows";
         return "linux";
     }
 
@@ -74,7 +74,7 @@ final class Interpolation {
      * Resolve a validated template. Null {@code kotlinVersion} makes {@code ${kotlin.version}} an
      * evaluation error.
      */
-    static String resolve(String template, PluginConfig config, JkBuild.Project project, String kotlinVersion) {
+    static String resolve(String template, PluginConfig config, Project project, String kotlinVersion) {
         Matcher m = VAR.matcher(template);
         StringBuilder out = new StringBuilder();
         while (m.find()) {

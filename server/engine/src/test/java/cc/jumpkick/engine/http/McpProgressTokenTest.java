@@ -48,7 +48,10 @@ class McpProgressTokenTest {
                 dir -> Map.of(),
                 List::of,
                 "0.12.0",
-                tokens);
+                tokens,
+                List::of,
+                AdmissionYield.NONE,
+                null);
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
                 + "\"_meta\":{\"progressToken\":5}}}");

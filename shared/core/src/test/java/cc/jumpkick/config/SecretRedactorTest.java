@@ -6,30 +6,40 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code.env}-sourced values are secret by source, not by name. The redactor masks them
- * in free-form text and hashes them for cache keys.
+ * A name a {@code.env} declares is a secret name, and its effective value is secret whichever
+ * layer supplied it. The redactor masks those values in free-form text and hashes them for cache
+ * keys. Names no {@code.env} mentions are left alone — nothing can enumerate the host
+ * environment, and guessing by name is the heuristic this class exists to avoid.
  */
 class SecretRedactorTest {
 
     @Test
-    void redacts_file_sourced_values_and_leaves_real_env_alone(@TempDir Path tmp) throws Exception {
+    void redacts_declared_names_and_leaves_undeclared_env_alone(@TempDir Path tmp) throws Exception {
         Path module = tmp.resolve("m");
         Files.createDirectories(module);
-        Files.writeString(module.resolve(".env"), "TOKEN=s3cret-from-file\nMODE=file\n");
-        EnvLookup env = EnvLookup.forModule(module, name -> "MODE".equals(name) ? "from-shell" : null);
+        Files.writeString(module.resolve(".env"), "TOKEN=s3cret-from-file\nMODE=file-value\n");
+        EnvLookup env = EnvLookup.forModule(
+                module, name -> Map.of("MODE", "from-shell", "PATH", "/usr/bin").get(name));
 
         SecretRedactor r = SecretRedactor.from(env);
 
-        // TOKEN is file-sourced → secret.
+        // TOKEN is declared and unshadowed → secret.
         assertThat(r.redact("Authorization: Bearer s3cret-from-file"))
                 .isEqualTo("Authorization: Bearer " + SecretRedactor.MASK);
-        // MODE is shadowed by the real env → not a secret (even though.env also names it).
-        assertThat(r.redact("mode=from-shell")).isEqualTo("mode=from-shell");
-        assertThat(r.redact("mode=file")).isEqualTo("mode=file");
+        // MODE is declared and shadowed. Its EFFECTIVE value is the shell's, and that is the one
+        // that reaches output — so that is the one masked. This used to be the other way round,
+        // which meant a `.env`-declared token overridden by CI (the normal shape) was the single
+        // value the redactor never touched.
+        assertThat(r.redact("mode=from-shell")).isEqualTo("mode=" + SecretRedactor.MASK);
+        // The losing file value is not masked: nothing resolves to it, so nothing prints it.
+        assertThat(r.redact("mode=file-value")).isEqualTo("mode=file-value");
+        // PATH is real-environment only. No `.env` names it, so it is not a secret.
+        assertThat(r.redact("PATH=/usr/bin")).isEqualTo("PATH=/usr/bin");
     }
 
     @Test
@@ -123,6 +133,69 @@ class SecretRedactorTest {
         Files.writeString(module.resolve(".env"), "A=aaaaaa-token\nB=bbbbbb-token\n");
         EnvLookup env = EnvLookup.forModule(module, name -> "B".equals(name) ? "from-shell" : null);
         assertThat(SecretRedactor.from(env).containsSecret("aaaaaa-token")).isTrue();
-        assertThat(SecretRedactor.from(env).containsSecret("bbbbbb-token")).isFalse();
+        assertThat(SecretRedactor.from(env).containsSecret("bbbbbb-token"))
+                .as("the file value B lost the precedence race, so it never reaches output")
+                .isFalse();
+    }
+
+    /**
+     * A shadowed name is still a secret name. {@code.env} supplies the default and CI exports the
+     * real one, so the value that actually reaches the wire is the environment's — and under the
+     * old {@code isFromFile} rule that was the one value never masked. The degenerate case is
+     * worse: the same literal token in both places went unmasked purely because the shell also
+     * exported it.
+     */
+    @Test
+    void a_shadowed_env_name_still_names_a_secret(@TempDir Path tmp) throws Exception {
+        Path module = tmp.resolve("m");
+        Files.createDirectories(module);
+        Files.writeString(module.resolve(".env"), "NEXUS_TOKEN=dev-default-token\nNODE_ENV=development\n");
+        EnvLookup env = EnvLookup.forModule(module, name -> "NEXUS_TOKEN".equals(name) ? "ci-real-token-9f3a" : null);
+
+        assertThat(env.isFromFile("NEXUS_TOKEN"))
+                .as("precedence: the real environment won")
+                .isFalse();
+
+        SecretRedactor r = SecretRedactor.from(env);
+        assertThat(r.redact("GET https://nexus/ failed: Bearer ci-real-token-9f3a rejected"))
+                .isEqualTo("GET https://nexus/ failed: Bearer *** rejected");
+        assertThat(r.forCacheKey("ci-real-token-9f3a")).startsWith(SecretRedactor.KEY_PREFIX);
+        assertThat(r.containsSecret("development"))
+                .as("an unshadowed name is admitted exactly as before")
+                .isTrue();
+    }
+
+    /** The same string in both layers: the reason precedence cannot be the secrecy predicate. */
+    @Test
+    void the_same_token_in_both_layers_is_masked(@TempDir Path tmp) throws Exception {
+        Path module = tmp.resolve("m");
+        Files.createDirectories(module);
+        Files.writeString(module.resolve(".env"), "GITHUB_TOKEN=ghp_same-token-both\n");
+        EnvLookup env = EnvLookup.forModule(module, name -> "GITHUB_TOKEN".equals(name) ? "ghp_same-token-both" : null);
+
+        assertThat(SecretRedactor.from(env).redact("auth: ghp_same-token-both")).isEqualTo("auth: ***");
+    }
+
+    /**
+     * A secret from a source no {@code .env} declares joins by composition, not by widening the
+     * declaration rule: the caller holds the value and says so, and the {@code .env} half of the
+     * redactor is unchanged by its arrival.
+     */
+    @Test
+    void and_folds_in_a_told_secret_without_touching_the_declared_ones(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve(".env"), "DECLARED=declared-secret-value\n");
+        SecretRedactor declared = SecretRedactor.from(EnvLookup.forModule(tmp, name -> null));
+
+        SecretRedactor both = declared.and(List.of("resolved-credential-value"));
+
+        assertThat(both.redact("a=declared-secret-value b=resolved-credential-value"))
+                .isEqualTo("a=" + SecretRedactor.MASK + " b=" + SecretRedactor.MASK);
+        assertThat(declared.redact("b=resolved-credential-value"))
+                .as("the original is immutable — composition returns a new redactor")
+                .isEqualTo("b=resolved-credential-value");
+        assertThat(declared.and(List.of())).isSameAs(declared);
+        assertThat(declared.and(List.of("declared-secret-value")))
+                .as("nothing new to say")
+                .isSameAs(declared);
     }
 }

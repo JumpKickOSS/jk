@@ -1,11 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -15,7 +26,6 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,15 +60,24 @@ public final class PreflightMemo {
     private PreflightMemo() {}
 
     public static Path memoFile(Path entryDir) {
-        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(DIRTY_FILE);
+        return entryDir.resolve(BuildLayout.TARGET)
+                .resolve(".jk")
+                .resolve("preflight")
+                .resolve(DIRTY_FILE);
     }
 
     public static Path graphMemoFile(Path entryDir) {
-        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(GRAPH_FILE);
+        return entryDir.resolve(BuildLayout.TARGET)
+                .resolve(".jk")
+                .resolve("preflight")
+                .resolve(GRAPH_FILE);
     }
 
     public static Path shapeMemoFile(Path entryDir) {
-        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(SHAPE_FILE);
+        return entryDir.resolve(BuildLayout.TARGET)
+                .resolve(".jk")
+                .resolve("preflight")
+                .resolve(SHAPE_FILE);
     }
 
     /**
@@ -71,7 +90,7 @@ public final class PreflightMemo {
 
     static Path durablePreflightDir(Path entryDir) {
         String key = workspaceKey(entryDir);
-        return cc.jumpkick.util.JkDirs.cache().resolve("projects").resolve(key).resolve("preflight");
+        return CacheTree.PROJECTS.under(JkDirs.cache()).resolve(key).resolve("preflight");
     }
 
     static String workspaceKey(Path entryDir) {
@@ -238,7 +257,7 @@ public final class PreflightMemo {
      * durable copy is authoritative; the in-tree copy is inspection-only.
      */
     private static void writeInTree(Path file, Path entryDir, String body) throws IOException {
-        if (!Files.isDirectory(entryDir.resolve("target"))) return;
+        if (!Files.isDirectory(entryDir.resolve(BuildLayout.TARGET))) return;
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, body);
     }
@@ -255,7 +274,7 @@ public final class PreflightMemo {
             Path root = entryDir.toAbsolutePath().normalize();
             Path file = graphMemoFile(entryDir);
             // Same clean-race guard as the dirty memo (JK-2205): never resurrect target/.
-            if (!Files.isDirectory(entryDir.resolve("target"))) return;
+            if (!Files.isDirectory(entryDir.resolve(BuildLayout.TARGET))) return;
             Files.createDirectories(file.getParent());
             List<Path> unitDirs = new ArrayList<>();
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
@@ -339,7 +358,7 @@ public final class PreflightMemo {
             List<Path> unitDirs = new ArrayList<>();
             for (UnitLine u : units) {
                 Path dir = absFromRel(root, u.rel());
-                if (!Files.isRegularFile(dir.resolve("jk.toml"))) return Optional.empty();
+                if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return Optional.empty();
                 unitDirs.add(dir);
             }
             if (!gotStruct.equals(structureFingerprint(entryDir, unitDirs))) return Optional.empty();
@@ -352,7 +371,7 @@ public final class PreflightMemo {
                 UnitLine ul = units.get(i);
                 Path dir = unitDirs.get(i);
                 dirByRel.put(ul.rel(), dir);
-                JkBuild manifest = JkBuildParser.parse(dir.resolve("jk.toml"));
+                JkBuild manifest = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
                 String coord =
                         manifest.project().group() + ":" + manifest.project().name();
                 if (!coord.equals(ul.coord())) return Optional.empty(); // identity drift
@@ -412,34 +431,32 @@ public final class PreflightMemo {
      */
     static String structureFingerprint(Path entryDir, List<Path> unitDirs) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            MessageDigest md = Hashing.newSha256();
             Path root = entryDir.toAbsolutePath().normalize();
             // Always pin the entry manifest (workspace module list lives here). Whether the root
             // itself is a buildable unit depends on it having sources, not on any toml — pin that
             // too, or a root that grows src/ keeps hitting a graph memo without a root unit.
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
-            feedFile(md, root.resolve("jk.toml"));
-            Path rootLock =
-                    cc.jumpkick.lock.LockPaths.lockFile(root).toAbsolutePath().normalize();
+            feedFile(md, root.resolve(ManifestPaths.MANIFEST));
+            Path rootLock = LockPaths.lockFile(root).toAbsolutePath().normalize();
             feedFile(md, rootLock);
             for (Path dir : unitDirs) {
                 Path d = dir.toAbsolutePath().normalize();
                 feed(md, relKey(root, d));
-                feedFile(md, d.resolve("jk.toml"));
+                feedFile(md, d.resolve(ManifestPaths.MANIFEST));
                 // Every workspace member resolves to the single root lock — already digested
                 // above; re-reading a monorepo-sized lock once per module scaled the key cost by
                 // modules × lock size. A marker keeps the structural position; a module
                 // with a genuinely distinct lock (standalone unit) still digests its own.
-                Path lock =
-                        cc.jumpkick.lock.LockPaths.lockFile(d).toAbsolutePath().normalize();
+                Path lock = LockPaths.lockFile(d).toAbsolutePath().normalize();
                 if (lock.equals(rootLock)) {
                     feed(md, "lock=root");
                 } else {
                     feedFile(md, lock);
                 }
             }
-            return HexFormat.of().formatHex(md.digest());
+            return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
         }
@@ -474,13 +491,13 @@ public final class PreflightMemo {
      */
     public static String shapeFingerprint(Path moduleDir, boolean skipTests) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            MessageDigest md = Hashing.newSha256();
             feed(md, "shape");
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, BuildIdentity.cacheKeyVersion());
-            feedFile(md, moduleDir.resolve("jk.toml"));
-            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
-            return HexFormat.of().formatHex(md.digest());
+            feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
+            feedFile(md, LockPaths.lockFile(moduleDir));
+            return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
         }
@@ -598,13 +615,13 @@ public final class PreflightMemo {
     }
 
     /** Build a {@link BuildPlanShape} from an assembled plan (weights + step outline). */
-    public static BuildPlanShape shapeOf(cc.jumpkick.run.BuildPlan plan, int weight) {
+    public static BuildPlanShape shapeOf(BuildPlan plan, int weight) {
         List<BuildPlanShape.StepShape> steps = new ArrayList<>();
         int testWeight = 0;
         for (var s : plan.steps()) {
             String phase = s.group().orElse("");
             steps.add(new BuildPlanShape.StepShape(s.name(), phase));
-            if ("run-tests".equals(s.name())) {
+            if (TaskNames.RUN_TESTS.equals(s.name())) {
                 try {
                     testWeight += s.estimateWeight();
                 } catch (Exception ignored) {
@@ -624,18 +641,18 @@ public final class PreflightMemo {
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            MessageDigest md = Hashing.newSha256();
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
-            feedFile(md, moduleDir.resolve("jk.toml"));
-            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
+            feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
+            feedFile(md, LockPaths.lockFile(moduleDir));
             // Plugin workers keep jk-plugin.toml at the module root (copied onto the jar root).
-            if (cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
-                feedFile(md, moduleDir.resolve("jk-plugin.toml"));
+            if (PluginModule.isWorker(moduleDir)) {
+                feedFile(md, moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST));
             }
             boolean mtimeMode = useMtimeMode();
-            List<Path> roots = new ArrayList<>(cc.jumpkick.layout.ModuleLayout.fingerprintDirs(moduleDir, skipTests));
-            for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(moduleDir)) {
+            List<Path> roots = new ArrayList<>(ModuleLayout.fingerprintDirs(moduleDir, skipTests));
+            for (var root : ModuleLayoutPlugins.pluginContributedRoots(moduleDir)) {
                 Path p = moduleDir.resolve(root.relative());
                 if (Files.isDirectory(p)) roots.add(p.toAbsolutePath().normalize());
             }
@@ -676,7 +693,7 @@ public final class PreflightMemo {
                     }
                 });
             }
-            return HexFormat.of().formatHex(md.digest());
+            return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
         }
@@ -690,8 +707,7 @@ public final class PreflightMemo {
     }
 
     static boolean useMtimeMode() {
-        String v = System.getenv("JK_PREFLIGHT_MEMO_MTIME");
-        return v != null && (v.equals("1") || v.equalsIgnoreCase("true"));
+        return EnvValues.bool(System::getenv, "JK_PREFLIGHT_MEMO_MTIME").orElse(false);
     }
 
     private static Path absFromRel(Path root, String rel) {

@@ -51,7 +51,9 @@ class McpJobCancelTest {
                 List::of,
                 "0.12.0",
                 new ProgressTokenRegistry(),
-                () -> live);
+                () -> live,
+                AdmissionYield.NONE,
+                null);
     }
 
     private static HttpLive.Run run(long jid, long startedAt) {

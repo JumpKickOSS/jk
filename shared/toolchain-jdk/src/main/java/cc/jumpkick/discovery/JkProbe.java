@@ -3,6 +3,7 @@ package cc.jumpkick.discovery;
 
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -58,7 +59,7 @@ public final class JkProbe implements LocalToolProbe {
         try (Stream<Path> entries = Files.list(jdksRoot)) {
             return entries.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(p -> !requireOwnership || cc.jumpkick.jdk.JdkOwnership.isJkOwned(p))
+                    .filter(p -> !requireOwnership || JdkOwnership.isJkOwned(p))
                     .map(IntellijJdkDir::javaHome)
                     .filter(home -> ToolHealth.isHealthy(spec, home))
                     .findFirst()
@@ -73,7 +74,7 @@ public final class JkProbe implements LocalToolProbe {
         try (Stream<Path> entries = Files.list(jdksRoot)) {
             entries.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(p -> !requireOwnership || cc.jumpkick.jdk.JdkOwnership.isJkOwned(p))
+                    .filter(p -> !requireOwnership || JdkOwnership.isJkOwned(p))
                     .map(IntellijJdkDir::javaHome)
                     .forEach(home -> ProbeSupport.discoverJdk(home, name()).ifPresent(hits::add));
         }

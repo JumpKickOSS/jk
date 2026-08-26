@@ -58,10 +58,4 @@ public interface TaskContribution {
 
     /** Register an additional, fully-specified named task. */
     void task(TaskSpec spec);
-
-    /** @deprecated use {@link #task(TaskSpec)} */
-    @Deprecated
-    default void step(TaskSpec spec) {
-        task(spec);
-    }
 }

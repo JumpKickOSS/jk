@@ -76,11 +76,13 @@ public final class JkDiff {
     /**
      * Build the diff that will be stored after applying {@code target}: the union of
      * previously-tracked keys and the keys {@code target} overrides, each carrying the value the env
-     * held <em>before</em> {@code jk} touched it.
+     * held <em>before</em> {@code jk} touched it. {@code PATH} is never tracked — toolchain bins are
+     * swapped surgically on the live search path so a frozen prior PATH cannot clobber neighbors.
      */
     public JkDiff next(JkEnv.Target target, EnvSnapshot current) {
         var combined = new LinkedHashMap<String, String>();
         for (var key : target.vars().keySet()) {
+            if (JkEnv.PATH.equals(key)) continue;
             // Reuse the prior diff's "before" value when we still own the key —
             // otherwise reach into the live env and capture (or sentinel) it.
             if (previous.containsKey(key)) {

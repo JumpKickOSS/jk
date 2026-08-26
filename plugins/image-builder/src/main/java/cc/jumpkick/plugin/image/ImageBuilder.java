@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.image.ImageConfig;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
@@ -21,7 +22,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -34,6 +34,9 @@ import java.util.concurrent.ExecutionException;
 /**
  * Jib-core OCI image builder: base image, layered jars under {@code /app/}, {@link ImageConfig}
  * metadata, registry push or local tarball, deterministic timestamps.
+ *
+ * <p>Every registry is reached through {@link RegistryAuth} — the base-image pull included, which
+ * is a registry read in tarball and daemon mode just as much as in push mode.
  */
 public final class ImageBuilder {
 
@@ -150,10 +153,14 @@ public final class ImageBuilder {
 
     public record Result(String imageReference, String digest) {}
 
-    /** Push to a registry. */
-    public static Result pushToRegistry(Plan plan) throws IOException, InterruptedException {
+    /**
+     * Push to a registry. {@code cacheRoot} is jk's cache root — where an AOT build extracts the
+     * base image's JRE, under the bound the engine declares for {@code CacheTree.BASE_JRE}.
+     */
+    public static Result pushToRegistry(Plan plan, Path cacheRoot, RegistryAuth auth)
+            throws IOException, InterruptedException {
         try {
-            JibContainer container = run(plan, Containerizer.to(registryTarget(plan)));
+            JibContainer container = run(plan, Containerizer.to(registryTarget(plan, auth)), cacheRoot, auth);
             return new Result(
                     plan.config().targetReference(plan.artifact(), plan.version()),
                     container.getDigest().toString());
@@ -167,12 +174,13 @@ public final class ImageBuilder {
      * resolved CLI path (e.g. {@code "docker"} or {@code "podman"}, or an absolute path); pass
      * {@code null} to let Jib auto-detect via {@code PATH}.
      */
-    public static Result loadToLocalDaemon(Plan plan, Path dockerExecutable) throws IOException, InterruptedException {
+    public static Result loadToLocalDaemon(Plan plan, Path dockerExecutable, Path cacheRoot, RegistryAuth auth)
+            throws IOException, InterruptedException {
         try {
             DockerDaemonImage target =
                     DockerDaemonImage.named(plan.config().targetReference(plan.artifact(), plan.version()));
             if (dockerExecutable != null) target = target.setDockerExecutable(dockerExecutable);
-            JibContainer container = run(plan, Containerizer.to(target));
+            JibContainer container = run(plan, Containerizer.to(target), cacheRoot, auth);
             return new Result(
                     plan.config().targetReference(plan.artifact(), plan.version()),
                     container.getDigest().toString());
@@ -182,12 +190,15 @@ public final class ImageBuilder {
     }
 
     /** Build to a local OCI tarball ({@code --tarball} mode). */
-    public static Result writeToTarball(Plan plan, Path tarball) throws IOException, InterruptedException {
+    public static Result writeToTarball(Plan plan, Path tarball, Path cacheRoot, RegistryAuth auth)
+            throws IOException, InterruptedException {
         try {
             JibContainer container = run(
                     plan,
-                    Containerizer.to(TarImage.at(tarball)
-                            .named(plan.config().targetReference(plan.artifact(), plan.version()))));
+                    Containerizer.to(
+                            TarImage.at(tarball).named(plan.config().targetReference(plan.artifact(), plan.version()))),
+                    cacheRoot,
+                    auth);
             return new Result(
                     plan.config().targetReference(plan.artifact(), plan.version()),
                     container.getDigest().toString());
@@ -273,12 +284,12 @@ public final class ImageBuilder {
         return layer.build();
     }
 
-    private static JibContainer run(Plan plan, Containerizer containerizer)
+    private static JibContainer run(Plan plan, Containerizer containerizer, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
         JibContainerBuilder builder;
         try {
-            builder = Jib.from(RegistryImage.named(cfg.base()));
+            builder = Jib.from(auth.base(cfg.base()));
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid base image: " + cfg.base(), e);
         }
@@ -292,11 +303,11 @@ public final class ImageBuilder {
             boolean aot = cfg.aotCache();
             if (aot) {
                 AotCacheTrainer.Result trained = AotCacheTrainer.train(
-                        plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
+                        plan, plan.mainJar().getParent(), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
                 builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
             builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
-            return finish(builder, plan, containerizer);
+            return finish(builder, plan, containerizer, auth);
         }
 
         // AOT cache: the trainer stages the runnable layout at /app, trains, and hands back the
@@ -310,7 +321,8 @@ public final class ImageBuilder {
             if (blocked != null) {
                 throw new IOException("[image] aot-cache = true, but " + blocked);
             }
-            aot = AotCacheTrainer.train(plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
+            aot = AotCacheTrainer.train(
+                    plan, plan.mainJar().getParent(), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
             builder = builder.addFileEntriesLayer(stagedTreeLayer(aot));
             builder = builder.addFileEntriesLayer(treeLayer(aot.cache(), AotCacheTrainer.CACHE_FILE));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
@@ -354,11 +366,12 @@ public final class ImageBuilder {
             entrypoint.add(plan.mainClass());
         }
         builder = builder.setEntrypoint(entrypoint);
-        return finish(builder, plan, containerizer);
+        return finish(builder, plan, containerizer, auth);
     }
 
     /** Everything after the entrypoint: identity, ports, env, labels, platforms, and the build. */
-    private static JibContainer finish(JibContainerBuilder builder, Plan plan, Containerizer containerizer)
+    private static JibContainer finish(
+            JibContainerBuilder builder, Plan plan, Containerizer containerizer, RegistryAuth auth)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
 
@@ -387,34 +400,27 @@ public final class ImageBuilder {
             }
             builder = builder.setPlatforms(platforms);
         }
-        // Creation time = mtime of the primary payload jar. If the jar was restored
-        // from the CAS (cache hit), its mtime is preserved by hard-link / COPY_ATTRIBUTES,
-        // so the timestamp reflects "when this content was first produced" — stable across
-        // repeated builds of unchanged code, accurate when code changes, and git-independent.
-        Instant creationTime;
-        try {
-            creationTime = Files.getLastModifiedTime(plan.mainJar()).toInstant();
-        } catch (IOException ignored) {
-            creationTime = Instant.now();
-        }
-        builder = builder.setCreationTime(creationTime);
+        // Creation time is the same pinned instant every layer entry carries. Anything else makes
+        // the image digest a function of something other than its content: a wall clock is a new
+        // digest per build, and the main jar's mtime is a filesystem attribute that does not
+        // survive `jk clean`, a fresh clone, a CI runner or a CAS restore — and is not in the
+        // action key, so a cache hit and a cache miss on identical inputs would disagree.
+        builder = builder.setCreationTime(AotCacheTrainer.LAYER_TIME.toInstant());
 
         try {
-            return builder.containerize(containerizer);
+            return auth.containerize(builder, containerizer);
         } catch (RegistryException | ExecutionException | CacheDirectoryCreationException e) {
             throw new IOException("image build failed: " + e.getMessage(), e);
         }
     }
 
     /**
-     * The exploded app-classes layer at {@code /app/classes}, with jk's freshness stamps
-     * ({@code .jstamp}/{@code .kstamp}/{@code .test-stamp}) filtered out — build-host metadata,
-     * never image content. Files sorted for deterministic layer bytes.
+     * The exploded app-classes layer at {@code /app/classes}, with jk's compile freshness stamps
+     * filtered out — build-host metadata, never image content. Files sorted for deterministic
+     * layer bytes.
      */
-    private static com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer classesLayer(Path classesDir)
-            throws IOException {
-        var layer = com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer.builder()
-                .setName("classes");
+    private static FileEntriesLayer classesLayer(Path classesDir) throws IOException {
+        var layer = FileEntriesLayer.builder().setName("classes");
         AbsoluteUnixPath target = AbsoluteUnixPath.get("/app/classes");
         List<Path> files = new ArrayList<>();
         try (var stream = Files.walk(classesDir)) {
@@ -423,14 +429,14 @@ public final class ImageBuilder {
         files.sort(Comparator.comparing(p -> classesDir.relativize(p).toString()));
         for (Path file : files) {
             String rel = classesDir.relativize(file).toString().replace(File.separatorChar, '/');
-            if (rel.endsWith(".jstamp") || rel.endsWith(".kstamp") || rel.endsWith(".test-stamp")) continue;
+            if (BuildStamps.isStampFile(rel)) continue;
             layer.addEntry(file, target.resolve(rel));
         }
         return layer.build();
     }
 
-    private static RegistryImage registryTarget(Plan plan) throws InvalidImageReferenceException {
-        return RegistryImage.named(plan.config().targetReference(plan.artifact(), plan.version()));
+    private static RegistryImage registryTarget(Plan plan, RegistryAuth auth) throws InvalidImageReferenceException {
+        return auth.target(plan.config().targetReference(plan.artifact(), plan.version()));
     }
 
     /** Convert parsed HOCON data into an {@link ImageConfig}. */

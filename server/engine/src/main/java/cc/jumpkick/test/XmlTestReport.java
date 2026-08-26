@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -144,16 +145,13 @@ public final class XmlTestReport {
     }
 
     /**
-     * Extract the fully-qualified class name from a JUnit Platform uniqueId. Example: {@code
-     * [engine:junit-jupiter][class:com.example.FooTest][method:bar()]} → {@code com.example.FooTest}.
-     * Falls back to the raw uniqueId when the {@code [class:...]} segment is absent.
+     * Fully-qualified class name from a JUnit Platform uniqueId via the shared
+     * {@link JUnitUniqueIds} walk. Falls back to the raw uniqueId when the {@code [class:…]}
+     * segment is absent.
      */
     static String classNameFrom(String uniqueId) {
-        int s = uniqueId.indexOf("[class:");
-        if (s < 0) return uniqueId;
-        int e = uniqueId.indexOf(']', s);
-        if (e < 0) return uniqueId;
-        return uniqueId.substring(s + 7, e);
+        String cls = JUnitUniqueIds.classOf(uniqueId);
+        return cls.isEmpty() ? uniqueId : cls;
     }
 
     private static String esc(String s) {

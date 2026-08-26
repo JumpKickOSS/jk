@@ -24,10 +24,7 @@ class CachePruneSchedulerTest {
     void should_not_run_within_interval(@TempDir Path cacheRoot) throws IOException {
         // Stamp was 1 day ago — interval is 7 → skip.
         long oneDayAgo = System.currentTimeMillis() - (24L * 60 * 60 * 1000);
-        Files.writeString(
-                cacheRoot.resolve(CachePruneScheduler.LAST_PRUNED_FILE),
-                Long.toString(oneDayAgo),
-                StandardCharsets.UTF_8);
+        Files.writeString(cacheRoot.resolve(".last-pruned"), Long.toString(oneDayAgo), StandardCharsets.UTF_8);
 
         assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot)).isFalse();
     }
@@ -35,18 +32,14 @@ class CachePruneSchedulerTest {
     @Test
     void should_run_after_interval(@TempDir Path cacheRoot) throws IOException {
         long tenDaysAgo = System.currentTimeMillis() - (10L * 24 * 60 * 60 * 1000);
-        Files.writeString(
-                cacheRoot.resolve(CachePruneScheduler.LAST_PRUNED_FILE),
-                Long.toString(tenDaysAgo),
-                StandardCharsets.UTF_8);
+        Files.writeString(cacheRoot.resolve(".last-pruned"), Long.toString(tenDaysAgo), StandardCharsets.UTF_8);
 
         assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot)).isTrue();
     }
 
     @Test
     void should_run_when_stamp_is_garbage(@TempDir Path cacheRoot) throws IOException {
-        Files.writeString(
-                cacheRoot.resolve(CachePruneScheduler.LAST_PRUNED_FILE), "not-a-number", StandardCharsets.UTF_8);
+        Files.writeString(cacheRoot.resolve(".last-pruned"), "not-a-number", StandardCharsets.UTF_8);
         assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot)).isTrue();
     }
 

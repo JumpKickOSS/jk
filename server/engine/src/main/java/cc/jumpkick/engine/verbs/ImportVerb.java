@@ -3,9 +3,18 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.CompatPlans;
+import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,7 +55,7 @@ public final class ImportVerb implements HostedVerb {
 
     /** Auto-detects the source build file — the same order the CLI uses. */
     @Override
-    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+    public String decodeJob(JobSpec spec) {
         Path dir = Path.of(spec.dir());
         Path source = null;
         for (String candidate : List.of("build.gradle.kts", "build.gradle", "pom.xml")) {
@@ -60,21 +69,20 @@ public final class ImportVerb implements HostedVerb {
             throw new IllegalArgumentException(
                     "no build file found in " + dir + " (looked for build.gradle.kts, build.gradle, pom.xml)");
         }
-        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
-                cc.jumpkick.engine.protocol.ProtoJobs.importRequest(
+        return ProtoSession.withTrigger(
+                ProtoJobs.importRequest(
                         source.toString(),
-                        dir.resolve("jk.toml").toString(),
+                        dir.resolve(ManifestPaths.MANIFEST).toString(),
                         spec.dir(),
-                        cc.jumpkick.util.JkDirs.tmp().toString(),
+                        JkDirs.tmp().toString(),
                         false,
                         null,
-                        cc.jumpkick.util.JkDirs.cache().toString()),
+                        JkDirs.cache().toString()),
                 "web");
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path baseDir = Path.of(Jsonl.str(requestLine, "baseDir"));
@@ -85,34 +93,32 @@ public final class ImportVerb implements HostedVerb {
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CompatPlans.importBuildPlan(
+                BuildPlan plan = CompatPlans.importBuildPlan(
                         Path.of(Jsonl.str(requestLine, "source")),
                         Path.of(Jsonl.str(requestLine, "out")),
                         baseDir,
                         Path.of(Jsonl.str(requestLine, "tmpDir")),
                         Jsonl.bool(requestLine, "force", false),
                         report != null ? Path.of(report) : null,
-                        cache,
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
-                host.streamSinglePlan(
+                return host.streamSinglePlan(
                         plan,
                         session,
                         writer,
                         result -> ProtoEvents.planFinishImport(
                                 dir,
                                 result.success(),
-                                plan.get(cc.jumpkick.runtime.CompatPlans.EXIT).orElse(1),
-                                plan.get(cc.jumpkick.runtime.CompatPlans.WARNINGS)
-                                        .orElse(0),
-                                plan.get(cc.jumpkick.runtime.CompatPlans.ERROR).orElse(null),
-                                plan.get(cc.jumpkick.runtime.CompatPlans.DIAG).orElse(null)));
+                                plan.get(CompatPlans.EXIT).orElse(1),
+                                plan.get(CompatPlans.WARNINGS).orElse(0),
+                                plan.get(CompatPlans.ERROR).orElse(null),
+                                plan.get(CompatPlans.DIAG).orElse(null)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

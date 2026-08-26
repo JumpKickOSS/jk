@@ -2,7 +2,13 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.host.DomXml;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.ByteArrayOutputStream;
@@ -14,13 +20,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.stream.Stream;
-import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 /**
  * Builds a source-dependency dir into a jar + POM: jk via {@link LocalProjectBuilder}; Gradle/Maven
@@ -45,8 +46,8 @@ final class SourceProjectBuilder {
             Path projectDir, String versionOverride, Path javaHome, Cas cas, RepoGroup repos, String jkVersion)
             throws IOException, InterruptedException {
 
-        if (Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve("jk.toml")));
+        if (Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
             String group = project.project().group();
             String artifact = project.project().name();
             String version = versionOverride != null
@@ -142,7 +143,7 @@ final class SourceProjectBuilder {
             throw new IOException("mvn package failed (exit " + build.exitCode() + ") in " + projectDir);
         }
 
-        Path target = projectDir.resolve("target");
+        Path target = projectDir.resolve(BuildLayout.TARGET);
         Path preferred = target.resolve(gav.artifact() + "-" + gav.version() + ".jar");
         Path jar = Files.isRegularFile(preferred) ? preferred : selectMainJar(target, projectDir);
         return new Built(
@@ -153,46 +154,30 @@ final class SourceProjectBuilder {
 
     /** Read groupId/artifactId/version from a {@code pom.xml}, inheriting group/version from {@code <parent>}. */
     static Gav parseMavenGav(Path pomXml) throws IOException {
+        Element project;
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(false);
-            Element project;
-            try (InputStream in = Files.newInputStream(pomXml)) {
-                project = factory.newDocumentBuilder().parse(in).getDocumentElement();
-            }
-            Element parent = firstChild(project, "parent");
-            String group = childText(project, "groupId");
-            if (group == null && parent != null) group = childText(parent, "groupId");
-            String artifact = childText(project, "artifactId");
-            String version = childText(project, "version");
-            if (version == null && parent != null) version = childText(parent, "version");
-            if (version != null && version.contains("${")) {
-                throw new IOException(pomXml + ": version `" + version + "` uses an unresolved property"
-                        + " — path/git Maven deps must declare a literal version");
-            }
-            return new Gav(group, artifact, version);
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
+            // A path/git dependency's pom.xml is third-party content, so it goes through the same
+            // hardened parser as every other document jk reads.
+            project = DomXml.parse(pomXml).getDocumentElement();
+        } catch (IOException | RuntimeException e) {
             throw new IOException("failed to parse " + pomXml + ": " + e.getMessage(), e);
         }
-    }
-
-    /** First direct child element named {@code tag}, or null. */
-    private static Element firstChild(Element parent, String tag) {
-        NodeList children = parent.getChildNodes();
-        for (int i = 0; i < children.getLength(); i++) {
-            Node n = children.item(i);
-            if (n.getNodeType() == Node.ELEMENT_NODE && tag.equals(n.getNodeName())) {
-                return (Element) n;
-            }
+        Element parent = DomXml.childElement(project, "parent");
+        String group = childText(project, "groupId");
+        if (group == null && parent != null) group = childText(parent, "groupId");
+        String artifact = childText(project, "artifactId");
+        String version = childText(project, "version");
+        if (version == null && parent != null) version = childText(parent, "version");
+        if (version != null && version.contains("${")) {
+            throw new IOException(pomXml + ": version `" + version + "` uses an unresolved property"
+                    + " — path/git Maven deps must declare a literal version");
         }
-        return null;
+        return new Gav(group, artifact, version);
     }
 
-    /** Text of the first direct child element named {@code tag}, or null. */
+    /** Text of the first direct child element named {@code tag}, or null when absent or blank. */
     private static String childText(Element parent, String tag) {
-        Element child = firstChild(parent, tag);
+        Element child = DomXml.childElement(parent, tag);
         if (child == null) return null;
         String text = child.getTextContent();
         return text == null || text.isBlank() ? null : text.strip();
@@ -260,10 +245,10 @@ final class SourceProjectBuilder {
      * and executable; else the {@code <bin>} tool on {@code PATH}; else fail fast.
      */
     static String resolveTool(Path projectDir, String wrapper, String bin) throws IOException {
-        String wrapperName = isWindows() ? wrapper + ".bat" : wrapper;
+        String wrapperName = Os.isWindows() ? wrapper + ".bat" : wrapper;
         Path wrapperPath = projectDir.resolve(wrapperName);
         // Maven's Windows wrapper is `mvnw.cmd`; try it as a fallback.
-        if (isWindows() && !Files.exists(wrapperPath) && wrapper.equals("mvnw")) {
+        if (Os.isWindows() && !Files.exists(wrapperPath) && wrapper.equals("mvnw")) {
             wrapperPath = projectDir.resolve("mvnw.cmd");
         }
         if (Files.isRegularFile(wrapperPath)) {
@@ -284,7 +269,7 @@ final class SourceProjectBuilder {
     private static Path findOnPath(String bin) {
         String path = System.getenv("PATH");
         if (path == null) return null;
-        List<String> names = isWindows() ? List.of(bin + ".bat", bin + ".cmd", bin + ".exe", bin) : List.of(bin);
+        List<String> names = Os.isWindows() ? List.of(bin + ".bat", bin + ".cmd", bin + ".exe", bin) : List.of(bin);
         for (String dir : path.split(File.pathSeparator)) {
             if (dir.isBlank()) continue;
             for (String name : names) {
@@ -300,21 +285,22 @@ final class SourceProjectBuilder {
     private record RunResult(int exitCode, String stdout) {}
 
     /**
-     * Run {@code command} in {@code projectDir} with a scrubbed environment (JAVA_HOME set to {@code
-     * javaHome}). When {@code captureStdout}, stdout is returned and stderr discarded; otherwise both
+     * Run {@code command} in {@code projectDir} with the child environment {@link PassthroughEnv}
+     * defines (override vars stripped, JAVA_HOME set to {@code javaHome}, its {@code bin} first on
+     * PATH). When {@code captureStdout}, stdout is returned and stderr discarded; otherwise both
      * streams are discarded. This is best-effort: we never surface the tool's console.
      */
     private static RunResult run(Path projectDir, Path javaHome, List<String> command, boolean captureStdout)
             throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).directory(projectDir.toFile());
-        applyEnv(pb.environment(), javaHome);
+        PassthroughEnv.apply(pb.environment(), javaHome);
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         if (!captureStdout) {
             pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            Process p = cc.jumpkick.engine.JobWorkers.start(pb);
+            Process p = JobWorkers.start(pb);
             return new RunResult(p.waitFor(), "");
         }
-        Process p = cc.jumpkick.engine.JobWorkers.start(pb);
+        Process p = JobWorkers.start(pb);
         // Drain stdout fully before waitFor() to avoid a pipe-buffer deadlock.
         String out;
         try (InputStream in = p.getInputStream()) {
@@ -323,26 +309,5 @@ final class SourceProjectBuilder {
             out = buf.toString(StandardCharsets.UTF_8);
         }
         return new RunResult(p.waitFor(), out);
-    }
-
-    /** Scrub tool-behavior override vars; set JAVA_HOME and prepend {@code <jdk>/bin} to PATH. */
-    private static void applyEnv(Map<String, String> env, Path javaHome) {
-        for (String key :
-                new String[] {"JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "KOTLIN_HOME", "MAVEN_OPTS", "GRADLE_OPTS"}) {
-            env.remove(key);
-        }
-        if (javaHome != null) {
-            String home = javaHome.toAbsolutePath().toString();
-            env.put("JAVA_HOME", home);
-            String binDir = javaHome.resolve("bin").toAbsolutePath().toString();
-            String pathKey = env.containsKey("PATH") ? "PATH" : "PATH";
-            String existing = env.getOrDefault(pathKey, "");
-            String sep = isWindows() ? ";" : ":";
-            env.put(pathKey, existing.isEmpty() ? binDir : binDir + sep + existing);
-        }
-    }
-
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 }

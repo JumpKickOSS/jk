@@ -4,24 +4,34 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.ArtifactLocator;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.resolver.CacheSync;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,7 +66,7 @@ public final class IdeOps {
         try {
             return build(startDir, cache, jdksDir, fetchMissing);
         } catch (IOException | RuntimeException e) {
-            return IdeWireModel.error(cc.jumpkick.util.Errors.text(e));
+            return IdeWireModel.error(Errors.text(e));
         }
     }
 
@@ -64,7 +74,7 @@ public final class IdeOps {
             throws IOException {
         Cas cas = JkStores.cas(cache);
 
-        Path buildFile = startDir.resolve("jk.toml");
+        Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
             return IdeWireModel.error("no jk.toml in " + startDir);
         }
@@ -75,7 +85,7 @@ public final class IdeOps {
         } else {
             var rootOpt = WorkspaceLocator.findRoot(startDir);
             wsRoot = rootOpt.orElse(startDir);
-            rootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
         }
         // Canonicalize wsRoot so paths from BuildGraph (which calls toRealPath) and workspace-loader
         // paths are consistent — critical for correct relativize() on systems where the temp/project
@@ -217,9 +227,11 @@ public final class IdeOps {
 
     /**
      * Resolve a module's stable SDK handle as {@code {stableName, sdkName, languageLevel, javaHome,
-     * version}}. Prefers the module's locked JDK identifier; falls back to the declared {@code
-     * project.jdk} level and the default vendor (Temurin). When the JDK is installed, ensures the
-     * {@link StableJdkPointer} and queues a {@code name|home|version} SDK entry (once per SDK).
+     * version}}. The module's declared {@code project.jdk} level wins; the workspace lock's
+     * {@code [jdk]} pin supplies the level only when the module declares none, and its vendor and
+     * exact version only when it agrees with the level in force. Falls back to level 21 and the
+     * default vendor (Temurin). When the JDK is installed, ensures the {@link StableJdkPointer} and
+     * queues a {@code name|home|version} SDK entry (once per SDK).
      */
     private static String[] sdkRefFor(
             Path moduleDir,
@@ -229,26 +241,36 @@ public final class IdeOps {
             List<String> sdkEntries,
             Set<String> seen)
             throws IOException {
-        int level = module.project().jdkMajor() > 0
+        int declared = module.project().jdkMajor() > 0
                 ? module.project().jdkMajor()
                 : module.project().javaRelease();
-        String lockJdk = readLockJdk(moduleDir);
-        JdkSelector.FlexibleQuery q = JdkSelector.parseFlexible(lockJdk == null ? "" : lockJdk);
-        if (q.major().isPresent()) level = q.major().get();
+        int level = declared;
+        Lockfile.JdkPin lockJdk = readLockJdk(moduleDir);
+        Integer pinMajor = lockJdk == null ? null : JdkKeywords.leadingMajor(lockJdk.version());
+        // The lock governing a member is the WORKSPACE lock, one table for every module. It names
+        // the toolchain jk resolved for the build, so it fills in a level the module never declared
+        // and never overrides one it did — otherwise a workspace-wide pin flattens every module to
+        // the same level and per-module levels become unexpressible.
+        if (pinMajor != null && declared <= 0) level = pinMajor;
         if (level <= 0) level = 21;
 
+        // Only a pin that agrees with this module's level describes this module's JDK; a module off
+        // the pinned level resolves its own, or IntelliJ gets the pinned home under the wrong name.
+        boolean pinFits = pinMajor != null && pinMajor == level;
         Optional<JdkHit> hit = Optional.empty();
-        if (lockJdk != null && !lockJdk.isBlank()) hit = registry.findHitBySpec(lockJdk);
+        if (pinFits) {
+            hit = LockPinMatch.choose(registry.listHits(), lockJdk.vendor(), lockJdk.version());
+        }
         if (hit.isEmpty()) hit = registry.findHitBySpec(String.valueOf(level));
 
         String vendor;
-        String version = q.exactVersion().orElse(null);
+        String version = pinFits ? lockJdk.version() : null;
         if (hit.isPresent()) {
             JdkVendor v = hit.get().vendor();
             vendor = v.jbPrefix().orElse(v.vendor().toLowerCase(Locale.ROOT));
             if (version == null) version = hit.get().version();
-        } else if (!q.hints().isEmpty()) {
-            vendor = q.hints().get(0);
+        } else if (pinFits && !lockJdk.vendor().isBlank()) {
+            vendor = lockJdk.vendor();
         } else {
             vendor = "temurin";
         }
@@ -293,9 +315,9 @@ public final class IdeOps {
         return sdkRefFor(wsRoot, root, registry, pointer, sdkEntries, seen);
     }
 
-    /** The resolved JDK identifier stamped in a module's {@code jk-lock.toml}, or null. */
-    private static String readLockJdk(Path moduleDir) {
-        Path lf = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+    /** The resolved JDK pin stamped in the workspace {@code jk-lock.toml}, or null. */
+    private static Lockfile.JdkPin readLockJdk(Path moduleDir) {
+        Path lf = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lf)) return null;
         try {
             return LockfileReader.read(lf).jdk();
@@ -322,14 +344,13 @@ public final class IdeOps {
             Map<String, String[]> allLibs,
             boolean fetchMissing)
             throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return;
         Lockfile lock = LockfileReader.read(lockFile);
 
         if (fetchMissing) {
             try {
-                new cc.jumpkick.resolver.CacheSync(cas, new cc.jumpkick.http.Http())
-                        .sync(lock, cc.jumpkick.resolver.CacheSync.ProgressObserver.NOOP);
+                new CacheSync(cas, new Http()).sync(lock, CacheSync.ProgressObserver.NOOP);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception ignored) {
@@ -338,9 +359,8 @@ public final class IdeOps {
         }
 
         Set<String> siblingCoords = siblingCoordinates(module, modules);
-        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().integration();
-        cc.jumpkick.repo.ArtifactLocator locator = new cc.jumpkick.repo.ArtifactLocator(
-                cas.root(), m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
+        boolean m2 = JkM2Config.resolve().integration();
+        ArtifactLocator locator = new ArtifactLocator(cas.root(), m2 ? M2Dirs.localRepository() : null, m2);
 
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue; // path/git dep
@@ -358,7 +378,7 @@ public final class IdeOps {
                 Coordinate srcCoord =
                         new Coordinate(coord.group(), coord.artifact(), coord.version(), "sources", "jar");
                 sourcesPath = locator.locate(
-                                cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source()),
+                                RepoArtifactResolver.repoName(pkg.source()),
                                 MavenLayout.artifactPath(srcCoord),
                                 pkg.sourcesChecksumHex(),
                                 srcCoord.toGav())
@@ -467,7 +487,7 @@ public final class IdeOps {
     private static List<String[]> moduleLibEntries(
             Path moduleDir, JkBuild module, Map<Path, JkBuild> allModules, Map<String, String[]> allLibs)
             throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
         Lockfile lock = LockfileReader.read(lockFile);
         Set<String> siblingCoords = siblingCoordinates(module, allModules);
@@ -494,7 +514,7 @@ public final class IdeOps {
     private static List<String> processorLibFiles(
             Path moduleDir, JkBuild module, Map<Path, JkBuild> modules, Map<String, String[]> allLibs)
             throws IOException {
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
         Lockfile lock = LockfileReader.read(lockFile);
         Set<String> siblingCoords = siblingCoordinates(module, modules);

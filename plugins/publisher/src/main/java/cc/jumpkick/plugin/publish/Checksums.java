@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 
 /**
  * Hex digests for Maven checksum sidecars: {@code .md5}, {@code .sha1}, {@code .sha256}, {@code
- * .sha512} (all four for Central compatibility).
+ * .sha512} (all four for Central compatibility). The three jk would never choose are named here
+ * because the sidecar file names them; the SHA-256 one is jk's own digest and goes through
+ * {@link Hashing#sha256Hex(byte[])} without repeating the algorithm.
  */
 public final class Checksums {
 
@@ -15,10 +17,7 @@ public final class Checksums {
 
     public static Set of(byte[] data) {
         return new Set(
-                digestHex(data, "MD5"),
-                digestHex(data, "SHA-1"),
-                digestHex(data, "SHA-256"),
-                digestHex(data, "SHA-512"));
+                digestHex(data, "MD5"), digestHex(data, "SHA-1"), Hashing.sha256Hex(data), digestHex(data, "SHA-512"));
     }
 
     public static String md5Hex(byte[] data) {
@@ -30,7 +29,7 @@ public final class Checksums {
     }
 
     public static String sha256Hex(byte[] data) {
-        return digestHex(data, "SHA-256");
+        return Hashing.sha256Hex(data);
     }
 
     public static String sha512Hex(byte[] data) {

@@ -1,0 +1,189 @@
+# fqcn-baseline.txt — the ratchet behind `checkNoFqcn` (JK-2412).
+#
+# The house rule is "no FQCN except collisions" (docs/contributors/code-as-art.md, House rules ->
+# Java 25). It was never enforced: `jk format`'s `optimize-imports` pass built its OpenRewrite
+# parser with no classpath, so it resolved nothing and shortened nothing, and twelve module audits
+# each filed the same finding independently. JK-2408 threaded the classpath in; JK-2412 swept the
+# tree. 4,306 package-qualified references across 622 files became 878 across 253, and the
+# round-3 owner sweeps took it to 598 across 135 — the count below, which the guard prints
+# whenever a listed file shrinks. Retighten from that printout; never retype it.
+#
+# What a package-qualified reference is, for counting: two or more all-lowercase dot-separated
+# segments followed by an UpperCamel identifier, in code — comments, string literals and the file's
+# own `import`/`package` lines do not count. Recount one file by deleting its entry and running
+# `./gradlew :<module>:checkNoFqcn`; the failure prints the number.
+#
+# The three rules `checkNoFqcn` enforces against this list:
+#
+#   1. A listed file may only shrink. Gaining a reference fails the build.
+#   2. A file that is NOT listed must have zero. Adding it here instead is the escape hatch, and
+#      it is a reviewable diff.
+#   3. Every entry sits under a `## <reason>` section that says why the reference survives, and an
+#      entry under `## collisions` names the collision on the line directly above it.
+#
+# A file is filed under its most specific reason; a file whose residue has two causes appears once.
+#
+# UPDATING AFTER A SHRINK. Shrinking a listed file passes — the ratchet never blocks progress. The
+# guard prints the tightened line, e.g.
+#
+#     fqcn-baseline.txt is loose (these shrank — tighten it in this commit):
+#           12  server/engine/src/main/java/cc/jumpkick/runtime/TrainRunner.java   (was 24)
+#
+# Paste that number over the old one. Deleting a listed file works the same way: drop its entry.
+#
+# FORMAT. One entry per line: `<count>  <path from the repo root>`, sorted by path within a section.
+
+
+## collisions
+# A genuine collision keeps its FQCN — this is the exception the house rule already grants, and
+# every entry here names what the simple name is already taken by.
+
+# The CLI test facade is itself `NewScaffolder`, so the production
+# `cc.jumpkick.scaffold.NewScaffolder` it delegates to cannot be imported.
+    3  clients/cli/src/test/java/cc/jumpkick/command/NewScaffolder.java
+
+# `Javadoc` is claimed twice by Zinc's own API surface: `sbt.internal.inc.javac.Javadoc` (imported,
+# because it owns the `local()`/`fork()` factories) and `xsbti.compile.Javadoc`, which is what they
+# return. One of the two has to be spelled out and it is the return type.
+    1  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ScalaBridge.java
+
+# `JavaCompiler` is claimed twice by Zinc's own API surface: `xsbti.compile.JavaCompiler`
+# (imported, because it is the type this worker hands Zinc) and `sbt.internal.inc.javac.JavaCompiler`,
+# whose `local()`/`fork()` build one. Both remaining references are that second name. Was 13 before
+# JK-2439 split the Zinc SPI adapters and the scalac construction into their own files; the
+# `javax.tools.JavaCompiler` half of the collision left with ProvenanceJavac and the `Javadoc` half
+# with ScalaBridge above.
+    2  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java
+
+# This record nests its own `Diagnostic`, so the javac enum it maps
+# from stays `javax.tools.Diagnostic.Kind`.
+    1  server/engine/src/main/java/cc/jumpkick/compile/CompileResult.java
+
+# This class nests a `Path` record for reverse-graph steps — its own
+# javadoc says so — so the project directory stays `java.nio.file.Path`.
+    1  shared/core/src/main/java/cc/jumpkick/resolver/Provenance.java
+
+
+## unreachable-by-the-formatter
+# 111 of the tree's 2,088 Java files fail OpenRewrite's own print-idempotence check: its Javadoc
+# printer mangles the continuation line of a wrapped `@param` (it eats one space of indent and
+# duplicates the trailing characters), so `JavaParser` returns a ParseError rather than a
+# compilation unit and the whole file is skipped. The check is right to exist — the alternative is
+# writing the mangled print back over the source — so until rewrite-java fixes the printer these
+# files cannot be shortened by `jk format` at all, and every reference in them survives. They are
+# still Spotless-formatted; only the OpenRewrite pass is skipped, and `jk format --check` does not
+# fail on one: it is OpenRewrite's defect, not the author's, and no edit to the file clears it.
+#
+# These are the 56 of those 111 that carry a reference. `jk format` will shrink them for free on
+# the day the printer is fixed; nothing else will.
+#
+# THIS SECTION IS MEASURED, NOT CURATED (JK-2477). Until JK-2477 `jk format` reported a file it
+# could not parse as already clean — a skipped pass and "nothing to shorten" were the same answer —
+# so the only way to know which files these were was to run the parser by hand, and the list here
+# was typed. `jk format` now reports them, and regenerating this section is two commands:
+#
+#     jk format                                                    # settle the formatting first
+#     NO_COLOR=1 jk format --check | sed -n 's/^! unparseable: //p' | sort > /tmp/unreachable
+#
+# The apply run is not optional: a file that is both unformatted AND unparseable reports as
+# `unformatted`, because --check still has to fail on it. Then delete this section's entries, run
+# `./gradlew checkNoFqcn --continue`, and every file it names as "not in fqcn-baseline.txt" that is
+# also in /tmp/unreachable belongs here, with the count the guard printed. The counts come from the
+# guard and never from a second implementation of the counting rule. A file the guard does not name
+# has no reference left and simply drops out — which is how this section shrinks by itself as
+# OpenRewrite's printer improves, instead of ossifying into an exemption nobody revisits.
+
+   33  server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java
+    1  server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java
+    5  shared/core/src/main/java/cc/jumpkick/config/ManifestProject.java
+    3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java
+    2  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/In.java
+    2  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/InvocationPhase.java
+
+
+## outside-the-recipe
+# Three kinds of reference `ShortenFullyQualifiedTypeReferences` does not rewrite, in files it
+# otherwise swept clean:
+#
+#   * A static member or a qualified static call. The recipe rewrites a `J.FieldAccess` only when
+#     the access itself resolves to a top-level class, so `java.lang.foreign.ValueLayout.JAVA_INT`
+#     and `cc.jumpkick.host.Hashing.sha256Hex(x)` are left alone. Both are a two-line hand edit
+#     (add the import, drop the package) and `jk format` will never undo one.
+#   * An annotation type — `@org.jspecify.annotations.NullMarked` on a package-info, and a handful
+#     of `@org.junit.jupiter.api.*` in tests.
+#   * A third-party type. JK-2408 measured the lock's 150 dependency jars at 4.6x the format time
+#     (8m14s vs 2m07s) for 1.4% more shortenings, and they crashed the worker JVM in 2 of 4 runs,
+#     so they are deliberately off the format classpath and their types cannot be resolved.
+#
+# One more, worth knowing before adding to this list: an unresolvable simple name in a Javadoc
+# `{@link}` — `{@link #converse(List, Map, ...)}` with no `import java.util.Map` — makes the recipe
+# decline to shorten that type anywhere in the file. Fixing the link fixes the shortening.
+
+    1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java
+    1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/posix/package-info.java
+    1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/windows/package-info.java
+    1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
+    1  clients/cli/src/main/java/cc/jumpkick/cli/engine/package-info.java
+    2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
+    1  clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java
+    3  clients/cli/src/test/java/cc/jumpkick/command/SelfNukeCommandTest.java
+    2  plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java
+    8  plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java
+    3  plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/http/package-info.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/jobs/JobBody.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/jobs/package-info.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/journal/package-info.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/listen/package-info.java
+   1  server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/LockVerb.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/NativeVerb.java
+    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/package-info.java
+    1  server/engine/src/main/java/cc/jumpkick/giter8/Giter8Render.java
+    1  server/engine/src/main/java/cc/jumpkick/giter8/package-info.java
+    5  server/engine/src/test/java/cc/jumpkick/engine/http/McpHandlerTest.java
+    1  server/engine/src/test/java/cc/jumpkick/engine/jobs/JobEnvelopeTest.java
+    1  server/engine/src/test/java/cc/jumpkick/engine/plugin/JvmOptionsTest.java
+    1  server/engine/src/test/java/cc/jumpkick/engine/plugin/PluginProcessTest.java
+    2  server/engine/src/test/java/cc/jumpkick/engine/runtime/CacheInventoryOpsTest.java
+    1  server/engine/src/test/java/cc/jumpkick/engine/runtime/NewProjectOpsTest.java
+    1  server/engine/src/test/java/cc/jumpkick/giter8/Giter8TemplateIndexTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java
+    2  server/engine/src/test/java/cc/jumpkick/runtime/ExplainBuildEtaParityTest.java
+    3  server/engine/src/test/java/cc/jumpkick/runtime/NativePlansTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/PinnedWorkerJarTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
+    2  server/engine/src/test/java/cc/jumpkick/runtime/ScheduleBiasTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java
+    1  server/resolver/src/test/java/cc/jumpkick/resolver/MavenPackageSourceExclusionTest.java
+    1  server/resolver/src/test/java/cc/jumpkick/resolver/PlatformBomVersionsTest.java
+    1  shared/client-io/src/test/java/cc/jumpkick/http/HostCooldownTest.java
+    3  shared/client-io/src/test/java/cc/jumpkick/repo/RepoArtifactStoreTest.java
+    1  shared/client-io/src/test/java/cc/jumpkick/repo/RepoCredentialResolverTest.java
+    1  shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java
+    1  shared/core/src/test/java/cc/jumpkick/config/JkBuildWorkspaceTest.java
+    1  shared/core/src/test/java/cc/jumpkick/config/ModuleDotGraphTest.java
+    1  shared/core/src/test/java/cc/jumpkick/config/NerdFontDetectCostTest.java
+    1  shared/core/src/test/java/cc/jumpkick/config/ManifestTrainTest.java
+    1  shared/core/src/test/java/cc/jumpkick/config/WorkspaceClasspathTest.java
+    4  shared/core/src/test/java/cc/jumpkick/diagnostic/CompilerLocusTest.java
+    1  shared/core/src/test/java/cc/jumpkick/layout/BuildLayoutTest.java
+    4  shared/core/src/test/java/cc/jumpkick/lock/LockManifestDigestTest.java
+    3  shared/core/src/test/java/cc/jumpkick/plugin/manifest/PluginContributionsTest.java
+    3  shared/core/src/test/java/cc/jumpkick/plugin/manifest/PluginTableRegistryTest.java
+    1  shared/core/src/test/java/cc/jumpkick/plugin/manifest/VariantApplyTest.java
+    3  shared/core/src/test/java/cc/jumpkick/resolver/DependencyGraphModelTest.java
+   12  shared/core/src/test/java/cc/jumpkick/resolver/DependencyTreeTest.java
+    3  shared/core/src/test/java/cc/jumpkick/templates/OfficialTemplatesFreshenTest.java
+    2  shared/jk-api/src/test/java/cc/jumpkick/run/BuildStageTest.java
+    1  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginContext.java
+    1  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/PackageIo.java
+    3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/PluginCommandExec.java
+    3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/TaskExec.java
+    2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkCatalogClientTest.java
+    2  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkRegistryTest.java
+    1  shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkResolverTest.java

@@ -5,12 +5,13 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 
 /**
  * Fans every {@link BuildPlanListener} callback out to two delegates. Needed because an engine-hosted
  * module's {@code BuildPlan} is a client-side, never-{@code run()} reconstruction (see {@code
- * EngineBuildListenerAdapter}) — a listener attached via {@code plan.addListener(...)} is never
+ * EngineEventDecoder}) — a listener attached via {@code plan.addListener(...)} is never
  * driven. The listener a caller <em>returns</em> from {@code onModuleStart}, by contrast, is driven
  * driven by both the in-process and engine-hosted paths alike, so composing extra listeners (e.g.
  * a {@link SessionMirrorListener}) into the returned listener is the one place that works either way.
@@ -92,7 +93,7 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+    public void error(String step, String code, String message, TestFailureInfo failure) {
         a.error(step, code, message, failure);
         b.error(step, code, message, failure);
     }

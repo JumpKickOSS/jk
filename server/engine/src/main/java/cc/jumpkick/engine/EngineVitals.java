@@ -5,6 +5,7 @@ import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import com.sun.management.OperatingSystemMXBean;
+import java.lang.management.ManagementFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -61,7 +62,7 @@ public final class EngineVitals {
 
     static double systemCpuLoad() {
         try {
-            var os = (OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            var os = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
             double load = os.getCpuLoad();
             return load >= 0 && load <= 1 ? load : -1;
         } catch (RuntimeException e) {
@@ -71,8 +72,7 @@ public final class EngineVitals {
 
     static double systemLoadAverage() {
         try {
-            double avg = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-                    .getSystemLoadAverage();
+            double avg = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
             return avg >= 0 ? avg : -1;
         } catch (RuntimeException e) {
             return -1;

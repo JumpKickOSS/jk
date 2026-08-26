@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
@@ -76,7 +77,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
      * no-ops.
      */
     public static SpinnerProgressBar show(PrintStream out) {
-        boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
+        boolean silent = SessionContext.current().config().noProgressOr(false);
         SpinnerProgressBar pb = new SpinnerProgressBar(out, silent);
         LiveRegion.setActive(pb);
         if (!silent) {

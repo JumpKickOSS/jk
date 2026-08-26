@@ -3,6 +3,10 @@ package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.LiveRegion;
+import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Opt;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.HashMap;
@@ -18,10 +22,10 @@ class CommandDispatchTest {
     void escaping_exception_sweep_closes_active_live_region() {
         // A RuntimeException escaping a command must not leave the live region owning the terminal
         // (hidden cursor, animator, taskbar progress) — dispatch sweeps the active region closed.
-        var cm = cc.jumpkick.cli.tui.JkManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
-        assertThat(cc.jumpkick.cli.tui.LiveRegion.active()).isSameAs(cm);
+        var cm = JkManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
+        assertThat(LiveRegion.active()).isSameAs(cm);
         CommandDispatch.closeActiveLiveRegion();
-        assertThat(cc.jumpkick.cli.tui.LiveRegion.active()).isNull();
+        assertThat(LiveRegion.active()).isNull();
         CommandDispatch.closeActiveLiveRegion(); // idempotent with nothing active
     }
 
@@ -111,7 +115,7 @@ class CommandDispatchTest {
                         "-V, --version",
                         "-h, --help");
         // Hidden aliases stay out of help names.
-        var byCanonical = new HashMap<String, cc.jumpkick.model.command.Opt>();
+        var byCanonical = new HashMap<String, Opt>();
         for (var g : GlobalOptions.globalOpts()) byCanonical.put(g.canonicalName(), g);
         assertThat(byCanonical.get("redo").aliases()).containsExactly("--rebuild");
         assertThat(byCanonical.get("dir").aliases()).containsExactly("--directory");
@@ -139,7 +143,7 @@ class CommandDispatchTest {
 
     @Test
     void global_force_and_redo_declare_short_and_long_names() {
-        Map<String, cc.jumpkick.model.command.Opt> byCanonical = new HashMap<>();
+        Map<String, Opt> byCanonical = new HashMap<>();
         for (var g : GlobalOptions.globalOpts()) {
             byCanonical.put(g.canonicalName(), g);
         }
@@ -150,8 +154,7 @@ class CommandDispatchTest {
         assertThat(byCanonical.get("redo").aliases()).containsExactly("--rebuild");
     }
 
-    private static void assertNoGlobalCollision(
-            cc.jumpkick.model.command.CliCommand cmd, String qualified, Set<String> globals) {
+    private static void assertNoGlobalCollision(CliCommand cmd, String qualified, Set<String> globals) {
         for (var opt : cmd.options()) {
             for (String n : opt.allNames()) {
                 assertThat(globals)
@@ -164,7 +167,7 @@ class CommandDispatchTest {
         }
     }
 
-    @org.junit.jupiter.api.Test
+    @Test
     void plugin_arg_scan_honors_output_flags() {
         assertThat(CommandDispatch.pluginArgsAskJson(List.of("-O", "json"))).isTrue();
         assertThat(CommandDispatch.pluginArgsAskJson(List.of("--output", "jsonl")))

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class SbomTest {
 
     private static final JkBuild PROJECT =
-            new JkBuild(new JkBuild.Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty());
+            new JkBuild(new Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty());
 
     @Test
     void cyclonedx_without_lockfile_lists_only_the_root() {

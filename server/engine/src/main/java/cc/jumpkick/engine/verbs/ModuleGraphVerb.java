@@ -3,9 +3,11 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ModuleGraphAck;
 import cc.jumpkick.engine.runtime.ModuleGraphOps;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -39,8 +41,7 @@ public final class ModuleGraphVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             ModuleGraphAck ack;
             try {
@@ -55,12 +56,12 @@ public final class ModuleGraphVerb implements HostedVerb {
                         Jsonl.str(requestLine, "modules"),
                         Jsonl.str(requestLine, "affectedSince"));
             } catch (Exception e) {
-                ack = ModuleGraphAck.error(cc.jumpkick.util.Errors.text(e));
+                ack = ModuleGraphAck.error(Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

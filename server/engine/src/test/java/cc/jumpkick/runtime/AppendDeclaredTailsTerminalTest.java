@@ -49,7 +49,7 @@ class AppendDeclaredTailsTerminalTest {
         BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, true);
         // Simulate the historical bug: terminal already at package-jar.
         assertThat(b).isNotNull();
-        BuildPlanner.appendDeclaredTails(b, inputs);
+        PlannerTails.appendDeclaredTails(b, inputs);
         BuildPlan plan = b.build();
         Set<String> names = plan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(names)

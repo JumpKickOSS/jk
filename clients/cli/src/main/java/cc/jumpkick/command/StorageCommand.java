@@ -4,15 +4,26 @@ package cc.jumpkick.command;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineFleet;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.run.BuildPlanResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,8 +66,8 @@ public final class StorageCommand extends GroupCommand {
      * --data}. Returns {@code [files, bytes]} (best-effort sizes).
      */
     public static long[] wipeStore(Path storeRoot, boolean dryRun) throws IOException {
-        var ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
-                cc.jumpkick.engine.EnginePaths.current(),
+        var ack = EngineClient.cacheInventory(
+                EnginePaths.current(),
                 "wipe-store",
                 CacheCommand.resolveCacheRoot(null),
                 storeRoot,
@@ -98,14 +109,13 @@ public final class StorageCommand extends GroupCommand {
         }
         if (!skipConfirm && !confirmNuke(storeRoot, pre)) {
             CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(
-                    Glyphs.CROSS, "Storage", cc.jumpkick.config.GlobalConfig.nerdFont(), "Nuke aborted."));
+            CliOutput.out(JkWedge.chipLine(Glyphs.CROSS, "Storage", GlobalConfig.nerdFont(), "Nuke aborted."));
             return 1;
         }
         // Stop the fleet first — engines from other checkouts keep writing into the store
         // mid-wipe. The wipe request itself restarts one engine, which performs the delete
         // under the cache-maintenance exclusive lock.
-        cc.jumpkick.cli.engine.EngineFleet.stopAll(true);
+        EngineFleet.stopAll(true);
         long[] wiped = wipeStore(storeRoot, false);
         CommandWedge.printOk(
                 "Storage",
@@ -125,8 +135,7 @@ public final class StorageCommand extends GroupCommand {
                         "  %s files, %s — Maven-layout repos, workers, and related store trees.%n",
                         CacheCommand.fmtCount(stats.files()), CacheCommand.fmtBytes(stats.bytes()));
         CliOutput.out("  Cache tier (action outputs) is kept. Credentials are kept (jk repo logout).");
-        return cc.jumpkick.cli.tui.Confirm.of(bang + " Nuke the artifact store?", false)
-                .ask();
+        return Confirm.of(bang + " Nuke the artifact store?", false).ask();
     }
 
     // --- subcommands ----------------------------------------------------------------
@@ -185,20 +194,13 @@ public final class StorageCommand extends GroupCommand {
             // Last-cleaned stamp lives under the cache root (same file cache clean writes).
             Path cacheRoot = CacheCommand.resolveCacheRoot(null);
             if (!Files.isDirectory(storeRoot)) {
-                CliOutput.out(
-                        "Store directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot) + " (not yet created)");
+                CliOutput.out("Store directory: " + PathDisplay.styledRaw(storeRoot) + " (not yet created)");
                 return 0;
             }
-            cc.jumpkick.engine.protocol.CacheInventoryAck ack;
+            CacheInventoryAck ack;
             try {
-                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        "store-usage",
-                        cacheRoot,
-                        storeRoot,
-                        List.of(),
-                        List.of(),
-                        false);
+                ack = EngineClient.cacheInventory(
+                        EnginePaths.current(), "store-usage", cacheRoot, storeRoot, List.of(), List.of(), false);
             } catch (IOException e) {
                 CommandWedge.printFail("Storage", String.valueOf(e.getMessage()));
                 return 1;
@@ -239,23 +241,23 @@ public final class StorageCommand extends GroupCommand {
             GlobalOptions global = GlobalOptions.from(in);
             Path root = CacheCommand.resolveCacheRoot(null);
 
-            var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
+            var summary = new EngineRequests.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
                     () -> summary[0] != null ? summary[0].bytes() : 0L);
             BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-            cc.jumpkick.run.BuildPlanResult result;
+            BuildPlanResult result;
             try {
-                result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest("sweep", root, dryRun, false, null),
+                result = EngineClient.runCacheMaintenance(
+                        EnginePaths.current(),
+                        new EngineRequests.CacheMaintRequest("sweep", root, dryRun, false, null),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Storage"),
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
                 CommandWedge.printFail("Storage", e.getMessage());
-                return cc.jumpkick.model.command.Exit.SOFTWARE;
+                return Exit.SOFTWARE;
             }
             return result.success() ? 0 : 1;
         }

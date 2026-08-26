@@ -25,9 +25,13 @@ class McpMachineMutateTest {
         Map<String, Object> done = McpMachine.diskAction("nuke", true, cache, null);
         assertThat(done.get("nuked")).isEqualTo(true);
         assertThat(key).doesNotExist();
-        Path repo = seed(cache.resolve("repos/central/lib.jar"));
+        // A confirmed nuke empties the root, tier table or no tier table. The artifact store is
+        // safe because it is never under this root (JkStores resolves it from JK_STORE_DIR), not
+        // because a leftover repos/ here is spared — sparing it only left residue a plain
+        // `jk cache clean` would have reclaimed.
+        Path leftover = seed(cache.resolve("repos/central/lib.jar"));
         McpMachine.diskAction("nuke", true, cache, null);
-        assertThat(repo).exists();
+        assertThat(leftover).doesNotExist();
     }
 
     @Test
@@ -59,8 +63,7 @@ class McpMachineMutateTest {
     void disk_clean_stamps_last_pruned(@TempDir Path cache) {
         Map<String, Object> done = McpMachine.diskAction("clean", true, cache, null);
         assertThat(done.get("cleaned")).isEqualTo(true);
-        assertThat(cache.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE))
-                .exists();
+        assertThat(cache.resolve(".last-pruned")).exists();
     }
 
     @Test

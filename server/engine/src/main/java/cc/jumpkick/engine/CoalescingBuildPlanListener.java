@@ -5,6 +5,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Objects;
@@ -210,7 +211,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+    public void error(String step, String code, String message, TestFailureInfo failure) {
         flush();
         delegate.error(step, code, message, failure);
     }

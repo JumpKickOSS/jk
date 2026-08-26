@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 
 /**
@@ -26,8 +27,8 @@ public final class EngineWireException extends IOException {
     }
 
     public static EngineWireException fromJsonLine(String line) {
-        String code = cc.jumpkick.jsonl.Jsonl.str(line, "code");
-        String msg = cc.jumpkick.jsonl.Jsonl.str(line, "message");
+        String code = Jsonl.str(line, "code");
+        String msg = Jsonl.str(line, "message");
         return new EngineWireException(code, msg);
     }
 

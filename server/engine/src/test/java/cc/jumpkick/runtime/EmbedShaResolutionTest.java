@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link BuildPlanner#siblingMainJars} — the lookup the {@code embed-sha} step uses to find a
+ * {@link PlannerSupport#siblingMainJars} — the lookup the {@code embed-sha} step uses to find a
  * {@code [build.embed-sha]} module's output jar. Keyed by both project name and {@code
  * group:artifact} coord.
  */
@@ -45,7 +45,7 @@ class EmbedShaResolutionTest {
                 version = "1.0.0"
                 """);
 
-        Map<String, Path> jars = BuildPlanner.siblingMainJars(root.resolve("host"));
+        Map<String, Path> jars = PlannerSupport.siblingMainJars(root.resolve("host"));
 
         Path libDir = root.resolve("lib");
         Path expected = BuildLayout.of(libDir, JkBuildParser.parse(libDir.resolve("jk.toml")))
@@ -63,6 +63,6 @@ class EmbedShaResolutionTest {
                 name    = "solo"
                 version = "1.0.0"
                 """);
-        assertThat(BuildPlanner.siblingMainJars(dir)).isEmpty();
+        assertThat(PlannerSupport.siblingMainJars(dir)).isEmpty();
     }
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class HistoryDiagLineTest {
 
         assertThat(Jsonl.str(line, "severity")).isEqualTo("error");
         assertThat(Jsonl.str(line, "task")).isEqualTo("run-tests");
-        assertThat(Jsonl.topStr(line, "class")).isEqualTo("cc.jumpkick.FooTest");
+        assertThat(Jsonl.topStr(line, EngineProtocol.TEST_CLASS_FIELD)).isEqualTo("cc.jumpkick.FooTest");
         assertThat(Jsonl.topStr(line, "method")).isEqualTo("bar()");
         assertThat(Jsonl.str(line, "module")).isEqualTo("g:core");
         assertThat(Jsonl.str(line, "engine")).isEqualTo("junit-jupiter");

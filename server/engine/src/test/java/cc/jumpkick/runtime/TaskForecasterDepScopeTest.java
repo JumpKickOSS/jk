@@ -143,7 +143,6 @@ class TaskForecasterDepScopeTest {
         assertThat(d.orderDepDirty()).isTrue();
 
         // An order-check RUN task is material, so the dependent schedules.
-        assertThat(cc.jumpkick.runtime.TaskForecast.Module.isMaterialWork("order-check"))
-                .isTrue();
+        assertThat(TaskForecast.Module.isMaterialWork("order-check")).isTrue();
     }
 }

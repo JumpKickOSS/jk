@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Os;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * {@code avd create|list|boot} — managed AVDs under the jk SDK root ({@code ANDROID_AVD_HOME}).
@@ -30,7 +30,7 @@ final class AvdCommand {
             case "boot" -> boot(exec, root, avdHome, args);
             default -> {
                 exec.out("usage: jk avd [list | create <name> --system-image <pkg> | boot <name>]");
-                yield 64;
+                yield Exit.USAGE;
             }
         };
     }
@@ -59,14 +59,14 @@ final class AvdCommand {
     private static int create(PluginCommandExec exec, Path root, Path avdHome, List<String> args) throws Exception {
         if (args.size() < 2) {
             exec.out("usage: jk avd create <name> --system-image <pkg>");
-            return 64;
+            return Exit.USAGE;
         }
         String name = args.get(1);
         String image = flag(args, "--system-image");
         if (image == null) {
             exec.out("jk avd create: --system-image <pkg> is required "
                     + "(e.g. system-images;android-34;aosp_atd;x86_64)");
-            return 64;
+            return Exit.USAGE;
         }
         // The image must be installed (jk android sdk provisions; licenses gate as always).
         Path imageDir = root.resolve(image.replace(';', '/'));
@@ -78,7 +78,7 @@ final class AvdCommand {
         String[] parts = image.split(";");
         if (parts.length < 4) {
             exec.out("jk avd create: malformed system-image package: " + image);
-            return 64;
+            return Exit.USAGE;
         }
         String target = parts[1]; // android-34
         String tag = parts[2]; // aosp_atd / default / google_apis
@@ -117,7 +117,7 @@ final class AvdCommand {
     private static int boot(PluginCommandExec exec, Path root, Path avdHome, List<String> args) throws Exception {
         if (args.size() < 2) {
             exec.out("usage: jk avd boot <name> [--emulator <path>]");
-            return 64;
+            return Exit.USAGE;
         }
         String name = args.get(1);
         if (!Files.isRegularFile(avdHome.resolve(name + ".ini"))) {
@@ -132,19 +132,20 @@ final class AvdCommand {
             exec.out("jk avd boot: the emulator component is not installed — " + "run `jk android sdk emulator` first");
             return 1;
         }
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("linux") && !Files.exists(Path.of("/dev/kvm"))) {
+        if (Os.isLinux() && !Files.exists(Path.of("/dev/kvm"))) {
             exec.out("jk avd boot: /dev/kvm is unavailable — hardware acceleration is required "
                     + "for a usable emulator");
             return 1;
         }
         exec.label("emulator " + name);
-        List<String> command = new ArrayList<>(List.of(
-                emulator.toAbsolutePath().toString(), "-avd", name, "-no-window", "-no-audio", "-no-boot-anim"));
-        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-        pb.environment().put("ANDROID_AVD_HOME", avdHome.toAbsolutePath().toString());
-        pb.environment().put("ANDROID_SDK_ROOT", root.toAbsolutePath().toString());
-        Process process = pb.start();
+        // start(), not stream(): the emulator is left running after the boot line, so this drives
+        // its own drain rather than waiting for EOF. The argv and the environment still come from
+        // the one fork owner.
+        Process process = exec.tool(emulator)
+                .args(List.of("-avd", name, "-no-window", "-no-audio", "-no-boot-anim"))
+                .env("ANDROID_AVD_HOME", avdHome.toAbsolutePath().toString())
+                .env("ANDROID_SDK_ROOT", root.toAbsolutePath().toString())
+                .start();
         // Stream until the boot line (or EOF) — the emulator keeps running detached after.
         try (BufferedReader reader =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {

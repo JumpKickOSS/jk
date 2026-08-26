@@ -4,21 +4,32 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.EngineTransport;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.ProjectCard;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -63,8 +74,8 @@ public final class HttpEngineServer implements AutoCloseable {
     private final HttpEvents events;
     private final EngineHttpJobs jobs;
     private final ProgressTokenRegistry progressTokens;
-    private final cc.jumpkick.engine.journal.BuildJournal journal;
-    private final Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
+    private final BuildJournal journal;
+    private final Supplier<List<BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
     private final LiveVitals liveVitals;
     private final ApiRouter api = new ApiRouter();
@@ -88,7 +99,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * subscription only so a refreshed tab resumes without flooding the bus or blocking live
      * ticks behind a phase-by-phase replay.
      */
-    private volatile java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect = s -> {};
+    private volatile Consumer<HttpEvents.Subscription> onEventsConnect = s -> {};
 
     private volatile HttpServer server;
     private volatile ExecutorService executor;
@@ -101,8 +112,7 @@ public final class HttpEngineServer implements AutoCloseable {
      *     one mid-flight snapshot per running job to that subscription only
      */
     public void setLiveRunSupport(
-            Supplier<List<HttpLive.Run>> liveRuns,
-            java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect) {
+            Supplier<List<HttpLive.Run>> liveRuns, Consumer<HttpEvents.Subscription> onEventsConnect) {
         this.liveRuns = liveRuns != null ? liveRuns : List::of;
         this.onEventsConnect = onEventsConnect != null ? onEventsConnect : s -> {};
     }
@@ -111,7 +121,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private volatile Runnable onSseAdmitted = () -> {};
 
     /** Engine hook: the cache maintenance gate for MCP {@code jk_disk clean|nuke}. */
-    public void setCacheGate(java.util.concurrent.locks.ReentrantReadWriteLock cacheGate) {
+    public void setCacheGate(ReentrantReadWriteLock cacheGate) {
         if (mcp != null && cacheGate != null) mcp.cacheGate(cacheGate);
     }
 
@@ -147,8 +157,8 @@ public final class HttpEngineServer implements AutoCloseable {
             Supplier<StatusSnapshot> status,
             HttpEvents events,
             EngineHttpJobs jobs,
-            cc.jumpkick.engine.journal.BuildJournal journal,
-            Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics,
+            BuildJournal journal,
+            Supplier<List<BuildMetrics.Entry>> metrics,
             Supplier<CacheSnapshot> cache,
             Consumer<String> log) {
         this.config = config;
@@ -183,7 +193,7 @@ public final class HttpEngineServer implements AutoCloseable {
                         () -> this.liveRuns.get(),
                         this::yieldingAdmission,
                         jid -> journal.rawFinishedRecordByRequestId(jid)
-                                .map(r -> HttpHistoryApi.redactRecordJson(r, new java.util.HashMap<>()))
+                                .map(r -> HttpHistoryApi.redactRecordJson(r, new HashMap<>()))
                                 .orElse(null))
                 : null;
         // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
@@ -233,7 +243,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * Bind, retrying briefly on {@link BindException}. The predecessor yields HTTP before sending
-     * {@code bye}, and {@code drainDisplaced} waits for that line, so the common path binds first
+     * {@code bye}, and {@code EngineElection.askPredecessorToYield} waits for that line, so the common path binds first
      * try. A bounded retry still covers a hair-trigger race or an unrelated occupant; if the port
      * is genuinely held, we give up quickly and serve without HTTP. (Port {@code 0} is OS-assigned
      * and never collides, so this is a no-op there.)
@@ -601,20 +611,20 @@ public final class HttpEngineServer implements AutoCloseable {
     private static boolean acceptsEventStream(HttpExchange exchange) {
         String accept = exchange.getRequestHeaders().getFirst("Accept");
         if (accept == null || accept.isBlank()) return false;
-        return accept.toLowerCase(java.util.Locale.ROOT).contains("text/event-stream");
+        return accept.toLowerCase(Locale.ROOT).contains("text/event-stream");
     }
 
     /** Project metadata fallback for MCP {@code jk_project} — one card, one parse path. */
-    private java.util.Map<String, Object> projectMap(String dir) {
-        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+    private Map<String, Object> projectMap(String dir) {
+        Map<String, Object> m = new LinkedHashMap<>();
         Path root;
         try {
-            root = cc.jumpkick.util.PathUtil.resolveUserPath(dir);
+            root = PathUtil.resolveUserPath(dir);
         } catch (IllegalArgumentException e) {
             m.put("dir", dir);
             return m;
         }
-        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(root);
+        ProjectCard card = ProjectCard.of(root);
         m.put("dir", card.dir());
         if (card.coord() != null) m.put("coord", card.coord());
         if (card.description() != null) m.put("description", card.description());
@@ -659,7 +669,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */
     private static String decodeOnce(String raw) {
-        return java.net.URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
+        return URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
     }
 
     /**
@@ -720,7 +730,7 @@ public final class HttpEngineServer implements AutoCloseable {
             out.flush();
             // Batch drain: a full queue of structural+progress frames must not force one
             // write+flush per event (that stalls the socket while the CLI TUI stays smooth).
-            java.util.List<String> batch = new java.util.ArrayList<>(64);
+            List<String> batch = new ArrayList<>(64);
             byte[] heartbeat = ": heartbeat\n\n".getBytes(StandardCharsets.UTF_8);
             while (true) {
                 String first = subscription.next(heartbeatMillis);
@@ -747,7 +757,7 @@ public final class HttpEngineServer implements AutoCloseable {
         }
     }
     /** Test seam: rebind rules for in-flight history rows. */
-    HttpLive.Run matchLiveRun(java.util.Map<String, Object> rec) {
+    HttpLive.Run matchLiveRun(Map<String, Object> rec) {
         return historyApi.matchLiveRun(rec);
     }
 
@@ -798,7 +808,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * would un-wedge them). Reacquire is uninterruptible — the balancing {@code release()} in
      * {@link #handle} must never release a permit this thread does not hold.
      */
-    private <T> T yieldingAdmission(java.util.function.Supplier<T> blocking) {
+    private <T> T yieldingAdmission(Supplier<T> blocking) {
         admission.release();
         try {
             return blocking.get();

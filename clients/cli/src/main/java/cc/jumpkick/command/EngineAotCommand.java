@@ -3,10 +3,15 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -19,7 +24,7 @@ import java.util.stream.Collectors;
  * {@code jk engine aot} — list JEP 514 AOT caches under {@code state/aot/} with human-readable
  * details from {@code aot.toml} (and filename/size fallback for pre-manifest caches).
  */
-public final class EngineAotCommand implements cc.jumpkick.model.command.CliCommand {
+public final class EngineAotCommand implements CliCommand {
 
     private static final int LABEL_FIELD = 12;
 
@@ -34,12 +39,12 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
     }
 
     @Override
-    public List<cc.jumpkick.model.command.Opt> options() {
+    public List<Opt> options() {
         return List.of();
     }
 
     @Override
-    public int run(cc.jumpkick.model.command.Invocation in) {
+    public int run(Invocation in) {
         GlobalOptions global = GlobalOptions.from(in);
         Path aotDir = JkDirs.state().resolve("aot");
         List<AotManifest.Entry> entries = AotManifest.list(aotDir);
@@ -52,7 +57,7 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
         CommandWedge.envelopeStart();
         if (!Files.isDirectory(aotDir)) {
             CliOutput.out(CommandWedge.menu("AOT Caches"));
-            detail("Directory", cc.jumpkick.cli.PathDisplay.styledRaw(aotDir) + " (not yet created)");
+            detail("Directory", PathDisplay.styledRaw(aotDir) + " (not yet created)");
             detail("Caches", "0");
             return 0;
         }
@@ -70,10 +75,10 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
                     nullToDash(e.status()),
                     e.sizeBytes() != null ? CacheCommand.fmtBytes(e.sizeBytes()) : "—"));
         }
-        for (String line : cc.jumpkick.cli.tui.Table.render("AOT Caches", headers, rows)) {
+        for (String line : Table.render("AOT Caches", headers, rows)) {
             CliOutput.out(line);
         }
-        CliOutput.out("  Directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(aotDir));
+        CliOutput.out("  Directory: " + PathDisplay.styledRaw(aotDir));
         CliOutput.out("  "
                 + entries.size()
                 + " cache"

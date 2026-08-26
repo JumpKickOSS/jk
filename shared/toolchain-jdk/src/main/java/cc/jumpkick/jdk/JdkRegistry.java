@@ -4,6 +4,8 @@ package cc.jumpkick.jdk;
 import cc.jumpkick.discovery.JkProbe;
 import cc.jumpkick.discovery.LocalToolProbe;
 import cc.jumpkick.discovery.Probes;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -13,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,6 +31,14 @@ public final class JdkRegistry {
     private final Path jdksRoot;
     private final List<LocalToolProbe> probes;
     private final IntellijJdkTable intellij;
+
+    /**
+     * Memoized {@link #listHits()}: the probe chain reads the filesystem (jk dir, SDKMAN, mise,
+     * IntelliJ, system paths, one release file per candidate), and resolution walks consult the
+     * hit list many times per command — the shell hook alone up to eight. One scan per registry
+     * instance; {@link #refresh()} drops it after an install/uninstall.
+     */
+    private volatile List<JdkHit> hitsMemo;
 
     /** Production: jk's own JDK dir as the write target + the default probe chain. */
     public JdkRegistry() {
@@ -82,6 +93,8 @@ public final class JdkRegistry {
      * deterministic regardless of timing.
      */
     public List<JdkHit> listHits() {
+        List<JdkHit> memo = hitsMemo;
+        if (memo != null) return memo;
         // Dispatch all probes at once.
         List<CompletableFuture<List<JdkHit>>> futures = new ArrayList<>(probes.size());
         for (LocalToolProbe probe : probes) {
@@ -123,7 +136,14 @@ public final class JdkRegistry {
         for (JdkHit hit : hits.values()) {
             result.add(relabel(hit));
         }
-        return result;
+        List<JdkHit> frozen = List.copyOf(result);
+        hitsMemo = frozen;
+        return frozen;
+    }
+
+    /** Drop the {@link #listHits()} memo so the next list re-probes (after install/uninstall). */
+    public void refresh() {
+        hitsMemo = null;
     }
 
     /** Source label produced by {@link cc.jumpkick.discovery.EnvVarProbe}. */
@@ -179,23 +199,12 @@ public final class JdkRegistry {
     }
 
     private static Integer majorOfVersion(String version) {
-        if (version == null || version.isEmpty()) return null;
-        int end = 0;
-        while (end < version.length() && Character.isDigit(version.charAt(end))) end++;
-        if (end == 0) return null;
-        try {
-            int n = Integer.parseInt(version.substring(0, end));
-            // Legacy "1.x" → x is the real major (only matters for inputs we'd
-            // reject anyway, but classify them honestly).
-            if (n != 1 || end == version.length()) return n;
-            int i = end + 1;
-            int j = i;
-            while (j < version.length() && Character.isDigit(version.charAt(j))) j++;
-            if (j == i) return n;
-            return Integer.parseInt(version.substring(i, j));
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        Integer n = JdkKeywords.leadingMajor(version);
+        if (n == null || n != 1 || version.length() < 3) return n;
+        // Legacy "1.x" → x is the real major (only matters for inputs we'd
+        // reject anyway, but classify them honestly).
+        Integer legacy = JdkKeywords.leadingMajor(version.substring(2));
+        return legacy == null ? n : legacy;
     }
 
     public Optional<InstalledJdk> find(String identifier) throws IOException {
@@ -269,7 +278,7 @@ public final class JdkRegistry {
             // Range (">=21"): the LOWEST installed major satisfying the bound
             // wins; ties break on vendor preference, then newest version.
             matches.sort(Comparator.comparingInt((JdkHit h) -> {
-                        Integer m = majorOf(h.version());
+                        Integer m = JdkKeywords.leadingMajor(h.version());
                         return m == null ? Integer.MAX_VALUE : m;
                     })
                     .thenComparingInt(h ->
@@ -295,12 +304,13 @@ public final class JdkRegistry {
         Path installDir = IntellijJdkDir.installDirOf(jdk.home());
         if (!Files.exists(installDir)) return false;
         deleteRecursively(installDir);
+        refresh();
         // Remove any symlinks in jdksRoot that now dangle to the deleted directory.
         // Symlinks (POSIX) and junctions (Windows) are created by StableJdkPointer
         // to give IntelliJ a stable vendor+major path; they become dangling after
         // the install dir is removed. Windows junctions are cleaned up by the
         // owning tools or left for the OS; only POSIX symlinks are removed here.
-        if (!HostPlatform.isWindows() && Files.isDirectory(jdksRoot)) {
+        if (!Os.isWindows() && Files.isDirectory(jdksRoot)) {
             Path canonical = installDir.toAbsolutePath().normalize();
             try (Stream<Path> entries = Files.list(jdksRoot)) {
                 entries.filter(Files::isSymbolicLink).forEach(link -> {
@@ -339,7 +349,7 @@ public final class JdkRegistry {
     public Optional<JdkHit> findHitAtLeast(int major, String minVersion, List<String> hints) {
         String floor = minVersion == null ? null : JdkSelector.versionKey(minVersion);
         for (JdkHit hit : listHits()) {
-            Integer m = majorOf(hit.version());
+            Integer m = JdkKeywords.leadingMajor(hit.version());
             if (m == null || m != major) continue;
             if (floor != null) {
                 if (hit.version() == null) continue;
@@ -349,7 +359,7 @@ public final class JdkRegistry {
                 String haystack = hintHaystack(hit.vendor());
                 boolean all = true;
                 for (String hint : hints) {
-                    if (!haystack.contains(hint.toLowerCase(java.util.Locale.ROOT))) {
+                    if (!haystack.contains(hint.toLowerCase(Locale.ROOT))) {
                         all = false;
                         break;
                     }
@@ -363,10 +373,10 @@ public final class JdkRegistry {
 
     private static boolean matchesSpec(JdkHit hit, JdkSelector.FlexibleQuery query) {
         if (query.lowerBound().isPresent()) {
-            Integer hitMajor = majorOf(hit.version());
+            Integer hitMajor = JdkKeywords.leadingMajor(hit.version());
             if (hitMajor == null || !query.lowerBound().get().satisfiedBy(hitMajor)) return false;
         } else if (query.major().isPresent()) {
-            Integer hitMajor = majorOf(hit.version());
+            Integer hitMajor = JdkKeywords.leadingMajor(hit.version());
             if (hitMajor == null || !hitMajor.equals(query.major().get())) return false;
         }
         if (query.exactVersion().isPresent()) {
@@ -382,34 +392,19 @@ public final class JdkRegistry {
         if (!query.hints().isEmpty()) {
             String haystack = hintHaystack(hit.vendor());
             for (String hint : query.hints()) {
-                if (!haystack.contains(hint.toLowerCase(java.util.Locale.ROOT))) return false;
+                if (!haystack.contains(hint.toLowerCase(Locale.ROOT))) return false;
             }
         }
         return true;
     }
 
-    private static Integer majorOf(String version) {
-        if (version == null || version.isEmpty()) return null;
-        int end = 0;
-        while (end < version.length() && Character.isDigit(version.charAt(end))) end++;
-        if (end == 0) return null;
-        try {
-            return Integer.parseInt(version.substring(0, end));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
     private static String hintHaystack(JdkVendor v) {
         StringBuilder sb = new StringBuilder();
-        sb.append(v.vendor().toLowerCase(java.util.Locale.ROOT)).append(' ');
-        sb.append(v.product().toLowerCase(java.util.Locale.ROOT)).append(' ');
-        v.jbPrefix()
-                .ifPresent(p -> sb.append(p.toLowerCase(java.util.Locale.ROOT)).append(' '));
-        v.sdkmanSuffix()
-                .ifPresent(s -> sb.append(s.toLowerCase(java.util.Locale.ROOT)).append(' '));
-        v.foojayDistro()
-                .ifPresent(f -> sb.append(f.toLowerCase(java.util.Locale.ROOT)).append(' '));
+        sb.append(v.vendor().toLowerCase(Locale.ROOT)).append(' ');
+        sb.append(v.product().toLowerCase(Locale.ROOT)).append(' ');
+        v.jbPrefix().ifPresent(p -> sb.append(p.toLowerCase(Locale.ROOT)).append(' '));
+        v.sdkmanSuffix().ifPresent(s -> sb.append(s.toLowerCase(Locale.ROOT)).append(' '));
+        v.foojayDistro().ifPresent(f -> sb.append(f.toLowerCase(Locale.ROOT)).append(' '));
         return sb.toString();
     }
 
@@ -436,6 +431,7 @@ public final class JdkRegistry {
             return false;
         }
         deleteRecursively(installDir);
+        refresh();
         return true;
     }
 
@@ -450,6 +446,6 @@ public final class JdkRegistry {
     }
 
     private static void deleteRecursively(Path root) {
-        cc.jumpkick.util.PathUtil.deleteRecursively(root);
+        PathUtil.deleteRecursively(root);
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.model.command.Exit;
 import java.util.List;
 import java.util.Locale;
 
@@ -12,7 +13,7 @@ import java.util.Locale;
  * the same entry directory.
  *
  * <p>Deliberately a plain value object with no engine dependencies so it round-trips cleanly through
- * {@link Json}. {@code schema} lets a future reader detect and reject/upgrade an older layout.
+ * {@link Json}. {@code schema} is a stamp carried on the written record; no reader branches on it.
  *
  * <p>{@code running=true} marks an in-flight admission written at request-start so the web UI can
  * rehydrate active builds after refresh. Finished records keep {@code running=false}.
@@ -44,11 +45,9 @@ public record BuildRecord(
         long requestId) {
 
     /**
-     * The current on-disk schema version. Bumped to 2 when {@code buildNumber} — the durable,
-     * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics})
-     * was added. {@code trigger}, {@code commit}, {@code benefit}, {@code running}, and {@code io}
-     * (the run's byte counts) were added without a bump — pre-1.0 additive fields simply read back as
-     * defaults on older records.
+     * The on-disk schema version stamped into every {@code record.json}. Purely descriptive: a
+     * record carrying any other value still parses, because additive fields absent from it read
+     * back as their defaults.
      */
     public static final int SCHEMA = 2;
 
@@ -112,6 +111,49 @@ public record BuildRecord(
                 commit,
                 benefit,
                 running,
+                io,
+                requestId);
+    }
+
+    /**
+     * This row closed out as abandoned: an engine died with it still {@code running}, so nothing is
+     * ever going to finish it.
+     *
+     * <p>Not a cancellation. A Ctrl-C reaches a live engine, which completes the row itself; the
+     * only rows that reach here are the ones whose engine was killed, crashed, or lost its machine.
+     * A user cannot act on that, so the code is {@link Exit#SOFTWARE}. Until JK-2417 it was 130 —
+     * {@code 128 + SIGINT} — with {@code cancelled} set, reporting a machine's death as something
+     * the user did. Vacating it left the journal with no 130 at all for a whole release; since
+     * JK-2485 a genuinely cancelled row carries {@link Exit#INTERRUPTED} and this one still does
+     * not, which is the distinction the two codes exist to draw.
+     *
+     * <p>The in-flight step, module and diagnostic lists are dropped: a half-written plan is not a
+     * result, and the row is kept only so the history does not show a run that never ends.
+     */
+    public BuildRecord abandoned(long finishedAt, String jkVersion) {
+        return new BuildRecord(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                Math.max(0, finishedAt - startedAt),
+                /* success */ false,
+                /* cancelled */ false,
+                Exit.SOFTWARE,
+                jkVersion != null ? jkVersion : this.jkVersion,
+                /* tests */ null,
+                List.of(),
+                List.of(),
+                List.of(),
+                trigger,
+                commit,
+                /* benefit */ null,
+                /* running */ false,
                 io,
                 requestId);
     }

@@ -3,6 +3,9 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -62,9 +65,6 @@ public final class ActionCachePrune {
 
     private static final Pattern TASK = Pattern.compile("^TASK (\\S+)", Pattern.MULTILINE);
     private static final Pattern OUTPUT_SHA = Pattern.compile("^OUTPUT ([0-9a-fA-F]{64}) ", Pattern.MULTILINE);
-
-    /** Zinc analysis trees, evicted a directory at a time. */
-    private static final List<String> INCREMENTAL_DIRS = List.of("incremental-java", "incremental-kotlin");
 
     private ActionCachePrune() {}
 
@@ -169,7 +169,7 @@ public final class ActionCachePrune {
             throws IOException {
         long now = System.currentTimeMillis();
         long grace = Sweep.MIN_AGE_FOR_SWEEP.toMillis();
-        Path actionsDir = cacheRoot.resolve("actions");
+        Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
         if (!Files.isDirectory(actionsDir)) return Report.EMPTY;
 
         Incremental incremental = pruneIncremental(actionsDir, policy, now, grace, dryRun);
@@ -178,8 +178,8 @@ public final class ActionCachePrune {
         Map<String, Long> blobMtime = new HashMap<>();
         long used = scanCas(cacheCas, alreadyFreedShas, blobSize, blobMtime);
 
-        Path keysDir = actionsDir.resolve("keys");
-        Path tasksDir = actionsDir.resolve("tasks");
+        Path keysDir = ActionTree.KEYS.under(actionsDir);
+        Path tasksDir = ActionTree.TASKS.under(actionsDir);
         Scan scan = scanActions(actionsDir, keysDir, tasksDir);
         used += scan.bytes();
 
@@ -472,7 +472,8 @@ public final class ActionCachePrune {
     private static boolean underIncremental(Path actionsDir, Path file) {
         Path relative = actionsDir.relativize(file);
         return relative.getNameCount() > 0
-                && INCREMENTAL_DIRS.contains(relative.getName(0).toString());
+                && ActionTree.incremental().stream()
+                        .anyMatch(t -> t.entry().equals(relative.getName(0).toString()));
     }
 
     /**
@@ -514,8 +515,7 @@ public final class ActionCachePrune {
         record Tree(Path dir, long bytes, long mtime) {}
         List<Tree> trees = new ArrayList<>();
         long used = 0L;
-        for (String name : INCREMENTAL_DIRS) {
-            Path root = actionsDir.resolve(name);
+        for (Path root : ActionTree.incrementalUnder(actionsDir)) {
             if (!Files.isDirectory(root)) continue;
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
                 for (Path dir : stream) {
@@ -568,18 +568,9 @@ public final class ActionCachePrune {
 
     /** Depth-first delete of one task's analysis directory; returns the regular files unlinked. */
     private static int deleteTree(Path dir) throws IOException {
-        int files = 0;
-        List<Path> paths;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            paths = walk.sorted(Comparator.reverseOrder()).toList();
-        } catch (NoSuchFileException vanished) {
-            return 0;
-        }
-        for (Path path : paths) {
-            boolean regular = Files.isRegularFile(path);
-            if (Files.deleteIfExists(path) && regular) files++;
-        }
-        return files;
+        var removed = new PathUtil.Removed();
+        PathUtil.deleteRecursivelyOrThrow(dir, removed);
+        return (int) removed.files();
     }
 
     /** Unlink one entry's on-disk footprint: key record, task pointer, generation-list line. */

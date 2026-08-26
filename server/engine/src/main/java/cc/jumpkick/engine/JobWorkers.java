@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -76,8 +79,8 @@ public final class JobWorkers {
 
     static {
         // SessionContext's static init uses bind() (displaces); force it to land before our add().
-        cc.jumpkick.config.SessionContext.current();
-        cc.jumpkick.run.ContextPropagator.add(new cc.jumpkick.run.ContextPropagator.Propagator() {
+        SessionContext.current();
+        ContextPropagator.add(new ContextPropagator.Propagator() {
             @Override
             public Runnable wrapRunnable(Runnable r) {
                 Long captured = CURRENT.get();
@@ -147,7 +150,7 @@ public final class JobWorkers {
         List<Future<?>> pending = new ArrayList<>();
         CountDownLatch release = new CountDownLatch(1);
         for (int i = 0; i < n; i++) {
-            pending.add(cc.jumpkick.run.JkThreads.cpu().submit(() -> {
+            pending.add(JkThreads.cpu().submit(() -> {
                 try {
                     release.await(5, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {

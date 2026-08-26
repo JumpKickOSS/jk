@@ -34,19 +34,64 @@ class TomlScanTest {
     }
 
     @Test
-    void top_level_key_stops_at_first_match_and_survives_array_tables(@TempDir Path tmp) throws Exception {
+    void nested_jdk_pin_stops_early_before_array_tables(@TempDir Path tmp) throws Exception {
         Path lock = tmp.resolve("jk-lock.toml");
         Files.writeString(lock, """
                 version = 1
-                jdk = "temurin-25.0.1"
+
+                [jdk]
+                vendor = "temurin"
+                version = "25.0.1"
 
                 [[artifact]]
                 name = "a:b"
-                jdk = "decoy"
+                vendor = "decoy"
                 """);
-        TomlScan scan = TomlScan.scan(lock, "jdk");
-        assertThat(scan.get("jdk")).isEqualTo("temurin-25.0.1");
+        TomlScan scan = TomlScan.scan(lock, "jdk.vendor", "jdk.version");
+        assertThat(scan.get("jdk.vendor")).isEqualTo("temurin");
+        assertThat(scan.get("jdk.version")).isEqualTo("25.0.1");
         assertThat(scan.hasSection("artifact")).isFalse(); // early-stop: never read that far
+    }
+
+    @Test
+    void missing_optional_table_does_not_scan_array_tables(@TempDir Path tmp) throws Exception {
+        Path lock = tmp.resolve("jk-lock.toml");
+        Files.writeString(lock, """
+                version = 1
+
+                [jdk]
+                vendor = "temurin"
+                version = "25.0.1"
+
+                [[artifact]]
+                name = "a:b"
+                vendor = "decoy"
+                """);
+        TomlScan scan = TomlScan.scanScalarHead(lock, "jdk.vendor", "jdk.version", "graal.vendor", "graal.version");
+        assertThat(scan.get("jdk.vendor")).isEqualTo("temurin");
+        assertThat(scan.get("graal.vendor")).isNull();
+        // Header is seen so we can stop; keys inside the array table are not read.
+        assertThat(scan.hasSection("artifact")).isTrue();
+        assertThat(scan.get("artifact.vendor")).isNull();
+    }
+
+    @Test
+    void section_after_an_array_of_tables_still_reads(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                [[train.profile]]
+                name = "hot"
+                modules = "decoy"
+
+                [workspace]
+                modules = ["app", "lib"]
+                """);
+        // TOML imposes no section ordering: the full scan reads past [[…]] tables,
+        // and their per-element keys never satisfy a flat scalar lookup.
+        TomlScan scan = TomlScan.scan(toml, "workspace.modules", "train.profile.name");
+        assertThat(scan.stringArray("workspace.modules")).containsExactly("app", "lib");
+        assertThat(scan.get("train.profile.name")).isNull();
+        assertThat(scan.hasSection("workspace")).isTrue();
     }
 
     @Test

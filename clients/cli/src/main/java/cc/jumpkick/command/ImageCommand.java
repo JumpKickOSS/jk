@@ -1,16 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.BuildOptions;
+import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -48,10 +65,9 @@ public final class ImageCommand implements CliCommand {
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
                                 "--cache-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
-                cc.jumpkick.cli.CommonOpts.skipTests()));
-        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
+                CommonOpts.jdksDir(),
+                CommonOpts.skipTests()));
+        opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -63,7 +79,7 @@ public final class ImageCommand implements CliCommand {
     String dockerExecutableArg;
     Path cacheDirOverride;
     Path jdksDir;
-    cc.jumpkick.cli.BuildOptions buildOpts;
+    BuildOptions buildOpts;
     GlobalOptions global;
 
     @Override
@@ -73,44 +89,43 @@ public final class ImageCommand implements CliCommand {
         this.tag = in.value("tag").orElse(null);
         this.tarballArg = in.value("tarball").orElse(null);
         this.dockerExecutableArg = in.value("docker-executable").orElse(null);
-        this.cacheDirOverride =
-                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
-        this.buildOpts = new cc.jumpkick.cli.BuildOptions();
+        this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
+        this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.global = GlobalOptions.from(in);
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
-        Path jkBuildPath = projectDir.resolve("jk.toml");
+        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(jkBuildPath)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Image", jkBuildPath + " not found.");
+            CommandWedge.printFail("Image", jkBuildPath + " not found.");
             return Exit.NO_INPUT;
         }
         // -m/--modules: an image is built for exactly one module — redirect to it.
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
-        var peekEarly = BuildCommand.projectInfoOrNull(projectDir);
+        var peekEarly = ProjectInfos.orNull(projectDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, modulesSpec, peekEarly);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
             Path selectRoot = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : projectDir;
-            var selected = BuildCommand.projectInfoOrError(selectRoot, modulesSpec, affectedSince);
+            var selected = ProjectInfos.orError(selectRoot, modulesSpec, affectedSince);
             if (selected.error() != null && !selected.error().isBlank()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Image", selected.error());
+                CommandWedge.printFail("Image", selected.error());
                 return Exit.CONFIG;
             }
             if (selected.moduleDirs().size() != 1) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                CommandWedge.printFail(
                         "Image",
                         "an image is built for exactly one module — the selector matched "
                                 + selected.moduleDirs().size());
                 return Exit.USAGE;
             }
             projectDir = Path.of(selected.moduleDirs().getFirst());
-            jkBuildPath = projectDir.resolve("jk.toml");
+            jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
-        var peek = BuildCommand.projectInfoOrNull(projectDir);
+        var peek = ProjectInfos.orNull(projectDir);
         if (peek != null
                 && !peek.workspaceRootDir().isBlank()
                 && !Path.of(peek.workspaceRootDir())
@@ -123,13 +138,12 @@ public final class ImageCommand implements CliCommand {
         String module = BuildCommand.buildTarget(jkBuildPath, projectDir);
 
         BuildPlanResult result;
-        cc.jumpkick.run.TestSummary testResult;
+        TestSummary testResult;
         // The wire has no real BuildPlan, so the success tail renders from the structured fields the
         // terminal plan-finish carries — the summary holder is populated before the console
         // listener's own planFinish fires, same holder pattern as TestCommand's hosted path.
-        var session = cc.jumpkick.config.SessionContext.current();
-        cc.jumpkick.cli.engine.EngineRequests.ImageSummary[] summary =
-                new cc.jumpkick.cli.engine.EngineRequests.ImageSummary[1];
+        var session = SessionContext.current();
+        EngineRequests.ImageSummary[] summary = new EngineRequests.ImageSummary[1];
         ConsoleSpec spec = new ConsoleSpec(
                 "Image",
                 r -> summary[0] != null
@@ -143,9 +157,9 @@ public final class ImageCommand implements CliCommand {
                 r -> "Image build failed",
                 true);
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runImage(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineRequests.ImageRequest(
+            result = EngineClient.runImage(
+                    EnginePaths.current(),
+                    new EngineRequests.ImageRequest(
                             projectDir,
                             cache,
                             jdksDir,
@@ -162,7 +176,7 @@ public final class ImageCommand implements CliCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     summary);
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Image", e.getMessage());
+            CommandWedge.printFail("Image", e.getMessage());
             return Exit.SOFTWARE;
         }
         testResult = summary[0] != null ? summary[0].testResult() : null;
@@ -209,8 +223,8 @@ public final class ImageCommand implements CliCommand {
      * this module, prereqs package. Aggregate TUI matches native/build.
      */
     private int runWorkspaceImage(Path wsRoot, Path moduleDir, Path cache) throws IOException {
-        var session = cc.jumpkick.config.SessionContext.current();
-        var imageReq = new cc.jumpkick.cli.engine.EngineRequests.ImageRequest(
+        var session = SessionContext.current();
+        var imageReq = new EngineRequests.ImageRequest(
                 moduleDir,
                 cache,
                 jdksDir,
@@ -226,53 +240,28 @@ public final class ImageCommand implements CliCommand {
                 global.verbose);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        cc.jumpkick.cli.tui.JkManager view =
-                cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Image", animate);
+        JkManager view = JkManager.plan(CliOutput.stdout(), "Image", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(moduleDir));
-        var moduleInfo = BuildCommand.projectInfoOrNull(moduleDir);
-        cc.jumpkick.cli.tui.ModuleScopeHint.show(
-                "building",
-                cc.jumpkick.cli.tui.ModuleScopeHint.namesFrom(moduleInfo),
-                global != null && global.outputIsJson(),
-                view);
-        cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
-        int[] finished = {0};
-        cc.jumpkick.runtime.ModuleOutcome.Image[] imageOut = {null};
+        var moduleInfo = ProjectInfos.orNull(moduleDir);
+        ModuleScopeHint.show(
+                "building", ModuleScopeHint.namesFrom(moduleInfo), global != null && global.outputIsJson(), view);
+        AggregateContext agg = new AggregateContext(view);
+        ModuleOutcome.Image[] imageOut = {null};
         long start = System.nanoTime();
-        cc.jumpkick.runtime.WorkspaceResult result;
+        // Not buffered and no JSONL: like `jk compile`, this region is opened dormant under
+        // `--output json` and must write nothing above it.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Image", false, false), moduleDir, null, false);
+        WorkspaceResult result;
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runImageWorkspace(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    imageReq,
-                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
-                        @Override
-                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
-                            agg.applySnapshot(snap);
-                        }
-
-                        @Override
-                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            return new cc.jumpkick.cli.run.AggregateModuleListener(
-                                    agg, m.coord(), m.plan().steps(), m.weight());
-                        }
-
-                        @Override
-                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            int n = ++finished[0];
-                            if (o.success() && o.image() != null) imageOut[0] = o.image();
-                            String completion =
-                                    BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
-                            if (view.animating()) {
-                                view.addCompletion(completion);
-                            }
-                        }
-                    });
+            result = EngineClient.runImageWorkspace(EnginePaths.current(), imageReq, run.live(view, agg, o -> {
+                if (o.success() && o.image() != null) imageOut[0] = o.image();
+            }));
         } catch (IOException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!result.success()) {
-            view.finishBuildPlanFailure("image failed " + BuildCommand.elapsedSince(start));
+            view.finishBuildPlanFailure("image failed " + BuildTails.elapsedSince(start));
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
         // Same Pushed/Wrote/Loaded tail as the single-project chip (JK-2100).
@@ -280,7 +269,7 @@ public final class ImageCommand implements CliCommand {
         String tail = img != null
                 ? imageSuccessTail(img.tarball(), img.name(), img.version(), img.daemonExe(), img.ref())
                 : "image built";
-        view.finishBuildPlanSuccess(tail + " " + BuildCommand.elapsedSince(start));
+        view.finishBuildPlanSuccess(tail + " " + BuildTails.elapsedSince(start));
         return 0;
     }
 }

@@ -2,12 +2,23 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -23,9 +34,7 @@ import cc.jumpkick.runtime.ModulePlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.PathUtil;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -38,7 +47,6 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * {@code jk verify} — rebuild into a scratch copy and SHA-256-diff artifacts against {@code
@@ -59,7 +67,7 @@ public final class VerifyBuildCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
+        return List.of(CommonOpts.cacheDir());
     }
 
     private Path cacheDir;
@@ -84,14 +92,13 @@ public final class VerifyBuildCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException {
-        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+        Path lockFile = LockPaths.lockFile(dir);
         if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Verify", "jk.toml and jk-lock.toml required in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir));
+            CommandWedge.printFail("Verify", "jk.toml and jk-lock.toml required in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -181,7 +188,7 @@ public final class VerifyBuildCommand implements CliCommand {
             }
         }
         if (mismatches == 0) {
-            if (!global.outputIsJson()) cc.jumpkick.cli.tui.CommandWedge.printOk("Verify", "Reproducible");
+            if (!global.outputIsJson()) CommandWedge.printOk("Verify", "Reproducible");
             return 0;
         }
         CliOutput.err("Not reproducible — " + mismatches + " artifact(s) differ.");
@@ -233,9 +240,7 @@ public final class VerifyBuildCommand implements CliCommand {
             }
         };
         WorkspaceResult result = SessionContext.where(
-                session,
-                () -> cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                        cc.jumpkick.engine.EnginePaths.current(), request, listener));
+                session, () -> EngineClient.buildWorkspace(EnginePaths.current(), request, listener));
         if (!result.errors().isEmpty()) {
             errors.error("build", String.join("; ", result.errors()));
             throw new RuntimeException("scratch rebuild failed");
@@ -249,19 +254,8 @@ public final class VerifyBuildCommand implements CliCommand {
 
     /** A config layer that sets only {@code rerun} — laid over the invocation's config. */
     private static JkConfig withRerun() {
-        return new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true), // rebuild: bypass jk's caches, but never re-fetch (offline-safe)
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        // rebuild: bypass jk's caches, but never re-fetch (offline-safe)
+        return JkConfig.empty().withRebuild(true);
     }
 
     // ---- module + artifact enumeration -------------------------------------
@@ -294,8 +288,7 @@ public final class VerifyBuildCommand implements CliCommand {
     /** The engine's project summary for {@code dir}; throws with the engine's message on error. */
     private static ProjectInfo projectInfo(Path dir) throws IOException {
         try {
-            ProjectInfo info =
-                    cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
+            ProjectInfo info = EngineClient.projectInfo(EnginePaths.current(), dir);
             if (info.error() != null) throw new IOException(info.error());
             return info;
         } catch (IOException e) {
@@ -390,9 +383,9 @@ public final class VerifyBuildCommand implements CliCommand {
     private static boolean skip(Path d) {
         String name = d.getFileName() == null ? "" : d.getFileName().toString();
         if (name.equals(".git")) return true;
-        return name.equals("target")
+        return name.equals(BuildLayout.TARGET)
                 && d.getParent() != null
-                && Files.exists(d.getParent().resolve("jk.toml"));
+                && Files.exists(d.getParent().resolve(ManifestPaths.MANIFEST));
     }
 
     /**
@@ -405,7 +398,7 @@ public final class VerifyBuildCommand implements CliCommand {
         try (var stream = Files.walk(root)) {
             for (Path p : (Iterable<Path>) stream::iterator) {
                 if (p.getFileName() != null
-                        && "jk-lock.toml".equals(p.getFileName().toString())) {
+                        && ManifestPaths.LOCK.equals(p.getFileName().toString())) {
                     Files.setLastModifiedTime(p, now);
                 }
             }

@@ -1,24 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
-import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 import org.tomlj.TomlParseResult;
-import org.tomlj.TomlTable;
 
 /**
  * Machine-scoped preferences from {@code ~/.config/jk/config.toml}: root-level UI flags (e.g.
@@ -49,10 +40,7 @@ public final class GlobalConfig {
         NerdFontCaps hit = resolvedNerdFont;
         if (hit != null) return hit;
         NerdFontCaps fresh = nerdFont(
-                JkDirs.userConfigFile(),
-                System.getenv("JK_NERD_FONT"),
-                System.getenv("NERD_FONT"),
-                colorActivelyEnabled());
+                JkDirs.userConfigFile(), System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorEnabled());
         resolvedNerdFont = fresh;
         return fresh;
     }
@@ -61,21 +49,49 @@ public final class GlobalConfig {
     private static volatile NerdFontCaps resolvedNerdFont;
 
     /**
-     * True when color output is currently enabled — same logic as {@code Theme.colorEnabled} in
-     * the CLI layer, duplicated here so {@code kernel/core} can apply it without a circular dep.
+     * The bare no-ANSI triple — {@code --no-ansi}, {@code TERM=dumb}, {@code CI=true/1}. When true,
+     * <em>all</em> ANSI is off: color, Unicode glyphs, animations, cursor movement. Deliberately
+     * narrower than {@link #colorEnabled()}: {@code NO_COLOR} / {@code --color never} only disable
+     * color, never glyphs or animation. Owner of the triple — the interactivity axis
+     * ({@code Interactivity}: {@code JK_NONINTERACTIVE}, CI-set-at-all) and the nerd-font probe
+     * ({@code NerdFontDetect}: injectable env, reason strings) are different facts, not copies.
      */
-    static boolean colorActivelyEnabled() {
-        // No-ANSI triggers: --no-ansi flag, TERM=dumb, CI=true/1.
-        if (cc.jumpkick.config.SessionContext.current().config().noAnsiOr(false)) return false;
-        if ("dumb".equals(System.getenv("TERM"))) return false;
-        String ci = System.getenv("CI");
-        if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) return false;
-        var choice = cc.jumpkick.config.SessionContext.current().config().colorOr(JkConfig.ColorChoice.AUTO);
+    public static boolean ansiSuppressed() {
+        return ansiSuppressed(SessionContext.current().config(), System::getenv);
+    }
+
+    /** Injectable overload of {@link #ansiSuppressed()} — tests pin the trigger matrix here. */
+    static boolean ansiSuppressed(JkConfig config, Function<String, String> env) {
+        if (config.noAnsiOr(false)) return true;
+        // Forced ANSI outranks the environment suppressors: without it the mode cannot be pinned
+        // in the ANSI direction at all, so an assertion about ANSI output passes or fails on
+        // whatever TERM/CI the host happens to set.
+        if (config.forceAnsiOr(false)) return false;
+        if ("dumb".equals(env.apply("TERM"))) return true;
+        return EnvValues.bool(env, "CI").orElse(false);
+    }
+
+    /**
+     * True when foreground color should be emitted: {@link #ansiSuppressed()} wins outright, then
+     * the resolved {@code --color} choice ({@code AUTO} honors {@code NO_COLOR}, never isatty).
+     */
+    public static boolean colorEnabled() {
+        return colorEnabled(SessionContext.current().config(), System::getenv);
+    }
+
+    /** Injectable overload of {@link #colorEnabled()} — tests pin the trigger matrix here. */
+    static boolean colorEnabled(JkConfig config, Function<String, String> env) {
+        if (ansiSuppressed(config, env)) return false;
+        var choice = config.colorOr(JkConfig.ColorChoice.AUTO);
         return switch (choice) {
             case ALWAYS -> true;
             case NEVER -> false;
+            // AUTO: emit color unless NO_COLOR is set. We don't gate on isatty —
+            // many jk consumers (CI logs, `less -R`, pipes into other formatters)
+            // benefit from preserved color, and users who want strictly plain
+            // output can pass `--color never`.
             case AUTO -> {
-                String nc = System.getenv("NO_COLOR");
+                String nc = env.apply("NO_COLOR");
                 yield nc == null || nc.isEmpty();
             }
         };
@@ -83,7 +99,7 @@ public final class GlobalConfig {
 
     /** As {@link #nerdFont()} but against an explicit config file — for tests. */
     static NerdFontCaps nerdFont(Path configFile) {
-        return nerdFont(configFile, System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorActivelyEnabled());
+        return nerdFont(configFile, System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorEnabled());
     }
 
     /** As {@link #nerdFont(Path)} but with explicit env values — bypasses the color gate for tests. */
@@ -150,77 +166,31 @@ public final class GlobalConfig {
     /** Read a dotted or bare key via TomlScan, leniently. */
     private static Optional<String> stringFromGlobal(Path file, String dotted) {
         if (file == null) return Optional.empty();
-        String cacheKey;
-        long size;
-        long modified;
-        try {
-            if (!Files.exists(file)) return Optional.empty();
-            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            cacheKey = file + "|" + dotted;
-            size = attrs.size();
-            modified = attrs.lastModifiedTime().toMillis();
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-        return memoized(
-                        SCAN_CACHE,
-                        cacheKey,
-                        size,
-                        modified,
-                        () -> Optional.ofNullable(TomlScan.scan(file, dotted).get(dotted)))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty());
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
+        if (stamp == null) return Optional.empty(); // absent or unreadable — no value, nothing to memo
+        String raw = SCAN_CACHE.get(
+                file + "|" + dotted, stamp, () -> TomlScan.scan(file, dotted).get(dotted));
+        return Optional.ofNullable(raw).map(String::trim).filter(s -> !s.isEmpty());
     }
 
-    /**
-     * One entry per (file, dotted key), carrying the size+mtime stamp it was scanned at.
-     *
-     * <p>The stamp lives in the value, not the key: with it in the key every config rewrite minted
-     * a new entry and nothing ever removed the old one — and this cache had no clear path at all,
-     * so it grew for the life of the process.
-     */
-    private static final ConcurrentHashMap<String, Stamped<Optional<String>>> SCAN_CACHE = new ConcurrentHashMap<>();
+    /** One entry per (file, dotted key). The staleness rule is {@link StampedMemo}'s. */
+    private static final StampedMemo<String, StampedMemo.FileStamp, String> SCAN_CACHE = StampedMemo.create();
 
-    // Memoize per path, revalidated on size+mtime (file is process-stable; nerdfont hits this often).
-    private static final ConcurrentHashMap<String, Stamped<Optional<TomlParseResult>>> CONFIG_CACHE =
-            new ConcurrentHashMap<>();
-
-    /** A memoized value plus the file stamp it was computed from. */
-    private record Stamped<T>(long size, long modifiedMillis, T value) {
-        boolean matches(long otherSize, long otherModified) {
-            return size == otherSize && modifiedMillis == otherModified;
-        }
-    }
-
-    /** Look up {@code key}, recomputing when the file's stamp moved; one entry per key, replaced. */
-    private static <T> T memoized(
-            ConcurrentHashMap<String, Stamped<T>> cache,
-            String key,
-            long size,
-            long modifiedMillis,
-            Supplier<T> compute) {
-        Stamped<T> hit = cache.get(key);
-        if (hit != null && hit.matches(size, modifiedMillis)) return hit.value();
-        T fresh = compute.get();
-        cache.put(key, new Stamped<>(size, modifiedMillis, fresh));
-        return fresh;
-    }
+    /** One entry per path (the file is process-stable, and {@code nerd-font} hits this often). */
+    private static final StampedMemo<String, StampedMemo.FileStamp, TomlParseResult> CONFIG_CACHE =
+            StampedMemo.create();
 
     private static Optional<TomlParseResult> parseConfig(Path file) {
         if (file == null) return Optional.empty();
-        String key;
-        long size;
-        long modified;
-        try {
-            if (!Files.exists(file)) return Optional.empty();
-            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            key = file.toAbsolutePath().toString();
-            size = attrs.size();
-            modified = attrs.lastModifiedTime().toMillis();
-        } catch (IOException e) {
-            return TomlValues.parse(file); // uncached fallback on stat failure
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
+        if (stamp == null) {
+            // No stamp is either "no file" (no config) or a stat failure on a file that is there,
+            // and only the second one is worth an uncached read.
+            return Files.exists(file) ? TomlValues.parse(file) : Optional.empty();
         }
-        return memoized(CONFIG_CACHE, key, size, modified, () -> TomlValues.parse(file));
+        return Optional.ofNullable(
+                CONFIG_CACHE.get(file.toAbsolutePath().toString(), stamp, () -> TomlValues.parse(file)
+                        .orElse(null)));
     }
 
     /** Clear the memoized config parse. For tests that rewrite {@code ~/.config/jk/config.toml} in one JVM. */
@@ -228,6 +198,25 @@ public final class GlobalConfig {
         CONFIG_CACHE.clear();
         SCAN_CACHE.clear();
         resolvedNerdFont = null;
+    }
+
+    /**
+     * User-global {@code [image]} defaults from {@code ~/.config/jk/config.toml} — the layer under
+     * a project's {@code [image]} table ({@link JkBuildParser#imageConfig(Path)}). Lenient, like
+     * everything else read from this file: a malformed config yields
+     * {@link ManifestImage.ImageConfigData#EMPTY} rather than failing a packaging run.
+     */
+    public static ManifestImage.ImageConfigData image() {
+        return image(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #image()} but against an explicit config file — for tests. */
+    static ManifestImage.ImageConfigData image(Path configFile) {
+        try {
+            return parseConfig(configFile).map(ManifestImage::parse).orElse(ManifestImage.ImageConfigData.EMPTY);
+        } catch (RuntimeException e) {
+            return ManifestImage.ImageConfigData.EMPTY;
+        }
     }
 
     // Repositories
@@ -244,54 +233,8 @@ public final class GlobalConfig {
     /** As {@link #repositories()} but against an explicit config file — for tests. */
     static List<RepositorySpec> repositories(Path configFile) {
         return parseConfig(configFile)
-                .map(toml -> parseRepositories(toml.getTable("repositories")))
+                .map(toml -> RepositoryToml.repositories(
+                        toml.getTable("repositories"), RepositoryToml.VarPolicy.LENIENT, RepositoryToml.OnBad.SKIP))
                 .orElse(List.of());
     }
-
-    private static List<RepositorySpec> parseRepositories(TomlTable repos) {
-        if (repos == null) return List.of();
-        List<RepositorySpec> result = new ArrayList<>(repos.size());
-        for (String name : repos.keySet()) {
-            if (RepositorySpec.JK_LOCAL.equals(name)) {
-                continue; // reserved first-party store — skip leniently in global config
-            }
-            Object value = repos.get(name);
-            String url;
-            Optional<RepoCredential> credential = Optional.empty();
-            Optional<ObjectStoreConfig> objectStore = Optional.empty();
-            List<String> groups = List.of();
-            try {
-                if (value instanceof String s) {
-                    url = s;
-                } else if (value instanceof TomlTable t) {
-                    String u = t.getString("url");
-                    if (u == null) continue; // malformed — skip leniently
-                    url = u;
-                    credential = RepositoryToml.credential(t, LENIENT_INTERP);
-                    objectStore = RepositoryToml.objectStore(t, LENIENT_INTERP);
-                    try {
-                        groups = RepositoryToml.groups(t, "repositories." + name);
-                    } catch (RuntimeException ignored) {
-                        groups = List.of(); // lenient: bad groups array skipped
-                    }
-                } else {
-                    continue; // unexpected type — skip leniently
-                }
-                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore, groups));
-            } catch (RuntimeException ignored) {
-                // malformed URL or env var — skip this entry leniently
-            }
-        }
-        return result;
-    }
-
-    /**
-     * Global-layer {@code ${ENV}} interpolation: lenient — an unset variable is left as the literal
-     * {@code ${VAR}} text (global config must never fail a build). Field parsing lives in {@link
-     * RepositoryToml}.
-     */
-    private static final UnaryOperator<String> LENIENT_INTERP = raw -> RepositoryToml.interpolate(raw, var -> {
-        String v = System.getenv(var);
-        return v != null ? v : "${" + var + "}";
-    });
 }

@@ -3,10 +3,11 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.UserPlugins;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import cc.jumpkick.runtime.PluginDescriptorOps;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,8 +36,8 @@ public final class BuiltInPluginJars {
         for (Located located : locatedTablePlugins()) {
             try {
                 PluginTableRegistry.putBuiltIn(
-                        cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
-                                located.manifestToml(), located.path() + "!jk-plugin.toml"),
+                        PluginDescriptors.parse(
+                                located.manifestToml(), located.path() + "!" + ManifestPaths.PLUGIN_MANIFEST),
                         located.path());
             } catch (RuntimeException e) {
                 // Store jars are managed artifacts: one garbled or version-incompatible manifest
@@ -116,7 +117,7 @@ public final class BuiltInPluginJars {
             Path path = jar.locateStored(JkStores.storeCas());
             if (path == null) continue;
             try {
-                String toml = zipText(path, PluginDescriptorOps.MANIFEST_ENTRY);
+                String toml = zipText(path, ManifestPaths.PLUGIN_MANIFEST);
                 if (toml != null) {
                     out.add(new Located(jar, path, toml));
                 }
@@ -128,7 +129,7 @@ public final class BuiltInPluginJars {
     }
 
     public static String manifestToml(Path jar) throws IOException {
-        return zipText(jar, PluginDescriptorOps.MANIFEST_ENTRY);
+        return zipText(jar, ManifestPaths.PLUGIN_MANIFEST);
     }
 
     private static String zipText(Path jar, String entry) throws IOException {

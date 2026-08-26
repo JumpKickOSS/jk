@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -8,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.function.UnaryOperator;
 
 /**
@@ -59,6 +60,10 @@ public final class CentralMirror {
 
     private static final String STAMP_NAME = "central-rate-limited.stamp";
 
+    /** The one instance production uses; see {@link #standard()}. */
+    private static final CentralMirror STANDARD =
+            new CentralMirror(JkDirs.cache(), DEFAULT_WINDOW, enabledByEnv(System::getenv));
+
     private final Path stamp;
     private final Duration window;
     private final boolean enabled;
@@ -66,10 +71,13 @@ public final class CentralMirror {
     private final String mirrorBase;
 
     /**
+     * The test seam. Package-private so {@link #standard()} is the only way production obtains a
+     * mirror, which is what keeps the window to one directory.
+     *
      * @param centralHost the host to treat as rate-limitable (normally {@link #CENTRAL_HOST})
      * @param mirrorBase the base URL to route to, no trailing slash (normally {@link #MIRROR_BASE})
      */
-    public CentralMirror(Path cacheDir, Duration window, boolean enabled, String centralHost, String mirrorBase) {
+    CentralMirror(Path cacheDir, Duration window, boolean enabled, String centralHost, String mirrorBase) {
         this.stamp = cacheDir.resolve(STAMP_NAME);
         this.window = window;
         this.enabled = enabled;
@@ -77,20 +85,35 @@ public final class CentralMirror {
         this.mirrorBase = mirrorBase.endsWith("/") ? mirrorBase.substring(0, mirrorBase.length() - 1) : mirrorBase;
     }
 
-    public CentralMirror(Path cacheDir, Duration window, boolean enabled) {
+    CentralMirror(Path cacheDir, Duration window, boolean enabled) {
         this(cacheDir, window, enabled, CENTRAL_HOST, MIRROR_BASE);
     }
 
-    /** The default: stamp under the jk cache, a four-hour window, honouring {@link #ENV_DISABLE}. */
-    public static CentralMirror standard(Path cacheDir) {
-        return new CentralMirror(cacheDir, DEFAULT_WINDOW, enabledByEnv(System::getenv));
+    /**
+     * The shared instance: stamp under {@link JkDirs#cache()}, a four-hour window, honouring
+     * {@link #ENV_DISABLE}.
+     *
+     * <p>It takes no directory, and there is only one of it. The window is a single fact about this
+     * machine's IP, and both legs of a build act on it — the transport reroutes enumeration, the
+     * artifact fetch reroutes bytes. A caller that named its own directory would record a 429 where the
+     * other leg cannot read it, leaving a switch that is meant to be wholesale sticky for only half the
+     * build. {@code JK_CACHE_DIR} and {@code JK_CENTRAL_MIRROR} are both forwarded to a spawned engine,
+     * so client and engine read the same stamp.
+     *
+     * <p>Resolved once per process: the layout is fixed at JVM start and {@link System#getenv} cannot
+     * change, so deriving it per caller can only produce disagreement.
+     */
+    public static CentralMirror standard() {
+        return STANDARD;
+    }
+
+    /** Visible for tests: the single file that carries the window. */
+    Path stampFile() {
+        return stamp;
     }
 
     static boolean enabledByEnv(UnaryOperator<String> env) {
-        String raw = env.apply(ENV_DISABLE);
-        if (raw == null || raw.isBlank()) return true;
-        String v = raw.strip().toLowerCase(Locale.ROOT);
-        return !(v.equals("off") || v.equals("false") || v.equals("0") || v.equals("no"));
+        return EnvValues.parseBool(env.apply(ENV_DISABLE)).orElse(true);
     }
 
     /** True when {@code uri} targets the host this instance treats as Central. */

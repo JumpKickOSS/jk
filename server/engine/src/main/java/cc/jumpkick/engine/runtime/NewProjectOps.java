@@ -1,20 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.runtime;
 
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
+import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.giter8.PluginTemplates;
+import cc.jumpkick.giter8.TemplateSpec;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
+import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -133,7 +142,7 @@ public final class NewProjectOps {
             if (!Files.isDirectory(target)) return;
             try (var children = Files.list(target)) {
                 for (Path child : children.toList()) {
-                    deleteRecursively(child);
+                    PathUtil.deleteRecursivelyOrThrow(child);
                 }
             }
             if (!existedBefore) Files.deleteIfExists(target);
@@ -152,10 +161,9 @@ public final class NewProjectOps {
         Result result = create(req);
         String projectId = null;
         try {
-            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
-            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
-                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
-            cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
+            var identity = ProjectIdentity.resolve(result.path());
+            ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
+            ProjectIds.refresh(result.path().toString());
             projectId = identity.id();
         } catch (RuntimeException | IOException e) {
             // best-effort — see javadoc
@@ -176,7 +184,7 @@ public final class NewProjectOps {
      */
     public static Preview preview(Request req) throws IOException {
         Prepared prep = prepare(req);
-        Path tmpRoot = cc.jumpkick.util.JkDirs.tmp();
+        Path tmpRoot = JkDirs.tmp();
         Files.createDirectories(tmpRoot);
         Path scratch = Files.createTempDirectory(tmpRoot, "jk-new-preview-");
         Path probe = scratch.resolve(prep.name());
@@ -191,7 +199,7 @@ public final class NewProjectOps {
             }
             return new Preview(prep.target().toString(), prep.template(), List.copyOf(files));
         } finally {
-            deleteRecursively(scratch);
+            PathUtil.deleteRecursivelyOrThrow(scratch);
         }
     }
 
@@ -206,8 +214,7 @@ public final class NewProjectOps {
             if (prep.group() != null && !prep.group().isBlank()) {
                 params.putIfAbsent("group", prep.group());
             }
-            boolean offline =
-                    cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
+            boolean offline = SessionContext.current().config().offlineOr(false);
             Path templateRoot;
             Path extracted = null;
             // Resolution lang stays null unless the user asked: parseLang's java default is a
@@ -216,12 +223,9 @@ public final class NewProjectOps {
                     ? null
                     : prep.lang().hoconValue();
             var spec = resolveIndexed(prep.template(), langName, prep.parent());
-            if (spec.isPresent()
-                    && cc.jumpkick.giter8.TemplateSpec.SOURCE_PLUGIN.equals(
-                            spec.get().source())) {
+            if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
                 var s = spec.get();
-                extracted = cc.jumpkick.giter8.PluginTemplates.materialize(
-                        s.pluginId(), s.language(), s.framework(), s.name());
+                extracted = PluginTemplates.materialize(s.pluginId(), s.language(), s.framework(), s.name());
                 templateRoot = extracted;
             } else if (spec.isPresent() && spec.get().root() != null) {
                 templateRoot = spec.get().root();
@@ -234,7 +238,7 @@ public final class NewProjectOps {
                 }
             }
             if ("simple".equalsIgnoreCase(prep.layout())) {
-                if (spec.isPresent() && !spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
+                if (spec.isPresent() && !spec.get().supportsLayout(Giter8ShortNames.LAYOUT_SIMPLE)) {
                     throw new IOException(
                             "template " + prep.template() + " does not support --layout simple" + " (declared layouts: "
                                     + String.join(", ", spec.get().layouts()) + ")");
@@ -252,13 +256,13 @@ public final class NewProjectOps {
             } finally {
                 if (extracted != null) {
                     try {
-                        deleteRecursively(extracted);
+                        PathUtil.deleteRecursivelyOrThrow(extracted);
                     } catch (IOException ignored) {
                         // extract is under JkDirs.tmp(); don't mask the apply error
                     }
                 }
             }
-            if (!Files.isRegularFile(target.resolve("jk.toml"))) {
+            if (!Files.isRegularFile(target.resolve(ManifestPaths.MANIFEST))) {
                 throw new IOException("template did not produce jk.toml: " + prep.template());
             }
             if (req.standalone()) {
@@ -312,7 +316,7 @@ public final class NewProjectOps {
         String parentRaw = req.parentDir() == null ? "" : req.parentDir().strip();
         if (parentRaw.isEmpty()) throw new IllegalArgumentException("missing \"parentDir\"");
         // Same rules as the activity Build path: ~ and relatives resolve against user.home.
-        Path parent = cc.jumpkick.util.PathUtil.resolveUserPath(parentRaw);
+        Path parent = PathUtil.resolveUserPath(parentRaw);
         if (!req.relaxParent()) assertAllowedParent(parent);
         if (!Files.isDirectory(parent)) {
             throw new IllegalArgumentException("parentDir is not a directory: " + parent);
@@ -321,7 +325,7 @@ public final class NewProjectOps {
         Path target;
         String targetRaw = req.targetDir() == null ? "" : req.targetDir().strip();
         if (!targetRaw.isEmpty()) {
-            target = cc.jumpkick.util.PathUtil.resolveUserPath(targetRaw).normalize();
+            target = PathUtil.resolveUserPath(targetRaw).normalize();
             // targetDir gets the same allowlist gate as parentDir.
             if (!req.relaxParent()) assertAllowedParent(target.getParent() != null ? target.getParent() : target);
         } else {
@@ -330,7 +334,7 @@ public final class NewProjectOps {
                 throw new IllegalArgumentException("name escapes parentDir");
             }
         }
-        if (Files.exists(target.resolve("jk.toml"))) {
+        if (Files.exists(target.resolve(ManifestPaths.MANIFEST))) {
             throw new IllegalStateException("project already exists: " + target);
         }
         if (Files.isDirectory(target)) {
@@ -357,16 +361,7 @@ public final class NewProjectOps {
         return new Prepared(name, parent, target, group, lang, layout, template, req.executable(), req);
     }
 
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path f : walk.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(f);
-            }
-        }
-    }
-
-    private static Optional<cc.jumpkick.giter8.TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
+    private static Optional<TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
         try {
             return Giter8TemplateIndex.resolve(ref, lang, Giter8TemplateIndex.searchRoots(cwd));
         } catch (IllegalArgumentException e) {
@@ -375,10 +370,10 @@ public final class NewProjectOps {
     }
 
     private static Optional<Path> indexedRoot(String ref, String lang, Path cwd) throws IOException {
-        Optional<cc.jumpkick.giter8.TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
+        Optional<TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
         if (spec.isEmpty()) {
             try {
-                cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(s -> {});
+                OfficialTemplatesFreshen.refreshQuiet(s -> {});
             } catch (Throwable ignored) {
                 // best-effort
             }
@@ -386,7 +381,7 @@ public final class NewProjectOps {
             spec = resolveIndexed(ref, lang, cwd);
         }
         if (spec.isEmpty()) return Optional.empty();
-        cc.jumpkick.giter8.TemplateSpec s = spec.get();
+        TemplateSpec s = spec.get();
         if (s.root() != null) return Optional.of(s.root());
         return Optional.empty();
     }
@@ -459,7 +454,7 @@ public final class NewProjectOps {
         Path dest = cache.resolve(key);
         synchronized (CLONE_LOCKS.computeIfAbsent(key, k -> new Object())) {
             if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
-                if (Files.exists(dest)) deleteRecursively(dest);
+                if (Files.exists(dest)) PathUtil.deleteRecursivelyOrThrow(dest);
                 cloneInto(ref, cache, key, dest);
             }
         }
@@ -492,7 +487,7 @@ public final class NewProjectOps {
             url = "https://github.com/" + body + ".git";
         }
         Path staging = cache.resolve(key + ".tmp-" + ProcessHandle.current().pid());
-        if (Files.exists(staging)) deleteRecursively(staging);
+        if (Files.exists(staging)) PathUtil.deleteRecursivelyOrThrow(staging);
         List<String> args = new ArrayList<>();
         args.add("git");
         args.add("clone");
@@ -520,7 +515,7 @@ public final class NewProjectOps {
             throw new IOException("git clone interrupted", e);
         }
         if (p.exitValue() != 0) {
-            deleteRecursively(staging);
+            PathUtil.deleteRecursivelyOrThrow(staging);
             throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
         }
         try {
@@ -528,7 +523,7 @@ public final class NewProjectOps {
         } catch (IOException raced) {
             // Another process renamed first — its clone is equivalent; keep it.
             if (Files.isDirectory(dest) && !isEmptyDir(dest)) {
-                deleteRecursively(staging);
+                PathUtil.deleteRecursivelyOrThrow(staging);
             } else {
                 throw raced;
             }

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.theme;
 
 import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.Rail;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.terminal.Style;
 import java.util.Locale;
@@ -293,26 +294,13 @@ public interface Theme {
         return colorEnabled();
     }
 
-    /** True when foreground color should be emitted, given the resolved {@code --color} choice. */
+    /**
+     * True when foreground color should be emitted, given the resolved {@code --color} choice.
+     * Spelled by {@link GlobalConfig#colorEnabled} — the one owner of the no-ANSI trigger triple
+     * and the color-choice switch.
+     */
     static boolean colorEnabled() {
-        // No-ANSI triggers (--no-ansi, TERM=dumb, CI=true/1) imply no color.
-        if (cc.jumpkick.config.SessionContext.current().config().noAnsiOr(false)) return false;
-        if ("dumb".equals(System.getenv("TERM"))) return false;
-        String ci = System.getenv("CI");
-        if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) return false;
-        var choice = cc.jumpkick.config.SessionContext.current().config().colorOr(JkConfig.ColorChoice.AUTO);
-        return switch (choice) {
-            case ALWAYS -> true;
-            case NEVER -> false;
-            // AUTO: emit color unless NO_COLOR is set. We don't gate on isatty —
-            // many jk consumers (CI logs, `less -R`, pipes into other formatters)
-            // benefit from preserved color, and users who want strictly plain
-            // output can pass `--color never`.
-            case AUTO -> {
-                var nc = System.getenv("NO_COLOR");
-                yield nc == null || nc.isEmpty();
-            }
-        };
+        return GlobalConfig.colorEnabled();
     }
 
     /**

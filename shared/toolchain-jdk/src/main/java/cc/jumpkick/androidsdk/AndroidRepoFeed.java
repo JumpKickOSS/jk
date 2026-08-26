@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
-import cc.jumpkick.util.Hashing;
-import java.io.ByteArrayInputStream;
+import cc.jumpkick.host.DomXml;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -61,17 +59,8 @@ public final class AndroidRepoFeed {
     /** Parse a feed document. Throws {@link IOException} on malformed XML — callers degrade loudly. */
     public static AndroidRepoFeed parse(byte[] xml) throws IOException {
         try {
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-            dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            // Reject a DOCTYPE outright rather than merely declining to fetch external entities —
-            // same posture as PomParser / MavenMetadata / PomImporter, since this feed is remote,
-            // attacker-influenceable XML.
-            dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            dbf.setExpandEntityReferences(false);
-            Document doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
+            // Remote, attacker-influenceable XML: DomXml rejects a DOCTYPE rather than resolving it.
+            Document doc = DomXml.parse(xml);
 
             Map<String, String> licenses = new LinkedHashMap<>();
             NodeList licenseNodes = doc.getElementsByTagName("license");
@@ -104,9 +93,7 @@ public final class AndroidRepoFeed {
                         .add(new Component(path, revision, license, channel, List.copyOf(archives)));
             }
             return new AndroidRepoFeed(byPath, licenses);
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
             throw new IOException("cannot parse the Android SDK repository feed: " + e.getMessage(), e);
         }
     }
@@ -135,9 +122,8 @@ public final class AndroidRepoFeed {
      * The feed's spelling of the running OS: {@code linux} / {@code macosx} / {@code windows}.
      */
     public static String hostOs() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("mac")) return "macosx";
-        if (os.contains("win")) return "windows";
+        if (Os.isDarwin()) return "macosx";
+        if (Os.isWindows()) return "windows";
         return "linux";
     }
 

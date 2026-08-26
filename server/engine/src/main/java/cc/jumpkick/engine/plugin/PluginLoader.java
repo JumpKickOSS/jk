@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +33,23 @@ public final class PluginLoader {
 
     /** Fully-qualified main class every plugin jar runs under (vendored from plugin-api). */
     public static final String WORKER_MAIN = "cc.jumpkick.plugin.process.PluginMain";
+
+    /**
+     * Append the session's {@code --offline} decision to the spec a worker is about to read. The
+     * invariant is the <em>seal</em>, not any one launcher: every spec a worker JVM decodes
+     * carries a stated network policy, because a worker cannot see the engine's ambient
+     * {@link SessionContext} and its fail-closed default ({@code offline = true} when unstated)
+     * is indistinguishable from a stated refusal. {@code PluginLaunch.javaCommand} calls this at
+     * the generic plugin fork; the compiler and formatter spec writers ({@code
+     * ForkedJavac.writeSpec}, {@code KotlincSpec}, {@code GroovycSpec}, the AOT trainer specs)
+     * call it themselves because their forks go through {@link #command} directly. Seal a spec in
+     * exactly one place — the producer or the fork, never both.
+     */
+    public static void sealNetworkPolicy(Path spec) throws IOException {
+        List<String> line =
+                new SpecWriter().offline(SessionContext.current().offline()).lines();
+        Files.write(spec, line, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    }
 
     /**
      * Fork a plugin and stream its events. Returns the plugin's exit code.
@@ -169,12 +191,25 @@ public final class PluginLoader {
      * the stream themselves via {@link PluginClient}.
      */
     public static List<String> command(Path javaExe, String classpath, List<String> jvmFlags, List<String> args) {
+        return command(javaExe, classpath, jvmFlags, WORKER_MAIN, args);
+    }
+
+    /**
+     * As {@link #command(Path, String, List, List)} for a jar that declares its own
+     * {@code Main-Class} instead of running under {@link #WORKER_MAIN}. <strong>The one worker argv
+     * assembly in the engine</strong> — every fork of a jk worker JVM, generic or compiler, orders
+     * its elements here. It was two: {@code PluginLaunch} open-coded the same six-element shape
+     * beside a comment reading "Reuse PluginLoader.command shape", which is a copy admitting to
+     * being one.
+     */
+    public static List<String> command(
+            Path javaExe, String classpath, List<String> jvmFlags, String mainClass, List<String> args) {
         var cmd = new ArrayList<String>();
         cmd.add(javaExe.toString());
         cmd.addAll(jvmFlags);
         cmd.add("-cp");
         cmd.add(classpath);
-        cmd.add(WORKER_MAIN);
+        cmd.add(mainClass);
         cmd.addAll(args);
         return cmd;
     }

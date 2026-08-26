@@ -6,58 +6,38 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.ToolCoordSpec;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import com.sun.net.httpserver.HttpServer;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 class ToolResolverTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @BeforeEach
     void start() throws IOException {
         // Tests re-publish different POMs under the same GAV (immutability broken on purpose).
         // Drop the process-wide effective-POM memo so suite order cannot leak empty-deps POMs.
-        cc.jumpkick.repo.EffectivePomBuilder.clearProcessCache();
-        served.clear();
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
+        EffectivePomBuilder.clearProcessCache();
+        http.served().clear();
     }
 
     @Test
@@ -66,7 +46,7 @@ class ToolResolverTest {
 
         Cas cas = new Cas(tempDir.resolve("cas"));
         Files.createDirectories(tempDir.resolve("cas"));
-        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", base, new Http(), cas)));
+        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", http.base(), new Http(), cas)));
 
         ToolEnv env = resolver.resolve(Coordinate.of("com.example", "widget-cli", "1.0.0"), "widget", null);
 
@@ -82,7 +62,7 @@ class ToolResolverTest {
 
         Cas cas = new Cas(tempDir.resolve("cas"));
         Files.createDirectories(tempDir.resolve("cas"));
-        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", base, new Http(), cas)));
+        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", http.base(), new Http(), cas)));
 
         ToolEnv env =
                 resolver.resolve(Coordinate.of("com.example", "widget-cli", "1.0.0"), "widget", "com.example.AltMain");
@@ -96,7 +76,7 @@ class ToolResolverTest {
 
         Cas cas = new Cas(tempDir.resolve("cas"));
         Files.createDirectories(tempDir.resolve("cas"));
-        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", base, new Http(), cas)));
+        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", http.base(), new Http(), cas)));
 
         assertThatThrownBy(() -> resolver.resolve(Coordinate.of("com.example", "lib", "1.0.0"), "lib", null))
                 .isInstanceOf(IOException.class)
@@ -120,7 +100,7 @@ class ToolResolverTest {
 
         Cas cas = new Cas(tempDir.resolve("cas"));
         Files.createDirectories(tempDir.resolve("cas"));
-        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", base, new Http(), cas)));
+        ToolResolver resolver = new ToolResolver(RepoGroup.of(new MavenRepo("central", http.base(), new Http(), cas)));
 
         ToolEnv env = resolver.resolve(Coordinate.of("com.example", "widget-cli", "1.0.0"), "widget", null);
 
@@ -133,8 +113,7 @@ class ToolResolverTest {
         servePomAndJar("com.example", "widget-cli", "1.1.0", "com.example.Main");
 
         ToolResolver resolver = resolver(tempDir);
-        ToolEnv env = resolver.resolve(
-                cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli"), "widget", null, List.of());
+        ToolEnv env = resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli"), "widget", null, List.of());
 
         assertThat(env.primary().toGav()).isEqualTo("com.example:widget-cli:1.1.0");
         assertThat(env.mainClass()).isEqualTo("com.example.Main");
@@ -146,8 +125,7 @@ class ToolResolverTest {
         servePomAndJar("com.example", "widget-cli", "1.4.2", "com.example.Main");
 
         ToolResolver resolver = resolver(tempDir);
-        ToolEnv env = resolver.resolve(
-                cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli@1.0"), "widget", null, List.of());
+        ToolEnv env = resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli@1.0"), "widget", null, List.of());
 
         // Caret ^1.0 — highest within the 1.x line, not 2.1.0.
         assertThat(env.primary().toGav()).isEqualTo("com.example:widget-cli:1.4.2");
@@ -157,11 +135,8 @@ class ToolResolverTest {
     void unmatched_selector_reports_the_available_versions(@TempDir Path tempDir) {
         serveMetadata("com.example", "widget-cli", "1.0.0", "1.1.0");
         ToolResolver resolver = resolver(tempDir);
-        assertThatThrownBy(() -> resolver.resolve(
-                        cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli@^3.0"),
-                        "widget",
-                        null,
-                        List.of()))
+        assertThatThrownBy(() ->
+                        resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli@^3.0"), "widget", null, List.of()))
                 .hasMessageContaining("no version of com.example:widget-cli matches")
                 .hasMessageContaining("1.1.0");
     }
@@ -173,10 +148,10 @@ class ToolResolverTest {
 
         ToolResolver resolver = resolver(tempDir);
         ToolEnv env = resolver.resolve(
-                cc.jumpkick.model.ToolCoordSpec.parse("com.example:widget-cli:1.0.0"),
+                ToolCoordSpec.parse("com.example:widget-cli:1.0.0"),
                 "widget",
                 null,
-                List.of(cc.jumpkick.model.ToolCoordSpec.parse("com.example:extra:2.0.0")));
+                List.of(ToolCoordSpec.parse("com.example:extra:2.0.0")));
 
         assertThat(env.classpath()).hasSize(2);
         assertThat(env.classpath().getFirst().toString()).isNotEmpty();
@@ -185,11 +160,11 @@ class ToolResolverTest {
     @Test
     void native_classifier_binary_wins_over_the_jar(@TempDir Path tempDir) throws Exception {
         servePomAndJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
-        String classifier =
-                "native-" + cc.jumpkick.jdk.HostPlatform.currentArch() + "-" + cc.jumpkick.jdk.HostPlatform.currentOs();
-        served.put(
-                "/com/example/widget-cli/1.0.0/widget-cli-1.0.0-" + classifier + ".exe",
-                "#!/bin/sh\nexit 0\n".getBytes());
+        String classifier = "native-" + HostPlatform.currentArch() + "-" + HostPlatform.currentOs();
+        http.served()
+                .put(
+                        "/com/example/widget-cli/1.0.0/widget-cli-1.0.0-" + classifier + ".exe",
+                        "#!/bin/sh\nexit 0\n".getBytes());
 
         ToolEnv env = resolver(tempDir).resolve(Coordinate.of("com.example", "widget-cli", "1.0.0"), "widget", null);
 
@@ -201,11 +176,11 @@ class ToolResolverTest {
     @Test
     void main_override_skips_the_native_probe(@TempDir Path tempDir) throws Exception {
         servePomAndJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
-        String classifier =
-                "native-" + cc.jumpkick.jdk.HostPlatform.currentArch() + "-" + cc.jumpkick.jdk.HostPlatform.currentOs();
-        served.put(
-                "/com/example/widget-cli/1.0.0/widget-cli-1.0.0-" + classifier + ".exe",
-                "#!/bin/sh\nexit 0\n".getBytes());
+        String classifier = "native-" + HostPlatform.currentArch() + "-" + HostPlatform.currentOs();
+        http.served()
+                .put(
+                        "/com/example/widget-cli/1.0.0/widget-cli-1.0.0-" + classifier + ".exe",
+                        "#!/bin/sh\nexit 0\n".getBytes());
 
         ToolEnv env = resolver(tempDir)
                 .resolve(Coordinate.of("com.example", "widget-cli", "1.0.0"), "widget", "com.example.Alt");
@@ -221,7 +196,7 @@ class ToolResolverTest {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        return new ToolResolver(RepoGroup.of(new MavenRepo("central", base, new Http(), cas)));
+        return new ToolResolver(RepoGroup.of(new MavenRepo("central", http.base(), new Http(), cas)));
     }
 
     private void serveMetadata(String group, String artifact, String... versions) {
@@ -238,7 +213,7 @@ class ToolResolverTest {
                   </versioning>
                 </metadata>
                 """.formatted(group, artifact, vs.toString());
-        served.put("/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml", xml.getBytes());
+        http.served().put("/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml", xml.getBytes());
     }
 
     private void servePomAndJar(String group, String artifact, String version, String mainClass) throws IOException {
@@ -268,7 +243,7 @@ class ToolResolverTest {
                 + "-"
                 + version
                 + ".pom";
-        served.put(path, pom.getBytes());
+        http.served().put(path, pom.getBytes());
     }
 
     private void serveJar(String group, String artifact, String version, String mainClass) throws IOException {
@@ -294,6 +269,6 @@ class ToolResolverTest {
                 + "-"
                 + version
                 + ".jar";
-        served.put(path, baos.toByteArray());
+        http.served().put(path, baos.toByteArray());
     }
 }

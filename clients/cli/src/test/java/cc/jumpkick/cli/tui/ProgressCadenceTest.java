@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import org.junit.jupiter.api.Test;
 
 class ProgressCadenceTest {
@@ -10,7 +11,7 @@ class ProgressCadenceTest {
     @Test
     void render_includes_percent_and_suffix() {
         String line = new Progress(2, 5).suffix("ETA ~12s").render(RenderContext.current());
-        assertThat(cc.jumpkick.cli.TestAnsi.strip(line)).contains("40%").contains("ETA ~12s");
+        assertThat(TestAnsi.strip(line)).contains("40%").contains("ETA ~12s");
     }
 
     @Test

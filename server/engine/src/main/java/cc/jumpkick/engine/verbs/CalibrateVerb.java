@@ -3,9 +3,12 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.Calibration;
 import java.io.BufferedWriter;
 
 public final class CalibrateVerb implements HostedVerb {
@@ -40,16 +43,15 @@ public final class CalibrateVerb implements HostedVerb {
     }
 
     @Override
-    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean force = Jsonl.bool(requestLine, "force", false);
                 boolean allowNetwork = Jsonl.bool(requestLine, "allowNetwork", true);
                 long cold = Jsonl.longValue(requestLine, "engineColdStartMs", 0);
-                cc.jumpkick.runtime.Calibration cal = cc.jumpkick.runtime.Calibration.ensure(null, force, allowNetwork);
+                Calibration cal = Calibration.ensure(null, force, allowNetwork);
                 if (cold > 0) {
-                    cal = cc.jumpkick.runtime.Calibration.recordEngineColdStart(cold, System.currentTimeMillis());
+                    cal = Calibration.recordEngineColdStart(cold, System.currentTimeMillis());
                 }
                 host.sendQuiet(
                         writer,
@@ -69,6 +71,7 @@ public final class CalibrateVerb implements HostedVerb {
                                 cal.junitPlatformUsed(),
                                 cal.resolveUsed(),
                                 cal.summary()));
+                return JobOutcome.ok();
             } catch (Exception e) {
                 host.sendQuiet(
                         writer,
@@ -88,11 +91,11 @@ public final class CalibrateVerb implements HostedVerb {
                                 false,
                                 false,
                                 "calibration failed: " + e.getMessage()));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

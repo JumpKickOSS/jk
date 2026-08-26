@@ -136,6 +136,26 @@ class ProjectIdentityTest {
         assertThat(id.id()).isEqualTo("explicit-project-id-00112233");
     }
 
+    /**
+     * Identity is resolved by scanning, not parsing — the same route {@code coordOf} already took,
+     * so the whole type stays off the CLI's reachability graph (JK-2151). The observable
+     * consequence: a manifest jk cannot parse still has a stable identity, so history and dashboard
+     * routes survive a half-edited {@code jk.toml}.
+     */
+    @Test
+    void explicit_id_is_read_from_a_manifest_that_does_not_parse(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "demo"
+                id = "explicit-project-id-44556677"
+
+                [dependencies
+                """);
+        ProjectIdentity id = ProjectIdentity.resolve(dir);
+        assertThat(id.source()).isEqualTo(ProjectIdentity.Source.EXPLICIT);
+        assertThat(id.id()).isEqualTo("explicit-project-id-44556677");
+    }
+
     @Test
     void coord_inherits_group_from_workspace_root(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
@@ -155,5 +175,26 @@ class ProjectIdentityTest {
                 """);
         assertThat(ProjectIdentity.coordOf(api)).isEqualTo("com.example:api");
         assertThat(ProjectIdentity.coordOf(dir)).isEqualTo("com.example:root");
+    }
+
+    @Test
+    void identity_file_round_trips_quotes_backslashes_controls_and_non_ascii(@TempDir Path home) throws Exception {
+        String coord = "com.exàmple:we\"ird\\na\nme";
+        String remote = "https://example.com/ré\"po\\x.git";
+        String rel = "mod\tules\\app \"x\"";
+        ProjectIdentity identity = new ProjectIdentity(
+                "aabbccddeeff00112233445566778899",
+                coord,
+                Path.of("checkout"),
+                ProjectIdentity.Source.PATH,
+                remote,
+                rel);
+        ProjectIdentity.IdentityFile.write(home, identity);
+
+        ProjectIdentity.IdentityFile read =
+                ProjectIdentity.IdentityFile.read(home).orElseThrow();
+        assertThat(read.coord()).isEqualTo(coord);
+        assertThat(read.gitRemote()).isEqualTo(remote);
+        assertThat(read.gitRelPath()).isEqualTo(rel);
     }
 }

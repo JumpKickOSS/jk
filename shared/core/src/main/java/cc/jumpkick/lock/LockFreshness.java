@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -11,6 +12,12 @@ import java.nio.file.Path;
  * {@code jk.toml} that feeds the lock is compared to the stamp in the lockfile. Survives fresh
  * git clones (equalized mtimes). Locks <em>without</em> a valid digest are always stale — re-lock
  * once to stamp one; there is no mtime fallback.
+ *
+ * <p>A clean digest is necessary but not sufficient: a lock can also be missing a <em>fact</em>
+ * jk writes for the current manifests. Today that is the {@code [native] metadata-repository}
+ * pin — a native-image project whose lock predates the pin digests clean forever, so
+ * {@link #isStale} also rules stale when {@link LockNativePin} selects a repository the lock
+ * never stamped.
  */
 public final class LockFreshness {
 
@@ -22,7 +29,7 @@ public final class LockFreshness {
      */
     public static boolean needsRefresh(Path projectDir) {
         Path owner = LockPaths.lockOwnerDir(projectDir);
-        Path lockFile = owner.resolve(LockPaths.FILE_NAME);
+        Path lockFile = owner.resolve(ManifestPaths.LOCK);
         if (!Files.isRegularFile(lockFile)) return true;
         return workspaceLockStale(owner, lockFile);
     }
@@ -42,8 +49,11 @@ public final class LockFreshness {
      * Staleness of the lock against live manifests.
      *
      * <ul>
-     *   <li>Valid {@code manifests-sha256} present: stale iff live digest of the lock owner differs.
+     *   <li>Valid {@code manifests-sha256} present: stale when the live digest of the lock owner
+     *       differs.
      *   <li>Missing, blank, or invalid digest: <strong>always stale</strong> (force re-lock to stamp).
+     *   <li>Digest clean but the manifests build a native image and the lock carries no
+     *       {@code [native]} pin: stale (re-lock to stamp the pin).
      * </ul>
      *
      * <p>Both the project {@code jk.toml} and the lock must exist for a non-stale answer; missing
@@ -52,7 +62,7 @@ public final class LockFreshness {
      */
     public static boolean isStale(Path dir, Path lockFile) {
         try {
-            Path buildFile = dir.resolve("jk.toml");
+            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;
 
             Lockfile lock = LockfileReader.read(lockFile);
@@ -62,9 +72,24 @@ public final class LockFreshness {
             }
             Path owner = lockFile.toAbsolutePath().normalize().getParent();
             String live = LockManifestDigest.compute(owner);
-            return !stored.equalsIgnoreCase(live);
+            if (!stored.equalsIgnoreCase(live)) return true;
+            return missingNativePin(owner, lock);
         } catch (Exception e) {
             return true; // unreadable lock / digest failure → re-lock
+        }
+    }
+
+    /**
+     * True when the manifests under {@code owner} build a native image but {@code lock} carries no
+     * {@code [native] metadata-repository} pin. Conflicting member selectors are also stale — fail
+     * closed; the re-lock surfaces {@link LockNativePin}'s conflict message.
+     */
+    private static boolean missingNativePin(Path owner, Lockfile lock) throws IOException {
+        if (lock.nativeMetadata() != null) return false;
+        try {
+            return LockNativePin.selector(owner).isPresent();
+        } catch (IllegalStateException conflictingSelectors) {
+            return true;
         }
     }
 

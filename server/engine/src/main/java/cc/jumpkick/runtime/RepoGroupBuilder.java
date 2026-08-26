@@ -3,8 +3,11 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
@@ -14,6 +17,7 @@ import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.RepoTransports;
+import cc.jumpkick.task.RunNotices;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -53,30 +57,21 @@ public final class RepoGroupBuilder {
     private RepoGroupBuilder() {}
 
     /**
-     * Expand {@code ${VAR}} in object-store credentials, strictly: an unset variable is an error
-     * rather than a silent null that would fall through to the ambient AWS chain and fail far away
-     * from the cause.
+     * Expand {@code ${VAR}} in object-store credentials under {@link RepositoryToml.VarPolicy#STRICT}:
+     * an unset variable is a {@link JkBuildParseException} naming the
+     * {@code repositories.<name>} position, rather than a silent null that would fall through to
+     * the ambient AWS chain and fail far away from the cause.
      */
-    private static ObjectStoreConfig expandObjectStore(
-            String repoName, ObjectStoreConfig cfg, UnaryOperator<String> env) {
+    static ObjectStoreConfig expandObjectStore(String repoName, ObjectStoreConfig cfg, UnaryOperator<String> env) {
         if (cfg == null || cfg.isEmpty()) return ObjectStoreConfig.EMPTY;
+        String where = "repositories." + repoName;
+        RepositoryToml.VarPolicy strict = RepositoryToml.VarPolicy.STRICT;
         return new ObjectStoreConfig(
-                interp(repoName, cfg.region(), env),
-                interp(repoName, cfg.endpoint(), env),
-                interp(repoName, cfg.accessKey(), env),
-                interp(repoName, cfg.secretKey(), env),
-                interp(repoName, cfg.sessionToken(), env));
-    }
-
-    private static String interp(String repoName, String raw, UnaryOperator<String> env) {
-        return cc.jumpkick.config.RepositoryToml.interpolate(raw, var -> {
-            String value = env.apply(var);
-            if (value == null) {
-                throw new IllegalStateException(
-                        "repositories." + repoName + " references unset environment variable ${" + var + "}");
-            }
-            return value;
-        });
+                RepositoryToml.interpolate(cfg.region(), strict, where, env),
+                RepositoryToml.interpolate(cfg.endpoint(), strict, where, env),
+                RepositoryToml.interpolate(cfg.accessKey(), strict, where, env),
+                RepositoryToml.interpolate(cfg.secretKey(), strict, where, env),
+                RepositoryToml.interpolate(cfg.sessionToken(), strict, where, env));
     }
 
     public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas) {
@@ -98,7 +93,8 @@ public final class RepoGroupBuilder {
         boolean mirrorToM2 = project.project().m2integration();
         if (overrideUrl != null) {
             // Tests pin one URL; project-declared repos are ignored.
-            repos.add(new MavenRepo("central", overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2));
+            repos.add(new MavenRepo(
+                    RepositorySpec.CENTRAL, overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2));
         } else {
             // Merge: project repos > global repos > built-in public baseline.
             // Deduplicate by name: first declaration wins (project beats global,
@@ -120,6 +116,7 @@ public final class RepoGroupBuilder {
             List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
             for (RepositorySpec spec : effective) {
                 RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credential());
+                maybeWarnUrlUserInfo(spec, cred);
                 // Per-repo object-store config (region/endpoint/keys) flows to the
                 // transport; HTTP credentials still ride the MavenRepo credential.
                 // Object-store keys carry raw ${VAR} out of the parse for the same reason
@@ -168,17 +165,67 @@ public final class RepoGroupBuilder {
     }
 
     /**
-     * Once per {@link #buildFor} when the effective remote list has more than one repo and none
-     * end up with exclusive bindings (after Google defaults). Soft warn — resolve still proceeds.
+     * Once per run when the effective remote list has more than one repo and none end up with
+     * exclusive bindings (after Google defaults). Soft warn — resolve still proceeds.
+     *
+     * <p>Keyed by the repository names, not by a bare flag: two modules of one workspace may
+     * declare different remotes, and each unbound set is its own thing to say.
      */
     static void maybeWarnMultiRepoWithoutBindings(List<RepositorySpec> effective, List<List<String>> exclusive) {
         if (effective == null || effective.size() <= 1) return;
         if (ExclusiveGroups.anyBinding(exclusive)) return;
-        System.err.println("jk: warning: multiple repositories configured without exclusive `groups` bindings "
-                + "(dependency-confusion risk). Bind internal namespaces, e.g. "
-                + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
-                + "Google Android groups are bound by default when the Google Maven remote is present. "
-                + "See the guide § Auth and repositories.");
+        RunNotices.warnOnce(
+                "repo-groups-unbound:"
+                        + effective.stream().map(RepositorySpec::name).toList(),
+                () -> "jk: warning: multiple repositories configured without exclusive `groups` bindings "
+                        + "(dependency-confusion risk). Bind internal namespaces, e.g. "
+                        + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
+                        + "Google Android groups are bound by default when the Google Maven remote is present. "
+                        + "See the guide § Auth and repositories.");
+    }
+
+    /**
+     * Warn when a declared repository URL carries {@code user:password@}. jk removes it before the
+     * URL is used for anything — the JDK's HTTP client never authenticates from userinfo, and the
+     * base URL is interpolated into every artifact's lockfile {@code source}, so keeping it would
+     * commit a credential to version control. Removing it silently, though, leaves the user at a
+     * {@code 401} from a URL that as they typed it holds a perfectly good credential.
+     *
+     * <p>Said once per run rather than once per {@link #buildFor}: a lock rebuilds this group for
+     * every module, and the resident engine would otherwise fall silent for every build after the
+     * first one it served.
+     */
+    static void maybeWarnUrlUserInfo(RepositorySpec spec, RepoCredential resolved) {
+        if (spec == null || spec.url() == null || spec.url().getRawUserInfo() == null) return;
+        String safeUrl = SafeUri.forMessage(spec.url());
+        RunNotices.warnOnce(
+                "repo-url-userinfo:" + spec.name() + " " + safeUrl,
+                () -> urlUserInfoWarning(spec.name(), safeUrl, resolved));
+    }
+
+    /**
+     * The two messages. A repository that authenticates from another source is told its URL
+     * credential is redundant and nothing more; one with no other source is told it will be
+     * anonymous and given every spelling that would fix it.
+     *
+     * <p>{@code safeUrl} comes from {@link SafeUri#forMessage} — a warning about a credential in a
+     * URL that printed the credential would be the original defect wearing a hat.
+     */
+    static String urlUserInfoWarning(String repoId, String safeUrl, RepoCredential resolved) {
+        String head = "jk: warning: repository `" + repoId + "` declares a credential in its URL (" + safeUrl
+                + "), which jk ignores: it authenticates nothing, and the base URL is written into "
+                + "jk-lock.toml's `source` field. ";
+        if (resolved != null && !resolved.isAnonymous()) {
+            return head + "A credential resolved for `" + repoId
+                    + "` from another source is being used instead, so the one in the URL is redundant — "
+                    + "remove it.";
+        }
+        String prefix = RepoCredentialResolver.envVarPrefix(repoId);
+        return head + "No other credential resolved for `" + repoId
+                + "`, so it will be accessed anonymously and a private repository will answer 401. Supply the "
+                + "credential as " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix + "PASSWORD), "
+                + "`jk repo login " + repoId + "`, an inline ${VAR} credential in the [repositories." + repoId
+                + "] table, or a <server> in ~/.m2/settings.xml.";
     }
 
     /**

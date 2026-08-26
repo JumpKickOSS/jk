@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Modifier;
 import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -57,8 +58,7 @@ class KeysTest {
 
     @Test
     void keysIsPackagePrivate() {
-        assertThat(Keys.class.getModifiers() & java.lang.reflect.Modifier.PUBLIC)
-                .isZero();
+        assertThat(Keys.class.getModifiers() & Modifier.PUBLIC).isZero();
     }
 
     private static Optional<Key> read(byte[] bytes) {

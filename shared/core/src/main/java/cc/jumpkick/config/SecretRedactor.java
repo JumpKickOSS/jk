@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -14,9 +15,23 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Masks {@code.env}-sourced values in text that leaves the process.
  *
- * <p>Masking is by <em>source</em>, not by name heuristics ({@code *_TOKEN}, {@code *_PASSWORD},
- * …): any value whose effective resolution came from a {@code.env} file is secret. That is what
- * {@link EnvLookup#isFromFile} records, and what this redactor consumes.
+ * <p>Masking is by <em>declaration</em>, not by name heuristics ({@code *_TOKEN}, {@code
+ * *_PASSWORD}, …): a name a {@code.env} file declares is a secret name, and its effective value is
+ * secret whichever layer supplied it.
+ *
+ * <p>The narrower rule — only values that {@link EnvLookup#isFromFile} attributes to the file —
+ * left the common case unmasked. {@code.env} supplies the default and CI exports the real one, so
+ * {@code NEXUS_TOKEN=…} in the file plus {@code NEXUS_TOKEN} in the environment meant the value
+ * that actually reached the wire was the one value never masked. In the degenerate case the two are
+ * the same string and it went unmasked purely because the shell also exported it. Precedence
+ * decides which value wins; it does not decide whether the name holds a credential.
+ *
+ * <p>The reach is still bounded by what {@link EnvLookup} can enumerate. A credential that appears
+ * only in the real environment, with no {@code.env} line naming it, is invisible here — nothing
+ * can list the host environment's secrets, and guessing by name is the heuristic this class exists
+ * to avoid. The way in for such a value is to hold it and say so: jk's repository-credential
+ * resolution declares what it resolved through {@link ResolvedSecrets}, which {@link #and} folds
+ * in. Told, never guessed.
  *
  * <p>Two surfaces share one instinct:
  *
@@ -35,10 +50,10 @@ public final class SecretRedactor {
 
     /**
      * Values shorter than this are treated as configuration, not credentials. Masking is
-     * by source, so without a floor a {@code.env} holding {@code NODE_ENV=test} or
+     * by declaration, so without a floor a {@code.env} holding {@code NODE_ENV=test} or
      * {@code PORT=8080} turns every {@code test} / {@code 8080} in build output into {@code ***}
      * and hashes unrelated cache-key text that contains the substring. Real tokens are comfortably
-     * longer; a deliberately short secret is outside what source-based masking can protect.
+     * longer; a deliberately short secret is outside what declaration-based masking can protect.
      */
     public static final int MIN_SECRET_LENGTH = 6;
 
@@ -79,19 +94,18 @@ public final class SecretRedactor {
         return text;
     }
 
-    /**
-     * Build a redactor from an {@link EnvLookup}: every effective value that came from a
-     * {@code.env} file (not the real environment).
-     */
     /** Redactors are immutable; memo by value-set so per-line redaction reuses one. */
     private static final ConcurrentHashMap<Set<String>, SecretRedactor> MEMO = new ConcurrentHashMap<>();
 
+    /**
+     * Build a redactor from an {@link EnvLookup}: the effective value of every name a {@code.env}
+     * file declares, whether the file or the real environment supplied it.
+     */
     public static SecretRedactor from(EnvLookup env) {
         Objects.requireNonNull(env, "env");
         Set<String> values = new LinkedHashSet<>();
         for (String name : env.fileNames()) {
-            if (!env.isFromFile(name)) continue; // real env won — not a file secret
-            String v = env.get(name);
+            String v = env.get(name); // effective value: the real environment's when it shadows
             if (v != null && !v.isEmpty()) values.add(v);
         }
         if (values.isEmpty()) return NONE;
@@ -110,6 +124,22 @@ public final class SecretRedactor {
         // Longest first: replacing a shorter substring first can leave pieces of a longer secret.
         list.sort(Comparator.comparingInt(String::length).reversed().thenComparing(s -> s));
         return new SecretRedactor(list);
+    }
+
+    /**
+     * This redactor plus {@code extra} secret values — the composition point for a secret that no
+     * {@code.env} declares because it came from somewhere else entirely, such as a repository
+     * credential jk resolved from {@code JK_REPO_<ID>_TOKEN} (see {@link ResolvedSecrets}).
+     *
+     * <p>Masking stays by declaration either way: {@code extra} is values a caller <em>states</em>
+     * are secret because it holds them, never values guessed from a name.
+     */
+    public SecretRedactor and(Collection<String> extra) {
+        if (extra == null || extra.isEmpty()) return this;
+        if (secrets.isEmpty()) return of(extra);
+        Set<String> all = new LinkedHashSet<>(secrets);
+        all.addAll(extra);
+        return all.size() == secrets.size() ? this : of(all);
     }
 
     /** True when this redactor has nothing to mask. */
@@ -137,6 +167,23 @@ public final class SecretRedactor {
             if (out.contains(s)) out = out.replace(s, MASK);
         }
         return out;
+    }
+
+    /**
+     * Redact every element and carry the proof in the type: {@link Redacted} has no other mint.
+     *
+     * <p>This is the shape a terminal event wants — {@code ProtoEvents.workspaceFinish} takes
+     * {@code List<Redacted>} precisely so a verb cannot pass raw worker output (JK-2387). A null
+     * row becomes the empty string; error rows are display text and a null on the wire is not a
+     * thing.
+     */
+    public List<Redacted> redactAll(List<String> texts) {
+        if (texts == null || texts.isEmpty()) return List.of();
+        List<Redacted> out = new ArrayList<>(texts.size());
+        for (String t : texts) {
+            out.add(new Redacted(t == null ? "" : redact(t)));
+        }
+        return List.copyOf(out);
     }
 
     /**
@@ -171,7 +218,7 @@ public final class SecretRedactor {
      * dependency now, so the old hand-copied twin is gone (JK-2172).
      */
     private static String jsonEscape(String s) {
-        String quoted = cc.jumpkick.jsonl.Jsonl.quote(s);
+        String quoted = Jsonl.quote(s);
         return quoted.substring(1, quoted.length() - 1);
     }
 

@@ -7,6 +7,18 @@ import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkInstallListener;
+import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.JdkOwnership;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkService;
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.runtime.CachePlans;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -45,7 +57,7 @@ public final class McpMachine {
             try (var stream = Files.list(envsRoot)) {
                 stream.filter(Files::isDirectory).forEach(envs::add);
             } catch (IOException e) {
-                m.put("error", cc.jumpkick.util.Errors.text(e));
+                m.put("error", Errors.text(e));
                 return m;
             }
             envs.sort(Comparator.comparing(pth -> pth.getFileName().toString()));
@@ -70,7 +82,7 @@ public final class McpMachine {
         if (!Files.isRegularFile(envJson)) return null;
         try {
             // env.json is pretty-printed — parse properly, never compact-form key scans.
-            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(Files.readString(envJson, StandardCharsets.UTF_8));
+            Object parsed = MiniJson.parse(Files.readString(envJson, StandardCharsets.UTF_8));
             if (parsed instanceof Map<?, ?> map && map.get(field) instanceof String s) return s;
             return null;
         } catch (IOException | RuntimeException e) {
@@ -108,7 +120,7 @@ public final class McpMachine {
                 int mb = Integer.parseInt(value.trim());
                 Path file = JkDirs.userConfigFile();
                 String text = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
-                cc.jumpkick.util.AtomicWrites.replace(file, upsertHeap(text, mb));
+                AtomicWrites.replace(file, upsertHeap(text, mb));
                 m.put("written", file.toString());
                 m.put("key", key);
                 m.put("value", mb);
@@ -117,7 +129,7 @@ public final class McpMachine {
             }
             m.put("error", "unknown key (nerd-font | engine.max-heap-mb)");
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
@@ -148,20 +160,20 @@ public final class McpMachine {
             m.put("storeBytes", snap.artifactStorageBytes());
             m.put("hint", "jk_disk action=clean then nuke if you still need space");
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
 
     public static Map<String, Object> jdkList() {
-        return jdkList(new cc.jumpkick.jdk.JdkRegistry());
+        return jdkList(new JdkRegistry());
     }
 
-    static Map<String, Object> jdkList(cc.jumpkick.jdk.JdkRegistry registry) {
+    static Map<String, Object> jdkList(JdkRegistry registry) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
             List<Map<String, Object>> rows = new ArrayList<>();
-            for (cc.jumpkick.jdk.InstalledJdk jdk : registry.list()) {
+            for (InstalledJdk jdk : registry.list()) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("home", jdk.home().toString());
                 row.put("identifier", jdk.identifier());
@@ -169,17 +181,17 @@ public final class McpMachine {
             }
             m.put("jdks", rows);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
 
     public static Map<String, Object> jdkAction(String action, String spec, Integer olderThan, boolean confirm) {
-        return jdkAction(action, spec, olderThan, confirm, new cc.jumpkick.jdk.JdkRegistry());
+        return jdkAction(action, spec, olderThan, confirm, new JdkRegistry());
     }
 
     static Map<String, Object> jdkAction(
-            String action, String spec, Integer olderThan, boolean confirm, cc.jumpkick.jdk.JdkRegistry registry) {
+            String action, String spec, Integer olderThan, boolean confirm, JdkRegistry registry) {
         if (action == null || action.isBlank() || "list".equals(action)) return jdkList(registry);
         if ("install".equals(action) || "update".equals(action)) {
             return jdkInstall(spec, registry);
@@ -192,49 +204,48 @@ public final class McpMachine {
         return m;
     }
 
-    static Map<String, Object> jdkInstall(String spec, cc.jumpkick.jdk.JdkRegistry registry) {
+    static Map<String, Object> jdkInstall(String spec, JdkRegistry registry) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (spec == null || spec.isBlank()) {
             m.put("error", "jk_jdk install requires spec (lts, latest, 26, temurin-26)");
             return m;
         }
-        if (!cc.jumpkick.jdk.HostPlatform.supported()) {
+        if (!HostPlatform.supported()) {
             m.put("error", "host is not covered by the JetBrains JDK feed — set JAVA_HOME");
             return m;
         }
         try {
-            cc.jumpkick.jdk.JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
-            cc.jumpkick.jdk.InstalledJdk jdk = new cc.jumpkick.jdk.JdkService()
+            JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+            InstalledJdk jdk = new JdkService()
                     .install(
                             spec,
                             registry,
                             false,
                             null,
                             null,
-                            cc.jumpkick.jdk.HostPlatform.currentOs(),
-                            cc.jumpkick.jdk.HostPlatform.currentArch(),
-                            cc.jumpkick.jdk.JdkInstallListener.NO_OP);
+                            HostPlatform.currentOs(),
+                            HostPlatform.currentArch(),
+                            JdkInstallListener.NO_OP);
             m.put("identifier", jdk.identifier());
             m.put("home", jdk.home().toString());
             m.put("installed", true);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
 
-    static Map<String, Object> jdkUninstall(
-            String spec, Integer olderThan, boolean confirm, cc.jumpkick.jdk.JdkRegistry registry) {
+    static Map<String, Object> jdkUninstall(String spec, Integer olderThan, boolean confirm, JdkRegistry registry) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
-            cc.jumpkick.jdk.JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+            JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
             List<Map<String, Object>> victims = new ArrayList<>();
             if (olderThan != null) {
-                for (cc.jumpkick.jdk.JdkHit hit : registry.listHits()) {
+                for (JdkHit hit : registry.listHits()) {
                     if (!"jk".equals(hit.source()) && !"jdks".equals(hit.source())) continue;
                     Integer major = majorOf(hit.version());
                     if (major == null || major >= olderThan) continue;
-                    if (!cc.jumpkick.jdk.JdkOwnership.isJkOwnedJavaHome(hit.home())) continue;
+                    if (!JdkOwnership.isJkOwnedJavaHome(hit.home())) continue;
                     victims.add(jdkVictim(hit));
                 }
             } else if (spec != null && !spec.isBlank()) {
@@ -244,7 +255,7 @@ public final class McpMachine {
                     m.put("error", "no installed JDK matches " + spec);
                     return m;
                 }
-                if (!cc.jumpkick.jdk.JdkOwnership.isJkOwnedJavaHome(hit.get().home())) {
+                if (!JdkOwnership.isJkOwnedJavaHome(hit.get().home())) {
                     m.put("error", "refusing to uninstall a JDK jk does not own — use jk jdk uninstall");
                     return m;
                 }
@@ -266,14 +277,14 @@ public final class McpMachine {
             }
             m.put("removed", removed);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }
 
-    private static Map<String, Object> jdkVictim(cc.jumpkick.jdk.JdkHit hit) {
+    private static Map<String, Object> jdkVictim(JdkHit hit) {
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("identifier", cc.jumpkick.jdk.JdkRegistry.identifierFor(hit.home()));
+        row.put("identifier", JdkRegistry.identifierFor(hit.home()));
         row.put("home", hit.home().toString());
         row.put("version", hit.version());
         row.put("source", hit.source());
@@ -320,25 +331,20 @@ public final class McpMachine {
             try {
                 boolean ran = CacheMaintenanceLocks.tryExclusively(cacheGate, cache, () -> {
                     if ("nuke".equals(action)) {
-                        cc.jumpkick.runtime.CachePlans.purgeActionCache(cache);
+                        CachePlans.purgeActionCache(cache);
                         preview.put("nuked", true);
                         preview.put("note", "cache tier wiped; artifact store untouched");
                     } else {
-                        var plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, false, true);
+                        var plan = CachePlans.pruneBuildPlan(cache, false, true);
                         var result = plan.run();
                         preview.put("cleaned", result.success());
-                        preview.put(
-                                "files",
-                                plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(-1L));
-                        preview.put(
-                                "bytes",
-                                plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L));
+                        preview.put("files", plan.get(CachePlans.FILES).orElse(-1L));
+                        preview.put("bytes", plan.get(CachePlans.BYTES).orElse(-1L));
                         if (result.success()) {
                             CacheMaintenanceLocks.stampLastPruned(
                                     cache,
                                     System.currentTimeMillis(),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.FINAL_ACTION_BYTES)
-                                            .orElse(-1L));
+                                    plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
                         } else {
                             preview.put("error", "cache clean failed");
                         }
@@ -352,7 +358,7 @@ public final class McpMachine {
                 preview.put("cacheBytesAfter", after.get("cacheBytes"));
                 return preview;
             } catch (Exception e) {
-                preview.put("error", cc.jumpkick.util.Errors.text(e));
+                preview.put("error", Errors.text(e));
                 return preview;
             }
         }
@@ -371,7 +377,7 @@ public final class McpMachine {
             m.put("storeDir", store.toString());
             m.put("storeBytes", ss.bytes());
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", Errors.text(e));
         }
         return m;
     }

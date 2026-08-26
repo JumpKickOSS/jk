@@ -3,11 +3,16 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
@@ -101,8 +106,7 @@ public final class AddCommand implements CliCommand {
         boolean coordFlags =
                 libraryFlag != null || groupFlag != null || nameFlag != null || versionFlag != null || ping;
         if (coordFlags && isExplicitPathSyntax(coord)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Add", "--library/--group/--name/--ver/--ping do not apply to a local path");
+            CommandWedge.printFail("Add", "--library/--group/--name/--ver/--ping do not apply to a local path");
             return Exit.USAGE;
         }
 
@@ -125,7 +129,7 @@ public final class AddCommand implements CliCommand {
         try {
             parsed = ParsedDep.parse(coord, libraryFlag, groupFlag, nameFlag, versionFlag);
         } catch (IllegalArgumentException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", e.getMessage());
+            CommandWedge.printFail("Add", e.getMessage());
             return Exit.USAGE;
         }
 
@@ -133,9 +137,9 @@ public final class AddCommand implements CliCommand {
             return runPing(parsed.toCoord());
         }
 
-        Path file = dir.resolve("jk.toml");
+        Path file = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(file)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", "no jk.toml in current directory");
+            CommandWedge.printFail("Add", "no jk.toml in current directory");
             return Exit.CONFIG;
         }
         Scope scope = resolveScope();
@@ -144,14 +148,14 @@ public final class AddCommand implements CliCommand {
             EngineEdits.apply(
                     file,
                     "add-dependency",
-                    java.util.List.of(
+                    List.of(
                             scope.canonical(),
                             parsed.library(),
                             parsed.group(),
                             parsed.name(),
                             parsed.versionLiteral()));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", e.getMessage());
+            CommandWedge.printFail("Add", e.getMessage());
             return 1;
         }
         String msg = "Added "
@@ -176,8 +180,7 @@ public final class AddCommand implements CliCommand {
     private Scope resolveScope() {
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Add", "--test / --runtime / --provided / --processor are mutually exclusive");
+            CommandWedge.printFail("Add", "--test / --runtime / --provided / --processor are mutually exclusive");
             return null;
         }
         return test
@@ -223,9 +226,9 @@ public final class AddCommand implements CliCommand {
      * version) and register it in the enclosing workspace root's {@code [workspace].modules}.
      */
     private int addModule(Path cwd, Scope scope) throws IOException {
-        Path currentToml = cwd.resolve("jk.toml");
+        Path currentToml = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(currentToml)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", "no jk.toml in current directory");
+            CommandWedge.printFail("Add", "no jk.toml in current directory");
             return Exit.CONFIG;
         }
         // Strip the optional leading ':' marker and normalise Windows-style
@@ -233,20 +236,18 @@ public final class AddCommand implements CliCommand {
         String raw = coord.charAt(0) == ':' ? coord.substring(1) : coord;
         raw = raw.replace('\\', '/');
         if (raw.isBlank()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", "empty module path");
+            CommandWedge.printFail("Add", "empty module path");
             return Exit.USAGE;
         }
         Path target = cwd.resolve(raw).normalize();
-        Path targetToml = target.resolve("jk.toml");
+        Path targetToml = target.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(targetToml)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Add", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(target));
+            CommandWedge.printFail("Add", "no jk.toml in " + PathDisplay.styledRaw(target));
             return Exit.CONFIG;
         }
-        var module = BuildCommand.projectInfoOrNull(target);
+        var module = ProjectInfos.orNull(target);
         if (module == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Add", "could not read " + cc.jumpkick.cli.PathDisplay.styledRaw(targetToml));
+            CommandWedge.printFail("Add", "could not read " + PathDisplay.styledRaw(targetToml));
             return 1;
         }
         String group = module.group();
@@ -258,11 +259,9 @@ public final class AddCommand implements CliCommand {
         //    version — matching how this repo's own modules reference siblings.
         try {
             EngineEdits.apply(
-                    currentToml,
-                    "add-dependency",
-                    java.util.List.of(scope.canonical(), name, group, artifact, "=" + version));
+                    currentToml, "add-dependency", List.of(scope.canonical(), name, group, artifact, "=" + version));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", e.getMessage());
+            CommandWedge.printFail("Add", e.getMessage());
             return 1;
         }
         CommandWedge.printOk(
@@ -277,33 +276,33 @@ public final class AddCommand implements CliCommand {
 
         // 2. Register membership in the enclosing workspace root (cwd itself
         //    when cwd is the root).
-        Path root = cc.jumpkick.config.WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
-        Path rootToml = root.resolve("jk.toml");
+        Path root = WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
+        Path rootToml = root.resolve(ManifestPaths.MANIFEST);
         try {
             if (!target.startsWith(root)) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                CommandWedge.printFail(
                         "Add",
                         raw
                                 + " is outside the workspace root "
                                 + root
                                 + "; added the dependency but not registering it as a module.");
-            } else if (Files.exists(rootToml) && BuildCommand.projectInfoOrNull(root) != null) {
+            } else if (Files.exists(rootToml) && ProjectInfos.orNull(root) != null) {
                 // Adding the first local module promotes a plain project into a workspace root
                 // (Cargo/uv semantics) — without the registration the dependency names a
                 // coordinate that was never published and `jk lock` cannot resolve it.
-                boolean alreadyWorkspace = BuildCommand.projectInfoOrNull(root).workspaceRoot();
+                boolean alreadyWorkspace = ProjectInfos.orNull(root).workspaceRoot();
                 String rel = root.relativize(target).toString().replace('\\', '/');
                 String op = alreadyWorkspace ? "add-workspace-module" : "register-workspace-module";
-                if (EngineEdits.apply(rootToml, op, java.util.List.of(rel))) {
+                if (EngineEdits.apply(rootToml, op, List.of(rel))) {
                     CliOutput.out("Registered module '"
                             + rel
                             + "' in "
                             + (alreadyWorkspace ? "workspace " : "new workspace ")
-                            + cc.jumpkick.cli.PathDisplay.styledRaw(root));
+                            + PathDisplay.styledRaw(root));
                 }
             }
         } catch (RuntimeException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", "could not register workspace module: " + e.getMessage());
+            CommandWedge.printFail("Add", "could not register workspace module: " + e.getMessage());
         }
         return 0;
     }
@@ -319,9 +318,9 @@ public final class AddCommand implements CliCommand {
      * --ver}.
      */
     private int addFile(Path cwd, Path filePath, Scope scope) throws IOException {
-        Path tomlFile = cwd.resolve("jk.toml");
+        Path tomlFile = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(tomlFile)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", "no jk.toml in current directory");
+            CommandWedge.printFail("Add", "no jk.toml in current directory");
             return Exit.CONFIG;
         }
 
@@ -347,8 +346,7 @@ public final class AddCommand implements CliCommand {
         // Validate: all three coordinates are required.
         if (group == null || artifact == null || version == null) {
             if (!isJar) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Add", "--group, --name, and --ver are required for non-JAR files");
+                CommandWedge.printFail("Add", "--group, --name, and --ver are required for non-JAR files");
             } else {
                 StringBuilder msg = new StringBuilder("jk add: could not detect");
                 if (group == null) msg.append(" group");
@@ -370,9 +368,9 @@ public final class AddCommand implements CliCommand {
             sha256 = EngineEdits.applyDetail(
                     tomlFile,
                     "add-file-dependency",
-                    java.util.List.of(scope.canonical(), library, group, artifact, version, filePath.toString()));
+                    List.of(scope.canonical(), library, group, artifact, version, filePath.toString()));
         } catch (IOException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Add", e.getMessage());
+            CommandWedge.printFail("Add", e.getMessage());
             return 1;
         }
 
@@ -434,19 +432,14 @@ public final class AddCommand implements CliCommand {
                     throw new IllegalArgumentException("empty version after '@' in: " + coord);
                 }
                 String library = nonBlank(libraryFlag, libraryKey);
-                var catalog = cc.jumpkick.library.LibraryCatalog.forProject(
+                var catalog = LibraryCatalog.forProject(
                         Path.of(".").toAbsolutePath().normalize(), CliOutput.stderr()::println);
                 var catalogHit = catalog.lookup(libraryKey);
                 String group = nonBlank(
-                        groupFlag,
-                        catalogHit
-                                .map(cc.jumpkick.library.LibraryCatalog.Module::group)
-                                .orElse(null));
+                        groupFlag, catalogHit.map(LibraryCatalog.Module::group).orElse(null));
                 String name = nonBlank(
                         nameFlag,
-                        catalogHit
-                                .map(cc.jumpkick.library.LibraryCatalog.Module::artifact)
-                                .orElse(library));
+                        catalogHit.map(LibraryCatalog.Module::artifact).orElse(library));
                 if (group == null || group.isBlank()) {
                     StringBuilder msg = new StringBuilder("bare name `")
                             .append(libraryKey)

@@ -4,7 +4,6 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
-import cc.jumpkick.task.CachePruneScheduler;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -59,7 +58,7 @@ class CacheRetentionAutomaticPathTest {
                 .as("a tier no constant names is reclaimed, not merely unbounded")
                 .doesNotExist();
         assertThat(stamp).as("a window is reachable too").doesNotExist();
-        assertThat(cache.resolve(CachePruneScheduler.LAST_PRUNED_FILE))
+        assertThat(cache.resolve(".last-pruned"))
                 .as("the pass ran to completion and recorded its cadence")
                 .exists();
         assertThat(log).anyMatch(line -> line.contains("idle-boundary cache prune removed"));

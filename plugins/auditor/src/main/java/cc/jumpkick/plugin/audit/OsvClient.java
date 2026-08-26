@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.audit;
 
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -10,10 +10,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import java.util.regex.Pattern;
 
 /**
  * Client for the <a href="https://api.osv.dev/v1/querybatch">OSV v1 batch query API</a>. One
@@ -24,12 +25,12 @@ public final class OsvClient {
     public static final URI DEFAULT_BATCH = URI.create("https://api.osv.dev/v1/querybatch");
     public static final URI DEFAULT_VULNS = URI.create("https://api.osv.dev/v1/vulns/");
 
+    /** GHSA-…, CVE-…, GO-… and friends: letters, digits, dot, dash, underscore. Nothing path-like. */
+    private static final Pattern VULN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
+
     private final HttpClient http;
     private final URI batchUrl;
     private final URI vulnsUrl;
-    // Jackson 3 (tools.jackson.*) is the version we depend on; ObjectMapper from
-    // tools.jackson.databind has the same API surface as Jackson 2 for our needs.
-    private final JsonMapper json = JsonMapper.builder().build();
 
     public OsvClient() {
         this(DEFAULT_BATCH, DEFAULT_VULNS);
@@ -61,29 +62,22 @@ public final class OsvClient {
     /** Batch query — one Result per input query, in the same order. */
     public List<Result> queryBatch(List<Query> queries) throws IOException, InterruptedException {
         if (queries.isEmpty()) return List.of();
-        // Hand-roll the request body — Jackson's tree API is overkill here and we
-        // avoid pulling another type onto the API surface.
-        StringBuilder body = new StringBuilder();
-        body.append("{\"queries\":[");
-        for (int i = 0; i < queries.size(); i++) {
-            if (i > 0) body.append(',');
-            Query q = queries.get(i);
-            body.append("{\"package\":{")
-                    .append("\"ecosystem\":")
-                    .append(quote(q.ecosystem()))
-                    .append(',')
-                    .append("\"name\":")
-                    .append(quote(q.name()))
-                    .append("},\"version\":")
-                    .append(quote(q.version()))
-                    .append('}');
+        List<Object> rows = new ArrayList<>(queries.size());
+        for (Query q : queries) {
+            Map<String, Object> pkg = new LinkedHashMap<>();
+            pkg.put("ecosystem", q.ecosystem());
+            pkg.put("name", q.name());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("package", pkg);
+            row.put("version", q.version());
+            rows.add(row);
         }
-        body.append("]}");
+        String body = MiniJson.write(Map.of("queries", rows));
 
         HttpRequest request = HttpRequest.newBuilder(batchUrl)
                 .timeout(Duration.ofMinutes(2))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -94,6 +88,12 @@ public final class OsvClient {
 
     /** Fetch full vulnerability metadata. */
     public Vulnerability fetchVuln(String vulnId) throws IOException, InterruptedException {
+        // vulnId comes from the batch response, so it is remote input. `URI.resolve` on
+        // "//evil.example/x" or "../" retargets the host or escapes the path, so the id is
+        // validated as a bare advisory identifier before it is ever resolved.
+        if (!VULN_ID.matcher(vulnId).matches()) {
+            throw new IOException("refusing to fetch a malformed OSV vulnerability id: " + vulnId);
+        }
         var url = vulnsUrl.resolve(vulnId);
         HttpRequest request = HttpRequest.newBuilder(url)
                 .timeout(Duration.ofSeconds(30))
@@ -104,73 +104,70 @@ public final class OsvClient {
             throw new IOException("OSV vuln fetch failed for " + vulnId + ": HTTP " + response.statusCode());
         }
         try {
-            var node = json.readTree(response.body());
-            String summary = textOrEmpty(node, "summary");
-            String details = textOrEmpty(node, "details");
-            String severity = extractSeverity(node);
-            return new Vulnerability(vulnId, summary, severity, details);
-        } catch (Exception e) {
+            Map<?, ?> node = object(MiniJson.parse(response.body()));
+            return new Vulnerability(
+                    vulnId, textOrEmpty(node, "summary"), extractSeverity(node), textOrEmpty(node, "details"));
+        } catch (RuntimeException e) {
             throw new IOException("failed to parse OSV vuln body for " + vulnId, e);
         }
     }
 
     // --- helpers ---------------------------------------------------------
 
-    private List<Result> parseBatchResponse(String body, int expectedSize) throws IOException {
+    private static List<Result> parseBatchResponse(String body, int expectedSize) throws IOException {
+        List<Result> out = new ArrayList<>(expectedSize);
         try {
-            var root = json.readTree(body);
-            var resultsNode = root.get("results");
-            if (resultsNode == null || !resultsNode.isArray()) {
+            Object results = object(MiniJson.parse(body)).get("results");
+            if (!(results instanceof List<?> rows)) {
                 throw new IOException("OSV batch response missing `results` array");
             }
-            List<Result> out = new ArrayList<>(resultsNode.size());
-            for (var entry : resultsNode) {
-                var vulnsNode = entry.get("vulns");
+            for (Object entry : rows) {
                 List<String> ids = new ArrayList<>();
-                if (vulnsNode != null && vulnsNode.isArray()) {
-                    for (var v : vulnsNode) {
-                        var id = v.get("id");
-                        if (id != null && id.isString()) ids.add(id.stringValue());
+                if (object(entry).get("vulns") instanceof List<?> vulns) {
+                    for (Object v : vulns) {
+                        if (object(v).get("id") instanceof String id) ids.add(id);
                     }
                 }
                 out.add(new Result(ids));
             }
-            if (out.size() != expectedSize) {
-                throw new IOException("OSV returned "
-                        + out.size()
-                        + " result(s) for "
-                        + expectedSize
-                        + " quer"
-                        + (expectedSize == 1 ? "y" : "ies"));
-            }
-            return out;
-        } catch (Exception e) {
-            if (e instanceof IOException io) throw io;
+        } catch (RuntimeException e) {
             throw new IOException("failed to parse OSV batch response", e);
         }
-    }
-
-    private static String extractSeverity(JsonNode node) {
-        var sev = node.get("severity");
-        if (sev != null && sev.isArray() && !sev.isEmpty()) {
-            var first = sev.get(0);
-            var score = first.get("score");
-            if (score != null && score.isString()) return score.stringValue();
+        if (out.size() != expectedSize) {
+            throw new IOException("OSV returned "
+                    + out.size()
+                    + " result(s) for "
+                    + expectedSize
+                    + " quer"
+                    + (expectedSize == 1 ? "y" : "ies"));
         }
-        var dbSpecific = node.get("database_specific");
-        if (dbSpecific != null) {
-            var inner = dbSpecific.get("severity");
-            if (inner != null && inner.isString()) return inner.stringValue();
-        }
-        return "UNKNOWN";
+        return out;
     }
 
-    private static String textOrEmpty(JsonNode node, String field) {
-        var v = node.get(field);
-        return v == null || !v.isString() ? "" : v.stringValue();
+    /**
+     * The advisory's severity <em>label</em>.
+     *
+     * <p>{@code severity[].score} is a CVSS <em>vector</em> ({@code CVSS:3.1/AV:N/...}), not a label,
+     * so it is never returned as one — reading it was why every advisory classified as
+     * {@code UNKNOWN}. {@code database_specific.severity} is the label OSV and GitHub actually
+     * publish. An advisory with only a vector stays unclassified and gates anyway, because
+     * {@code Severity.UNKNOWN} fails closed.
+     */
+    private static String extractSeverity(Map<?, ?> node) {
+        Object label = object(node.get("database_specific")).get("severity");
+        return label instanceof String s ? s : "UNKNOWN";
     }
 
-    private static String quote(String s) {
-        return Jsonl.quote(s);
+    private static String textOrEmpty(Map<?, ?> node, String field) {
+        return node.get(field) instanceof String s ? s : "";
+    }
+
+    /**
+     * {@code value} as a JSON object, or an empty one when it is anything else. OSV is a remote
+     * peer: a field that should hold an object can arrive as {@code null}, a string, or be absent,
+     * and every one of those means "nothing to read here" rather than a crash.
+     */
+    private static Map<?, ?> object(Object value) {
+        return value instanceof Map<?, ?> m ? m : Map.of();
     }
 }

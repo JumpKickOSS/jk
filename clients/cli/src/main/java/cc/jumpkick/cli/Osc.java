@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 
 /**
@@ -11,7 +12,7 @@ public final class Osc {
     private Osc() {}
 
     public static boolean oscEnabled() {
-        return !cc.jumpkick.config.SessionContext.current().config().noOscOr(false);
+        return !SessionContext.current().config().noOscOr(false);
     }
 
     public static String taskbarProgress(int percent) {

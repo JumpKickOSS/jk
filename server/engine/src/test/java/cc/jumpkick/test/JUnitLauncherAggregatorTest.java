@@ -3,7 +3,8 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.run.TestFailureInfo;
 import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
@@ -31,10 +32,9 @@ class JUnitLauncherAggregatorTest {
         assertThat(result.failed()).isEqualTo(1);
         assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.testName()).isEqualTo("c()");
             assertThat(f.method()).isEqualTo("c()");
             assertThat(f.className()).isEqualTo("C");
-            assertThat(f.testEngine()).isEqualTo("junit-jupiter");
+            assertThat(f.engine()).isEqualTo("junit-jupiter");
             assertThat(f.exceptionClass()).isEqualTo("AssertionError");
             assertThat(f.message()).isEqualTo("nope");
             assertThat(f.stack()).contains("at C.c(C.java:1)");
@@ -111,7 +111,7 @@ class JUnitLauncherAggregatorTest {
                 + "\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
         var result = agg.toResult(0);
         assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.testName()).isEqualTo("floats the lock");
+            assertThat(f.method()).isEqualTo("floats the lock");
         });
     }
 
@@ -137,7 +137,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void ready_and_plan_events_are_ignored_for_counts() {
         var agg = new JUnitLauncher.ResultAggregator();
-        agg.accept("{\"event\":\"ready\",\"w\":1}");
+        agg.accept("{\"event\":\"ready\",\"worker\":1}");
         agg.accept("{\"event\":\"plan_started\"}");
         agg.accept("{\"event\":\"plan_finished\",\"duration_ms\":100}");
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
@@ -147,9 +147,9 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void unique_id_percent_decode_and_class_extract() {
-        assertThat(JUnitLauncher.percentDecode("bar(int%5B%5D)")).isEqualTo("bar(int[])");
-        assertThat(JUnitLauncher.percentDecode("foo%2Fbar%251")).isEqualTo("foo/bar%1");
-        assertThat(JUnitLauncher.percentDecode("plain")).isEqualTo("plain");
+        assertThat(JUnitUniqueIds.percentDecode("bar(int%5B%5D)")).isEqualTo("bar(int[])");
+        assertThat(JUnitUniqueIds.percentDecode("foo%2Fbar%251")).isEqualTo("foo/bar%1");
+        assertThat(JUnitUniqueIds.percentDecode("plain")).isEqualTo("plain");
         assertThat(JUnitLauncher.classFromUniqueId(
                         "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
                 .isEqualTo("demo.FooTest");
@@ -216,7 +216,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failures())
                 .singleElement()
-                .extracting(TestSummary.Failure::testName)
+                .extracting(TestFailureInfo::method)
                 .isEqualTo("(test run)");
     }
 
@@ -266,7 +266,7 @@ class JUnitLauncherAggregatorTest {
                 + "\tat cc.jumpkick.Boot.main(Boot.java:1)";
         var result = agg.toResult(1, crash); // no events, non-zero exit
         assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.testName()).isEqualTo("(test run)");
+            assertThat(f.method()).isEqualTo("(test run)");
             assertThat(f.stack()).contains("NoClassDefFoundError").contains("at cc.jumpkick.Boot.main");
         });
     }

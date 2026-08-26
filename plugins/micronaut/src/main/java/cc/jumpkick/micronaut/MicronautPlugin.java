@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.micronaut;
 
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -189,53 +191,11 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         return props;
     }
 
-    /**
-     * {@code Properties.store} always prepends a {@code #<current date>} line and writes keys in
-     * unspecified {@code Hashtable} order, so two identical AOT runs would produce two different
-     * files. jk fixes timestamps everywhere else it writes an output; this is that contract
-     * applied to a text file.
-     */
+    /** {@link DeterministicProperties} rendering (sorted, load-safe, no date line) under the jk banner. */
     static String renderProperties(Properties props) {
-        StringBuilder sb = new StringBuilder("# Effective Micronaut AOT configuration (jk)\n");
-        List<String> keys = new ArrayList<>(props.stringPropertyNames());
-        keys.sort(Comparator.naturalOrder());
-        for (String key : keys) {
-            sb.append(escape(key, true))
-                    .append('=')
-                    .append(escape(props.getProperty(key), false))
-                    .append('\n');
-        }
-        return sb.toString();
-    }
-
-    /**
-     * {@code java.util.Properties} escaping, so what we write round-trips through
-     * {@link Properties#load}. Keys additionally escape the separators that would otherwise end
-     * the key early.
-     */
-    private static String escape(String value, boolean isKey) {
-        StringBuilder sb = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                case '\f' -> sb.append("\\f");
-                case '=', ':', '#', '!' -> sb.append('\\').append(c);
-                // A leading space is significant in a value and always in a key.
-                case ' ' -> sb.append(isKey || i == 0 ? "\\ " : " ");
-                default -> {
-                    if (c < 0x20 || c > 0x7e) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.toString();
+        Map<String, String> entries = new LinkedHashMap<>();
+        for (String key : props.stringPropertyNames()) entries.put(key, props.getProperty(key));
+        return "# Effective Micronaut AOT configuration (jk)\n" + DeterministicProperties.render(entries);
     }
 
     /**
@@ -289,18 +249,15 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     }
 
     static String joinCp(List<Path> paths) throws IOException {
-        String sep = System.getProperty("path.separator", ":");
-        StringBuilder sb = new StringBuilder();
         for (Path p : paths) {
             // A missing entry silently shortening the classpath is how you get an AOT run that
-            // "succeeds" with half its optimizers unavailable.
+            // "succeeds" with half its optimizers unavailable. That check is Micronaut's policy,
+            // not the joiner's — Classpaths.join stays total, and this decides what to reject.
             if (!Files.exists(p)) {
                 throw new IOException("Micronaut AOT classpath entry does not exist: " + p.toAbsolutePath());
             }
-            if (sb.length() > 0) sb.append(sep);
-            sb.append(p.toAbsolutePath().normalize());
         }
-        return sb.toString();
+        return Classpaths.join(paths);
     }
 
     private static void copyTree(Path from, Path to) throws IOException {

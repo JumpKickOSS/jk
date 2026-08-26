@@ -3,6 +3,7 @@ package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import java.io.ByteArrayOutputStream;
@@ -11,10 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,16 +41,16 @@ public final class LockManifestDigest {
     public static String compute(Path lockOwnerDir) throws IOException {
         Path owner = lockOwnerDir.toAbsolutePath().normalize();
         Map<String, byte[]> parts = new LinkedHashMap<>();
-        Path rootToml = owner.resolve("jk.toml");
+        Path rootToml = owner.resolve(ManifestPaths.MANIFEST);
         if (Files.isRegularFile(rootToml)) {
-            parts.put("jk.toml", normalized(Files.readAllBytes(rootToml)));
+            parts.put(ManifestPaths.MANIFEST, normalized(Files.readAllBytes(rootToml)));
             try {
                 JkBuild root = JkBuildParser.parseLocal(rootToml);
                 addPathDepManifests(parts, owner, owner, root);
                 if (root.isWorkspaceRoot()) {
                     for (Map.Entry<Path, JkBuild> member :
                             WorkspaceLoader.loadModules(owner, root).entrySet()) {
-                        Path mt = member.getKey().resolve("jk.toml");
+                        Path mt = member.getKey().resolve(ManifestPaths.MANIFEST);
                         if (!Files.isRegularFile(mt)) continue;
                         String rel = owner.relativize(mt).toString().replace('\\', '/');
                         parts.put(rel, normalized(Files.readAllBytes(mt)));
@@ -65,9 +64,9 @@ public final class LockManifestDigest {
         // The workspace catalog layer (jk-libs.toml) changes how short names resolve to
         // group:artifact, so a pin edit must flip staleness exactly like a manifest edit —
         // without this the lock kept resolving the old GA while looking fresh.
-        Path libs = owner.resolve("jk-libs.toml");
+        Path libs = owner.resolve(ManifestPaths.LIBRARIES);
         if (Files.isRegularFile(libs)) {
-            parts.put("jk-libs.toml", normalized(Files.readAllBytes(libs)));
+            parts.put(ManifestPaths.LIBRARIES, normalized(Files.readAllBytes(libs)));
         }
         return hashParts(parts);
     }
@@ -84,7 +83,7 @@ public final class LockManifestDigest {
                 Path toml = declaringDir
                         .resolve(d.pathSource().rawPath())
                         .normalize()
-                        .resolve("jk.toml");
+                        .resolve(ManifestPaths.MANIFEST);
                 if (!Files.isRegularFile(toml)) continue;
                 String key;
                 try {
@@ -112,18 +111,14 @@ public final class LockManifestDigest {
     static String hashParts(Map<String, byte[]> parts) {
         List<String> keys = new ArrayList<>(parts.keySet());
         keys.sort(Comparator.naturalOrder());
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            for (String key : keys) {
-                md.update(key.getBytes(StandardCharsets.UTF_8));
-                md.update((byte) 0);
-                md.update(parts.get(key));
-                md.update((byte) 0);
-            }
-            return HexFormat.of().formatHex(md.digest());
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 required", e);
+        MessageDigest md = Hashing.newSha256();
+        for (String key : keys) {
+            md.update(key.getBytes(StandardCharsets.UTF_8));
+            md.update((byte) 0);
+            md.update(parts.get(key));
+            md.update((byte) 0);
         }
+        return Hashing.hex(md.digest());
     }
 
     /**
