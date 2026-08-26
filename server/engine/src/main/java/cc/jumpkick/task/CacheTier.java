@@ -31,9 +31,12 @@ public final class CacheTier {
             // Action index and cache CAS are one budget and one pass: ActionCachePrune's Policy.
             case ACTIONS, CACHE_CAS -> Bound.delegated();
 
-            // Zero data bytes and `Blocks: 0` — the cost is inodes and dirents, invisible to both
-            // `du` and `stat`, so a byte budget could not see this tier at all.
-            case FORMAT_STAMPS -> Bound.files(Duration.ofDays(7), Bound.countCap(FormatStamps.maxFiles()));
+            // One index file per formatter configuration, so mtime is an exact use clock and bytes are
+            // a real measure again. Both were meaningless while this tier was one empty marker file
+            // per stamp: the cost was inodes and dirents that no byte report could see, which is why
+            // it needed a count cap no other tier wanted. The cap now lives in memory, inside the
+            // index, where it can rank by use instead of by a stat of every file (JK-1034).
+            case FORMAT_STAMPS -> Bound.files(Duration.ofDays(7), Bound.resetOverBytes(64L * 1024 * 1024));
 
             // `save()` rewrites the live index on every `jk format`, so mtime is an exact use clock
             // here and the window is the whole policy: no count cap, because the population is one
