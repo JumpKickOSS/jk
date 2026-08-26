@@ -207,6 +207,10 @@ public final class EngineVerbBridge implements VerbHost {
                 .withCancel(cancelToken)
                 .withJvm(ProtoSession.jvmTuning(requestLine))
                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                // The request's toolchain selection, resolved once for every verb that takes a
+                // session from here. Without it the engine's SWITCH tier is permanently empty and a
+                // resident daemon ignores both --jdk and JK_JDK (JK-1021).
+                .withToolchainSpecs(ProtoSession.jdkSpecOf(requestLine), ProtoSession.graalSpecOf(requestLine))
                 .withAssemblyOverride(ProtoSession.assemblyOverrideOf(requestLine));
     }
 }

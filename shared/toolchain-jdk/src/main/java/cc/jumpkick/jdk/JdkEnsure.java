@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import cc.jumpkick.config.BuildEnv;
+import java.util.function.UnaryOperator;
 
 /**
  * Resolve-or-install a project JDK for {@code jk sync} via {@link JdkResolution}. Missing pins
@@ -128,14 +130,19 @@ public final class JdkEnsure {
 
         // Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version /
         // jk-lock.toml / project.jdk / project.java-floor / default / env / PATH).
+        // The environment is the request's, never this process's: the engine is a daemon, so
+        // System.getenv here would answer from whichever shell started it (JK-1021).
+        UnaryOperator<String> env = projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
         JdkResolution.Request req = new JdkResolution.Request(
                 projectDir,
                 SessionContext.current().jdkSpec(),
-                System.getenv("JK_JDK"),
+                // null: the client folded JK_JDK into the switch tier before sending, and a
+                // read here would be the daemon's environment (JK-1021).
+                null,
                 lockJdk,
                 (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,
                 javaRelease,
-                System::getenv);
+                env::apply);
         JdkResolution.Resolved r = JdkResolution.resolve(req, registry, defaults, latestLts);
 
         if (r.jdk().isPresent()) {

@@ -43,7 +43,7 @@ dependencies {
 // naming coordinate and both versions, and a listed entry that no longer mismatches fails until
 // it is removed. Self-fails when either file parses to an implausibly small table.
 // Measured 2026-08-25: 33 catalog libraries, 230 lock artifacts, 29 shared modules,
-// 14 mismatched (the list below).
+// 12 mismatched (the list below); the two openrewrite entries reconciled 2026-08-26.
 //
 // jkParityCatalog exists for the guard's own revert check: it points the scan at a scratch copy
 // of the catalog so a deliberately skewed version can be seen to fail without mutating the real
@@ -59,8 +59,6 @@ val knownCatalogLockDrift = setOf(
         "org.junit.jupiter:junit-jupiter",
         "org.junit.platform:junit-platform-engine",
         "org.junit.platform:junit-platform-launcher",
-        "org.openrewrite:rewrite-java",
-        "org.openrewrite:rewrite-java-21",
         "org.slf4j:slf4j-api",
         "org.slf4j:slf4j-nop",
 )

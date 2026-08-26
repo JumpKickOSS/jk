@@ -1921,6 +1921,90 @@ tasks.named("check") { dependsOn(checkSingleHostSurface) }
 tasks.named("jar") { dependsOn(checkSingleHostSurface) }
 
 // ---------------------------------------------------------------------------
+// Guard G38 (JK-1021): a toolchain env var is read from the request, not from the daemon.
+//
+// Defect it prevents: `JK_JDK=temurin-21 jk build` silently ignored. The engine is resident, so a
+// `System.getenv("JK_JDK")` inside it answers from whichever shell started the daemon — possibly
+// days earlier. Eight sites did that, and the user-visible consequence was not "the override is
+// ignored" but "which JDK you compile against depends on how the daemon happened to be started",
+// so `jk engine stop` changed build output. `BuildEnv` already layers `.env` -> request -> process
+// and its own javadoc described this bug; the sites simply did not call it.
+//
+// Ban list is read from `BuildEnv.TOOLCHAIN`, never re-typed here, so adding a fourth
+// request-scoped name extends the guard automatically.
+//
+// Scope: server/ and shared/ main sources only. `clients/` is exempt by *shape*, not by taste —
+// the native CLI is a one-shot process running inside the caller's own shell, so there
+// `System.getenv` IS the request. One narrow exemption inside the scope, keyed on the line that
+// makes it correct rather than on a file name: a read that backs up `System.getProperty("java.home")`
+// is asking which JVM this process runs on, which is genuinely ambient
+// (`JavaHomes.runningJavaHome`).
+// ---------------------------------------------------------------------------
+val checkToolchainEnvFromRequest by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a toolchain env read that bypasses BuildEnv (use BuildEnv.forModule/ambient)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/core/src/main/java/cc/jumpkick/config/BuildEnv.java")
+    inputs.file(owner).withPropertyName("buildEnvOwner")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
+    val stamp = layout.buildDirectory.file("guards/toolchain-env-from-request.ok")
+    outputs.file(stamp)
+    doLast {
+        // The ban list, straight out of the owner.
+        val names = Regex("""public static final List<String> TOOLCHAIN = List\.of\(([^)]*)\);""")
+                .find(owner.asFile.readText())
+                ?.groupValues?.get(1)
+                ?.let { Regex("\"([^\"]+)\"").findAll(it).map { m -> m.groupValues[1] }.toList() }
+                ?: emptyList()
+        if (names.isEmpty()) {
+            throw GradleException("BuildEnv.TOOLCHAIN no longer declares its names as a List.of(...)"
+                    + " literal, so guard G38 has lost the owner it reads. Restore it or retire the"
+                    + " guard deliberately.")
+        }
+
+        // clients/ is the caller's own shell; there System.getenv is the request.
+        if (here.startsWith("clients/")) {
+            stamp.get().asFile.also { it.parentFile.mkdirs() }.writeText("skipped: clients/\n")
+            return@doLast
+        }
+
+        val offenders = mutableListOf<String>()
+        var scanned = 0
+        var exempted = 0
+        mainJava.forEach { f ->
+            scanned++
+            val lines = f.readText().lines()
+            lines.forEachIndexed { i, raw ->
+                val line = raw.trim()
+                if (line.startsWith("//") || line.startsWith("*")) return@forEachIndexed
+                for (n in names) {
+                    if (!line.contains("System.getenv(\"" + n + "\")")) continue
+                    // Exempt by shape: a fallback for this process's own java.home.
+                    val window = lines.subList(maxOf(0, i - 8), i).joinToString(" ")
+                    if (window.contains("System.getProperty(\"java.home\")")) { exempted++; continue }
+                    offenders += f.relativeTo(treeRoot).invariantSeparatorsPath + ":" + (i + 1) + "  " + line
+                }
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException("G38: toolchain env read outside BuildEnv in " + here + " —\n  "
+                    + offenders.joinToString("\n  ")
+                    + "\n\nThese select a toolchain, so on a resident engine System.getenv answers from"
+                    + " the shell that started the daemon. Use BuildEnv.forModule(dir) where a module"
+                    + " directory is in hand, or BuildEnv.ambient() where none is."
+                    + "\nBan list read from BuildEnv.TOOLCHAIN: " + names.joinToString(", "))
+        }
+        stamp.get().asFile.also { it.parentFile.mkdirs() }
+                .writeText("ok: " + scanned + " files, " + names.size + " names, " + exempted + " shape-exempt\n")
+    }
+}
+tasks.named("check") { dependsOn(checkToolchainEnvFromRequest) }
+tasks.named("jar") { dependsOn(checkToolchainEnvFromRequest) }
+
+// ---------------------------------------------------------------------------
 // Guard G16 (JK-2419): Maven Central is addressed one way, and it is `RepositorySpec`'s.
 //
 // Defect it prevents: traffic to Central that the rate-limit machinery cannot see. `repo1.maven.org`

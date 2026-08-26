@@ -54,16 +54,19 @@ final class EngineJobs {
         Session session = SessionContext.current();
         return workspace(
                 paths,
-                ProtoSession.withSession(
-                        encodeWorkspaceRequest(req, session),
-                        req.variant(),
-                        req.clientEnv(),
-                        session.jvm(),
-                        // rebuild rides the session envelope: bypass jk's caches without implying
-                        // refresh — verify's scratch rebuild stays CAS-local (no re-download).
-                        session.config().rebuildOr(false),
-                        TimelineOpts.noTimeline(),
-                        session.assemblyOverride()),
+                ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                encodeWorkspaceRequest(req, session),
+                                req.variant(),
+                                req.clientEnv(),
+                                session.jvm(),
+                                // rebuild rides the session envelope: bypass jk's caches without implying
+                                // refresh — verify's scratch rebuild stays CAS-local (no re-download).
+                                session.config().rebuildOr(false),
+                                TimelineOpts.noTimeline(),
+                            session.assemblyOverride()),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec()),
                 req.cache(),
                 listener);
     }
@@ -154,8 +157,9 @@ final class EngineJobs {
         var sel = req.testSelection() != null ? req.testSelection() : session.testSelection();
         return singlePlan(
                 paths,
-                ProtoSession.withSession(
-                        ProtoJobs.testRequest(
+                ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                ProtoJobs.testRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
                                 req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -166,11 +170,13 @@ final class EngineJobs {
                                 req.force(),
                                 req.parallelTests() || session.parallelTests(),
                                 sel),
-                        session.variant(),
-                        session.clientEnv(),
-                        session.jvm(),
-                        session.config().rebuildOr(false),
-                        TimelineOpts.noTimeline()),
+                                session.variant(),
+                                session.clientEnv(),
+                                session.jvm(),
+                                session.config().rebuildOr(false),
+                            TimelineOpts.noTimeline()),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec()),
                 listenerFactory,
                 testResultOut,
                 null);
@@ -193,8 +199,9 @@ final class EngineJobs {
         Session session = SessionContext.current();
         return singlePlan(
                 paths,
-                ProtoSession.withSession(
-                        ProtoJobs.singleBuildRequest(
+                ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                ProtoJobs.singleBuildRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
                                 req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -206,12 +213,14 @@ final class EngineJobs {
                                 req.force(),
                                 // jk build --all / tag flags on a single project (JK-2182).
                                 session.testSelection()),
-                        req.variant(),
-                        req.clientEnv(),
-                        session.jvm(),
-                        session.config().rebuildOr(false),
-                        TimelineOpts.noTimeline(),
-                        session.assemblyOverride()),
+                                req.variant(),
+                                req.clientEnv(),
+                                session.jvm(),
+                                session.config().rebuildOr(false),
+                                TimelineOpts.noTimeline(),
+                            session.assemblyOverride()),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec()),
                 listenerFactory,
                 testResultOut,
                 buildOutcomeOut);
@@ -338,13 +347,16 @@ final class EngineJobs {
      */
     private static String envelope(String body) {
         Session session = SessionContext.current();
-        return ProtoSession.withSession(
-                body,
-                session.variant(),
-                session.clientEnv(),
-                session.jvm(),
-                session.config().rebuildOr(false),
-                TimelineOpts.noTimeline());
+        return ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                    body,
+                    session.variant(),
+                    session.clientEnv(),
+                    session.jvm(),
+                    session.config().rebuildOr(false),
+                    TimelineOpts.noTimeline()),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec());
     }
 
     /** Send {@code requestLine} and replay the workspace event stream into {@code listener}. */

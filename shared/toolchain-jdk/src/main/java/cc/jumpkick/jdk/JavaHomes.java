@@ -12,6 +12,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import cc.jumpkick.config.BuildEnv;
+import java.util.function.UnaryOperator;
 
 /**
  * Resolves the JDK home for a Java launch: project pin via {@link JdkResolution#resolveForHook},
@@ -33,14 +35,16 @@ public final class JavaHomes {
         try {
             Lockfile lock = readLockSoft(projectDir);
             JkBuild build = readBuildSoft(projectDir);
+            // The request's environment, not the daemon's — see JK-1021.
+            UnaryOperator<String> env = BuildEnv.forModule(projectDir);
             JdkResolution.Request req = new JdkResolution.Request(
                     projectDir,
                     SessionContext.current().jdkSpec(),
-                    System.getenv("JK_JDK"),
+                    null,
                     lock == null ? null : lock.jdk(),
                     (build != null && build.project() != null) ? build.project().jdk() : null,
                     (build != null && build.project() != null) ? build.project().javaRelease() : 0,
-                    System::getenv);
+                    env::apply);
             // Non-installing walk of the canonical order — JdkEnsure already
             // installed any pin during sync, so this just locates it. Falls back
             // to the running JVM when nothing resolves.
@@ -107,6 +111,10 @@ public final class JavaHomes {
      */
     public static Path runningJavaHome() {
         String home = System.getProperty("java.home");
+        // Ambient on purpose, and not the JK-1021 defect: the question is which JVM *this process*
+        // runs on, not which JDK the request asked for. Inside the engine `java.home` is always set,
+        // so the fallback only fires in the native CLI — where the process is the caller's shell and
+        // its own environment is the right answer.
         if (home == null || home.isBlank()) home = System.getenv("JAVA_HOME");
         if (home == null || home.isBlank()) {
             throw new IllegalStateException("Cannot resolve a JDK: no project pin (`.jdk-version` or `.sdkmanrc`), "

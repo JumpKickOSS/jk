@@ -23,6 +23,8 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import cc.jumpkick.config.BuildEnv;
+import java.util.function.UnaryOperator;
 
 /**
  * Driver for GraalVM {@code native-image}: verify binary, assemble classpath, exec. Stdout/stderr
@@ -319,19 +321,31 @@ public final class NativeImageDriver {
      * candidate that exists as a regular file.
      */
     public static Optional<Path> resolve(Path javaHome) {
+        return resolve(javaHome, BuildEnv.ambient());
+    }
+
+    /**
+     * As {@link #resolve(Path)} against a caller-supplied environment.
+     *
+     * <p>Both tiers below read the environment, and inside the engine {@link System#getenv} is the
+     * daemon's — whichever shell started it, possibly days ago. A caller on a build path passes
+     * {@code BuildEnv.forModule(dir)} so {@code GRAALVM_HOME} and {@code PATH} are the ones the
+     * user actually invoked jk with (JK-1021).
+     */
+    public static Optional<Path> resolve(Path javaHome, UnaryOperator<String> env) {
         // 1. Project-pinned JDK
         Optional<Path> pinned = GraalLauncher.in(javaHome);
         if (pinned.isPresent()) return pinned;
 
         // 2. $GRAALVM_HOME
-        String graalHome = System.getenv("GRAALVM_HOME");
+        String graalHome = env.apply("GRAALVM_HOME");
         if (graalHome != null && !graalHome.isBlank()) {
             Optional<Path> fromEnv = GraalLauncher.in(Path.of(graalHome));
             if (fromEnv.isPresent()) return fromEnv;
         }
 
         // 3. $PATH — where the launcher sits under an entry is GraalLauncher's business, not ours.
-        for (String dir : SearchPath.entries(System.getenv("PATH"))) {
+        for (String dir : SearchPath.entries(env.apply("PATH"))) {
             if (dir.isBlank()) continue;
             Optional<Path> onPath = GraalLauncher.onPathEntry(Path.of(dir));
             if (onPath.isPresent()) return onPath;

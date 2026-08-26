@@ -267,6 +267,32 @@ public final class ProtoSession {
     }
 
     /**
+     * Attach the request's <strong>toolchain selection</strong> to an encoded request line.
+     *
+     * <p>{@code jdk} and {@code graal} are the top-tier selections — {@code --jdk} / {@code --graal},
+     * with the {@code JK_JDK} / {@code JK_GRAAL} environment spellings already folded in by the
+     * client. They have to ride the request: the engine is a daemon, so a selection that stayed on
+     * the client's {@code Session} was invisible to it, and every engine-side resolver fell through
+     * to whichever JDK the shell that started the daemon happened to name (JK-1021).
+     *
+     * <p>Folding the switch and the env spelling into one field loses no fidelity.
+     * {@code JdkResolution} walks {@code SWITCH} then {@code JK_ENV} with no tier between them, so
+     * "switch, else env" picks exactly what the two-tier walk picks — and the client is the one place
+     * where {@code System.getenv} genuinely means the caller.
+     *
+     * <p>A separate splice rather than two more {@code withSession} parameters: the envelope has four
+     * arities and only some callers reach the widest, so threading it there would have added two
+     * arguments to every one of them. Nothing selected → the line rides unchanged.
+     */
+    public static String withToolchain(String request, String jdk, String graal) {
+        StringBuilder b = new StringBuilder();
+        if (jdk != null && !jdk.isBlank()) b.append(",\"jdk\":").append(Jsonl.quote(jdk));
+        if (graal != null && !graal.isBlank()) b.append(",\"graal\":").append(Jsonl.quote(graal));
+        if (b.isEmpty()) return request;
+        return Jsonl.append(request, b.substring(1));
+    }
+
+    /**
      * Attach the journal-classification {@code trigger} ({@code web}, {@code optimize}, …) to an
      * encoded request line. The engine synthesizes wire lines for HTTP/MCP job submissions and
      * marks them here — same validated splice as {@link #withSession}, never call-site string
@@ -290,6 +316,23 @@ public final class ProtoSession {
      * credentials — because the engine's own environment belongs to whichever invocation spawned
      * it). Nothing selected and no env → the line rides unchanged.
      */
+
+    /**
+     * Decode side of {@link #withToolchain}: the request's JDK selection, or {@code null}.
+     *
+     * <p>Engine verbs feed this to {@code Session.withToolchainSpecs} so {@code JdkResolution}'s
+     * {@code SWITCH} tier sees the caller's choice instead of an empty one.
+     */
+    public static String jdkSpecOf(String request) {
+        String v = Jsonl.str(request, "jdk");
+        return v == null || v.isBlank() ? null : v;
+    }
+
+    /** Decode side of {@link #withToolchain}: the request's GraalVM selection, or {@code null}. */
+    public static String graalSpecOf(String request) {
+        String v = Jsonl.str(request, "graal");
+        return v == null || v.isBlank() ? null : v;
+    }
 
     /** Decode side of {@link #withSession}: the selection, or {@code ""}. */
     public static String variantOf(String request) {

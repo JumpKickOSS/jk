@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.FetchTimings;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
@@ -825,14 +826,16 @@ public final class EffortWeights {
             Path lf = LockPaths.lockFile(dir);
             Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+            // The request's environment, not the daemon's — see JK-1021.
+            var env = BuildEnv.forModule(dir);
             var req = new JdkResolution.Request(
                     dir,
                     SessionContext.current().jdkSpec(),
-                    System.getenv("JK_JDK"),
+                    null,
                     lock == null ? null : lock.jdk(),
                     project.project() != null ? project.project().jdk() : null,
                     project.project() != null ? project.project().javaRelease() : 0,
-                    System::getenv);
+                    env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return (r.jdk().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
         } catch (Exception e) {

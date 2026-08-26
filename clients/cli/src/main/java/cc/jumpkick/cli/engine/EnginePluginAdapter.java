@@ -88,12 +88,15 @@ final class EnginePluginAdapter {
             var session = SessionContext.current();
             send(
                     writer,
-                    ProtoSession.withSession(
-                            requestLine,
-                            session.variant(),
-                            session.clientEnv(),
-                            session.jvm(),
-                            session.config().rebuildOr(false)));
+                    ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                requestLine,
+                                session.variant(),
+                                session.clientEnv(),
+                                session.jvm(),
+                                session.config().rebuildOr(false)),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec()));
 
             return WireStream.pumpJob(reader, ch, new WireStream.Decoder<HostedFinish>() {
                 private final List<Task> steps = new ArrayList<>();
@@ -155,12 +158,15 @@ final class EnginePluginAdapter {
             var session = SessionContext.current();
             send(
                     writer,
-                    ProtoSession.withSession(
-                            requestLine,
-                            session.variant(),
-                            session.clientEnv(),
-                            session.jvm(),
-                            session.config().rebuildOr(false)));
+                    ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                requestLine,
+                                session.variant(),
+                                session.clientEnv(),
+                                session.jvm(),
+                                session.config().rebuildOr(false)),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec()));
 
             return WireStream.pumpJob(reader, ch, (type, line) -> switch (type) {
                 case EngineProtocol.PROVISION_RESULT ->

@@ -64,4 +64,27 @@ class SessionCarriesClientEnvTest {
                         + " BuildEnv would fall through to the engine daemon's own environment")
                 .isEmpty();
     }
+
+    @Test
+    void every_verb_that_builds_a_session_from_a_request_carries_its_toolchain() throws IOException {
+        // Same omission, one field over, and it stayed invisible for the same reason: the specs were
+        // set on the *client's* Session and never serialised, so the engine's SWITCH tier was always
+        // empty and `--jdk` / `JK_JDK` selected nothing. The consequence was a build whose JDK
+        // depended on which shell had started the daemon, so `jk engine stop` changed what compiled.
+        List<String> offenders = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(VERBS)) {
+            for (Path f : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".java"))::iterator) {
+                String src = Files.readString(f);
+                if (!src.contains("Session.defaults()") || !src.contains("requestLine")) continue;
+                if (!BUILD_PATH.matcher(src).find()) continue;
+                if (src.contains("withToolchainSpecs(")) continue;
+                offenders.add(f.getFileName().toString());
+            }
+        }
+        assertThat(offenders)
+                .as("verbs building a Session from a requestLine without .withToolchainSpecs(jdk, graal) —"
+                        + " JdkResolution's SWITCH tier would see no selection and fall through to the"
+                        + " daemon's own toolchain")
+                .isEmpty();
+    }
 }
