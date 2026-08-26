@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
@@ -823,8 +824,10 @@ public final class Calibration {
     private static Optional<Path> resolveJavaHome(Path jdksDir) {
         try {
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+            // No module context here, so the ambient layer: request env, then this process's.
+            var env = BuildEnv.ambient();
             var req = new JdkResolution.Request(
-                    null, SessionContext.current().jdkSpec(), System.getenv("JK_JDK"), null, null, 0, System::getenv);
+                    null, SessionContext.current().jdkSpec(), null, null, null, 0, env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return r.jdk().map(InstalledJdk::home);
         } catch (Exception e) {

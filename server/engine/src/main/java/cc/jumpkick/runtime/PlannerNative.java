@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
@@ -526,10 +527,12 @@ public final class PlannerNative {
                 && cc.jumpkick.tool.NativeImageDriver.resolve(graalHome).isPresent()) {
             return graalHome;
         }
-        String env = System.getenv("GRAALVM_HOME");
+        // The request's environment, not the daemon's — see JK-1021.
+        var buildEnv = BuildEnv.forModule(projectDir);
+        String env = buildEnv.apply("GRAALVM_HOME");
         if (env != null && !env.isBlank()) {
             Path fromEnv = Path.of(env);
-            if (cc.jumpkick.tool.NativeImageDriver.resolve(fromEnv).isPresent()) return fromEnv;
+            if (cc.jumpkick.tool.NativeImageDriver.resolve(fromEnv, buildEnv).isPresent()) return fromEnv;
         }
         try {
             return cc.jumpkick.jdk.JdkResolver.forProject(projectDir, jdksDir)

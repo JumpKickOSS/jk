@@ -221,7 +221,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     // reached variant `env:` indirection (which is passed the request's map
                     // directly) but nothing that asked BuildEnv — so `[test] env` resolved against
                     // the daemon's own environment instead of the caller's.
-                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                    // The request's toolchain selection belongs on it too: without this the SWITCH tier is
+                    // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                    .withToolchainSpecs(ProtoSession.jdkSpecOf(requestLine), ProtoSession.graalSpecOf(requestLine));
 
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);

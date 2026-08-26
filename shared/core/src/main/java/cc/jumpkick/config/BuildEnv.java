@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
 
@@ -28,6 +29,36 @@ import java.util.function.UnaryOperator;
  */
 public final class BuildEnv {
 
+    /**
+     * The environment variables that name a <em>toolchain</em>, and which therefore must not be read
+     * on a build path with {@link System#getenv}.
+     *
+     * <p>The engine is a daemon, so a direct read answers from whichever shell started it — days
+     * earlier, with a different JDK. Eight sites did that, and the symptom was not a missing override
+     * but a build whose JDK depended on how the daemon had been launched, so {@code jk engine stop}
+     * changed what got compiled (JK-1021).
+     *
+     * <p>Guard G38 reads this list and bans these spellings in {@code server/} and {@code shared/}
+     * main sources, so a ninth site fails the build. {@code clients/} is exempt: there the process
+     * really is the caller's shell.
+     *
+     * <p>They are not all handled the same way, and the list is the ban rather than a forward list:
+     *
+     * <ul>
+     *   <li>{@code JK_JDK} — read once client-side and folded into the typed selection that rides
+     *       the session envelope (alongside {@code JK_GRAAL}, which needs no ban because nothing on
+     *       a build path reads it directly).
+     *   <li>{@code GRAALVM_HOME} — a home path, not a spec, so it does not fit that selection. Its
+     *       reads go through {@link #ambient}, which prefers the request and falls back to this
+     *       process; carrying it as a typed field is JK-1039.
+     *   <li>{@code JAVA_HOME} — banned, never forwarded. It names the machine's default JVM and
+     *       feeds a late fallback tier, and forwarding it through {@code ClientEnvForward} would
+     *       also inject it into every spawned test JVM through a channel no action key can see —
+     *       the hole {@code ClientEnvForwardTest} exists to keep shut.
+     * </ul>
+     */
+    public static final List<String> TOOLCHAIN = List.of("JK_JDK", "JAVA_HOME", "GRAALVM_HOME");
+
     private BuildEnv() {}
 
     /**
@@ -43,6 +74,26 @@ public final class BuildEnv {
             return fromClient != null ? fromClient : System.getenv(name);
         };
         return EnvLookup.forModule(moduleDir, real).asFunction();
+    }
+
+    /**
+     * The environment for work with no module context — the request's shell, then the engine's own.
+     *
+     * <p>Toolchain resolution needs this: "which JDK did the caller ask for" is answered before any
+     * module directory is in hand, and {@code .env} has no say in it (a project cannot put its own
+     * {@code JK_JDK} in a file and expect the machine to obey). What it must not do is fall through
+     * to {@link System#getenv} alone, which is the daemon's environment and therefore whichever
+     * shell started the engine.
+     *
+     * <p>Prefer {@link #forModule} whenever a directory is available; this is the narrower answer,
+     * not the convenient one.
+     */
+    public static UnaryOperator<String> ambient() {
+        Map<String, String> clientEnv = clientEnv();
+        return name -> {
+            String fromClient = clientEnv.get(name);
+            return fromClient != null ? fromClient : System.getenv(name);
+        };
     }
 
     /** The full lookup, for callers that also need {@link EnvLookup#isFromFile} to redact secrets. */

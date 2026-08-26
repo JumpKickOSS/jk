@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -161,7 +162,8 @@ public final class NativeVerb implements HostedVerb {
     }
 
     private static @org.jspecify.annotations.Nullable Path graalHome() {
-        String g = System.getenv("GRAALVM_HOME");
+        // Request env, then this process's — never the daemon's alone (JK-1021).
+        String g = BuildEnv.ambient().apply("GRAALVM_HOME");
         if (g == null || g.isBlank()) return null;
         Path p = Path.of(g);
         return Files.isDirectory(p) ? p : null;

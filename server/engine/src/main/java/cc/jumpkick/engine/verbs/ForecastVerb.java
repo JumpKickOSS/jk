@@ -69,7 +69,10 @@ public final class ForecastVerb implements HostedVerb {
                         // and [test] env is part of both. Resolving it here against the daemon's
                         // environment and there against the caller's would make them disagree —
                         // "tests up-to-date" for a suite whose environment actually changed.
-                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        // The request's toolchain selection belongs on it too: without this the SWITCH tier is
+                        // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                        .withToolchainSpecs(ProtoSession.jdkSpecOf(requestLine), ProtoSession.graalSpecOf(requestLine));
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 SessionContext.where(session, () -> {
                     BuildService.ResolvedGraph graph;

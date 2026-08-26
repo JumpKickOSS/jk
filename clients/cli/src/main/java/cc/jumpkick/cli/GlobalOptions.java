@@ -244,8 +244,14 @@ public final class GlobalOptions {
         // / static channels. Only the flag/env layers resolve here — the jk.toml [jvm] table is
         // engine-read at worker-fork time (thin client; keeps tomlj off the client). The working
         // dir rides along so the in-process seam overlays the same project's table.
+        // The environment spellings fold in here, where this process really is the caller's shell.
+        // JdkResolution walks SWITCH then JK_ENV with nothing between them, so "switch, else env"
+        // resolves to exactly what the two-tier walk resolves to — and it means the engine needs one
+        // field, not two, to see the caller's choice at all (JK-1021).
         SessionContext.install(SessionContext.current()
-                .withToolchainSpecs(g.jdk, g.graal)
+                .withToolchainSpecs(
+                        firstNonBlank(g.jdk, System.getenv("JK_JDK")),
+                        firstNonBlank(g.graal, System.getenv("JK_GRAAL")))
                 .withWorkingDir(g.workingDir())
                 .withJvm(PluginTunings.resolveClient(g.jvmCli())));
         return g;
@@ -303,5 +309,11 @@ public final class GlobalOptions {
      */
     private static @Nullable Boolean flag(boolean set) {
         return set ? Boolean.TRUE : null;
+    }
+
+    /** First non-blank of {@code a}, {@code b}, or {@code null} — the flag beats the environment. */
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        return (b != null && !b.isBlank()) ? b : null;
     }
 }

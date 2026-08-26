@@ -286,13 +286,16 @@ final class EngineReads {
             EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args) throws IOException {
         return request(
                 paths,
-                ProtoSession.withSession(
-                        ProtoReads.pluginCommandRequest(dir.toString(), cache.toString(), command, args),
-                        SessionContext.current().variant(),
-                        SessionContext.current().clientEnv(),
-                        SessionContext.current().jvm(),
-                        SessionContext.current().config().rebuildOr(false),
-                        TimelineOpts.noTimeline()),
+                ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                ProtoReads.pluginCommandRequest(dir.toString(), cache.toString(), command, args),
+                                SessionContext.current().variant(),
+                                SessionContext.current().clientEnv(),
+                                SessionContext.current().jvm(),
+                                SessionContext.current().config().rebuildOr(false),
+                            TimelineOpts.noTimeline()),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec()),
                 EngineProtocol.PLUGIN_VERB_ACK,
                 "plugin command",
                 PluginCommandReport::decode);
@@ -335,8 +338,9 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                ProtoSession.withSession(
-                        ProtoReads.execPlanRequest(
+                ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                ProtoReads.execPlanRequest(
                                 dir.toString(),
                                 cache.toString(),
                                 kind,
@@ -344,11 +348,13 @@ final class EngineReads {
                                 binName,
                                 binDir == null ? null : binDir.toString(),
                                 libDir == null ? null : libDir.toString()),
-                        SessionContext.current().variant(),
-                        SessionContext.current().clientEnv(),
-                        SessionContext.current().jvm(),
-                        SessionContext.current().config().rebuildOr(false),
-                        TimelineOpts.noTimeline()),
+                                SessionContext.current().variant(),
+                                SessionContext.current().clientEnv(),
+                                SessionContext.current().jvm(),
+                                SessionContext.current().config().rebuildOr(false),
+                            TimelineOpts.noTimeline()),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec()),
                 EngineProtocol.EXEC_PLAN_ACK,
                 "exec-plan request",
                 ExecPlan::decode);
