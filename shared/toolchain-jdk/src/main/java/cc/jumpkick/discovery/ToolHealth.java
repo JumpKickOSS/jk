@@ -65,6 +65,14 @@ public final class ToolHealth {
         return Files.exists(JdkFingerprint.javac(home));
     }
 
+    /**
+     * The JDK version in {@code home}'s release file. For homes no registry knows about — an
+     * ambient {@code JAVA_HOME} — where the only way to judge a version floor is to read it.
+     */
+    public static Optional<String> javaVersion(Path home) {
+        return home == null ? Optional.empty() : jdkVersion(home);
+    }
+
     /** Read the version off disk for a candidate {@code home}. */
     public static Optional<String> detectVersion(ToolSpec spec, Path home) {
         return switch (spec.kind()) {

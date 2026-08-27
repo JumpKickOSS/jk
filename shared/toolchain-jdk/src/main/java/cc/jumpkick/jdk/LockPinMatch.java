@@ -129,30 +129,39 @@ public final class LockPinMatch {
     }
 
     /** The {@code [jdk]} table for {@code spec}, with blanks filled from the JDK that resolved. */
-    public static Lockfile.JdkPin jdkPin(ToolchainSpec spec, JdkHit hit) {
-        String[] f = fields(spec, hit);
+    public static Lockfile.JdkPin jdkPin(ToolchainSpec spec, JdkHit hit, Lockfile.ToolchainPin previous) {
+        String[] f = fields(spec, hit, previous);
         return new Lockfile.JdkPin(f[0], f[1], f[2], f[3]);
     }
 
     /** The {@code [graal]} table for {@code spec}, with blanks filled from the GraalVM that resolved. */
-    public static Lockfile.GraalPin graalPin(ToolchainSpec spec, JdkHit hit) {
-        String[] f = fields(spec, hit);
+    public static Lockfile.GraalPin graalPin(ToolchainSpec spec, JdkHit hit, Lockfile.ToolchainPin previous) {
+        String[] f = fields(spec, hit, previous);
         return new Lockfile.GraalPin(f[0], f[1], f[2], f[3]);
     }
 
     /**
-     * The four lock fields for one toolchain. What the manifest declared wins — it is the contract,
-     * and a later build owes it rather than owing whatever patch happened to be current here. Only
-     * where the manifest is silent does the resolved toolchain fill in, so a lock always records
-     * what built it. A required field leaves its suggested counterpart empty: writing both would
-     * state a floor that the requirement has already overruled.
+     * The four lock fields for one toolchain, in order of authority.
+     *
+     * <p>What the manifest declared wins — it is the contract, and a later build owes that rather
+     * than whatever patch happened to be current here. Failing that, {@code previous} holds: a
+     * plain {@code jk lock} must not rewrite the record of what built the lock just because this
+     * machine has a different JDK. Callers pass it only on a conservative re-lock, so
+     * {@code jk update} — where floating to the latest is the point — refreshes from the toolchain
+     * that resolved. Only with neither does the resolved toolchain fill in, which is what makes a
+     * first lock record anything at all.
+     *
+     * <p>A required field leaves its suggested counterpart empty: writing both would state a floor
+     * the requirement has already overruled.
      */
-    private static String[] fields(ToolchainSpec spec, JdkHit hit) {
+    private static String[] fields(ToolchainSpec spec, JdkHit hit, Lockfile.ToolchainPin previous) {
         ToolchainSpec s = spec == null ? ToolchainSpec.NONE : spec;
         String rv = hit == null || hit.vendor() == null ? "" : vendorId(hit.vendor());
         String rver = hit == null || hit.version() == null ? "" : hit.version();
-        String vendor = s.requiredVendor().isEmpty() ? pick(s.suggestedVendor(), rv) : "";
-        String version = s.requiredVersion().isEmpty() ? pick(s.suggestedVersion(), rver) : "";
+        String pv = previous == null ? "" : previous.suggestedVendor();
+        String pver = previous == null ? "" : previous.suggestedVersion();
+        String vendor = s.requiredVendor().isEmpty() ? pick(s.suggestedVendor(), pick(pv, rv)) : "";
+        String version = s.requiredVersion().isEmpty() ? pick(s.suggestedVersion(), pick(pver, rver)) : "";
         return new String[] {vendor, version, s.requiredVendor(), s.requiredVersion()};
     }
 

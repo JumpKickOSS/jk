@@ -22,6 +22,11 @@ import java.util.Optional;
  * <p>{@code [graal]} is written when the Java home is itself a GraalVM, or when the project asked
  * for Graal via {@code [native]}. A bare {@code [native]} declares no vendor, so whichever GraalVM
  * distribution resolves is the one recorded — as a suggestion, which is all it is.
+ *
+ * <p>{@code previous} is the lock being replaced, passed only on a conservative re-lock. It keeps
+ * an undeclared suggestion stable across a plain {@code jk lock}: the record of what built the
+ * lock should not move because a colleague ran it on a different JDK. {@code jk update} passes
+ * null, and the suggestion refreshes.
  */
 public final class ToolchainLockStamp {
 
@@ -29,6 +34,7 @@ public final class ToolchainLockStamp {
 
     public static Lockfile apply(
             Lockfile lock,
+            Lockfile previous,
             Path javaHome,
             JdkRegistry registry,
             ToolchainSpec jdkSpec,
@@ -40,15 +46,16 @@ public final class ToolchainLockStamp {
         List<JdkHit> hits = registry.listHits();
         JdkHit javaHit = LockPinMatch.hitFor(javaHome, hits).orElse(null);
 
-        Lockfile.JdkPin jdkPin = LockPinMatch.jdkPin(jdk, javaHit);
+        Lockfile.JdkPin jdkPin = LockPinMatch.jdkPin(jdk, javaHit, previous == null ? null : previous.jdk());
         if (!jdkPin.isEmpty()) lock = lock.withJdk(jdkPin);
 
+        Lockfile.GraalPin prevGraal = previous == null ? null : previous.graal();
         if (javaHit != null && DefaultGraalPolicy.isGraal(javaHit)) {
-            return withGraal(lock, LockPinMatch.graalPin(graal, javaHit));
+            return withGraal(lock, LockPinMatch.graalPin(graal, javaHit, prevGraal));
         }
         if (graalDeclared || !graal.isEmpty()) {
             Optional<JdkHit> graalHit = DefaultGraalPolicy.choose(hits);
-            return withGraal(lock, LockPinMatch.graalPin(graal, graalHit.orElse(null)));
+            return withGraal(lock, LockPinMatch.graalPin(graal, graalHit.orElse(null), prevGraal));
         }
         return lock;
     }

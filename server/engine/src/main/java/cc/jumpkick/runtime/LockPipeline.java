@@ -142,7 +142,14 @@ public final class LockPipeline {
             boolean pinGitRefsFromLock,
             boolean forceRevalidate,
             boolean sources,
-            PlatformPolicy platform) {}
+            PlatformPolicy platform,
+            /**
+             * Whether {@code [jdk]} / {@code [graal]} keep the suggestion already on disk. A
+             * suggestion records what built the lock, so re-locking on a different machine must
+             * not quietly rewrite it — only {@code jk update}, whose job is moving forward, does.
+             * Distinct from {@link #keepPins}, which is about reusing the resolved graph.
+             */
+            boolean keepToolchainSuggestion) {}
 
     private final Path lockDir;
     private final JkBuild effective;
@@ -180,11 +187,18 @@ public final class LockPipeline {
     private static Policy policyFor(LockMode mode, JkBuild effective) {
         return switch (mode) {
             case LockMode.Explicit(boolean sources) ->
-                new Policy(OfflineReuse.REQUIRED, false, true, false, sources, platformPolicy(effective, null));
+                new Policy(OfflineReuse.REQUIRED, false, true, false, sources, platformPolicy(effective, null), true);
             case LockMode.Update(String platformOverride) ->
-                new Policy(OfflineReuse.NEVER, false, false, true, false, platformPolicy(effective, platformOverride));
+                new Policy(
+                        OfflineReuse.NEVER,
+                        false,
+                        false,
+                        true,
+                        false,
+                        platformPolicy(effective, platformOverride),
+                        false);
             case LockMode.Freshen ignored ->
-                new Policy(OfflineReuse.PREFERRED, true, true, false, false, platformPolicy(effective, null));
+                new Policy(OfflineReuse.PREFERRED, true, true, false, false, platformPolicy(effective, null), true);
         };
     }
 
@@ -275,6 +289,7 @@ public final class LockPipeline {
         // which is what "the project asked for Graal" means (JK-1020).
         lock = ToolchainLockStamp.apply(
                 lock,
+                policy.keepToolchainSuggestion() ? existing : null,
                 javaHome,
                 jdkRegistry,
                 pathPrep.project().project().jdkSpec(),

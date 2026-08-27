@@ -92,9 +92,12 @@ public final class JdkResolution {
         if ((r = named(req.envSpec(), Tier.JK_ENV, reg, canInstall, null)) != null) return r;
         if ((r = jdkVersionFile(req.projectDir(), reg, canInstall)) != null) return r;
         if ((r = lockfile(req.lockJdk(), reg, canInstall)) != null) return r;
-        // Hook: an unsatisfied lock is a floor, not a skip. Later tiers may only
-        // export a JDK that still meets it; otherwise NONE (do not activate 21 for a 25 lock).
-        String lockFloor = !canInstall && req.lockJdk() != null ? req.lockJdk().version() : null;
+        // An unsatisfied lock suggestion is a floor, not a skip — on the build path as much as the
+        // hook. Later tiers may only pick a JDK that still meets it (do not build a 25 lock on 21).
+        String lockFloor =
+                req.lockJdk() == null || req.lockJdk().suggestedVersion().isEmpty()
+                        ? null
+                        : req.lockJdk().suggestedVersion();
         if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, lockFloor)) != null) return r;
 
         // project.java floor: only when nothing is explicitly pinned and the
@@ -138,11 +141,15 @@ public final class JdkResolution {
         // Ambient JAVA_HOME / GRAALVM_HOME / PATH — only for the build path; the
         // shell hook must not re-export the shell's own JDK as a jk activation.
         if (envFallback) {
-            if ((r = envHome(req.env().apply("JAVA_HOME"), Tier.JAVA_HOME)) != null) return r;
-            if ((r = envHome(req.env().apply("GRAALVM_HOME"), Tier.GRAALVM_HOME)) != null) return r;
+            if ((r = envHome(req.env().apply("JAVA_HOME"), Tier.JAVA_HOME, lockFloor)) != null) return r;
+            if ((r = envHome(req.env().apply("GRAALVM_HOME"), Tier.GRAALVM_HOME, lockFloor)) != null) return r;
             Optional<Path> onPath = ActiveJavac.home();
-            if (onPath.isPresent() && hasBin(onPath.get())) {
+            if (onPath.isPresent() && hasBin(onPath.get()) && meetsFloor(onPath.get(), lockFloor)) {
                 return Resolved.found(installed(onPath.get()), Tier.PATH, null);
+            }
+            // Nothing anywhere clears the lock's floor — install it rather than build under it.
+            if (canInstall && lockFloor != null) {
+                return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(req.lockJdk()));
             }
             // Nothing on disk at all → bootstrap-install the latest LTS (which
             // then becomes the default).
@@ -196,7 +203,10 @@ public final class JdkResolution {
         if (hit.isPresent()) {
             return Resolved.found(installed(hit.get().home()), Tier.LOCKFILE, LockPinMatch.installSpec(pin));
         }
-        if (canInstall) {
+        // A requirement is not negotiable: install it rather than settle for something installed.
+        // A suggestion is only a floor, so an unmet one falls through — later tiers are held to
+        // that floor and install only if nothing anywhere clears it.
+        if (canInstall && pin.hasRequirement()) {
             return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(pin));
         }
         return null;
@@ -214,11 +224,22 @@ public final class JdkResolution {
         return LockPinMatch.hitFor(home, pool).isPresent();
     }
 
-    private static Resolved envHome(String home, Tier tier) {
+    private static Resolved envHome(String home, Tier tier, String lockFloor) {
         if (home == null || home.isBlank()) return null;
         Path p = Path.of(home);
-        if (!hasBin(p)) return null;
+        if (!hasBin(p) || !meetsFloor(p, lockFloor)) return null;
         return Resolved.found(installed(p), tier, null);
+    }
+
+    /**
+     * Whether an ambient home clears the lock's floor. No registry knows these homes, so the
+     * version comes off their release file; an unreadable one cannot be shown to clear a floor.
+     */
+    private static boolean meetsFloor(Path home, String lockFloor) {
+        if (lockFloor == null) return true;
+        return ToolHealth.javaVersion(home)
+                .map(v -> LockPinMatch.meetsFloor(v, lockFloor))
+                .orElse(false);
     }
 
     /**

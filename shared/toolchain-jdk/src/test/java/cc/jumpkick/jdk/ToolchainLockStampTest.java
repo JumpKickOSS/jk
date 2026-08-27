@@ -128,7 +128,44 @@ class ToolchainLockStampTest {
     }
 
     private static Lockfile apply(Path home, JdkRegistry registry, ToolchainSpec jdk, boolean graalDeclared) {
-        return ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, jdk, ToolchainSpec.NONE, graalDeclared);
+        return ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), null, home, registry, jdk, ToolchainSpec.NONE, graalDeclared);
+    }
+
+    @Test
+    void a_conservative_relock_keeps_the_suggestion_it_found(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        // Someone else locked this on Corretto. Re-locking here must not rewrite the record of
+        // what built it just because this machine runs Temurin — only jk update refreshes that.
+        Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
+        Lockfile kept = ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false);
+        assertThat(kept.jdk()).isEqualTo(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
+
+        // jk update passes no previous, so the suggestion moves to what resolved.
+        Lockfile refreshed = apply(home, registry, ToolchainSpec.NONE, false);
+        assertThat(refreshed.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+    }
+
+    @Test
+    void a_declaration_still_beats_the_previous_lock(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
+        Lockfile stamped = ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"),
+                previous,
+                home,
+                registry,
+                ToolchainSpec.parse("jdk", "microsoft-26"),
+                ToolchainSpec.NONE,
+                false);
+        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("microsoft", "26"));
     }
 
     private static Path fakeJdk(Path home, String version, String implementor, String extra) throws IOException {
