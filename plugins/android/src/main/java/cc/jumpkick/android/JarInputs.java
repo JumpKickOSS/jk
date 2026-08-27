@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Linking;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,12 +43,7 @@ final class JarInputs {
     }
 
     private static Path linkOrCopy(Path source, Path alias) throws IOException {
-        Files.deleteIfExists(alias);
-        try {
-            Files.createLink(alias, source);
-        } catch (IOException | UnsupportedOperationException e) {
-            Files.copy(source, alias);
-        }
+        Linking.linkOrCopy(source, alias);
         return alias;
     }
 }

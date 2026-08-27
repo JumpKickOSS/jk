@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -41,6 +42,86 @@ class WorkspaceClasspathTest {
     }
 
     /** lib ←(export)— app ←(main)— top */
+    /**
+     * A member listed in {@code [workspace] modules} with no {@code jk.toml} is fatal for a module
+     * that has workspace dependencies — and it was already fatal before the sibling index changed.
+     *
+     * <p>Pinned while doing JK-1046, because the risk I set out to protect against turned out not to
+     * exist. The worry was that building the index from {@code WorkspaceLoader.loadModules} — which
+     * throws on a missing member — would break a tolerance that {@code resolve}'s own
+     * {@code if (!Files.exists(manifest)) continue} appeared to provide. It provides nothing here:
+     * {@code JkBuildParser.parse} on the <em>consumer</em> already runs {@code applyWorkspace}, which
+     * calls {@code loadModules} and rethrows for any module carrying workspace deps. The caller never
+     * reaches {@code resolve} with a broken workspace.
+     *
+     * <p>So the substitution cannot change this, and this test is here to say so if anyone widens the
+     * tolerance later and expects the classpath to follow.
+     */
+    @Test
+    void a_member_with_no_manifest_is_fatal_for_a_module_with_workspace_deps(@TempDir Path root)
+            throws Exception {
+        scaffold(root);
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "app", "top", "not-created-yet"]
+                """);
+
+        assertThatThrownBy(() -> JkBuildParser.parse(root.resolve("app/jk.toml")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("not-created-yet");
+    }
+
+    /**
+     * The transitive closure is unaffected by platform contributions.
+     *
+     * <p>Also pinned for JK-1046: the sibling index used to come from a full {@code parse} (which
+     * re-applies platform contributions) and now comes from {@code loadModules} (which does not). The
+     * BFS only follows dependencies that resolve to a workspace sibling, and contributions add
+     * external coordinates, so it should not care — this asserts that rather than assuming it.
+     */
+    @Test
+    void the_sibling_closure_is_transitive_through_a_kotlin_module(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["core", "mid", "app"]
+                """);
+        module(root, "core", "");
+        // A Kotlin module: platform contributions apply to it under a full parse and not under
+        // loadModules, so it is the interesting middle of the chain.
+        Path mid = Files.createDirectories(root.resolve("mid"));
+        Files.writeString(mid.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "mid"
+                version = "0.1.0"
+                jdk = "25"
+                kotlin = "2.0.21"
+
+                [export-dependencies]
+                core = { workspace = true }
+                """);
+        module(root, "app", """
+                [dependencies]
+                mid = { workspace = true }
+                """);
+
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        var result = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.MAIN));
+
+        // core rides through mid's export edge — the transitive hop the index has to preserve.
+        assertThat(jarNames(result)).anyMatch(n -> n.startsWith("core-"));
+        assertThat(jarNames(result)).anyMatch(n -> n.startsWith("mid-"));
+    }
+
     private static void scaffold(Path root) throws IOException {
         Files.writeString(root.resolve("jk.toml"), """
                 group = "com.ex"

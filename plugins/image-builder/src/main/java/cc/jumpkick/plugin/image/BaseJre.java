@@ -266,8 +266,10 @@ final class BaseJre {
     private static Path findJava(Path root) throws IOException, InterruptedException {
         List<Path> candidates;
         try (var walk = Files.walk(root)) {
-            candidates = walk.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().equals("java"))
+            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
+            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            candidates = walk.filter(p -> p.getFileName().toString().equals("java"))
+                    .filter(Files::isRegularFile)
                     .filter(p -> p.getParent() != null
                             && p.getParent().getFileName().toString().equals("bin"))
                     .filter(p -> {

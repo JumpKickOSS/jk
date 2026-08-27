@@ -592,7 +592,9 @@ public final class AotManifest {
             writeStringArray(sb, "jvm_flags", e.jvmFlags());
             sb.append('\n');
         }
-        AtomicWrites.replace(path(aotDir), sb.toString());
+        // Durable: the manifest indexes on-disk AOT caches, and a torn target strands them — reconcile
+        // can rebuild it, but only if it can still be read (JK-1037).
+        AtomicWrites.replaceDurably(path(aotDir), sb.toString());
     }
 
     private static void writeStringArray(StringBuilder sb, String key, List<String> items) {

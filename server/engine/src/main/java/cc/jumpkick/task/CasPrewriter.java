@@ -82,13 +82,22 @@ public final class CasPrewriter implements AutoCloseable {
                 if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
 
                 String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
-                // Authoritative pass always content-hashes. Size+mtime alone can miss a
-                // same-size rewrite within one filesystem mtime tick / coarse mtime).
-                // Poll-time CAS ingest is still a win when the hex matches (put is a no-op hit).
+                // Authoritative pass always content-hashes, and this is deliberately NOT routed
+                // through FileHashMemo. JK-1035 tried that and
+                // CasPrewriterTest.finish_rehashes_when_content_changes_without_size_mtime_change
+                // rejected it: a tool can rewrite equal-length bytes and restore the previous
+                // FileTime, and a restored FileTime carries the same nanoseconds — so even the memo's
+                // nanosecond provenance rule cannot tell the two apart. Every cheaper identity for
+                // this file is forgeable; only the bytes are not. Poll-time CAS ingest is still a win
+                // when the hex matches (put is a no-op hit).
                 String hex = Hashing.sha256Hex(file);
                 if (!hex.equals(processed.get(file))) {
                     cas.putFile(file, hex);
                 }
+                // Seed here rather than at poll time: this hash is the authoritative one, so
+                // downstream ClasspathFingerprint passes over the same tree stop re-hashing it, and
+                // nothing upstream of this line is trusted to have got it right (JK-1035).
+                FileHashMemo.rememberContent(file, hex);
                 outputs.put(relPath, hex);
             }
         }

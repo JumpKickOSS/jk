@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -33,9 +35,8 @@ public final class LockfileReader {
      * {@code jk add} / {@code jk update} would strand the previous {@code Lockfile} — hundreds of
      * artifacts each — for the engine's lifetime.
      */
-    private static final ConcurrentHashMap<Path, Cached> READ_CACHE = new ConcurrentHashMap<>();
-
-    private record Cached(long size, FileTime modified, Lockfile value) {}
+    private static final StampedMemo<Path, StampedMemo.FileStamp, Lockfile> READ_CACHE =
+            StampedMemo.bounded(64);
 
     /** Test seam: drop the per-process read memo so freshly-written files re-parse. */
     public static void clearCache() {
@@ -43,21 +44,33 @@ public final class LockfileReader {
     }
 
     public static Lockfile read(Path file) throws IOException {
-        BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
         Path key = file.toAbsolutePath().normalize();
-        Cached cached = READ_CACHE.get(key);
-        if (cached != null && cached.size() == attrs.size() && cached.modified().equals(attrs.lastModifiedTime())) {
-            return cached.value();
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
+        if (stamp == null) {
+            // Absent or unreadable: let the read below produce the caller's IOException, as before.
+            return parse(file);
         }
-        // Read the whole file, then parse: the handle is open only for the read, so a concurrent
-        // AtomicWrites.replace on Windows is not blocked by Toml.parse(Path) holding the target open.
+        try {
+            return READ_CACHE.get(key, stamp, () -> {
+                try {
+                    return parse(file);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    /**
+     * Read the whole file, then parse: the handle is open only for the read, so a concurrent
+     * {@code AtomicWrites.replace} on Windows is not blocked by {@code Toml.parse(Path)} holding the
+     * target open.
+     */
+    private static Lockfile parse(Path file) throws IOException {
         TomlParseResult result = Toml.parse(Files.readString(file));
-        Lockfile lockfile = fromResult(result, file.toString());
-        // Clear-on-overflow (same bound as ProjectIds): one parsed Lockfile — potentially MBs —
-        // per distinct lockfile path the process ever read, forever.
-        if (READ_CACHE.size() >= 64) READ_CACHE.clear();
-        READ_CACHE.put(key, new Cached(attrs.size(), attrs.lastModifiedTime(), lockfile));
-        return lockfile;
+        return fromResult(result, file.toString());
     }
 
     public static Lockfile parse(String content) {

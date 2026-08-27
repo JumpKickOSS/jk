@@ -55,7 +55,9 @@ public final class LockfileWriter {
             }
         }
         // Atomic (temp + rename): concurrent readers never observe a truncated lock.
-        AtomicWrites.replace(file, render(stamped));
+        // Durable: the lockfile is the source of truth, not a cache. A torn target after power loss is
+        // not recoverable by re-running — the resolve that produced it is gone (JK-1037).
+        AtomicWrites.replaceDurably(file, render(stamped));
         // Materialize identity.toml so project= id resolves to a checkout without a prior build.
         try {
             LockfileReader.clearCache();

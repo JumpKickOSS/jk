@@ -2,12 +2,14 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,11 +106,14 @@ final class AndroidDeps {
 
     /** Collect {@code root}'s files under relative keys — the first writer of a key wins. */
     private static void collectTree(Path root, Map<String, Path> out) throws IOException {
-        if (!Files.isDirectory(root)) return;
-        try (var walk = Files.walk(root)) {
-            walk.filter(Files::isRegularFile).sorted().forEach(f -> {
-                out.putIfAbsent(root.relativize(f).toString().replace('\\', '/'), f);
-            });
+        // Collected then sorted, rather than sorted inside a stream: the walk hands over each
+        // entry's attributes and re-resolving every path to ask isRegularFile again was the cost
+        // (JK-1041 via JK-1031's owner).
+        List<Path> found = new ArrayList<>();
+        PathUtil.forEachRegularFile(root, (file, attrs) -> found.add(file));
+        found.sort(Comparator.naturalOrder());
+        for (Path f : found) {
+            out.putIfAbsent(root.relativize(f).toString().replace('\\', '/'), f);
         }
     }
 
@@ -126,7 +131,7 @@ final class AndroidDeps {
                 Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        if (!out.toFile().setExecutable(true) && !Files.isExecutable(out)) {
+        if (!out.toFile().setExecutable(true) && !PathUtil.isRunnable(out)) {
             throw new IOException("cannot mark " + out + " executable");
         }
         return out;

@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.process;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import java.io.BufferedOutputStream;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
@@ -44,8 +45,13 @@ public final class PluginMain {
 
         // Dedicated UTF-8 stdout for the protocol stream (the tool's own stdout
         // chatter still flows through and is treated as passthrough by the host).
+        // Buffered, then flushed per protocol line by ProtocolWriter. The buffer is not there to
+        // batch lines — it cannot be, see ProtocolWriter's javadoc — but to make each line one
+        // write(2) instead of however many PrintStream's encoder happens to emit for it.
         PrintStream out = new PrintStream(
-                new FileOutputStream(FileDescriptor.out), /* autoFlush */ false, StandardCharsets.UTF_8);
+                new BufferedOutputStream(new FileOutputStream(FileDescriptor.out), 8192),
+                /* autoFlush */ false,
+                StandardCharsets.UTF_8);
         ProtocolWriter writer = new ProtocolWriter(out, plugin.manifest().protocolPrefix());
 
         try {

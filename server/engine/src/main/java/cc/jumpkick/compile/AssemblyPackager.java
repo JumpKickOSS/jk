@@ -47,7 +47,7 @@ public final class AssemblyPackager {
         Map<String, ByteArrayOutputStream> merged = new TreeMap<>();
         DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
 
-        try (OutputStream out = Files.newOutputStream(request.outputJar());
+        try (OutputStream out = DeterministicZip.archiveStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
             zip.writeManifest(jos, manifest);
             written.add("META-INF/MANIFEST.MF");

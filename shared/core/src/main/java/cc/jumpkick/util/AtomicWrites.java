@@ -3,17 +3,43 @@ package cc.jumpkick.util;
 
 import cc.jumpkick.host.Os;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.function.IntConsumer;
 
 /**
- * Atomic write via temp sibling + move ({@code REPLACE_EXISTING} fallback). A crash leaves a
- * {@code .tmp} sibling, never a torn target.
+ * Write via temp sibling + move ({@code REPLACE_EXISTING} fallback).
+ *
+ * <p><strong>What this guarantees:</strong> no concurrent reader ever observes a partial target. The
+ * rename is atomic with respect to other processes, which is the property nearly every caller here
+ * actually wants — another engine reading an action record, a second {@code jk} parsing a lockfile, an
+ * IDE tailing a manifest.
+ *
+ * <p><strong>What it does not guarantee, despite what this comment used to say:</strong> crash
+ * consistency. There is no {@code fsync} before the rename — and none anywhere in the product; the
+ * only {@link java.nio.channels.FileChannel#force} in the tree is a disk benchmark. So on ext4
+ * {@code data=ordered} or APFS, a power loss can make the rename durable while the data blocks are
+ * not, leaving a zero-length or truncated target rather than the {@code .tmp} sibling the old wording
+ * promised (JK-1037). Fifty call sites read that sentence and trusted it.
+ *
+ * <p>Use {@link #replaceDurably} for a file where a torn target is not recoverable by re-running.
+ * There are four: {@code jk-lock.toml}, the engine install pointer, {@code aot.toml}, and
+ * {@code run-number} — that last one because a lost increment lets a later run delete a completed run
+ * tree, which is the hazard its flock exists for.
+ *
+ * <p><strong>And do not reach for it otherwise.</strong> Roughly thirty-five of the fifty call sites
+ * write reconstructible, fail-open, advisory data — memos, timings, stamps, metrics — and
+ * {@link #replace} is already measured at 372.7&nbsp;µs on Windows against 37.8 on Linux. An
+ * {@code fsync} on ~800 advisory writes per build would cost far more than the durability it bought,
+ * for data whose loss costs one recomputation. This is the one place in the filesystem sweep where
+ * the cheap change is the wrong one.
  */
 public final class AtomicWrites {
 
@@ -25,17 +51,59 @@ public final class AtomicWrites {
 
     private AtomicWrites() {}
 
-    /** Write {@code bytes} to {@code target} atomically. */
+    /**
+     * Write {@code bytes} to {@code target} atomically.
+     *
+     * <p>The cleanup is on the failure path, not in a {@code finally}: a successful
+     * {@link #moveInto} has already consumed {@code tmp}, so a {@code finally} unlink was an
+     * unlink of a path that could not exist — one wasted metadata call on every success, at
+     * fifty call sites and once per CAS blob (JK-1029). On NTFS that op is ~11&nbsp;µs against
+     * Linux's ~1.5.
+     */
     public static void replace(Path target, byte[] bytes) throws IOException {
         Path parent = target.getParent();
         if (parent != null) Files.createDirectories(parent);
         Path tmp = Files.createTempFile(parent, "." + target.getFileName() + "-", ".tmp");
+        boolean moved = false;
         try {
             Files.write(tmp, bytes);
             moveInto(tmp, target);
+            moved = true;
         } finally {
-            Files.deleteIfExists(tmp);
+            if (!moved) Files.deleteIfExists(tmp);
         }
+    }
+
+    /**
+     * As {@link #replace(Path, byte[])}, forcing the bytes to stable storage before the rename.
+     *
+     * <p>For the handful of files where a torn target is not recoverable by re-running: the lockfile,
+     * the engine install pointer, {@code aot.toml}, {@code run-number}. Everything else in this tree
+     * is a cache or a hint whose loss costs one recomputation, and paying an {@code fsync} for those
+     * would cost more than it protects — see the class javadoc.
+     */
+    public static void replaceDurably(Path target, byte[] bytes) throws IOException {
+        Path parent = target.getParent();
+        if (parent != null) Files.createDirectories(parent);
+        Path tmp = Files.createTempFile(parent, "." + target.getFileName() + "-", ".tmp");
+        boolean moved = false;
+        try {
+            try (FileChannel ch = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
+                ch.write(ByteBuffer.wrap(bytes));
+                // Metadata too: the rename below is only meaningful if the bytes it publishes are
+                // already on stable storage.
+                ch.force(true);
+            }
+            moveInto(tmp, target);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
+        }
+    }
+
+    /** As {@link #replaceDurably(Path, byte[])} for UTF-8 text. */
+    public static void replaceDurably(Path target, String content) throws IOException {
+        replaceDurably(target, content.getBytes(StandardCharsets.UTF_8));
     }
 
     /** Write {@code content} (UTF-8) to {@code target} atomically. */

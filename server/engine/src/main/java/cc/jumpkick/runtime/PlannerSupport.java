@@ -308,17 +308,18 @@ public final class PlannerSupport {
         }
     }
 
+    /**
+     * Merge {@code resourceDir} into {@code classesDir}, leaving whatever is already correct alone.
+     *
+     * <p>This is the hot one. It copies main resources, and it merges the Kotlin and Groovy compilers'
+     * output into {@code classes} on every incremental compile — so a one-file edit used to re-copy
+     * the whole tree, at 305&nbsp;µs per file on Windows, with a {@code createDirectories} per file on
+     * top. Worse, {@code PlannerSupport.mainStampClasspath} puts those merged class directories into
+     * the compile stamp's inputs and {@code FreshnessStamp} compares them by mtime, so the churn was
+     * also invalidating the stamp it fed. The owner's identity skip is what fixes both (JK-1032).
+     */
     static void copyResources(Path resourceDir, Path classesDir) throws IOException {
-        if (!Files.exists(resourceDir)) return;
-        try (Stream<Path> stream = Files.walk(resourceDir)) {
-            for (Path source : (Iterable<Path>) stream::iterator) {
-                if (Files.isDirectory(source)) continue;
-                Path relative = resourceDir.relativize(source);
-                Path target = classesDir.resolve(relative);
-                Files.createDirectories(target.getParent());
-                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
+        PathUtil.copyTree(resourceDir, classesDir);
     }
 
     /**
@@ -915,19 +916,7 @@ public final class PlannerSupport {
     }
 
     static void copyTreeInto(Path from, Path to) throws IOException {
-        if (!Files.isDirectory(from)) return;
-        try (var walk = Files.walk(from)) {
-            for (Path src : (Iterable<Path>) walk::iterator) {
-                Path rel = from.relativize(src);
-                Path dst = to.resolve(rel.toString());
-                if (Files.isDirectory(src)) {
-                    Files.createDirectories(dst);
-                } else {
-                    Files.createDirectories(dst.getParent());
-                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to);
     }
     /**
      * Mirror the javac diagnostic loop for worker compilers: one {@code ctx.error}/{@code warn}

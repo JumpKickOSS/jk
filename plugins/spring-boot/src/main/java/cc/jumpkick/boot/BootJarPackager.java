@@ -4,6 +4,7 @@ package cc.jumpkick.boot;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.PathUtil;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -52,7 +53,7 @@ public final class BootJarPackager {
         DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
         Set<String> dirsWritten = new HashSet<>();
 
-        try (OutputStream out = Files.newOutputStream(request.outputJar());
+        try (OutputStream out = DeterministicZip.archiveStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
             zip.writeManifest(jos, manifest);
             dirsWritten.add("META-INF/");
@@ -195,11 +196,9 @@ public final class BootJarPackager {
     }
 
     private static List<Path> collectFiles(Path root) throws IOException {
-        if (!Files.exists(root)) return List.of();
         List<Path> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile).forEach(result::add);
-        }
+        // // Attributes from the walk instead of a stat per entry (JK-1041 via JK-1031's owner).
+        PathUtil.forEachRegularFile(root, (file, attrs) -> result.add(file));
         return result;
     }
 

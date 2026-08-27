@@ -87,4 +87,38 @@ class SessionCarriesClientEnvTest {
                         + " daemon's own toolchain")
                 .isEmpty();
     }
+
+    @Test
+    void every_verb_that_plans_without_building_a_session_installs_one() throws IOException {
+        // The third shape of the same omission. ExecPlanVerb and PluginCommandVerb passed the
+        // request's variant and env into helpers that assemble a BuildPlanner.Inputs rather than a
+        // Session — so nothing installed the request's toolchain selection, and `jk run --jdk 21`
+        // resolved the JVM that runs the app without the switch. The client was already sending it.
+        //
+        // A verb that reads a request and reaches the build path must therefore either build a
+        // Session (the arms above) or install one for the extent of the call. Textual for the same
+        // reason as the others: the defect is an omission, and nothing fails when it is present.
+        List<String> offenders = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(VERBS)) {
+            for (Path f : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".java"))::iterator) {
+                String src = Files.readString(f);
+                if (!src.contains("requestLine")) continue;
+                if (!BUILD_PATH.matcher(src).find() && !src.contains("ExecPlans.") && !src.contains("PluginCommands.")) {
+                    continue;
+                }
+                // Builds its own session, or takes one from the bridge, or installs one for the call.
+                if (src.contains("Session.defaults()")
+                        || src.contains("host.resolveSession(")
+                        || src.contains("SessionContext.where(")
+                        || src.contains("SessionContext.runWhere(")) {
+                    continue;
+                }
+                offenders.add(f.getFileName().toString());
+            }
+        }
+        assertThat(offenders)
+                .as("verbs that plan from a requestLine without a session installed — every toolchain"
+                        + " and env resolver they reach would read the daemon's own state")
+                .isEmpty();
+    }
 }

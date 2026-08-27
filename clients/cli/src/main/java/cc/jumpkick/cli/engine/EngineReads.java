@@ -295,7 +295,10 @@ final class EngineReads {
                                 SessionContext.current().config().rebuildOr(false),
                             TimelineOpts.noTimeline()),
                         SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec()),
+                        SessionContext.current().graalSpec(),
+                        SessionContext.current().graalHome() == null
+                                ? null
+                                : SessionContext.current().graalHome().toString()),
                 EngineProtocol.PLUGIN_VERB_ACK,
                 "plugin command",
                 PluginCommandReport::decode);
@@ -320,7 +323,22 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                ProtoReads.projectInfoRequest(dir.toString(), modules, affectedSince, counts),
+                // project-info used to ride bare, with no session envelope at all — so the engine
+                // resolved this project's layout, test tags and toolchain against the daemon's own
+                // state rather than the caller's (JK-1040).
+                ProtoSession.withToolchain(
+                        ProtoSession.withSession(
+                                ProtoReads.projectInfoRequest(dir.toString(), modules, affectedSince, counts),
+                                SessionContext.current().variant(),
+                                SessionContext.current().clientEnv(),
+                                SessionContext.current().jvm(),
+                                SessionContext.current().config().rebuildOr(false),
+                                TimelineOpts.noTimeline()),
+                        SessionContext.current().jdkSpec(),
+                        SessionContext.current().graalSpec(),
+                        SessionContext.current().graalHome() == null
+                                ? null
+                                : SessionContext.current().graalHome().toString()),
                 EngineProtocol.PROJECT_INFO_ACK,
                 "project-info request",
                 ProjectInfo::decode);
@@ -354,7 +372,10 @@ final class EngineReads {
                                 SessionContext.current().config().rebuildOr(false),
                             TimelineOpts.noTimeline()),
                         SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec()),
+                        SessionContext.current().graalSpec(),
+                        SessionContext.current().graalHome() == null
+                                ? null
+                                : SessionContext.current().graalHome().toString()),
                 EngineProtocol.EXEC_PLAN_ACK,
                 "exec-plan request",
                 ExecPlan::decode);
