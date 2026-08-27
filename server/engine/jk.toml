@@ -57,3 +57,10 @@ test-plugin-jars = [
 # Normal `jk test` should finish in 5 min or less.
 # Run everything (all suites, tags included) with `jk build --all` / `jk test --all`.
 exclude-tags = ["integration", "slow", "bench", "network"]
+env = [
+  # In-process engines under test share this module's sandbox JK_HOME store, and the resident
+  # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible
+  # files for its own explicit prune request, and eats them first. Explicit `jk cache prune`
+  # requests are unaffected by this switch.
+  { JK_AUTO_PRUNE = "false" },
+]

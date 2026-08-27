@@ -39,4 +39,59 @@ modules = [
   "plugins/grails",
   "plugins/protobuf",
   "plugins/android",
+  "plugins/micronaut",
+  # Tooling
+  "tools/gate",
 ]
+
+# ---------------------------------------------------------------------------
+# Test tiers: one tier per tag, and this table is what says which.
+#
+# A `@Tag` is a routing decision — it moves a test out of the fast tier and into some
+# other run. The routing has to live in exactly one place or a tag ends up excluded by
+# the baseline and included by nothing, which is a test that never executes and never
+# goes red.
+#
+# This is that place. `[test] exclude-tags` is the fast tier; each profile below is one
+# slow tier. The gate (`tools/gate/.jk/after-compile.kts`) re-derives the partition from
+# this table and proves, over every subset of the vocabulary, that each is run by exactly
+# one tier — so the routing and the check cannot drift.
+#
+#   jk test                        fast tier, untagged only. The PR gate.
+#   jk test --profile integration  engine / e2e / worker suites. The pre-merge bar.
+#   jk test --profile slow         framework and language e2e. Nightly, never gating.
+#   jk test --profile network      talks to a real remote. Nightly, never gating.
+#   jk test --profile bench        microbenchmarks. On demand, gates nothing.
+#   jk test --all                  everything, every suite, no tag filter.
+# ---------------------------------------------------------------------------
+[test]
+exclude-tags = ["integration", "slow", "network", "bench"]
+
+# Part of the documented pre-merge bar, alongside the fast tier.
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = ["slow", "network", "bench"]
+
+# Framework / language end-to-end: does an Android / Grails / Scala / KSP / Protobuf
+# project still build all the way through. Off the gate — what it asserts breaks when a
+# plugin or a toolchain moves, not when the change under review does.
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["network", "bench"]
+
+# Talks to a real remote. Off the gate: Maven Central enforces a per-IP quota, so a gate
+# that needs the network fails for reasons the change did not cause.
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["bench"]
+
+# Microbenchmarks print medians and assert nothing about deltas, so gating on them would
+# gate on CI noise. They still need a tier, or nothing runs them at all.
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = []
+
+# Auto-selected when CI is set. CI runs the fast tier with the same filters as a
+# developer's `jk test`; the slow tiers are separate scheduled runs, by profile name.
+[profiles.ci]
+exclude-tags = ["integration", "slow", "network", "bench"]

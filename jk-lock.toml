@@ -2,7 +2,7 @@ version = 2
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "984fdaa389999953fe3652ddb306651982959d65c403dc65ab3865c58cae23ac"
+manifests-sha256 = "c9ffdd3589d73aac3d5133bdbd4deca38ed772d3c0cb00cd5afe67515580bd48"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -2276,6 +2276,14 @@ java    = 25
 description = "JumpKick's Kotlin compiler plugin"
 
 [[module]]
+path    = "plugins/micronaut"
+group   = "cc.jumpkick"
+name    = "jk-micronaut"
+version = "0.12.0"
+java    = 25
+description = "JumpKick's Micronaut AOT plugin"
+
+[[module]]
 path    = "plugins/minified"
 group   = "cc.jumpkick"
 name    = "jk-minified"
@@ -2418,3 +2426,11 @@ name    = "jk-engine-api"
 version = "0.12.0"
 java    = 25
 description = "Client–engine wire protocol and build DTOs"
+
+[[module]]
+path    = "tools/gate"
+group   = "cc.jumpkick"
+name    = "jk-gate"
+version = "0.12.0"
+java    = 25
+description = "The house-rule gate: tree-wide guards, run as project build logic"

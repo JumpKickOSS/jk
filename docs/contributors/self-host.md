@@ -72,6 +72,50 @@ see [AGENTS.md](../../AGENTS.md) and [test-suite-tiers.md](test-suite-tiers.md))
 With no `[repositories]` table, remotes are **Maven Central then Google Maven** (local CAS /
 `repos/*` / `~/.m2` still win first). R8 and Android coords do not need an extra google stanza.
 
+## House-rule gate
+
+The guards in [code-as-art.md](code-as-art.md#the-guard-registry) run under
+**both** builds. Gradle runs them as `tasks.registering` blocks wired to `check`
+and `jar`; jk runs them from `tools/gate/.jk/after-compile.kts`, a single script
+over the whole tree.
+
+```bash
+jk build -m jk-gate      # the gate alone, ~9s
+jk build                 # the gate plus everything else
+```
+
+`tools/gate` is a sourceless workspace member: a workspace-root aggregator does
+not run build logic, and a guard hung off a real module would only run when that
+module was in the build set. The script writes nothing to its `outDir`, which is
+what keeps it out of the action cache — an empty output is never a hit, so the
+gate re-runs on every build instead of replaying an old verdict. It reports every
+broken rule in one message rather than the first to fire.
+
+Two arms stay Gradle-only because they read files `maven-publish` generates and
+jk does not produce until `jk publish`: `checkPublishedPomCoordinates` and the
+publication arm of `checkTestFixturesStayOutOfProduction`. Everything else is
+enforced by whichever build you run.
+
+## Test tiers
+
+Gradle's `test` / `integrationTest` / `slowTest` / `networkTest` / `benchTest`
+tasks are, on the jk side, the root manifest's `[test]` baseline plus one
+`[profiles.*]` per slow tag:
+
+```bash
+jk test                          # fast tier, untagged only
+jk test --profile integration    # the pre-merge bar
+jk test --profile slow           # framework / language e2e (nightly)
+jk test --profile network        # talks to a real remote (nightly)
+jk test --profile bench          # microbenchmarks (on demand)
+jk test --all                    # everything, no tag filter
+```
+
+That table is the only copy: the gate re-derives the partition from it and
+proves, over every subset of the tag vocabulary, that each is run by exactly one
+tier. A tag excluded from the fast tier and included by no profile fails the
+build rather than silently never running.
+
 ## Still Gradle (by design)
 
 | Task | Why |
@@ -79,6 +123,7 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 | Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
 | `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
 | `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk install` after pure-jk build |
+| Two publication-reading guard arms | See [House-rule gate](#house-rule-gate) |
 
 ### Future cut-over (backlog)
 

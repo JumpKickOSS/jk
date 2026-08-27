@@ -69,3 +69,15 @@ serial-tags = ["integration"]
 # Normal `jk test` should finish in 5 min or less.
 # Run everything (all suites, tags included) with `jk build --all` / `jk test --all`.
 exclude-tags = ["integration", "slow", "bench", "network"]
+env = [
+  # Rendered-output assertions must not depend on the terminal the developer happens to be in.
+  # Unpinned, `auto` nerd-font detection inspects TERM_PROGRAM and the terminal's own config, so
+  # PUA glyphs appear under Ghostty and not under Terminal.app; CI runners force TERM=dumb and
+  # NO_COLOR from the other side. Tests that exercise the glyphs pass caps explicitly, so pinning
+  # the ambient default off costs no coverage.
+  { TERM = "xterm-256color", CI = "false", NO_COLOR = "", JK_NERD_FONT = "false" },
+  # An in-process engine under test shares the module's sandbox JK_HOME store, and the resident
+  # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible
+  # files for its own explicit prune request. Explicit `jk cache prune` is unaffected.
+  { JK_AUTO_PRUNE = "false" },
+]

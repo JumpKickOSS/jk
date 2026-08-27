@@ -1,0 +1,12 @@
+name = "jk-gate"
+description = "The house-rule gate: tree-wide guards, run as project build logic"
+
+# No sources, no dependencies, no jar anyone consumes. The module exists so the
+# workspace has one member whose build logic is allowed to look at the whole tree —
+# a workspace-root aggregator does not run build logic, and a guard hung off a real
+# module would only run when that module is in the build set.
+#
+# `.jk/after-compile.kts` writes nothing to its outDir. An empty output is never a
+# cache hit, so the gate re-runs on every build rather than replaying a verdict about
+# a tree that has since changed. That is the property the guards need and the reason
+# they are build logic rather than a test.

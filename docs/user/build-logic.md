@@ -52,6 +52,18 @@ captures. Bindings include `projectDir` and `outDir` (Groovy also gets `properti
 `ant` when Ant jars resolve). Groovy `@Grab` and Kotlin `@file:` annotations are the
 script languages' own dependency hooks — not a nested Java/Kotlin project.
 
+**A script that writes nothing runs every build.** An empty `outDir` is never a cache
+hit, so a task that produces no artifact is re-executed instead of replayed. That is the
+shape a *check* wants — scan, throw to fail the build, produce nothing — and it is why a
+check does not need to declare inputs the way a Gradle task does. A task that generates
+files gets the opposite: write to `outDir` and the cache replays it while the module's
+sources, `jk.toml` and `jk-lock.toml` are unchanged.
+
+**A module with no sources still runs its build logic.** A workspace member needs a
+`jk.toml` and an entry in `[workspace] modules`, not a `src/` tree — so a check that has
+to see the whole workspace can live in a member of its own. A workspace-*root* aggregator
+does not run build logic; the directory has to belong to a member.
+
 Scripts run **out of process**. A Groovy `System.exit` or OOM cannot take the engine
 down.
 

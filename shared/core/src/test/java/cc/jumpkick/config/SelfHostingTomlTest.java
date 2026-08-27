@@ -83,7 +83,10 @@ class SelfHostingTomlTest {
                         "plugins/quarkus",
                         "plugins/grails",
                         "plugins/protobuf",
-                        "plugins/android");
+                        "plugins/android",
+                        "plugins/micronaut",
+                        // Sourceless: the house-rule gate, whose build logic reads the whole tree.
+                        "tools/gate");
     }
 
     @Test
