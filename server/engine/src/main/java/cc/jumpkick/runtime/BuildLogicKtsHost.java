@@ -41,7 +41,7 @@ final class BuildLogicKtsHost {
             throw new IllegalStateException("[build] logic: kotlinc not found at " + kotlinc);
         }
 
-        Path wrapper = Files.createTempFile("jk-build-logic-", ".kts");
+        Path wrapper = Files.createTempFile("jk-logic-", ".kts");
         try {
             Files.writeString(wrapper, wrap(script, projectDir, outDir), StandardCharsets.UTF_8);
             List<String> cmd = new ArrayList<>();

@@ -372,9 +372,9 @@ public final class NewScaffolder {
         Path gitignore = dir.resolve(".gitignore");
         if (Files.exists(gitignore)) return;
         Files.writeString(gitignore, """
-                # jk build outputs
+                # jk build outputs (`.jk/` stem scripts are source — ignore generated plan only)
                 target/
-                .jk/
+                .jk/selective-plan.json
 
                 # IntelliJ IDEA
                 .idea/

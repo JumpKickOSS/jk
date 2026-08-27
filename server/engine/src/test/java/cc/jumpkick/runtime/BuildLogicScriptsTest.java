@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -48,5 +47,17 @@ class BuildLogicScriptsTest {
         assertEquals("after-resources", tasks.get(1).name());
         assertEquals(BuildLogicScripts.ScriptKind.KTS, tasks.get(1).kind());
         assertEquals("before-compile", tasks.get(2).name());
+    }
+
+    @Test
+    void kts_wins_the_same_stem(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("before-compile.groovy"), "// groovy\n");
+        Files.writeString(dir.resolve("before-compile.kts"), "// kts\n");
+
+        List<BuildLogicScripts.ScriptTask> tasks = BuildLogicScripts.discover(dir);
+        assertEquals(1, tasks.size());
+        assertEquals("before-compile", tasks.get(0).name());
+        assertEquals(BuildLogicScripts.ScriptKind.KTS, tasks.get(0).kind());
+        assertEquals("before-compile.kts", tasks.get(0).file().getFileName().toString());
     }
 }

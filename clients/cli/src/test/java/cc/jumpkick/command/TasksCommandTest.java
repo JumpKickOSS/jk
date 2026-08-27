@@ -101,27 +101,13 @@ class TasksCommandTest {
     @Test
     void tasks_list_includes_jk_build_logic_names(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
-        Path logic = tempDir.resolve(".jk-build/src/demo");
+        Path logic = tempDir.resolve(".jk");
         Files.createDirectories(logic);
-        Files.writeString(logic.resolve("GenLogic.java"), """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                public class GenLogic implements BuildLogicContributor {
-                  public void register(BuildLogicGraph g) {
-                    g.task("gen-tokens", BuildLogicAnchor.AFTER_COMPILE, ctx -> {});
-                  }
-                }
-                """);
-        Files.writeString(logic.resolve("LineCountBuild.java"), """
-                package demo;
-                public class LineCountBuild {
-                  public static void main(String[] a) {}
-                }
-                """);
+        Files.writeString(logic.resolve("after-compile.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
+        Files.writeString(logic.resolve("before-compile.kts"), "val x = 1\n");
         String out = Capture.stdout(() -> run("tasks", "-C", tempDir.toString()));
-        assertThat(out).contains("build-logic:gen-tokens");
-        assertThat(out).contains("build-logic:LineCountBuild");
-        // build-logic rows ride the main table (stage cell "logic"), no separate heading.
+        assertThat(out).contains("build-logic:after-compile");
+        assertThat(out).contains("build-logic:before-compile");
         assertThat(out).contains("logic");
     }
 }

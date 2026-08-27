@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.buildlogic;
+package cc.jumpkick.runtime;
 
 /**
- * BuildPlan splice points for project build-logic tasks ({@code .jk-build/} SPI).
+ * BuildPlan splice points for project {@code .jk/} stem-script tasks.
  *
  * <p>Each anchor is a pre/post cut relative to a product <em>stage</em> bucket (see
- * {@code cc.jumpkick.run.BuildStage} in jk-api) — not a second scheduler. Task ordering remains
- * the DAG; anchors only name where SPI tasks are injected.
+ * {@code cc.jumpkick.run.BuildStage}) — not a second scheduler. Task ordering remains the DAG;
+ * anchors only name where scripts are injected.
  *
- * <p>{@code jk.toml} stays data-only — anchors are chosen in Java, not the manifest.
- *
- * <p>This module is dependency-free (plugin SPI floor); stage is carried as a wire name that
- * matches {@code BuildStage#wireName()}.
+ * <p>{@code jk.toml} stays data-only — the script's stem chooses the anchor, not the manifest.
  */
 public enum BuildLogicAnchor {
     /**
@@ -22,8 +19,8 @@ public enum BuildLogicAnchor {
     /** After main sources are compiled (and mixed modules assembled). Stage wire: {@code compile}. */
     AFTER_COMPILE("compile"),
     /**
-     * After static resources are copied into classes (default for legacy {@code *Build} mains).
-     * Stage wire: {@code compile} (resources ride with the compile strip).
+     * After static resources are copied into classes. Stage wire: {@code compile} (resources ride
+     * with the compile strip).
      */
     AFTER_RESOURCES("compile"),
     /** Immediately before packaging the jar / image. Stage wire: {@code package}. */

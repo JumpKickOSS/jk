@@ -519,7 +519,7 @@ public final class BuildPlanner {
         // with lazy init: whichever side fires first populates the cache; the
         // other side finds the value already set.
         // Build-logic anchors (BEFORE_COMPILE / AFTER_COMPILE / AFTER_RESOURCES / BEFORE_PACKAGE)
-        // each call BuildLogicSupport.run() independently; a module registering tasks at more
+        // each call BuildLogicSupport.run() independently; a module with scripts at more
         // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
         // here the same lazy-init-race pattern as javaMainSrcRef above: computed once by whichever
         // anchor task needs it first, reused by the rest.
@@ -617,7 +617,7 @@ public final class BuildPlanner {
                 BuildPlan.builder("build").addTask(parseBuild).addTask(syncDeps).addTask(ensureJdk);
         // Workspace root with no sources: validate jk.toml + sync deps, nothing more.
         if (workspaceNoSources) return b.terminal(TaskNames.RESOLVE_DEPS);
-        // SPI BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
+        // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
         if (kspEnabled) {
             b.addTask(PlannerKsp.kspStep(cx, pluginDeclsF));
@@ -670,7 +670,7 @@ public final class BuildPlanner {
                     .build());
             return b.terminal(COMPILE_JOIN);
         }
-        // Build-logic AFTER_COMPILE (SPI) before resources / AFTER_RESOURCES.
+        // Build-logic AFTER_COMPILE before resources / AFTER_RESOURCES.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         b.addTask(copyResources);
         if (in.testOnly() || !in.skipTests()) {

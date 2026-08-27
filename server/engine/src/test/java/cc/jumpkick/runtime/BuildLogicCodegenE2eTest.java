@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code BEFORE_COMPILE} is the documented codegen anchor, so a {@code .java} it writes must reach
- * javac and end up in the jar as a class — not copied verbatim into {@code classes/} as a data
- * file, which is what merging into the classes tree did.
+ * {@code BEFORE_COMPILE} is the documented codegen anchor, so a {@code .java} a stem script writes
+ * must reach javac and end up in the jar as a class — not copied verbatim into {@code classes/} as
+ * a data file.
  *
  * <p>The second build matters as much as the first: the anchor's output is action-cached, so a
  * cache hit has to leave the source root in the same state a real run does, or the artifact
@@ -49,7 +49,6 @@ class BuildLogicCodegenE2eTest {
 
                 """ + REPOS);
 
-        // Product code references a type that only exists if codegen ran and was compiled.
         Path src = Files.createDirectories(project.resolve("src/com/example"));
         Files.writeString(src.resolve("App.java"), """
                 package com.example;
@@ -61,27 +60,16 @@ class BuildLogicCodegenE2eTest {
                 }
                 """);
 
-        Path logic = Files.createDirectories(project.resolve(".jk-build/src/demo"));
-        Files.writeString(logic.resolve("GenLogic.java"), """
-                package demo;
-
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.Files;
-                import java.nio.file.Path;
-
-                public class GenLogic implements BuildLogicContributor {
-                    public void register(BuildLogicGraph g) {
-                        g.task("gen-version", BuildLogicAnchor.BEFORE_COMPILE, ctx -> {
-                            Path out = ctx.outDir().resolve("com/example");
-                            Files.createDirectories(out);
-                            Files.writeString(out.resolve("Generated.java"),
-                                "package com.example;\\n"
-                                    + "public final class Generated {\\n"
-                                    + "  public static final String VALUE = \\"1.0.0\\";\\n"
-                                    + "}\\n");
-                        });
-                    }
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(project.resolve(".jk/before-compile.groovy"), """
+                def pkg = outDir.resolve('com/example')
+                pkg.toFile().mkdirs()
+                pkg.resolve('Generated.java').toFile().text = '''
+                package com.example;
+                public final class Generated {
+                  public static final String VALUE = "1.0.0";
                 }
+                '''
                 """);
 
         BuildPlanResult first = build(project, cache);
@@ -91,11 +79,9 @@ class BuildLogicCodegenE2eTest {
                 .as("generated source reached javac")
                 .exists();
         assertThat(project.resolve("target/classes/main/com/example/App.class")).exists();
-        // The .java itself must not be packaged as a data file.
         assertThat(project.resolve("target/classes/main/com/example/Generated.java"))
                 .doesNotExist();
 
-        // Second build: the anchor's output is a cache hit, and must still compile.
         BuildPlanResult second = build(project, cache);
         assertThat(second.errors()).isEmpty();
         assertThat(second.success()).isTrue();

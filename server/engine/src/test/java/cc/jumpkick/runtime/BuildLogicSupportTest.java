@@ -4,18 +4,18 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildLogicFixtures.generated;
 import static cc.jumpkick.runtime.BuildLogicFixtures.mergedFiles;
 import static cc.jumpkick.runtime.BuildLogicFixtures.runTwice;
-import static cc.jumpkick.runtime.BuildLogicFixtures.writeLineCount;
-import static cc.jumpkick.runtime.BuildLogicFixtures.writeStamp;
+import static cc.jumpkick.runtime.BuildLogicFixtures.writeLineCountGroovy;
+import static cc.jumpkick.runtime.BuildLogicFixtures.writeStampGroovy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,30 +29,16 @@ import org.junit.jupiter.api.io.TempDir;
 class BuildLogicSupportTest {
 
     @Test
-    void convention_jk_build_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(
-                project.resolve("src/main/java/demo/App.java"),
-                "package demo; public class App { public static void main(String[] a) {} }\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        writeLineCount(logicSrc.resolve("LineCountBuild.java"), "demo.LineCountBuild");
-
-        runTwice(project, dir.resolve("cache"), "demo.LineCountBuild");
+    void convention_jk_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        writeLineCountGroovy(project.resolve(".jk/after-resources.groovy"));
+        runTwice(project, dir.resolve("cache"));
     }
 
     @Test
     void logic_path_override(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Path project = scaffold(dir);
         Files.writeString(project.resolve("jk.toml"), """
                 group = "t"
                 name = "t"
@@ -60,37 +46,19 @@ class BuildLogicSupportTest {
                 jdk = 25
                 [build]
                 logic = "custom-logic"
-                logic-main = "demo.LineCountBuild"
                 """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve("custom-logic/src/demo");
-        Files.createDirectories(logicSrc);
-        writeLineCount(logicSrc.resolve("LineCountBuild.java"), "demo.LineCountBuild");
-
-        // .jk-build absent; only custom-logic should run
-        assertTrue(Files.notExists(project.resolve(".jk-build")));
-        runTwice(project, dir.resolve("cache"), "demo.LineCountBuild");
+        Files.createDirectories(project.resolve("custom-logic"));
+        writeLineCountGroovy(project.resolve("custom-logic/after-resources.groovy"));
+        assertTrue(Files.notExists(project.resolve(".jk")));
+        runTwice(project, dir.resolve("cache"));
     }
 
     @Test
-    void two_build_mains_are_independently_cached(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(
-                project.resolve("src/main/java/demo/App.java"),
-                "package demo; public class App { public static void main(String[] a) {} }\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        writeLineCount(logicSrc.resolve("LineCountBuild.java"), "demo.LineCountBuild");
-        writeStamp(logicSrc.resolve("StampBuild.java"), "demo.StampBuild");
+    void two_scripts_are_independently_cached(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        writeLineCountGroovy(project.resolve(".jk/after-resources.groovy"));
+        writeStampGroovy(project.resolve(".jk/after-resources-stamp.groovy"));
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -102,8 +70,8 @@ class BuildLogicSupportTest {
                 project, layout, ac, classes, s -> labels.append(s).append(';')));
         assertTrue(Files.isRegularFile(classes.resolve("line-count.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("stamp.txt")));
-        assertTrue(labels.toString().contains("LineCountBuild"));
-        assertTrue(labels.toString().contains("StampBuild"));
+        assertTrue(labels.toString().contains("after-resources"), labels.toString());
+        assertTrue(labels.toString().contains("after-resources-stamp"), labels.toString());
 
         Files.delete(classes.resolve("line-count.txt"));
         Files.delete(classes.resolve("stamp.txt"));
@@ -111,43 +79,22 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, s -> labels.append(s).append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        // Both tasks hit independently
         assertEquals(2, labels.toString().split("cache hit", -1).length - 1);
     }
 
     @Test
-    void spi_contributor_runs_at_two_anchors(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        Files.writeString(logicSrc.resolve("MultiAnchorLogic.java"), """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.*;
-                public class MultiAnchorLogic implements BuildLogicContributor {
-                  @Override
-                  public void register(BuildLogicGraph g) {
-                    g.task("before-compile-marker", BuildLogicAnchor.BEFORE_COMPILE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("before-compile.txt"), "g");
-                    });
-                    g.task("after-compile-marker", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("after-compile.txt"), "c");
-                    });
-                    g.task("before-package-marker", BuildLogicAnchor.BEFORE_PACKAGE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("before-package.txt"), "p");
-                    });
-                  }
-                }
-                """);
+    void scripts_run_at_two_anchors(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(
+                project.resolve(".jk/before-compile.groovy"),
+                "outDir.resolve('before-compile.txt').toFile().text = 'g'\n");
+        Files.writeString(
+                project.resolve(".jk/after-compile.groovy"),
+                "outDir.resolve('after-compile.txt').toFile().text = 'c'\n");
+        Files.writeString(
+                project.resolve(".jk/before-package.groovy"),
+                "outDir.resolve('before-package.txt').toFile().text = 'p'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -158,9 +105,9 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
                         .append(';')));
-        assertTrue(Files.isRegularFile(generated(layout, "before-compile-marker", "before-compile.txt")));
+        assertTrue(Files.isRegularFile(generated(layout, "before-compile", "before-compile.txt")));
         assertFalse(Files.exists(classes.resolve("before-compile.txt")), "codegen must not land in classes/");
-        assertTrue(labels.toString().contains("before-compile-marker"), labels.toString());
+        assertTrue(labels.toString().contains("before-compile"), labels.toString());
         assertEquals("generate", BuildLogicAnchor.BEFORE_COMPILE.stageWireName());
 
         labels.setLength(0);
@@ -168,16 +115,15 @@ class BuildLogicSupportTest {
                 project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
                         .append(';')));
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
-        assertTrue(labels.toString().contains("after-compile-marker"), labels.toString());
+        assertTrue(labels.toString().contains("after-compile"), labels.toString());
 
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> labels.append(s)
                         .append(';')));
         assertTrue(Files.isRegularFile(classes.resolve("before-package.txt")));
-        assertTrue(labels.toString().contains("before-package-marker"), labels.toString());
+        assertTrue(labels.toString().contains("before-package"), labels.toString());
 
-        // Second AFTER_COMPILE is a cache hit
         Files.delete(classes.resolve("after-compile.txt"));
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
@@ -187,42 +133,15 @@ class BuildLogicSupportTest {
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
     }
 
-    /**
-     * every file a task produces has to survive a cache hit. Only {@code outDir} is
-     * captured and replayed, which is why the context no longer hands out the classes tree — a
-     * task that wrote there worked once and then silently lost the file under a {@code cache hit}
-     * label. This asserts the whole produced set, twice, so a future binding that reintroduces an
-     * uncaptured write surface fails here.
-     */
     @Test
     void every_produced_file_survives_a_cache_hit(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        Files.writeString(logicSrc.resolve("MultiFileLogic.java"), """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.*;
-                public class MultiFileLogic implements BuildLogicContributor {
-                  @Override
-                  public void register(BuildLogicGraph g) {
-                    g.task("multi", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("root.txt"), "r");
-                      Files.createDirectories(ctx.outDir().resolve("nested/deep"));
-                      Files.writeString(ctx.outDir().resolve("nested/deep/leaf.txt"), "l");
-                      Files.writeString(ctx.outDir().resolve("nested/mid.txt"), "m");
-                    });
-                  }
-                }
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(project.resolve(".jk/after-compile.groovy"), """
+                outDir.resolve('root.txt').toFile().text = 'r'
+                new File(outDir.toFile(), 'nested/deep').mkdirs()
+                new File(outDir.toFile(), 'nested/deep/leaf.txt').text = 'l'
+                new File(outDir.toFile(), 'nested/mid.txt').text = 'm'
                 """);
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -238,7 +157,6 @@ class BuildLogicSupportTest {
         List<String> firstRun = mergedFiles(classes);
         assertEquals(List.of("nested/deep/leaf.txt", "nested/mid.txt", "root.txt"), firstRun);
 
-        // Wipe what the first run merged, then replay from the cache: the set must come back whole.
         for (String rel : firstRun) Files.delete(classes.resolve(rel));
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
@@ -248,43 +166,19 @@ class BuildLogicSupportTest {
         assertEquals(firstRun, mergedFiles(classes), "a cache hit must replay every produced file");
     }
 
-    /**
-     * Sharing one {@code AtomicReference} across a module's anchor calls hashes the project
-     * source tree at most once per build.
-     */
     @Test
     void multiple_anchors_in_one_build_share_a_single_project_hash(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        Files.writeString(logicSrc.resolve("MultiAnchorLogic.java"), """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.*;
-                public class MultiAnchorLogic implements BuildLogicContributor {
-                  @Override
-                  public void register(BuildLogicGraph g) {
-                    g.task("before-compile-marker", BuildLogicAnchor.BEFORE_COMPILE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("before-compile.txt"), "g");
-                    });
-                    g.task("after-compile-marker", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("after-compile.txt"), "c");
-                    });
-                    g.task("before-package-marker", BuildLogicAnchor.BEFORE_PACKAGE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("before-package.txt"), "p");
-                    });
-                  }
-                }
-                """);
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(
+                project.resolve(".jk/before-compile.groovy"),
+                "outDir.resolve('before-compile.txt').toFile().text = 'g'\n");
+        Files.writeString(
+                project.resolve(".jk/after-compile.groovy"),
+                "outDir.resolve('after-compile.txt').toFile().text = 'c'\n");
+        Files.writeString(
+                project.resolve(".jk/before-package.groovy"),
+                "outDir.resolve('before-package.txt').toFile().text = 'p'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -303,51 +197,16 @@ class BuildLogicSupportTest {
 
         assertEquals(
                 1, after - before, "three anchors sharing one reference must hash the project once, not three times");
-        assertTrue(Files.isRegularFile(generated(layout, "before-compile-marker", "before-compile.txt")));
+        assertTrue(Files.isRegularFile(generated(layout, "before-compile", "before-compile.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("before-package.txt")));
     }
 
-    /**
-     * A task reads the project through {@code BuildLogicContext}, so the key must cover it. Keying
-     * on the logic sources alone reported `cache hit` after a product edit and replayed the stale
-     * output.
-     */
     @Test
     void a_product_source_edit_invalidates_a_task_that_reads_the_project(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        // Counts the lines of the project's own sources — the shape of the shipped example.
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        Files.writeString(logicSrc.resolve("CountLogic.java"), """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.*;
-                import java.util.stream.Stream;
-                public class CountLogic implements BuildLogicContributor {
-                  @Override
-                  public void register(BuildLogicGraph g) {
-                    g.task("line-count", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
-                      long n = 0;
-                      try (Stream<Path> w = Files.walk(ctx.projectDir().resolve("src"))) {
-                        for (Path f : w.filter(Files::isRegularFile).toList()) {
-                          n += Files.readAllLines(f).size();
-                        }
-                      }
-                      Files.writeString(ctx.outDir().resolve("line-count.txt"), String.valueOf(n));
-                    });
-                  }
-                }
-                """);
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        writeLineCountGroovy(project.resolve(".jk/after-compile.groovy"));
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -357,7 +216,6 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
         String first = Files.readString(classes.resolve("line-count.txt")).trim();
 
-        // Same logic, more product source: the count must change.
         Files.writeString(project.resolve("src/main/java/demo/More.java"), "package demo;\npublic class More {\n}\n");
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
@@ -369,38 +227,12 @@ class BuildLogicSupportTest {
                 first, Files.readString(classes.resolve("line-count.txt")).trim());
     }
 
-    /**
-     * A task can read {@code jk.toml} itself through {@code ctx.projectDir()} — e.g. to embed the
-     * declared version — same as it can read product sources. Editing it must invalidate the task
-     * the same way.
-     */
     @Test
     void a_jk_toml_edit_invalidates_a_task_that_reads_the_project_file(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        Files.writeString(logicSrc.resolve("VersionLogic.java"), """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.*;
-                public class VersionLogic implements BuildLogicContributor {
-                  @Override
-                  public void register(BuildLogicGraph g) {
-                    g.task("embed-version", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
-                      String toml = Files.readString(ctx.projectDir().resolve("jk.toml"));
-                      Files.writeString(ctx.outDir().resolve("version.txt"), toml);
-                    });
-                  }
-                }
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(project.resolve(".jk/after-compile.groovy"), """
+                outDir.resolve('version.txt').toFile().text = projectDir.resolve('jk.toml').toFile().text
                 """);
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -411,7 +243,6 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
         String first = Files.readString(classes.resolve("version.txt"));
 
-        // Same logic, only jk.toml's own content changed: the embedded text must change too.
         Files.writeString(project.resolve("jk.toml"), """
                 group = "t"
                 name = "t"
@@ -427,122 +258,10 @@ class BuildLogicSupportTest {
         assertNotEquals(first, Files.readString(classes.resolve("version.txt")));
     }
 
-    /**
-     * The loader that defined a task must still be open when the task runs — registration and
-     * execution are far apart, and a task body routinely first-touches a class then.
-     *
-     * <p>This case uses a directory-backed helper, which is the benign half: closing a
-     * URLClassLoader shuts its <em>jar</em> handles, so directory entries survive. The failing half
-     * is jar-backed and is pinned by {@code kotlin_spi_contributor_before_compile}, whose task body
-     * first touches kotlin-stdlib.
-     */
     @Test
-    void a_task_body_may_first_touch_a_helper_class_at_run_time(@TempDir Path dir) throws Exception {
+    void logic_off_skips_even_if_jk_exists(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        // Helper is referenced ONLY from inside the task body, so it is first loaded at run time.
-        Files.writeString(logicSrc.resolve("Helper.java"), """
-                package demo;
-                public final class Helper {
-                  public static String text() { return "from-helper"; }
-                }
-                """);
-        Files.writeString(logicSrc.resolve("LateLoadLogic.java"), """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.*;
-                public class LateLoadLogic implements BuildLogicContributor {
-                  @Override
-                  public void register(BuildLogicGraph g) {
-                    g.task("late-load", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
-                      Files.writeString(ctx.outDir().resolve("late.txt"), Helper.text());
-                    });
-                  }
-                }
-                """);
-
-        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
-
-        assertEquals(
-                "from-helper", Files.readString(classes.resolve("late.txt")).trim());
-    }
-
-    /**
-     * Logic is compiled once per source change, not once per anchor. A sentinel in the classes
-     * dir survives a second anchor and must not survive a logic-source edit.
-     */
-    @Test
-    void logic_is_compiled_once_per_change_not_once_per_anchor(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
-
-        Path logicSrc = project.resolve(".jk-build/src/demo");
-        Files.createDirectories(logicSrc);
-        Path contributor = logicSrc.resolve("TwoAnchorLogic.java");
-        Files.writeString(contributor, """
-                package demo;
-                import cc.jumpkick.plugin.buildlogic.*;
-                import java.nio.file.*;
-                public class TwoAnchorLogic implements BuildLogicContributor {
-                  @Override
-                  public void register(BuildLogicGraph g) {
-                    g.task("a", BuildLogicAnchor.AFTER_COMPILE, ctx ->
-                        Files.writeString(ctx.outDir().resolve("a.txt"), "a"));
-                    g.task("b", BuildLogicAnchor.BEFORE_PACKAGE, ctx ->
-                        Files.writeString(ctx.outDir().resolve("b.txt"), "b"));
-                  }
-                }
-                """);
-
-        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-        Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
-
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
-
-        // A recompile deletes the classes dir, so this sentinel is the observation.
-        Path sentinel = logicClasses.resolve("sentinel.marker");
-        Files.writeString(sentinel, "1");
-
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> {}));
-        assertTrue(Files.exists(sentinel), "second anchor must reuse the compiled logic");
-        assertTrue(Files.isRegularFile(classes.resolve("b.txt")), "the anchor still ran");
-
-        // Editing the logic must still recompile.
-        Files.writeString(contributor, Files.readString(contributor).replace("\"a\"))", "\"a2\"))"));
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
-        assertFalse(Files.exists(sentinel), "a logic edit must recompile");
-        assertEquals("a2", Files.readString(classes.resolve("a.txt")).trim());
-    }
-
-    @Test
-    void logic_off_skips_even_if_jk_build_exists(@TempDir Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve(".jk-build/src"));
+        Files.createDirectories(project.resolve(".jk"));
         Files.writeString(project.resolve("jk.toml"), """
                 group = "t"
                 name = "t"
@@ -551,7 +270,43 @@ class BuildLogicSupportTest {
                 [build]
                 logic = "off"
                 """);
-        Files.writeString(project.resolve(".jk-build/src/X.java"), "class X {}");
+        Files.writeString(
+                project.resolve(".jk/after-resources.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
         assertTrue(BuildLogicToml.resolve(project).isEmpty());
+    }
+
+    @Test
+    void compiled_java_under_jk_is_rejected(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(
+                project.resolve(".jk/after-resources.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
+        Files.writeString(project.resolve(".jk/X.java"), "class X {}");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertTrue(ex.getMessage().contains("stem scripts only"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("X.java"), ex.getMessage());
+    }
+
+    private static Path scaffold(Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(
+                project.resolve("src/main/java/demo/App.java"),
+                "package demo; public class App { public static void main(String[] a) {} }\n");
+        return project;
     }
 }

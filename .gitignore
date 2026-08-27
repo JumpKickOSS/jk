@@ -1,6 +1,6 @@
-# --- jk build outputs (per PRD §4) ---
-.jk/
+# --- jk build outputs ---
 target/
+.jk/selective-plan.json
 
 # --- Gradle (bootstrap build system) ---
 .gradle/

@@ -69,7 +69,7 @@ public final class PlannerTest {
                 .stage(BuildStage.TEST)
                 .label("Test Compile")
                 .kind(TaskKind.CPU)
-                // AFTER_COMPILE SPI may generate types tests import. copy-resources is a real
+                // AFTER_COMPILE scripts may generate types tests import. copy-resources is a real
                 // input, not just ordering: the test classpath (and its action-key fingerprint)
                 // includes classes/main, which copy-resources writes — racing it fingerprints a
                 // half-copied dir and intermittently crashes on vanishing files under -r.

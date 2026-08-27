@@ -39,11 +39,11 @@ public final class TaskNames {
     public static final String RESTORE_OUTPUTS = "restore-outputs";
     /** Project build-logic, as the action-cache input label for one logic task. */
     public static final String BUILD_LOGIC = "build-logic";
-    /** SPI BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
+    /** BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
     public static final String BUILD_LOGIC_BEFORE_COMPILE = "build-logic-before-compile";
-    /** SPI AFTER_COMPILE anchor. */
+    /** AFTER_COMPILE anchor. */
     public static final String BUILD_LOGIC_AFTER_COMPILE = "build-logic-after-compile";
-    /** SPI BEFORE_PACKAGE anchor. */
+    /** BEFORE_PACKAGE anchor. */
     public static final String BUILD_LOGIC_BEFORE_PACKAGE = "build-logic-before-package";
 
     public static final String ENSURE_JDK = "ensure-jdk";
