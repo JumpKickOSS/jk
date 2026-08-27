@@ -59,6 +59,19 @@ public final class CompileSupport {
                 || Languages.anySourceUnder(projectDir.resolve("src"), ".scala");
     }
 
+    /**
+     * A workspace root that carries no sources: it coordinates members and compiles, tests and
+     * packages nothing itself.
+     *
+     * <p>One answer, because two planners ask it and a disagreement is a broken plan rather than a
+     * wrong number. {@code coreBuilder} stops such a unit after its build logic, and {@code
+     * appendDeclaredTails} must then not hang an assembly / native / sources tail off a {@code
+     * package-jar} that is not there — the same reason it returns early for {@code jk compile}.
+     */
+    public static boolean coordinatorOnly(JkBuild project, Path projectDir) {
+        return project.isWorkspaceRoot() && !hasSources(projectDir);
+    }
+
     /** Whether this project uses the flat ({@code src/}/{@code test/}) layout. */
     public static boolean isSimpleLayout(Project project, Path projectDir) {
         return SourceLayout.isSimpleLayout(project, projectDir);

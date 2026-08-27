@@ -76,20 +76,20 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 
 The guards in [code-as-art.md](code-as-art.md#the-guard-registry) run under
 **both** builds. Gradle runs them as `tasks.registering` blocks wired to `check`
-and `jar`; jk runs them from `tools/gate/.jk/after-compile.kts`, a single script
-over the whole tree.
+and `jar`; jk runs them from `.jk/after-build.kts` at the workspace root, a
+single script over the whole tree.
 
 ```bash
-jk build -m jk-gate      # the gate alone, ~9s
-jk build                 # the gate plus everything else
+jk build                 # the gate runs last, after every module
 ```
 
-`tools/gate` is a sourceless workspace member: a workspace-root aggregator does
-not run build logic, and a guard hung off a real module would only run when that
-module was in the build set. The script writes nothing to its `outDir`, which is
-what keeps it out of the action cache — an empty output is never a hit, so the
-gate re-runs on every build instead of replaying an old verdict. It reports every
-broken rule in one message rather than the first to fire.
+`after-build` is the root's own anchor: the script runs once per build, after
+every member, with the whole tree on disk. Its action key covers every file in
+the checkout except build output and VCS metadata, so an unchanged tree skips it
+(~60 ms) and any edit re-runs it (~9 s). It writes nothing to `outDir`; the cache
+records that as a verdict rather than an artifact, and records only successes, so
+a red gate goes red again instead of replaying itself. It reports every broken
+rule in one message rather than the first to fire.
 
 Two arms stay Gradle-only because they read files `maven-publish` generates and
 jk does not produce until `jk publish`: `checkPublishedPomCoordinates` and the

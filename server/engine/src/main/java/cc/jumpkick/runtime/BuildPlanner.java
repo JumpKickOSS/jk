@@ -398,7 +398,7 @@ public final class BuildPlanner {
             }
             compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
             // Workspace root with no source tree: nothing to compile or package.
-            if (jkBuild.isWorkspaceRoot() && !CompileSupport.hasSources(in.dir())) {
+            if (CompileSupport.coordinatorOnly(jkBuild, in.dir())) {
                 useJava = false;
                 useKotlin = false;
                 useGroovy = false;

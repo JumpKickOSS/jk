@@ -84,9 +84,7 @@ class SelfHostingTomlTest {
                         "plugins/grails",
                         "plugins/protobuf",
                         "plugins/android",
-                        "plugins/micronaut",
-                        // Sourceless: the house-rule gate, whose build logic reads the whole tree.
-                        "tools/gate");
+                        "plugins/micronaut");
     }
 
     @Test

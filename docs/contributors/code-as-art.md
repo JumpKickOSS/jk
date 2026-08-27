@@ -697,31 +697,39 @@ homes are not symmetrical.
 
 | | Gradle | jk |
 |---|---|---|
-| Home | `buildSrc/src/main/kotlin/jk.java-conventions.gradle.kts`, plus a module's own `build.gradle.kts` | `tools/gate/.jk/after-compile.kts` |
+| Home | `buildSrc/src/main/kotlin/jk.java-conventions.gradle.kts`, plus a module's own `build.gradle.kts` | `.jk/after-build.kts` at the workspace root |
 | Unit | one `tasks.registering` task per guard, wired to `check` **and** `jar` | one `guard(id, name) { … }` block per guard |
 | Scope | per module, `inputs.files(...)` declared | the whole tree, walked once |
-| Re-runs | when a declared input changes | **every build** |
+| Re-runs | when a declared input changes | when any file in the checkout changes |
 | Reports | the first task to fail | every broken rule, in one message |
 
-`tools/gate` is a sourceless workspace member, and it is on its way out. It
-exists because a workspace-root aggregator did not run build logic until
-JK-1058, and a guard hung off a real module would only run when that module
-was in the build set. The root's `after-build` anchor is the right home; the
-move is JK-1060.
+The gate is the **workspace root's** build logic — `after-build`, the root's
+own anchor, so it runs once after every member module with the whole tree on
+disk. It briefly lived in `tools/gate`, a sourceless member invented only
+because a root did not run build logic at all until JK-1058; that module is
+gone.
 
-Its script writes **nothing** to `outDir`, and that is load-bearing rather
-than incidental: an empty output is never an action-cache hit, so the gate
-cannot replay a verdict about a tree that has since changed. It is the same
-property Gradle needs `inputs.files(...)` for, obtained from the other
-direction — and it is why the gate is build logic rather than a test.
-(`ActionTreeTest` is the cautionary case: as a test it went `UP-TO-DATE` and
-passed with the violation reintroduced.)
+**Scope and caching are the same decision.** A root script's action key
+covers every file in the checkout bar build output and VCS metadata, so an
+unchanged tree skips the gate and an edit anywhere re-runs it. Keyed to a
+module, as it was in `tools/gate`, a green verdict would have outlived
+changes to the very files the guards read — the module had no sources, so
+its key covered nothing.
 
-The cost is honest and it is not free: the gate spends roughly eight seconds
-per build, on every build, because it deliberately never caches. Buy that
-back with the primitives, not with a cache — the lexer is memoised per file
-and the vocabulary guards ask each file which of the banned literals it
-contains rather than asking each literal which files contain it.
+Its script writes **nothing** to `outDir`, and the cache understands that:
+an empty output is recorded as a *verdict* (`ActionCache.storeVerdict`),
+which is what a check produces. Only a success is recorded, so a red gate
+goes red again rather than replaying itself. That is the same property
+Gradle needs `inputs.files(...)` for, obtained from the other direction —
+and it is why the gate is build logic rather than a test. (`ActionTreeTest`
+is the cautionary case: as a test it went `UP-TO-DATE` and passed with the
+violation reintroduced.)
+
+Measured on this repo: ~9 s when it runs, ~60 ms when the tree is unchanged.
+Keep the first number down with the primitives, not by narrowing the key —
+the lexer is memoised per file and the vocabulary guards ask each file which
+of the banned literals it contains rather than asking each literal which
+files contain it.
 
 **Two arms stay Gradle-only, and say why here rather than going quietly
 missing.** `checkPublishedPomCoordinates` (G19) reads the POM
@@ -872,7 +880,7 @@ not on the word.
     guards in gradle:   grep -h 'val check.* by tasks.registering' \
                           buildSrc/src/main/kotlin/*.kts */*/build.gradle.kts
     guards in jk:       grep -o 'guard("[A-Z0-9]*", "check[A-Za-z]*"' \
-                          tools/gate/.jk/after-compile.kts
+                          .jk/after-build.kts
     guards in registry: grep -o '`check[A-Za-z]*`' code-as-art.md
 
 Run all three before adding a row — the two builds are two more places to
@@ -892,14 +900,13 @@ revert check is one narrow task (`./gradlew :auditor:checkPluginFamily`)
 rather than a tree-wide scan whose message has to say where it looked.
 Use this when the rule is per-module and the family already has a script.
 
-**On the jk side there is one home, `tools/gate`, and per-module guards
-loop rather than fan out.** A `.jk/` directory of its own for `:cli` or
-`:engine` would buy the same locality, and would cost a second `kotlinc
--script` start-up per module and a second copy of every text primitive —
-which is the duplication the rest of this file exists to prevent. The
-failure still names the module and the file, so the fix stays local; what
-is lost is the narrow revert command, and `jk build -m jk-gate` is fast
-enough that it has not been missed. See [Where a guard runs](#where-a-guard-runs).
+**On the jk side there is one home, the workspace root's `.jk/`, and
+per-module guards loop rather than fan out.** A `.jk/` of its own for
+`:cli` or `:engine` would buy the same locality, and would cost a second
+`kotlinc -script` start-up per module and a second copy of every text
+primitive — which is the duplication the rest of this file exists to
+prevent. The failure still names the module and the file, so the fix stays
+local. See [Where a guard runs](#where-a-guard-runs).
 
 **A guard that ships as a test is subject to Gradle's up-to-date
 check.** `ActionTreeTest` enforces an owner-sourced ban list from

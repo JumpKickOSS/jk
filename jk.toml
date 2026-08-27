@@ -40,8 +40,6 @@ modules = [
   "plugins/protobuf",
   "plugins/android",
   "plugins/micronaut",
-  # Tooling
-  "tools/gate",
 ]
 
 # ---------------------------------------------------------------------------
@@ -53,7 +51,7 @@ modules = [
 # goes red.
 #
 # This is that place. `[test] exclude-tags` is the fast tier; each profile below is one
-# slow tier. The gate (`tools/gate/.jk/after-compile.kts`) re-derives the partition from
+# slow tier. The gate (`.jk/after-build.kts`) re-derives the partition from
 # this table and proves, over every subset of the vocabulary, that each is run by exactly
 # one tier — so the routing and the check cannot drift.
 #

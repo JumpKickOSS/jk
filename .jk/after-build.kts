@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // The house-rule gate: every rule in docs/contributors/code-as-art.md that a text scan can
-// check, checked. Bindings are `projectDir` and `outDir`; nothing is written to `outDir`,
-// and that is load-bearing — an empty output is never an action-cache hit, so this script
-// re-runs on every build instead of replaying a verdict about a tree that has since changed.
+// check, checked.
+//
+// The workspace root's `after-build` anchor, so it runs once, after every member module, with
+// the whole tree on disk. That scope is also what makes its caching sound: a root script's
+// action key covers every file in the checkout bar build output, so an unchanged tree skips
+// the gate and any edit anywhere re-runs it. Keyed to a module — where this lived before the
+// root had an anchor — a green verdict would have survived changes to the very files it reads.
+//
+// Bindings are `projectDir` (the workspace root) and `outDir`. Nothing is written to `outDir`:
+// a check has no artifact, and its result is the verdict the cache records.
 //
 // Guards are collected, not short-circuited: one run reports every rule that is broken.
 
@@ -2813,7 +2820,7 @@ guard("G14", "checkForecastKeyParity") {
         val callAt = src.indexOf(call)
         if (callAt < 0) {
             error("declared site $siteId no longer exists. Update the pair table in"
-                + " tools/gate/.jk/after-compile.kts so it still names the real code.")
+                + " .jk/after-build.kts so it still names the real code.")
         }
         val bagAt = src.lastIndexOf(bagDecl, callAt)
         if (bagAt < 0) {
