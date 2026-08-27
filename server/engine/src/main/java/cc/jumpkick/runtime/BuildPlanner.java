@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.PlannerTails.appendDeclaredTails;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -616,7 +617,16 @@ public final class BuildPlanner {
         BuildPlan.Builder b =
                 BuildPlan.builder("build").addTask(parseBuild).addTask(syncDeps).addTask(ensureJdk);
         // Workspace root with no sources: validate jk.toml + sync deps, nothing more.
-        if (workspaceNoSources) return b.terminal(TaskNames.RESOLVE_DEPS);
+        // Workspace root with no sources: validate jk.toml, sync deps, and run the root's own
+        // `after-build` logic. The graph orders this unit behind every member, so by the time the
+        // step executes the whole workspace is built (JK-1058).
+        if (workspaceNoSources) {
+            if (BuildLogicToml.resolve(in.dir()).isPresent()) {
+                b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
+                return b.terminal(TaskNames.BUILD_LOGIC_AFTER_BUILD);
+            }
+            return b.terminal(TaskNames.RESOLVE_DEPS);
+        }
         // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
         if (kspEnabled) {

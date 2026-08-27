@@ -265,6 +265,48 @@ public final class PlannerResources {
     }
 
     /**
+     * Anchor {@code AFTER_BUILD}: the workspace root's stem scripts, after every member module has
+     * built.
+     *
+     * <p>The root unit's whole plan is parse / resolve / this, so there is no classes tree to pass
+     * and nothing merges. Ordering comes from the graph — the sourceless root carries an edge to
+     * every member — not from a `requires` here, which could only name tasks in the root's own
+     * plan.
+     */
+    static Task buildLogicAfterBuildStep(BuildPlanner.Ctx cx) {
+        BuildPlanner.Inputs in = cx.in();
+        ActionCache actionCache = cx.actionCache();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        return Task.builder(TaskNames.BUILD_LOGIC_AFTER_BUILD)
+                .stage(BuildStage.PACKAGE)
+                .label("Build logic (after build)")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.RESOLVE_DEPS)
+                .weight(() -> plan.get().fullyCached() ? 0 : 1)
+                .ticks(1)
+                .execute(ctx -> {
+                    try {
+                        boolean ran = BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                /* classesDir */ null,
+                                BuildLogicAnchor.AFTER_BUILD,
+                                ctx::label,
+                                buildLogicInputTokensRef);
+                        if (ran) ctx.label("build-logic applied");
+                        else ctx.cached(); // SKIPPED — no workspace build logic this run
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /**
      * BEFORE_PACKAGE waits on resources only — never on tests. Packaging needs a complete
      * classes tree, which tests do not contribute to. A failing suite still fails the build;
      * the artifact is built concurrently.

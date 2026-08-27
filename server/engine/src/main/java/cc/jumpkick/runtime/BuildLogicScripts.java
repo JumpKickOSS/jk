@@ -23,7 +23,12 @@ import java.util.Optional;
  *   after-compile.groovy|.kts    → AFTER_COMPILE
  *   after-resources.groovy|.kts  → AFTER_RESOURCES
  *   before-package.groovy|.kts   → BEFORE_PACKAGE
+ *   after-build.groovy|.kts      → AFTER_BUILD (workspace root only)
  * </pre>
+ *
+ * <p>The first four are module anchors and the last is the root's; neither set is legal in the
+ * other's scope. {@link BuildLogicSupport} enforces that, because only it knows which one it is
+ * looking at.
  *
  * <p>Optional suffix for multiple scripts at one anchor: {@code before-compile-collections.groovy}
  * → task name {@code before-compile-collections}, same anchor. Underscores accepted as aliases
@@ -40,6 +45,7 @@ final class BuildLogicScripts {
         m.put("after-compile", BuildLogicAnchor.AFTER_COMPILE);
         m.put("after-resources", BuildLogicAnchor.AFTER_RESOURCES);
         m.put("before-package", BuildLogicAnchor.BEFORE_PACKAGE);
+        m.put("after-build", BuildLogicAnchor.AFTER_BUILD);
         STEMS = Map.copyOf(m);
     }
 

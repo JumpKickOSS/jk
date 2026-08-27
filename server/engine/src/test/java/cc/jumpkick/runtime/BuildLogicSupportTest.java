@@ -324,6 +324,86 @@ class BuildLogicSupportTest {
         assertTrue(ex.getMessage().contains("X.java"), ex.getMessage());
     }
 
+    /**
+     * The workspace root's anchor runs where a module anchor could not: a directory with no
+     * sources, no classes tree, and nothing to merge into.
+     */
+    @Test
+    void workspace_root_anchor_runs_with_no_sources_and_merges_nothing(@TempDir Path dir) throws Exception {
+        Path root = dir.resolve("ws");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = []
+                """);
+        Files.writeString(
+                root.resolve(".jk/after-build.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'clean'\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                root,
+                layout,
+                ac, /* classesDir */
+                null,
+                BuildLogicAnchor.AFTER_BUILD,
+                s -> labels.append(s).append(';')));
+
+        Path out = layout.generatedSourcesDir("jk-logic-out-after-build").resolve("verdict.txt");
+        assertTrue(Files.isRegularFile(out), "expected the root script's own output, got labels: " + labels);
+        assertEquals("clean", Files.readString(out).trim());
+    }
+
+    @Test
+    void a_module_stem_at_the_workspace_root_is_rejected(@TempDir Path dir) throws Exception {
+        Path root = dir.resolve("ws");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = []
+                """);
+        Files.writeString(root.resolve(".jk/before-compile.groovy"), "// nothing to be before\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+        assertTrue(ex.getMessage().contains("before-compile.groovy"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("after-build"), ex.getMessage());
+    }
+
+    @Test
+    void the_root_stem_inside_a_module_is_rejected(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(project.resolve(".jk/after-build.groovy"), "// wrong scope\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertTrue(ex.getMessage().contains("after-build.groovy"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("before-compile"), ex.getMessage());
+    }
+
     private static Path scaffold(Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));

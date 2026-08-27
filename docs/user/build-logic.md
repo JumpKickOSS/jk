@@ -9,10 +9,10 @@ runs its top-level stem scripts on build (action-cached). Same feature either wa
 wins** (the trees are not merged). Prefer plugins for heavy/reusable tools; use
 `jk/` / `.jk/` for small project-local codegen.
 
-This is **per module**. A workspace member needs the directory next to *its*
-`jk.toml`. A sourceless workspace-root aggregator does not run build logic. There
-is no `.jk-build/` / `jk-build/` compatibility path — leftover those directories
-fail the build.
+A **module** needs the directory next to *its* `jk.toml`. The **workspace root** has one
+too, with its own anchor — see [Workspace build logic](#workspace-build-logic). There is
+no `.jk-build/` / `jk-build/` compatibility path — leftover those directories fail the
+build.
 
 ```text
 my-app/
@@ -60,14 +60,51 @@ files gets the opposite: write to `outDir` and the cache replays it while the mo
 sources, `jk.toml` and `jk-lock.toml` are unchanged.
 
 **A module with no sources still runs its build logic.** A workspace member needs a
-`jk.toml` and an entry in `[workspace] modules`, not a `src/` tree — so a check that has
-to see the whole workspace can live in a member of its own. A workspace-*root* aggregator
-does not run build logic; the directory has to belong to a member.
+`jk.toml` and an entry in `[workspace] modules`, not a `src/` tree.
 
 Scripts run **out of process**. A Groovy `System.exit` or OOM cannot take the engine
 down.
 
 Compiled `.java` / `.kt` under `jk/` / `.jk/` is rejected. Put reusable tools in a
 [plugin](plugins.md).
+
+## Workspace build logic
+
+A `jk/` or `.jk/` beside the **workspace root's** `jk.toml` runs one stem, and only that
+one:
+
+| File | When |
+|------|------|
+| `after-build.groovy` / `.kts` | Once per build, after **every member module** has built |
+
+That is the anchor a workspace-wide step or check wants: every member's sources and
+outputs are on disk, and the script runs once rather than once per module. Ordering comes
+from the build graph — the root becomes a unit that depends on all its members — so
+`[build] order-after` is not needed for it.
+
+The two sets do not mix, in either direction, and using the wrong one **fails the build**
+rather than being skipped:
+
+- A module stem (`before-compile`, `after-compile`, `after-resources`, `before-package`)
+  at the root is an error. A root compiles and packages nothing, so there is no cut for
+  them to be relative to.
+- `after-build` inside a module is an error. A module has no "after every member" moment.
+
+A root script has no classes tree to merge into: its `outDir` is its own output and
+nothing downstream reads it. A root that carries its own `src/` is an ordinary module as
+well, and uses the module stems for that half.
+
+```text
+my-workspace/
+  jk.toml              # [workspace] modules = ["core", "app"]
+  .jk/
+    after-build.kts    # runs once, after core and app
+  core/
+    jk.toml
+    .jk/
+      before-compile.groovy
+  app/
+    jk.toml
+```
 
 Authoring plugins (reusable, versioned): [contributor plugins](../contributors/plugins.md).

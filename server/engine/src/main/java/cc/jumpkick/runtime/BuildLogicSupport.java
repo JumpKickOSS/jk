@@ -59,6 +59,31 @@ public final class BuildLogicSupport {
     }
 
     /**
+     * Reject a script whose anchor does not belong to the scope it was found in.
+     *
+     * <p>A module has a compile to be before and a jar to be after; a workspace root has neither,
+     * and a module has no "after every member" moment. Silently skipping the wrong stem is the one
+     * behaviour worth ruling out — a script that does not run and does not complain is
+     * indistinguishable from one that passed.
+     */
+    static void rejectMisplacedStems(List<BuildLogicScripts.ScriptTask> scripts, boolean workspaceRoot, Path logicDir) {
+        for (BuildLogicScripts.ScriptTask s : scripts) {
+            if (s.anchor().workspaceScoped() == workspaceRoot) continue;
+            String where = workspaceRoot ? "a workspace root" : "a module";
+            String use = workspaceRoot
+                    ? "after-build — the root has no compile or package step for the others to cut against"
+                    : "before-compile / after-compile / after-resources / before-package —"
+                            + " after-build is the workspace root's anchor";
+            throw new IllegalStateException("[build] " + logicDir.getFileName() + "/"
+                    + s.file().getFileName()
+                    + " is not a valid stem for "
+                    + where
+                    + ". Use "
+                    + use);
+        }
+    }
+
+    /**
      * Run build-logic scripts for {@code anchor} (or restore from action cache), merging outputs
      * into {@code classesDir}. Returns whether any logic is configured for this project (even if
      * this anchor has zero tasks).
@@ -82,8 +107,9 @@ public final class BuildLogicSupport {
         Logic c = cfg.get();
         rejectCompiledSources(c.dir());
         List<BuildLogicScripts.ScriptTask> scripts = BuildLogicScripts.discover(c.dir());
+        rejectMisplacedStems(scripts, anchor.workspaceScoped(), c.dir());
         if (scripts.isEmpty()) {
-            if (anchor == BuildLogicAnchor.AFTER_RESOURCES) {
+            if (anchor == BuildLogicAnchor.AFTER_RESOURCES || anchor == BuildLogicAnchor.AFTER_BUILD) {
                 label.accept("build-logic: no scripts in " + c.dir().getFileName());
             }
             return true;
@@ -132,6 +158,9 @@ public final class BuildLogicSupport {
         // packaged verbatim as a data file — and any .class it staged was deleted by javac's
         // full-compile sweep moments later.
         boolean generatesSources = anchor == BuildLogicAnchor.BEFORE_COMPILE;
+        // AFTER_BUILD runs at a workspace root, which has no classes tree — there is nothing to
+        // merge into and nothing downstream that would read it. Its outDir is its own output.
+        boolean mergesIntoClasses = !generatesSources && !anchor.workspaceScoped();
         for (RegisteredTask task : tasks) {
             String simple = task.name();
             Path outDir = generatesSources
@@ -152,7 +181,7 @@ public final class BuildLogicSupport {
                 Files.createDirectories(outDir);
                 if (actionCache.restore(hit.get(), outDir)) {
                     label.accept("build-logic:" + simple + ": cache hit");
-                    if (!generatesSources) mergeIntoClasses(outDir, classesDir);
+                    if (mergesIntoClasses) mergeIntoClasses(outDir, classesDir);
                     continue;
                 }
             }
@@ -171,7 +200,7 @@ public final class BuildLogicSupport {
                 throw new IllegalStateException("[build] logic task " + simple + " failed: " + e.getMessage(), e);
             }
             actionCache.store(taskId, key, Map.of(TaskNames.BUILD_LOGIC, key), outDir);
-            if (!generatesSources) mergeIntoClasses(outDir, classesDir);
+            if (mergesIntoClasses) mergeIntoClasses(outDir, classesDir);
         }
         return true;
     }

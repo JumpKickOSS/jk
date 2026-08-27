@@ -24,12 +24,31 @@ public enum BuildLogicAnchor {
      */
     AFTER_RESOURCES("compile"),
     /** Immediately before packaging the jar / image. Stage wire: {@code package}. */
-    BEFORE_PACKAGE("package");
+    BEFORE_PACKAGE("package"),
+
+    /**
+     * The workspace root's own anchor: after every member module has finished building. The only
+     * anchor a root may use, and one no member may use.
+     *
+     * <p>The four above are cuts relative to a compile that a sourceless root does not have —
+     * there is nothing for {@code before-compile} to be before. This one is defined by the
+     * workspace instead of by a stage, which is what a workspace-wide step or check actually
+     * wants: every member's sources and outputs are on disk when it runs.
+     *
+     * <p>Stage wire {@code package}: it is the last thing in the build, and the fold a user reads
+     * has no bucket further right.
+     */
+    AFTER_BUILD("package");
 
     private final String stageWire;
 
     BuildLogicAnchor(String stageWire) {
         this.stageWire = stageWire;
+    }
+
+    /** Whether this anchor belongs to the workspace root rather than to a module. */
+    public boolean workspaceScoped() {
+        return this == AFTER_BUILD;
     }
 
     /**

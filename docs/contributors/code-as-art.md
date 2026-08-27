@@ -703,9 +703,11 @@ homes are not symmetrical.
 | Re-runs | when a declared input changes | **every build** |
 | Reports | the first task to fail | every broken rule, in one message |
 
-`tools/gate` is a sourceless workspace member. It exists because a
-workspace-root aggregator does not run build logic, and a guard hung off a
-real module would only run when that module was in the build set.
+`tools/gate` is a sourceless workspace member, and it is on its way out. It
+exists because a workspace-root aggregator did not run build logic until
+JK-1058, and a guard hung off a real module would only run when that module
+was in the build set. The root's `after-build` anchor is the right home; the
+move is JK-1060.
 
 Its script writes **nothing** to `outDir`, and that is load-bearing rather
 than incidental: an empty output is never an action-cache hit, so the gate

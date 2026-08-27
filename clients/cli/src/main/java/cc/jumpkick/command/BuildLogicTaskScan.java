@@ -20,9 +20,14 @@ import java.util.stream.Stream;
  */
 final class BuildLogicTaskScan {
 
-    /** Mirrors engine {@code BuildLogicScripts} stems (keep in sync). */
+    /**
+     * Mirrors engine {@code BuildLogicScripts} stems (keep in sync). {@code after-build} is the
+     * workspace root's anchor; it is listed here because {@code jk tasks} must name every task the
+     * engine would run, and the scan cannot tell a root from a module without parsing the manifest
+     * — which is exactly what this offline path exists to avoid.
+     */
     private static final List<String> SCRIPT_STEMS =
-            List.of("before-compile", "after-compile", "after-resources", "before-package");
+            List.of("before-compile", "after-compile", "after-resources", "before-package", "after-build");
 
     private BuildLogicTaskScan() {}
 
