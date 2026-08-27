@@ -76,8 +76,11 @@ required-version  = "25.0.4"      # exact: 25.0.3, 25.1.0 and 26.0.2 all fail
 ```
 
 `suggested-*` is a record of what created the lock. It binds nothing but the major: a build on a
-newer JDK is fine, an older one is not. `required-*` is a pin the project asked for, and only an
-`=` in `jk.toml` writes one:
+newer JDK is fine, an older one is not — and because it is a record, `jk lock` leaves it as it
+found it. Re-locking on a machine with a different vendor does not rewrite what built the lock;
+only `jk update`, whose job is moving forward, refreshes it.
+
+`required-*` is a pin the project asked for, and only an `=` in `jk.toml` writes one:
 
 | jk.toml | lock |
 | --- | --- |
@@ -93,6 +96,11 @@ suggested one meaningless. Vendors are lower-cased short ids.
 Among installs that satisfy the pin, the hook prefers exact vendor+version, then the same vendor,
 then the newest. A `required-*` nothing satisfies means install, never settle: the shell hook
 exports nothing rather than hand over a JDK the build itself will refuse.
+
+A `suggested-*` nothing installed satisfies is different — it is only a floor, so jk falls
+through to whatever else is available (`JAVA_HOME`, `GRAALVM_HOME`, `PATH`) as long as that
+still clears the major. Nothing below the floor is accepted from any of them, and if nothing
+anywhere clears it, jk installs.
 
 Locks written before this shape (a bare `vendor` / `version` pair, schema `version = 1`) are
 rejected rather than guessed at — re-run `jk lock`.
