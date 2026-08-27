@@ -13,6 +13,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
@@ -259,11 +260,13 @@ final class AotCachePackage {
 
     /** {@code <target>/aot-cache} for a module, or null when there is none. */
     private static Path findCacheDir(Path projectDir) {
-        for (String rel : new String[] {"target/aot-cache", "build/aot-cache"}) {
-            Path p = projectDir.resolve(rel);
-            if (Files.isDirectory(p)) return p;
-        }
-        return null;
+        // jk's output directory is BuildLayout.TARGET; `build/` is Gradle's and can only appear in an
+        // imported tree. Probing it first on every successful build was a second ~100%-miss stat
+        // (JK-1042). One probe, then the legacy one only if the first misses.
+        Path primary = projectDir.resolve(BuildLayout.TARGET).resolve("aot-cache");
+        if (Files.isDirectory(primary)) return primary;
+        Path legacy = projectDir.resolve("build/aot-cache");
+        return Files.isDirectory(legacy) ? legacy : null;
     }
 
     /** The value of a {@code key = "value"} line, or empty. */

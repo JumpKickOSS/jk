@@ -91,8 +91,10 @@ public final class ExecPlans {
             if (!Files.exists(buildFile)) {
                 return ProjectInfo.error("no jk.toml in " + dir);
             }
+            // parse() is already applyWorkspace(dir, parseLocal(file)) — calling it again here walked
+            // for the root, re-parsed it and re-loaded every member a second time, per request
+            // (JK-1042).
             JkBuild build = JkBuildParser.parse(buildFile);
-            build = WorkspaceResolve.applyWorkspace(dir, build);
             build = applyLockModulePin(dir, build);
 
             String workspaceRootDir = "";
