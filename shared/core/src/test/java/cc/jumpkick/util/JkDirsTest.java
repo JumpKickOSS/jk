@@ -177,6 +177,46 @@ class JkDirsTest {
                 .isEqualTo(xdg.configDir().relativize(xdg.userConfigFilePath()));
     }
 
+    /**
+     * Provisioned build tools are artifacts, not cache. They lived under the cache root until the
+     * retention pass — which deletes every top-level cache entry its table does not name, and the
+     * table never named {@code tools} — started reclaiming an 83 MB Kotlin distribution an hour
+     * after it landed. The relationship, not the spelling, is what must not regress: the tools root
+     * is under the store and shares no prefix with the cache.
+     */
+    @Test
+    void provisioned_tools_live_under_the_store_and_never_under_the_cache() {
+        Map<String, String> env = Map.of("JK_HOME", "/opt/jk");
+        JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
+
+        assertThat(dirs.toolsDir()).isEqualTo(dirs.storeDir().resolve("tools"));
+        assertThat(dirs.toolsDir().startsWith(dirs.storeDir())).isTrue();
+        assertThat(dirs.toolsDir().startsWith(dirs.cacheDir()))
+                .as("the cache sweep reclaims unknown top-level entries; tools must be out of its reach")
+                .isFalse();
+    }
+
+    /**
+     * {@code JK_CACHE_DIR} isolates the action cache. It must not move a fetched distribution,
+     * which is the coupling that put seven Groovy jars and a Kotlin compiler inside the sweep's
+     * scope in the first place.
+     */
+    @Test
+    void jk_cache_dir_does_not_move_the_tools_root() {
+        JkDirs plain = JkDirs.of(Map.of("JK_HOME", "/opt/jk")::get, "/home/me", "Linux");
+        JkDirs relocated = JkDirs.of(
+                Map.of("JK_HOME", "/opt/jk", "JK_CACHE_DIR", "/tmp/isolated-cache")::get, "/home/me", "Linux");
+
+        assertThat(relocated.cacheDir()).isNotEqualTo(plain.cacheDir());
+        assertThat(relocated.toolsDir()).isEqualTo(plain.toolsDir());
+    }
+
+    @Test
+    void jk_store_dir_moves_the_tools_root() {
+        JkDirs dirs = JkDirs.of(Map.of("JK_STORE_DIR", "/srv/artifacts")::get, "/home/me", "Linux");
+        assertThat(dirs.toolsDir()).isEqualTo(Path.of("/srv/artifacts/tools"));
+    }
+
     @Test
     void jk_config_dir_wins_over_jk_home_config_segment() {
         Map<String, String> env = Map.of("JK_HOME", "/opt/jk", "JK_CONFIG_DIR", "/etc/jk-config");

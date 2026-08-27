@@ -71,6 +71,9 @@ public final class JkDirs {
     /** Cloned Giter8 catalog directory under {@link #storeDir()}. */
     public static final String TEMPLATES_DIR = "templates";
 
+    /** Provisioned build-tool distribution directory under {@link #storeDir()}. */
+    public static final String TOOLS_DIR = "tools";
+
     private final Function<String, String> env;
     private final String userHome;
     private final String osName;
@@ -133,6 +136,11 @@ public final class JkDirs {
     /** Cloned Giter8 catalogs: {@link #templatesDir()}. */
     public static Path templates() {
         return current().templatesDir();
+    }
+
+    /** Provisioned build-tool distributions: {@link #toolsDir()}. */
+    public static Path tools() {
+        return current().toolsDir();
     }
 
     public static Path state() {
@@ -235,6 +243,21 @@ public final class JkDirs {
      */
     public Path templatesDir() {
         return storeDir().resolve(TEMPLATES_DIR);
+    }
+
+    /**
+     * Provisioned build-tool distributions — Kotlin, Maven, Gradle, and the jars the Groovy
+     * build-logic host forks against. Always {@code <store>}/{@value #TOOLS_DIR}.
+     *
+     * <p>The <strong>store</strong>, not the cache, and the difference is not cosmetic. The cache
+     * holds rebuildable bytes and {@code CacheRetention} enforces that by deleting every top-level
+     * entry {@code CacheTree} does not name — a total table this directory was never in. An
+     * 83 MB Kotlin distribution therefore became residue an hour after it landed, and could be
+     * deleted while a build was using it. A fetched distribution is an artifact, and artifacts live
+     * beside {@code repos}, {@code templates} and the managed JDKs.
+     */
+    public Path toolsDir() {
+        return storeDir().resolve(TOOLS_DIR);
     }
 
     public Path stateDir() {

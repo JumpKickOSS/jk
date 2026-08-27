@@ -119,7 +119,7 @@ public final class CompileToolchain {
         // through the full plan guarantees we leave a symlink under
         // $JK_CACHE_DIR/tools/kotlin/<version>/ — subsequent invocations
         // don't depend on the env var still being set.
-        Path toolsRoot = JkDirs.cache().resolve("tools");
+        Path toolsRoot = JkDirs.tools();
         ToolRegistry registry = new ToolRegistry(toolsRoot);
         ToolDistribution dist;
         if (versionOverride == null || versionOverride.isBlank()) {

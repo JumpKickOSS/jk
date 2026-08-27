@@ -120,12 +120,16 @@ final class BuildLogicGroovyHost {
         };
     }
 
+    /**
+     * Where the forked Groovy's jars live: {@code <store>/tools/build-logic-groovy}.
+     *
+     * <p>Beside the other provisioned distributions, and for the same reason — {@link
+     * JkDirs#toolsDir()} states it. {@code JK_CACHE_DIR} is deliberately not read here: it selects
+     * the action cache, and these are fetched artifacts, so honouring it put seven jars somewhere
+     * the retention sweep reclaims.
+     */
     static Path toolCache() {
-        String override = System.getenv("JK_CACHE_DIR");
-        if (override != null && !override.isBlank()) {
-            return Path.of(override, "tools", "build-logic-groovy");
-        }
-        return JkDirs.current().cacheDir().resolve("tools").resolve("build-logic-groovy");
+        return JkDirs.tools().resolve("build-logic-groovy");
     }
 
     /**

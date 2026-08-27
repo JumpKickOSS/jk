@@ -64,7 +64,7 @@ public final class GradleCommand implements CliCommand {
         Path projectDir = directory != null
                 ? directory.toAbsolutePath().normalize()
                 : Path.of(".").toAbsolutePath().normalize();
-        Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
+        Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.tools();
 
         Path gradleBin = MvnCommand.provision(projectDir, toolsRoot, noDiscover, true);
         if (gradleBin == null) return 1;

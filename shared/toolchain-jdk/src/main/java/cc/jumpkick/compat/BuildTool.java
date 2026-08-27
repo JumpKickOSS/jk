@@ -21,7 +21,7 @@ public enum BuildTool {
         this.windowsBinary = windowsBinary;
     }
 
-    /** Directory name under {@code $JK_CACHE_DIR/tools/}. */
+    /** Directory name under the provisioned-tools root, {@code $JK_STORE_DIR/tools/}. */
     public String slug() {
         return slug;
     }

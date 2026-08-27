@@ -45,7 +45,7 @@ public final class DoctorCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the tools install root. Default: $JK_CACHE_DIR/tools.", "--tools-dir")
+                Opt.value("<dir>", "Override the tools install root. Default: $JK_STORE_DIR/tools.", "--tools-dir")
                         .hide(),
                 // Kept under HelpWidthTest's 78-column budget: 20 columns go to the indent and the
                 // flag itself, so this string has 58 to spend.
@@ -57,7 +57,7 @@ public final class DoctorCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         boolean verifyLinked = in.isSet("verify-linked");
-        Path root = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
+        Path root = toolsDir != null ? toolsDir : JkDirs.tools();
 
         // Collect checks first so JSON and human share the same facts. Tools are scanned (and
         // repaired — broken links unlinked, fingerprints written) exactly once, here, so
