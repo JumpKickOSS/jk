@@ -279,6 +279,25 @@ public final class ActionCache {
     }
 
     /**
+     * Record that an action <strong>succeeded and produced nothing</strong> — a verdict, not an
+     * artifact.
+     *
+     * <p>{@link #store} refuses exactly this shape, and rightly: a compile with sources that
+     * emitted zero classes must never become a hit that restores an empty tree. But a check is not
+     * a compile. It scans, it throws or it does not, and "these inputs are clean" is the whole
+     * result — the only thing worth remembering about it. Without a door for that, every such
+     * action re-runs on every build forever, and the caller's only alternative is to fabricate an
+     * output nobody reads.
+     *
+     * <p>Separate method rather than a flag on {@code store}, so the decision is visible at the
+     * call site: a caller reaching for this is asserting there is nothing to restore, which the
+     * output-dir walk cannot tell it.
+     */
+    public ActionRecord storeVerdict(String taskId, String actionKey, Map<String, String> inputs) throws IOException {
+        return storeWithOutputs(taskId, actionKey, inputs, Map.of());
+    }
+
+    /**
      * Write an action record using a pre-computed {@code outputs} map — used by callers that already
      * CAS'd the files via {@link CasPrewriter} (or anything else that hashed + copied while the
      * action was still running). Skips the output-dir walk; just writes the manifest and pointer.

@@ -21,7 +21,7 @@ plugins/protobuf 1
 plugins/quarkus 10
 plugins/spring-boot 1
 plugins/test-runner 1
-server/engine 87
+server/engine 86
 server/toolchain 2
 shared/client-io 15
 shared/core 16

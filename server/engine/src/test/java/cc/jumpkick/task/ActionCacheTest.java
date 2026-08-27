@@ -251,6 +251,32 @@ class ActionCacheTest {
         assertThat(cache.lastFor("compile-main")).isEmpty();
     }
 
+    /**
+     * A verdict is the one empty-output record that is legitimate, and it is reached by a different
+     * door. The refusal above exists so a compile that emitted zero classes cannot become a hit
+     * restoring an empty tree; a check that produced nothing has no tree to restore and its result
+     * is the absence itself. Both facts have to hold at once, so this asserts the pair — relaxing
+     * the refusal to make verdicts work would fail the test above, and routing verdicts through
+     * {@code store} would fail this one.
+     */
+    @Test
+    void a_verdict_is_recorded_where_an_empty_compile_is_refused(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Map<String, String> inputs = Map.of("build-logic", "some-key");
+
+        Path emptyOut = tempDir.resolve("empty-out");
+        Files.createDirectories(emptyOut);
+        cache.store("build-logic-check", "via-store", inputs, emptyOut);
+        assertThat(cache.lookup("via-store"))
+                .as("store still refuses an empty success — the compile rule is untouched")
+                .isEmpty();
+
+        cache.storeVerdict("build-logic-check", "via-verdict", inputs);
+        assertThat(cache.lookup("via-verdict")).isPresent();
+        assertThat(cache.lookup("via-verdict").orElseThrow().outputs()).isEmpty();
+    }
+
     @Test
     void restore_after_smaller_source_set_does_not_leave_stale_classes(@TempDir Path tempDir) throws IOException {
         // Invariant: variant / shrink source set — stale classes from prior output are wiped.

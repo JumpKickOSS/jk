@@ -404,6 +404,125 @@ class BuildLogicSupportTest {
         assertTrue(ex.getMessage().contains("before-compile"), ex.getMessage());
     }
 
+    /**
+     * A check produces nothing, and "these inputs are clean" is its whole result. Before JK-1059 an
+     * empty outDir meant no record at all, so such a script re-ran on every build forever — and the
+     * only way to get caching was to fabricate an output nobody reads.
+     */
+    @Test
+    void a_script_that_writes_nothing_caches_its_verdict(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Path ran = dir.resolve("ran.log");
+        Files.writeString(
+                project.resolve(".jk/after-resources.groovy"),
+                "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, s -> labels.append(s).append(';')));
+        assertEquals(1, Files.readString(ran).length(), "first build runs it");
+
+        labels.setLength(0);
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, s -> labels.append(s).append(';')));
+        assertEquals(1, Files.readString(ran).length(), "identical inputs must not re-run it");
+        assertTrue(labels.toString().contains("cache hit"), labels.toString());
+
+        // A test source is an input too: the anchor runs after MAIN compile, but the script can
+        // read the whole module, so the key covers the whole module.
+        Files.createDirectories(project.resolve("src/test/java/demo"));
+        Files.writeString(project.resolve("src/test/java/demo/AppTest.java"), "package demo; class AppTest {}\n");
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> {}));
+        assertEquals(2, Files.readString(ran).length(), "a changed test source re-runs it");
+
+        // …and so is the script itself.
+        Files.writeString(
+                project.resolve(".jk/after-resources.groovy"),
+                "new File('" + ran.toString().replace("\\", "\\\\") + "').append('y')\n");
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> {}));
+        assertEquals(3, Files.readString(ran).length(), "an edited script re-runs it");
+    }
+
+    /** Only success is a verdict. A red script must go red again, not replay its own failure. */
+    @Test
+    void a_failing_script_is_not_cached(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(project.resolve(".jk/after-resources.groovy"), "throw new IllegalStateException('nope')\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        for (int i = 0; i < 2; i++) {
+            assertThrows(
+                    IllegalStateException.class, () -> BuildLogicSupport.run(project, layout, ac, classes, s -> {}));
+        }
+    }
+
+    /**
+     * A workspace-root check reads every member, so its key has to as well. Keying it on the root
+     * directory alone would replay a stale verdict the moment any member changed.
+     */
+    @Test
+    void a_root_script_re_runs_when_any_member_changes(@TempDir Path dir) throws Exception {
+        Path root = dir.resolve("ws");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = ["core"]
+                """);
+        Files.createDirectories(root.resolve("core/src/main/java/demo"));
+        Files.writeString(root.resolve("core/jk.toml"), """
+                group = "t"
+                name = "core"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(root.resolve("core/src/main/java/demo/A.java"), "package demo; class A {}\n");
+        Path ran = dir.resolve("root-ran.log");
+        Files.writeString(
+                root.resolve(".jk/after-build.groovy"),
+                "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+        assertEquals(1, Files.readString(ran).length());
+
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+        assertEquals(1, Files.readString(ran).length(), "a no-op workspace must not re-run the root script");
+
+        Files.writeString(root.resolve("core/src/main/java/demo/A.java"), "package demo; class A { int x; }\n");
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+        assertEquals(2, Files.readString(ran).length(), "a changed member must re-run the root script");
+
+        // A workspace is more than the union of its members' source roots. The check that motivated
+        // this reads baselines and build scripts at the root, none of which belongs to any member.
+        Files.writeString(root.resolve("some-baseline.txt"), "42\n");
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+        assertEquals(3, Files.readString(ran).length(), "a changed non-member file must re-run it too");
+
+        // …but build output must not, or the key would be a function of its own result.
+        Files.createDirectories(root.resolve("target/core"));
+        Files.writeString(root.resolve("target/core/A.class"), "bytes\n");
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+        assertEquals(3, Files.readString(ran).length(), "target/ is output, not input");
+    }
+
     private static Path scaffold(Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));

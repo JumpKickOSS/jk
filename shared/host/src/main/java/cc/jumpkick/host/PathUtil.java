@@ -87,8 +87,30 @@ public final class PathUtil {
      * non-regular file and is skipped, for the reason G37 gives about deletes.
      */
     public static void forEachRegularFile(Path root, FileVisit visit) throws IOException {
+        forEachRegularFile(root, dir -> false, visit);
+    }
+
+    /**
+     * As {@link #forEachRegularFile(Path, FileVisit)}, skipping any directory {@code skipDirectory}
+     * accepts — subtree and all.
+     *
+     * <p>Pruning belongs here rather than in the caller for the reason the unpruned overload exists
+     * at all: the alternative is a hand-rolled {@code walkFileTree} at every site that needs to
+     * miss {@code .git} or a build output tree, and each of those decides afresh whether it also
+     * discards the attributes the walk already read. The predicate sees the directory itself, so it
+     * can match on name or on position.
+     */
+    public static void forEachRegularFile(Path root, Predicate<Path> skipDirectory, FileVisit visit)
+            throws IOException {
         if (!Files.isDirectory(root)) return;
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return !dir.equals(root) && skipDirectory.test(dir)
+                        ? FileVisitResult.SKIP_SUBTREE
+                        : FileVisitResult.CONTINUE;
+            }
+
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (attrs.isRegularFile()) visit.accept(file, attrs);

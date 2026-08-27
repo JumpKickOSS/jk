@@ -14,6 +14,7 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.FileHashMemo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -147,7 +149,11 @@ public final class BuildLogicSupport {
 
         List<String> inputTokens = inputTokensRef.get();
         if (inputTokens == null) {
-            inputTokens = projectInputTokens(projectDir);
+            // The key must cover everything the script can read, and the two scopes read different
+            // things: a module script sees its own module, a root script sees the whole workspace.
+            // Keying a workspace-wide check on one directory's inputs would replay a stale verdict
+            // the moment any other module changed.
+            inputTokens = anchor.workspaceScoped() ? workspaceInputTokens(projectDir) : projectInputTokens(projectDir);
             inputTokensRef.compareAndSet(null, inputTokens);
             inputTokens = inputTokensRef.get();
         }
@@ -176,7 +182,16 @@ public final class BuildLogicSupport {
             boolean useCache = !SessionContext.current().config().forceOr(false)
                     && !SessionContext.current().config().rebuildOr(false);
             Optional<ActionCache.ActionRecord> hit = useCache ? actionCache.lookup(key) : Optional.empty();
-            if (hit.isPresent() && !hit.get().outputs().isEmpty()) {
+            if (hit.isPresent()) {
+                // A record with no outputs is a VERDICT, not a miss: the script ran on these exact
+                // inputs and produced nothing, which is the whole result of a check. Skipping it is
+                // the point — before this, "writes nothing" meant "runs on every build forever".
+                if (hit.get().outputs().isEmpty()) {
+                    deleteContents(outDir);
+                    Files.createDirectories(outDir);
+                    label.accept("build-logic:" + simple + ": cache hit");
+                    continue;
+                }
                 deleteContents(outDir);
                 Files.createDirectories(outDir);
                 if (actionCache.restore(hit.get(), outDir)) {
@@ -199,7 +214,14 @@ public final class BuildLogicSupport {
                 if (e instanceof IOException ioe) throw ioe;
                 throw new IllegalStateException("[build] logic task " + simple + " failed: " + e.getMessage(), e);
             }
-            actionCache.store(taskId, key, Map.of(TaskNames.BUILD_LOGIC, key), outDir);
+            // Only a success is recorded: the throw above leaves this line unreached, so a failing
+            // script is re-run next build rather than replaying its own red.
+            Map<String, String> inputs = Map.of(TaskNames.BUILD_LOGIC, key);
+            if (isEmptyDir(outDir)) {
+                actionCache.storeVerdict(taskId, key, inputs);
+            } else {
+                actionCache.store(taskId, key, inputs, outDir);
+            }
             if (mergesIntoClasses) mergeIntoClasses(outDir, classesDir);
         }
         return true;
@@ -314,14 +336,66 @@ public final class BuildLogicSupport {
         return tokens;
     }
 
-    /** Path+content tokens for one tree, relative to {@code base}; missing trees contribute none. */
+    /**
+     * Directories a workspace-wide key must not descend into: build outputs, VCS metadata, and
+     * tool state. Everything here is either derived from the inputs being hashed — so including it
+     * would make the key a function of its own result — or churn no script is reading.
+     */
+    private static final Set<String> WORKSPACE_KEY_SKIP =
+            Set.of(BuildLayout.TARGET, "build", ".git", ".gradle", ".idea", "node_modules");
+
+    /**
+     * What a workspace-root script can read, as cache-key tokens: <strong>every file in the
+     * checkout</strong> except build output and VCS metadata.
+     *
+     * <p>Not "every member's source roots", which was the first shape and was wrong. A root check
+     * reads the workspace, and a workspace is more than the union of its modules' {@code src}
+     * trees: the gate that motivated this reads {@code size-baseline.txt}, {@code
+     * code-as-art.md}, {@code settings.gradle.kts} and every module's {@code build.gradle.kts},
+     * none of which belongs to any member's fingerprint. A key that missed them would go on
+     * replaying a green verdict after the very file the check reads had changed.
+     *
+     * <p>So the rule is the same one {@link #projectInputTokens} follows, applied at the scope that
+     * actually matches the reach: a script declares no inputs, so the key covers everything it
+     * could consume. Hashes come from {@link FileHashMemo}, so the steady-state cost is one stat
+     * per file rather than a re-read.
+     */
+    private static List<String> workspaceInputTokens(Path rootDir) throws IOException {
+        Path root = rootDir.toAbsolutePath().normalize();
+        List<String> tokens = new ArrayList<>();
+        PathUtil.forEachRegularFile(
+                root, dir -> WORKSPACE_KEY_SKIP.contains(dir.getFileName().toString()), (file, attrs) -> {
+                    Path abs = file.toAbsolutePath().normalize();
+                    tokens.add("ws:" + root.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
+                });
+        Collections.sort(tokens);
+        return tokens;
+    }
+
+    /**
+     * Path+content tokens for one tree, relative to {@code base}; missing trees contribute none.
+     *
+     * <p>Through {@link PathUtil#forEachRegularFile} and {@link FileHashMemo}, not a raw walk and a
+     * fresh digest: this runs over every source file of every module on a workspace build, and
+     * re-reading bytes whose stat identity has not moved is the whole cost of deciding that nothing
+     * changed.
+     */
     private static void hashTree(Path base, Path dir, String prefix, List<String> out) throws IOException {
-        if (!Files.isDirectory(dir)) return;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            for (Path f : walk.filter(Files::isRegularFile).toList()) {
-                out.add(prefix + ":" + base.relativize(f) + ":" + Hashing.sha256Hex(Files.readAllBytes(f)));
-            }
-        }
+        Path root = dir.toAbsolutePath().normalize();
+        if (!Files.isDirectory(root)) return;
+        Path from = base.toAbsolutePath().normalize();
+        PathUtil.forEachRegularFile(root, (file, attrs) -> {
+            Path abs = file.toAbsolutePath().normalize();
+            out.add(prefix + ":" + from.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
+        });
+    }
+
+    /** True when {@code dir} holds no regular file at any depth. */
+    private static boolean isEmptyDir(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return true;
+        boolean[] seen = {false};
+        PathUtil.forEachRegularFile(dir, (file, attrs) -> seen[0] = true);
+        return !seen[0];
     }
 
     /**
