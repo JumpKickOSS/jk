@@ -9,7 +9,7 @@
 # directories, some want a depth limit, some want ordering -- so this ships as a ratchet
 # rather than a ban, which makes the rule monotonic today instead of unwinnable.
 
-clients/cli 16
+clients/cli 15
 plugins/android 10
 plugins/formatter 2
 plugins/groovy-compiler 1
