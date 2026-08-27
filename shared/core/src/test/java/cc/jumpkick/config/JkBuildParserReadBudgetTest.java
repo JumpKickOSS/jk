@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.model.Scope;
-import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -87,7 +87,8 @@ class JkBuildParserReadBudgetTest {
         // root and every member, so resolving all N modules used to read O(N^2) manifests. With the
         // stamp cheap, each distinct file is read once no matter how many times it is visited.
         int members = 10;
-        StringBuilder rootToml = new StringBuilder("group = \"g\"\nversion = \"1.0\"\nname = \"root\"\n[workspace]\nmodules = [");
+        StringBuilder rootToml =
+                new StringBuilder("group = \"g\"\nversion = \"1.0\"\nname = \"root\"\n[workspace]\nmodules = [");
         for (int i = 0; i < members; i++) {
             rootToml.append(i > 0 ? ", " : "").append('"').append("m").append(i).append('"');
         }
@@ -96,7 +97,8 @@ class JkBuildParserReadBudgetTest {
         for (int i = 0; i < members; i++) {
             Path md = dir.resolve("m" + i);
             Files.createDirectories(md);
-            settledFile(md.resolve("jk.toml"), "name = \"m" + i + "\"\ngroup.workspace = true\nversion.workspace = true\n");
+            settledFile(
+                    md.resolve("jk.toml"), "name = \"m" + i + "\"\ngroup.workspace = true\nversion.workspace = true\n");
         }
 
         JkBuildParser.resetStats();
@@ -126,7 +128,8 @@ class JkBuildParserReadBudgetTest {
         // workspace once. The read budget was fixed in JK-1028; this pins the *request* count, which
         // is the metadata half (JK-1046).
         int members = 12;
-        StringBuilder rootToml = new StringBuilder("group = \"g\"\nversion = \"1.0\"\nname = \"root\"\n[workspace]\nmodules = [");
+        StringBuilder rootToml =
+                new StringBuilder("group = \"g\"\nversion = \"1.0\"\nname = \"root\"\n[workspace]\nmodules = [");
         for (int i = 0; i < members; i++) {
             rootToml.append(i > 0 ? ", " : "").append('"').append("m").append(i).append('"');
         }
@@ -135,7 +138,8 @@ class JkBuildParserReadBudgetTest {
         for (int i = 0; i < members; i++) {
             Path md = dir.resolve("m" + i);
             Files.createDirectories(md);
-            settledFile(md.resolve("jk.toml"), "name = \"m" + i + "\"\ngroup.workspace = true\nversion.workspace = true\n");
+            settledFile(
+                    md.resolve("jk.toml"), "name = \"m" + i + "\"\ngroup.workspace = true\nversion.workspace = true\n");
         }
 
         JkBuildParser.resetStats();

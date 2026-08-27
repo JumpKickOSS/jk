@@ -30,7 +30,8 @@ class LockManifestDigestBudgetTest {
     @Test
     void an_unchanged_workspace_is_read_once_however_many_callers_ask(@TempDir Path dir) throws IOException {
         int members = 8;
-        StringBuilder root = new StringBuilder("group = \"g\"\nversion = \"1\"\nname = \"root\"\n[workspace]\nmodules = [");
+        StringBuilder root =
+                new StringBuilder("group = \"g\"\nversion = \"1\"\nname = \"root\"\n[workspace]\nmodules = [");
         for (int i = 0; i < members; i++) {
             root.append(i > 0 ? ", " : "").append('"').append("m").append(i).append('"');
         }
@@ -49,15 +50,21 @@ class LockManifestDigestBudgetTest {
             assertThat(LockManifestDigest.compute(dir)).isEqualTo(first);
         }
 
-        assertThat(afterFirst).as("the first computation reads the root plus each member").isEqualTo(members + 1L);
+        assertThat(afterFirst)
+                .as("the first computation reads the root plus each member")
+                .isEqualTo(members + 1L);
         assertThat(LockManifestDigest.manifestReads())
-                .as("30 further callers must add no reads; they added %d", LockManifestDigest.manifestReads() - afterFirst)
+                .as(
+                        "30 further callers must add no reads; they added %d",
+                        LockManifestDigest.manifestReads() - afterFirst)
                 .isEqualTo(afterFirst);
     }
 
     @Test
     void a_member_edit_is_still_seen(@TempDir Path dir) throws IOException {
-        aged(dir.resolve("jk.toml"), "group = \"g\"\nversion = \"1\"\nname = \"root\"\n[workspace]\nmodules = [\"m\"]\n");
+        aged(
+                dir.resolve("jk.toml"),
+                "group = \"g\"\nversion = \"1\"\nname = \"root\"\n[workspace]\nmodules = [\"m\"]\n");
         Path member = dir.resolve("m");
         Files.createDirectories(member);
         aged(member.resolve("jk.toml"), "name = \"m\"\ngroup.workspace = true\nversion.workspace = true\n");

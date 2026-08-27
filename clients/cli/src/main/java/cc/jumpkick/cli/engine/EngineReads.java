@@ -293,7 +293,7 @@ final class EngineReads {
                                 SessionContext.current().clientEnv(),
                                 SessionContext.current().jvm(),
                                 SessionContext.current().config().rebuildOr(false),
-                            TimelineOpts.noTimeline()),
+                                TimelineOpts.noTimeline()),
                         SessionContext.current().jdkSpec(),
                         SessionContext.current().graalSpec(),
                         SessionContext.current().graalHome() == null
@@ -359,18 +359,18 @@ final class EngineReads {
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
                                 ProtoReads.execPlanRequest(
-                                dir.toString(),
-                                cache.toString(),
-                                kind,
-                                mainOverride,
-                                binName,
-                                binDir == null ? null : binDir.toString(),
-                                libDir == null ? null : libDir.toString()),
+                                        dir.toString(),
+                                        cache.toString(),
+                                        kind,
+                                        mainOverride,
+                                        binName,
+                                        binDir == null ? null : binDir.toString(),
+                                        libDir == null ? null : libDir.toString()),
                                 SessionContext.current().variant(),
                                 SessionContext.current().clientEnv(),
                                 SessionContext.current().jvm(),
                                 SessionContext.current().config().rebuildOr(false),
-                            TimelineOpts.noTimeline()),
+                                TimelineOpts.noTimeline()),
                         SessionContext.current().jdkSpec(),
                         SessionContext.current().graalSpec(),
                         SessionContext.current().graalHome() == null

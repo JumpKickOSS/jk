@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config.testing;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,7 +57,7 @@ public final class SessionBoundary implements TestExecutionListener {
 
     private final List<BoundedGlobal> globals = ServiceLoader.load(BoundedGlobal.class).stream()
             .map(ServiceLoader.Provider::get)
-            .sorted(java.util.Comparator.comparing(BoundedGlobal::name))
+            .sorted(Comparator.comparing(BoundedGlobal::name))
             .toList();
 
     /** Keyed by unique id so nesting works: a container's snapshot outlives the tests inside it. */
@@ -129,9 +132,9 @@ public final class SessionBoundary implements TestExecutionListener {
      */
     private static void report(String text) {
         try {
-            java.nio.file.Path f = java.nio.file.Path.of("build", "reports", "jk-global-boundary.txt");
-            java.nio.file.Files.createDirectories(f.getParent());
-            java.nio.file.Files.writeString(f, text);
+            Path f = Path.of("build", "reports", "jk-global-boundary.txt");
+            Files.createDirectories(f.getParent());
+            Files.writeString(f, text);
         } catch (Exception ignored) {
             // A report that cannot be written is not a reason to disturb a green suite.
         }
@@ -156,7 +159,8 @@ public final class SessionBoundary implements TestExecutionListener {
 
     private static String display(TestIdentifier id) {
         return id.getSource()
-                .map(s -> s instanceof MethodSource m ? m.getClassName() + "." + m.getMethodName() + "()"
+                .map(s -> s instanceof MethodSource m
+                        ? m.getClassName() + "." + m.getMethodName() + "()"
                         : (s instanceof ClassSource c ? c.getClassName() : id.getDisplayName()))
                 .orElse(id.getDisplayName());
     }

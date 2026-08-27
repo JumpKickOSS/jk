@@ -12,13 +12,11 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,8 +31,7 @@ public final class PluginTemplates {
      * plugin jar as a zip filesystem and parsing each {@code .jk-template.toml} on every picker /
      * resolve call is engine-request-path work that only changes when a jar does.
      */
-    private static final StampedMemo<Path, StampedMemo.FileStamp, List<TemplateSpec>> SCAN_CACHE =
-            StampedMemo.create();
+    private static final StampedMemo<Path, StampedMemo.FileStamp, List<TemplateSpec>> SCAN_CACHE = StampedMemo.create();
 
     /** Every plugin-bundled template as a picker row ({@code root} unset until materialize). */
     public static List<TemplateSpec> list() {

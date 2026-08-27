@@ -743,8 +743,8 @@ public final class EffortWeights {
             }
             boolean ktRun = false;
             if (useKotlin) {
-                List<Path> src =
-                        SourceRefs.get(shared.kotlin(), () -> PlannerCompile.mainKotlinSources(project, in.dir(), compact));
+                List<Path> src = SourceRefs.get(
+                        shared.kotlin(), () -> PlannerCompile.mainKotlinSources(project, in.dir(), compact));
                 ktRun = rerun || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, src);
                 compileKotlin = ktRun
                         ? learned(
@@ -760,8 +760,8 @@ public final class EffortWeights {
             if (useGroovy) {
                 // The groovy stamp lives in the merged classes dir — that is where
                 // write-stamp-groovy writes it (stamp-only freshness, like Kotlin's).
-                List<Path> src =
-                        SourceRefs.get(shared.groovy(), () -> PlannerCompile.mainGroovySources(project, in.dir(), compact));
+                List<Path> src = SourceRefs.get(
+                        shared.groovy(), () -> PlannerCompile.mainGroovySources(project, in.dir(), compact));
                 gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, src);
                 compileGroovy = gvRun
                         ? learned(

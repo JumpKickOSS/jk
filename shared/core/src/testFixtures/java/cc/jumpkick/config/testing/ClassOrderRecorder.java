@@ -3,6 +3,7 @@ package cc.jumpkick.config.testing;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.platform.engine.TestExecutionResult;
@@ -53,11 +54,10 @@ public final class ClassOrderRecorder implements TestExecutionListener {
             // not survive: Gradle runs each test plan in its own classloader, so the flag reset and
             // every plan truncated, leaving 14 of 155 classes. The pid is stable across those
             // classloaders; the directory goes away with build/.
-            Path f = Path.of("build", "reports", "class-order",
-                    ProcessHandle.current().pid() + ".txt");
+            Path f = Path.of(
+                    "build", "reports", "class-order", ProcessHandle.current().pid() + ".txt");
             Files.createDirectories(f.getParent());
-            Files.writeString(f, String.join("\n", order) + "\n",
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            Files.writeString(f, String.join("\n", order) + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (Exception ignored) {
             // A missing record is not a reason to disturb a green suite.
         }

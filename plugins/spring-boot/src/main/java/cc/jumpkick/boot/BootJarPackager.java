@@ -25,7 +25,6 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
-import java.util.stream.Stream;
 
 /**
  * Packages a Spring Boot executable jar ({@code JarLauncher} layout: loader, {@code

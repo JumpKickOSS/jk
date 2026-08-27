@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.task.IoLedger;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.task.IoLedger;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -67,7 +67,9 @@ class RequestScopeTest {
             assertThat(v).isEqualTo("value");
         }
         assertThat(computed.get()).isEqualTo(5);
-        assertThat(RequestScope.current().size()).as("nothing is retained off a request").isZero();
+        assertThat(RequestScope.current().size())
+                .as("nothing is retained off a request")
+                .isZero();
     }
 
     @Test

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.host.PathUtil;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
@@ -11,6 +8,9 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -539,7 +539,8 @@ public final class PlannerNative {
         var buildEnv = BuildEnv.forModule(projectDir);
         Path fromRequest = SessionContext.current().graalHome();
         if (fromRequest != null
-                && cc.jumpkick.tool.NativeImageDriver.resolve(fromRequest, buildEnv).isPresent()) {
+                && cc.jumpkick.tool.NativeImageDriver.resolve(fromRequest, buildEnv)
+                        .isPresent()) {
             return fromRequest;
         }
         try {

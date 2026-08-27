@@ -71,7 +71,8 @@ class PathUtilWalkTest {
         }
 
         List<String> seen = new ArrayList<>();
-        PathUtil.forEachRegularFile(root, (file, attrs) -> seen.add(file.getFileName().toString()));
+        PathUtil.forEachRegularFile(
+                root, (file, attrs) -> seen.add(file.getFileName().toString()));
 
         assertThat(seen).containsExactly("real.txt");
     }

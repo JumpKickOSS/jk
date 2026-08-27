@@ -90,8 +90,9 @@ class JUnitPinParityTest {
                 .as("fixture manifests pinning the JUnit train — a regex that finds none would pass vacuously")
                 .isGreaterThanOrEqualTo(20);
         assertThat(wrong)
-                .as("every fixture pin must be %s, the version jk-lock.toml resolved. Bump the lock"
-                        + " deliberately and carry the fixtures with it; do not hand-edit one pin.%n%s",
+                .as(
+                        "every fixture pin must be %s, the version jk-lock.toml resolved. Bump the lock"
+                                + " deliberately and carry the fixtures with it; do not hand-edit one pin.%n%s",
                         expected, String.join("\n", wrong))
                 .isEmpty();
     }

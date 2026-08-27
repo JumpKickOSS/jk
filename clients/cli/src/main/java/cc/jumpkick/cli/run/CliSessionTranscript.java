@@ -226,7 +226,6 @@ public final class CliSessionTranscript {
         return "unknown:unknown";
     }
 
-
     public CliSessionTranscript modules(Iterable<String> coords) {
         if (coords == null) return this;
         for (String c : coords) {
