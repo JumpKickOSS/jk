@@ -42,8 +42,9 @@ dependencies {
 // when the guard landed and is deleted when its versions reconcile — a NEW mismatch fails
 // naming coordinate and both versions, and a listed entry that no longer mismatches fails until
 // it is removed. Self-fails when either file parses to an implausibly small table.
-// Measured 2026-08-25: 33 catalog libraries, 230 lock artifacts, 29 shared modules,
-// 12 mismatched (the list below); the two openrewrite entries reconciled 2026-08-26.
+// Measured 2026-08-26: 34 catalog libraries, 202 lock artifacts, 28 shared modules,
+// 12 mismatched (the list below). The OpenRewrite pair left when the lock stopped resolving a
+// tree the manifests no longer declare (8a0abe45) — no longer shared, so no longer drift.
 //
 // jkParityCatalog exists for the guard's own revert check: it points the scan at a scratch copy
 // of the catalog so a deliberately skewed version can be seen to fail without mutating the real
@@ -99,8 +100,8 @@ val checkCatalogLockParity by tasks.registering {
                 }
         if (catalog.size < 25 || lock.size < 180) {
             throw GradleException("The catalog↔lock parity guard parsed ${catalog.size} catalog"
-                    + " libraries and ${lock.size} lock artifacts; it was measured against 33 and"
-                    + " 230. A regex has stopped seeing its file — fix it before trusting a green"
+                    + " libraries and ${lock.size} lock artifacts; it was measured against 34 and"
+                    + " 202. A regex has stopped seeing its file — fix it before trusting a green"
                     + " run.")
         }
         val mismatches = catalog.filterKeys { it in lock }.filter { (module, v) -> v !in lock.getValue(module) }

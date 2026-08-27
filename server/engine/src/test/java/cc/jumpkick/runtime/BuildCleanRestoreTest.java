@@ -52,7 +52,7 @@ class BuildCleanRestoreTest {
             # junit-jupiter "latest" out of the graph and the launcher pin keeps the lock
             # deterministic (see KotlinSerializationTest).
             [test-dependencies]
-            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
 
             """ + REPOS;
 
@@ -131,8 +131,8 @@ class BuildCleanRestoreTest {
                 java    = 25
 
                 [test-dependencies]
-                junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+                junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
 
                 """ + REPOS);
         Path src = Files.createDirectories(project.resolve("src/com/example"));

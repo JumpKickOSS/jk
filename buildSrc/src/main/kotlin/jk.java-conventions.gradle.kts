@@ -222,7 +222,17 @@ fun slowTier(tierName: String, budget: Duration, describe: String) {
 slowTier(
         TestTiers.INTEGRATION,
         Duration.ofMinutes(45),
-        "Integration/slow tests (@Tag integration|slow). Part of checkAll, not of check.")
+        "Integration tests (@Tag integration). Part of checkAll, not of check.")
+
+// @Tag("slow") is off the gate as of JK-1023. It was 426s of integrationTest's 1419s — 30% of the
+// merge bar for 28 tests, 15s each — and what it asserts (does an Android / Grails / Scala / KSP /
+// Protobuf project still build end to end) moves when a plugin or a toolchain does, not when the
+// change under review does. Nightly is where a suite like that belongs; the tag already meant this
+// before the table routed it anywhere else.
+slowTier(
+        TestTiers.SLOW,
+        Duration.ofMinutes(30),
+        "Framework/language e2e suites (@Tag slow). Nightly and on demand — never in checkAll.")
 
 // @Tag("network") used to be excluded by `test` and re-included by nothing, so the only class
 // carrying it reached the gate through its second tag (`slow`) — which meant the documented

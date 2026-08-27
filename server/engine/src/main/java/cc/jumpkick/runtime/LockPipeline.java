@@ -269,8 +269,14 @@ public final class LockPipeline {
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
         lock = withToolPins(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
+        // graal() is non-null exactly when [native].graal is set or [native] turns native-image on,
+        // which is what "the project asked for Graal" means (JK-1020).
         lock = ToolchainLockStamp.apply(
-                lock, javaHome, jdkRegistry, pathPrep.project().project().jdkMajor());
+                lock,
+                javaHome,
+                jdkRegistry,
+                pathPrep.project().project().jdkMajor(),
+                pathPrep.project().graal() != null);
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);
             System.err.println("jk: " + ResolveProfile.report());

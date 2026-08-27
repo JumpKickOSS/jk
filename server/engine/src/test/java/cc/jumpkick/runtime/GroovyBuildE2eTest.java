@@ -36,7 +36,7 @@ class GroovyBuildE2eTest {
             # junit-jupiter "latest" out of the graph and the launcher pin keeps the lock
             # deterministic (see KotlinSerializationTest).
             [test-dependencies]
-            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
             """;
 
     @Test

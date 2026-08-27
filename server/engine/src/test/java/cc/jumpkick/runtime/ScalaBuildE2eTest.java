@@ -26,7 +26,7 @@ class ScalaBuildE2eTest {
 
             [test-dependencies]
             junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "latest" }
-            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
             """;
 
     @Test
