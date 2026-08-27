@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,35 +42,36 @@ public final class CasSweep {
         record Victim(Path file, String hex, long size) {}
         ArrayList<Victim> victims = new ArrayList<>();
         Set<String> deletedShas = new HashSet<>();
-        try (Stream<Path> stream = Files.walk(shaRoot)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                // Skip atomic-write tempfiles (covered by step 1 of prune).
-                String name = file.getFileName().toString();
-                if (name.startsWith(".put-")) continue;
+        // One walk, and the attributes come with each entry: mtime and size used to be two more
+        // stats per blob on top of the isRegularFile the walk had already answered — four where one
+        // serves, over every object in the CAS (JK-1031).
+        int[] keptCount = {0};
+        PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
+            // Skip atomic-write tempfiles (covered by step 1 of prune).
+            String name = file.getFileName().toString();
+            if (name.startsWith(".put-")) return;
 
-                var hexOpt = cas.hashFromPath(file);
-                if (hexOpt.isEmpty()) {
-                    // File in sha256/ that doesn't fit the layout — leave
-                    // it alone, it isn't our garbage to collect.
-                    continue;
-                }
-                String hex = hexOpt.get();
-
-                if (liveRefs.contains(hex)) {
-                    kept++;
-                    continue;
-                }
-
-                long mtime = Files.getLastModifiedTime(file).toMillis();
-                if (mtime > sweepStartMillis) continue; // concurrent write
-                if (sweepStartMillis - mtime < minAgeMillis) continue; // grace period
-
-                long size = Files.size(file);
-                victims.add(new Victim(file, hex, size));
-                deletedShas.add(hex);
+            var hexOpt = cas.hashFromPath(file);
+            if (hexOpt.isEmpty()) {
+                // File in sha256/ that doesn't fit the layout — leave
+                // it alone, it isn't our garbage to collect.
+                return;
             }
-        }
+            String hex = hexOpt.get();
+
+            if (liveRefs.contains(hex)) {
+                keptCount[0]++;
+                return;
+            }
+
+            long mtime = attrs.lastModifiedTime().toMillis();
+            if (mtime > sweepStartMillis) return; // concurrent write
+            if (sweepStartMillis - mtime < minAgeMillis) return; // grace period
+
+            victims.add(new Victim(file, hex, attrs.size()));
+            deletedShas.add(hex);
+        });
+        kept = keptCount[0];
         long freedBytes = 0;
         if (!dryRun) {
             for (Victim v : victims) {

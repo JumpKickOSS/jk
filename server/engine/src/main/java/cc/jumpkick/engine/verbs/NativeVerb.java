@@ -162,11 +162,10 @@ public final class NativeVerb implements HostedVerb {
     }
 
     private static @org.jspecify.annotations.Nullable Path graalHome() {
-        // Request env, then this process's — never the daemon's alone (JK-1021).
-        String g = BuildEnv.ambient().apply("GRAALVM_HOME");
-        if (g == null || g.isBlank()) return null;
-        Path p = Path.of(g);
-        return Files.isDirectory(p) ? p : null;
+        // The request's, carried as a typed field. A getenv here would be the daemon's environment,
+        // i.e. whichever shell started the engine (JK-1021, JK-1039).
+        Path p = SessionContext.current().graalHome();
+        return p != null && Files.isDirectory(p) ? p : null;
     }
 
     @Override

@@ -9,7 +9,6 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.task.CachePruneScheduler;
-import cc.jumpkick.task.FormatStamps;
 import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.Objects;
@@ -340,7 +339,6 @@ public record CacheSnapshot(
                 // Zinc analysis is budgeted apart from the action index: own bar, own denominator.
                 .put("incrementalMaxBytes", incrementalMaxBytes)
                 // Count-cap for the stamp tree — web shows % of the cap used, never GiB.
-                .put("formatStampsMax", FormatStamps.maxFiles())
                 // The cache root as one tree — `jk status`'s "Size on Disk", and what a nuke
                 // frees. Not the sum of the section fields above, and not the store.
                 .put("totalCount", totalCount)

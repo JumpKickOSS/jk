@@ -220,7 +220,9 @@ public final class ProjectBuilds {
             }
         }
         if (next < 1) next = 1;
-        AtomicWrites.replace(f, Long.toString(next) + "\n");
+        // Durable, and the sharpest case for it: a lost increment lets a later run delete a completed
+        // run tree, which is the hazard the flock around this exists for (JK-1037).
+        AtomicWrites.replaceDurably(f, Long.toString(next) + "\n");
         return next;
     }
 

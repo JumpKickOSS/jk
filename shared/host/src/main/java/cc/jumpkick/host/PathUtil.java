@@ -8,7 +8,16 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /** Shared filesystem helpers. */
 public final class PathUtil {
@@ -57,6 +66,220 @@ public final class PathUtil {
         }
         return Path.of(home).toAbsolutePath().normalize();
     }
+
+    /**
+     * Visit every regular file under {@code root}, with the attributes the walk already read.
+     *
+     * <p><strong>The</strong> tree walk. The tree asked <b>1,194</b> metadata predicates
+     * ({@code exists} / {@code isRegularFile} / {@code isDirectory}) against <b>17</b>
+     * {@code readAttributes} — seventy narrow questions for every time it asked once for the whole
+     * answer — and had <b>5</b> attribute-carrying walks against <b>233</b> blind ones. On Windows a
+     * raw walk is actually <em>cheaper</em> than on Linux, because {@code FindNextFileW} returns each
+     * entry's attributes with the entry; what costs is throwing them away and re-resolving the path
+     * to ask again, at 10.3&nbsp;µs a time against 1.0 on ext4 (JK-1031).
+     *
+     * <p>{@code walkFileTree} hands {@code visitFile} those attributes for free. So a caller that
+     * needs size, mtime, or regular-file-ness gets them without a syscall, and
+     * {@code walk(…).filter(Files::isRegularFile)} — which JK-1002 named, fixed in seven hot walkers,
+     * and which had regrown to 72 sites — stops being the obvious spelling.
+     *
+     * <p>Symlinks are not followed. {@code walkFileTree}'s default is no-follow, so a link arrives as a
+     * non-regular file and is skipped, for the reason G37 gives about deletes.
+     */
+    public static void forEachRegularFile(Path root, FileVisit visit) throws IOException {
+        if (!Files.isDirectory(root)) return;
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (attrs.isRegularFile()) visit.accept(file, attrs);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                // A file that vanished mid-walk, or one this process cannot stat, is not a reason to
+                // abandon the tree — the callers this replaces all used Files.walk, which skips.
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /** What {@link #forEachRegularFile} hands each file: the path, and the attributes already read. */
+    @FunctionalInterface
+    public interface FileVisit {
+        void accept(Path file, BasicFileAttributes attrs) throws IOException;
+    }
+
+    /**
+     * {@code path}'s attributes, or empty when it does not exist or cannot be read.
+     *
+     * <p>Replaces the {@code exists}-then-{@code isRegularFile}-then-{@code size}-then-mtime chains:
+     * one {@code readAttributes} answers all four, and a missing file is a value rather than an
+     * exception. On Windows each predicate it replaces re-resolves the path from scratch.
+     */
+    public static Optional<BasicFileAttributes> stat(Path path) {
+        try {
+            return Optional.of(Files.readAttributes(path, BasicFileAttributes.class));
+        } catch (IOException absent) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Copy the tree at {@code from} onto {@code to}.
+     *
+     * <p><strong>The</strong> tree copy. Twelve callers hand-rolled this, at three levels of
+     * sophistication, and all twelve shared the same three defects: a {@code createDirectories} per
+     * <em>file</em> rather than per directory, no byte-identity check, and the walk's attributes
+     * thrown away so {@code isDirectory}/{@code isRegularFile} re-stat what the walk already knew.
+     * The most sophisticated of them used {@code walkFileTree} and correctly created directories in
+     * {@code preVisitDirectory} — and then still called {@code createDirectories(dest.getParent())}
+     * per file, which its own {@code preVisitDirectory} had already guaranteed. When the best
+     * hand-rolled copy in a tree still has the bug, the argument for one owner is finished (JK-1032).
+     *
+     * <p><strong>A byte-identical target is left alone</strong>, and that is a correctness property
+     * before it is a saving. {@code Files.copy} is the most expensive operation jk measures — 305.2 µs
+     * on Windows against 12.8 on Linux — but the reason {@code ActionCache.restoreArtifacts} already
+     * did this is sharper: re-copying bumps the file's mtime, {@code FreshnessStamp} compares
+     * classpath entries by mtime, and so re-copying an unchanged tree invalidated every downstream
+     * stamp and forced a full KSP round on every single build. Ten of the twelve copies could do that.
+     *
+     * <p>Symbolic links are not followed and not recreated. {@code walkFileTree}'s default is
+     * no-follow, so a link arrives here as a non-regular file and is skipped — deliberately, for the
+     * reason G37 gives about deletes: a copy that follows a link writes into somebody else's tree.
+     */
+    public static void copyTree(Path from, Path to, Copy... options) throws IOException {
+        copyTree(from, to, dir -> false, options);
+    }
+
+    /**
+     * As {@link #copyTree(Path, Path, Copy...)}, skipping any directory {@code skipSubtree} accepts.
+     *
+     * <p>For the plugin-scratch convention ({@code .jk-*}), which two packagers need to keep out of a
+     * staged layout. A predicate rather than a baked-in rule: {@code :host} has no business knowing
+     * what a plugin's scratch directory is called.
+     */
+    public static void copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options)
+            throws IOException {
+        if (!Files.isDirectory(from)) return;
+        Set<Copy> opts = options.length == 0 ? Set.of() : EnumSet.copyOf(Arrays.asList(options));
+        if (opts.contains(Copy.CLEAN_TARGET)) deleteRecursivelyOrThrow(to);
+        boolean always = opts.contains(Copy.OVERWRITE_ALWAYS);
+        boolean preserve = opts.contains(Copy.PRESERVE_ATTRIBUTES);
+        Files.walkFileTree(from, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (!dir.equals(from) && skipSubtree.test(dir)) return FileVisitResult.SKIP_SUBTREE;
+                // Here, and only here: every file below has its parent by the time it is visited.
+                Files.createDirectories(to.resolve(from.relativize(dir).toString()));
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE; // links, devices, sockets
+                Path target = to.resolve(from.relativize(file).toString());
+                if (!always && identical(target, attrs)) return FileVisitResult.CONTINUE;
+                if (preserve) {
+                    Files.copy(
+                            file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /** Whether {@code target} already has the source's size and modification time. */
+    private static boolean identical(Path target, BasicFileAttributes source) {
+        try {
+            BasicFileAttributes t = Files.readAttributes(target, BasicFileAttributes.class);
+            return t.isRegularFile()
+                    && t.size() == source.size()
+                    && t.lastModifiedTime().equals(source.lastModifiedTime());
+        } catch (IOException absent) {
+            return false;
+        }
+    }
+
+    /** Options for {@link #copyTree}. The default is: keep extras, skip identical, replace differing. */
+    public enum Copy {
+        /** Delete {@code to} before copying, so the result is exactly {@code from}. */
+        CLEAN_TARGET,
+
+        /**
+         * Copy every file even when the target already matches. For a caller that needs the mtime
+         * bumped — staging that is about to be stamped, say — rather than preserved.
+         */
+        OVERWRITE_ALWAYS,
+
+        /**
+         * Carry each file's timestamps across ({@code COPY_ATTRIBUTES}).
+         *
+         * <p>For a copy whose point is that the <em>relationship</em> between two files' mtimes
+         * survives — a scratch checkout where {@code jk.toml} must still look older than
+         * {@code jk-lock.toml}, so freshness behaves as it did in the original tree.
+         */
+        PRESERVE_ATTRIBUTES
+    }
+
+    /**
+     * Whether {@code file} is something this host can execute.
+     *
+     * <p><strong>Not {@link Files#isExecutable}.</strong> That is the most expensive filesystem
+     * predicate jk uses — measured at 33.4&nbsp;µs on Windows against 0.52 on Linux, a
+     * <strong>64×</strong> gap — because the JDK implements EXECUTE access there as a
+     * security-descriptor read plus an {@code AccessCheck}. Windows has no executable bit; what
+     * decides whether a file runs is its extension, so the access check answers an expensive
+     * question nobody asked. Thirteen call sites paid it, two of them per entry of a directory
+     * listing (JK-1030).
+     *
+     * <p>So: on Windows, a regular file whose extension is in {@code PATHEXT} (defaulted when the
+     * variable is unset or empty, which it is inside a stripped service environment). Elsewhere the
+     * real access check, which is cheap and is the only correct answer.
+     *
+     * <p>Callers probing a <em>named</em> tool should still test the name themselves and reach here
+     * last; this collapses one predicate, it does not reorder a caller's chain.
+     */
+    public static boolean isRunnable(Path file) {
+        if (!Os.isWindows()) return Files.isExecutable(file);
+        if (!Files.isRegularFile(file)) return false;
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        if (dot < 0) return false; // no extension: Windows will not run it
+        String ext = name.substring(dot).toLowerCase(Locale.ROOT);
+        for (String candidate : windowsExecutableExtensions()) {
+            if (candidate.equals(ext)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * {@code PATHEXT}, lowercased and split, or the Windows default set when it is unset or blank.
+     * Read once — {@code PATHEXT} cannot change inside one invocation, and thirteen callers probing
+     * three names each over a fifty-entry {@code PATH} re-read it 150 times.
+     */
+    private static List<String> windowsExecutableExtensions() {
+        List<String> memo = pathExt;
+        if (memo != null) return memo;
+        String raw = System.getenv("PATHEXT");
+        List<String> parsed = new ArrayList<>();
+        if (raw != null && !raw.isBlank()) {
+            for (String part : raw.split(";")) {
+                String t = part.trim().toLowerCase(Locale.ROOT);
+                if (!t.isEmpty()) parsed.add(t.startsWith(".") ? t : "." + t);
+            }
+        }
+        if (parsed.isEmpty()) {
+            parsed = List.of(".com", ".exe", ".bat", ".cmd", ".vbs", ".js", ".ws", ".msc", ".ps1");
+        }
+        pathExt = List.copyOf(parsed);
+        return pathExt;
+    }
+
+    /** Memoized {@code PATHEXT}; see {@link #windowsExecutableExtensions()}. */
+    private static volatile List<String> pathExt;
 
     /**
      * Best-effort recursive delete. Swallows every I/O failure; a null or absent root is a no-op.

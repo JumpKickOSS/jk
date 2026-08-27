@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.JkDirs;
@@ -32,9 +33,8 @@ public final class PluginTemplates {
      * plugin jar as a zip filesystem and parsing each {@code .jk-template.toml} on every picker /
      * resolve call is engine-request-path work that only changes when a jar does.
      */
-    private static final ConcurrentHashMap<Path, JarScan> SCAN_CACHE = new ConcurrentHashMap<>();
-
-    private record JarScan(long size, FileTime modified, List<TemplateSpec> specs) {}
+    private static final StampedMemo<Path, StampedMemo.FileStamp, List<TemplateSpec>> SCAN_CACHE =
+            StampedMemo.create();
 
     /** Every plugin-bundled template as a picker row ({@code root} unset until materialize). */
     public static List<TemplateSpec> list() {
@@ -49,21 +49,12 @@ public final class PluginTemplates {
     }
 
     private static List<TemplateSpec> scanJarCached(String pluginId, Path jar) {
-        long size;
-        FileTime modified;
-        try {
-            size = Files.size(jar);
-            modified = Files.getLastModifiedTime(jar);
-        } catch (IOException unstatable) {
-            return scanJar(pluginId, jar);
-        }
-        JarScan hit = SCAN_CACHE.get(jar);
-        if (hit != null && hit.size() == size && hit.modified().equals(modified)) {
-            return hit.specs();
-        }
-        List<TemplateSpec> specs = List.copyOf(scanJar(pluginId, jar));
-        SCAN_CACHE.put(jar, new JarScan(size, modified, specs));
-        return specs;
+        // One readAttributes via FileStamp, not size-then-mtime: the pair used to be two syscalls per
+        // plugin jar on every picker and resolve call (JK-1048).
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(jar);
+        if (stamp == null) return scanJar(pluginId, jar); // unstatable — scan without memoizing
+        List<TemplateSpec> hit = SCAN_CACHE.get(jar.toAbsolutePath().normalize(), stamp, () -> scanJar(pluginId, jar));
+        return hit == null ? List.of() : hit;
     }
 
     static List<TemplateSpec> scanJar(String pluginId, Path jar) {

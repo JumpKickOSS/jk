@@ -10,6 +10,7 @@ import cc.jumpkick.compile.JavacRunner;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.WorkspaceResolve;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
@@ -204,17 +205,6 @@ public final class LocalProjectBuilder {
 
     /** Copy a source tree into {@code dest}; no-op if absent. */
     private static void copyTree(Path src, Path dest) throws IOException {
-        if (!Files.isDirectory(src)) return;
-        try (var stream = Files.walk(src)) {
-            for (Path p : stream.sorted(Comparator.naturalOrder()).toList()) {
-                Path target = dest.resolve(src.relativize(p).toString());
-                if (Files.isDirectory(p)) {
-                    Files.createDirectories(target);
-                } else {
-                    Files.createDirectories(target.getParent());
-                    Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(src, dest);
     }
 }

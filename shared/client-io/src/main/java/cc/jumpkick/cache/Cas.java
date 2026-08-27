@@ -184,11 +184,15 @@ public final class Cas {
         }
         Files.createDirectories(target.getParent());
         Path tmp = Files.createTempFile(target.getParent(), ".put-", ".tmp");
+        // Cleanup on the failure path only: moveInto consumed tmp on success, so a finally unlink
+        // is a guaranteed miss once per blob (JK-1029).
+        boolean moved = false;
         try {
             Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
             AtomicWrites.moveInto(tmp, target);
+            moved = true;
         } finally {
-            Files.deleteIfExists(tmp);
+            if (!moved) Files.deleteIfExists(tmp);
         }
         return target;
     }

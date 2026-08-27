@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.image.ImageConfig;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
@@ -423,9 +424,8 @@ public final class ImageBuilder {
         var layer = FileEntriesLayer.builder().setName("classes");
         AbsoluteUnixPath target = AbsoluteUnixPath.get("/app/classes");
         List<Path> files = new ArrayList<>();
-        try (var stream = Files.walk(classesDir)) {
-            stream.filter(Files::isRegularFile).forEach(files::add);
-        }
+        // // Attributes from the walk instead of a stat per entry (JK-1041 via JK-1031's owner).
+        PathUtil.forEachRegularFile(classesDir, (file, attrs) -> files.add(file));
         files.sort(Comparator.comparing(p -> classesDir.relativize(p).toString()));
         for (Path file : files) {
             String rel = classesDir.relativize(file).toString().replace(File.separatorChar, '/');

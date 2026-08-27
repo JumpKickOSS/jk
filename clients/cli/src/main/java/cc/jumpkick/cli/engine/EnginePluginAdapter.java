@@ -96,7 +96,10 @@ final class EnginePluginAdapter {
                                 session.jvm(),
                                 session.config().rebuildOr(false)),
                         SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec()));
+                        SessionContext.current().graalSpec(),
+                        SessionContext.current().graalHome() == null
+                                ? null
+                                : SessionContext.current().graalHome().toString()));
 
             return WireStream.pumpJob(reader, ch, new WireStream.Decoder<HostedFinish>() {
                 private final List<Task> steps = new ArrayList<>();
@@ -166,7 +169,10 @@ final class EnginePluginAdapter {
                                 session.jvm(),
                                 session.config().rebuildOr(false)),
                         SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec()));
+                        SessionContext.current().graalSpec(),
+                        SessionContext.current().graalHome() == null
+                                ? null
+                                : SessionContext.current().graalHome().toString()));
 
             return WireStream.pumpJob(reader, ch, (type, line) -> switch (type) {
                 case EngineProtocol.PROVISION_RESULT ->

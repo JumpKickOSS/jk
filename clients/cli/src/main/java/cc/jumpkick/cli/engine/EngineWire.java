@@ -56,8 +56,16 @@ public final class EngineWire {
      * when this returns, however it returns.
      */
     static <T> T stream(EnginePaths.Paths paths, String requestLine, Reply<T> reply) throws IOException {
-        EngineSpawn.ensure(paths, Jk.VERSION);
-        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
+        SocketChannel opened;
+        try {
+            opened = connect(ensuredSocket(paths));
+        } catch (IOException stale) {
+            // The remembered endpoint did not answer: the engine died, was replaced, or the socket
+            // moved. Forget it and take the full ensure path once — which may spawn.
+            ENSURED = null;
+            opened = connect(ensuredSocket(paths));
+        }
+        try (SocketChannel ch = opened) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = protocolReader(ch);
@@ -66,6 +74,41 @@ public final class EngineWire {
             writer.flush();
             return reply.read(reader, ch);
         }
+    }
+
+    /**
+     * The engine endpoint this process has already ensured, if any.
+     *
+     * <p>Every RPC used to run a full {@code ensure} — which opens a connection, completes a
+     * {@code hello}/{@code hello-ack} exchange with its own watchdog thread, closes it, and
+     * <strong>discards the handshake</strong> — and then open a second connection to send the
+     * request. {@code jk build} issues three or four RPCs, so that was six to eight connects, six to
+     * eight endpoint-file reads and three to four wasted round trips per invocation, on a native
+     * binary with no JIT to amortise any of it. On Windows each connect additionally reads the port
+     * file and the token file (JK-1042).
+     *
+     * <p>Ensuring once per process is safe because the thing it establishes — that a live,
+     * version-matched engine is listening here — is exactly what a failed connect disproves. So the
+     * memo is only ever wrong in the direction the next connect catches, and {@code stream} retries
+     * through the full path when that happens.
+     */
+    private static volatile Ensured ENSURED;
+
+    private record Ensured(EnginePaths.Paths paths, Path socket) {}
+
+    /** The socket for {@code paths}, ensuring a live engine the first time this process asks. */
+    private static Path ensuredSocket(EnginePaths.Paths paths) throws IOException {
+        Ensured hit = ENSURED;
+        if (hit != null && hit.paths().equals(paths)) return hit.socket();
+        EngineSpawn.ensure(paths, Jk.VERSION);
+        Path socket = EnginePaths.activeSocket(paths);
+        ENSURED = new Ensured(paths, socket);
+        return socket;
+    }
+
+    /** Test seam: forget the ensured endpoint, so the next RPC re-probes. */
+    static void forgetEnsured() {
+        ENSURED = null;
     }
 
     /**

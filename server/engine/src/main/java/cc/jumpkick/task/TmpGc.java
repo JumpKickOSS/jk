@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,16 +37,15 @@ public final class TmpGc {
 
         List<Path> doomed = new ArrayList<>();
         long total = 0;
-        try (Stream<Path> stream = Files.walk(tmpDir)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                long mtime = Files.getLastModifiedTime(file).toMillis();
-                if (mtime < cutoff) {
-                    doomed.add(file);
-                    total += Files.size(file);
-                }
+        // Attributes from the walk: mtime and size were two extra stats per file (JK-1031).
+        long[] bytes = {0};
+        PathUtil.forEachRegularFile(tmpDir, (file, attrs) -> {
+            if (attrs.lastModifiedTime().toMillis() < cutoff) {
+                doomed.add(file);
+                bytes[0] += attrs.size();
             }
-        }
+        });
+        total = bytes[0];
         if (!dryRun) {
             for (Path file : doomed) Files.deleteIfExists(file);
         }

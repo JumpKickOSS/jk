@@ -9,6 +9,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
@@ -279,7 +280,7 @@ public final class TrainRunner {
     private static Path javaBinary(Path javaHome) {
         if (javaHome != null) {
             Path j = JdkFingerprint.java(javaHome);
-            if (Files.isExecutable(j)) return j;
+            if (PathUtil.isRunnable(j)) return j;
         }
         return JdkFingerprint.java(JavaHomes.runningJavaHome());
     }
@@ -450,16 +451,6 @@ public final class TrainRunner {
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        deleteRecursively(to);
-        try (var walk = Files.walk(from)) {
-            for (Path p : walk.toList()) {
-                Path target = to.resolve(from.relativize(p).toString());
-                if (Files.isDirectory(p)) Files.createDirectories(target);
-                else {
-                    Files.createDirectories(target.getParent());
-                    Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to, PathUtil.Copy.CLEAN_TARGET, PathUtil.Copy.OVERWRITE_ALWAYS);
     }
 }

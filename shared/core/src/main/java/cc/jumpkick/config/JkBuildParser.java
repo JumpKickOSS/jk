@@ -19,9 +19,12 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -29,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -43,22 +48,107 @@ public final class JkBuildParser {
     private JkBuildParser() {}
 
     /**
-     * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by absolute path. The stamp is the
-     * file's bytes — size+mtime is too coarse on Windows (same-length edits in one tick served the
-     * previous parse). One entry per file, replaced in place so a long {@code jk watch} cannot grow
-     * without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied by
-     * {@link #parse(Path)} on top so it always sees a fresh root.
+     * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by absolute path and stamped by
+     * {@link ManifestStamp}. One entry per file, replaced in place so a long {@code jk watch} cannot
+     * grow without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied
+     * by {@link #parse(Path)} on top so it always sees a fresh root.
+     *
+     * <p><strong>The stamp used to be the file's bytes</strong>, which meant the memo could save the
+     * tomlj parse but never the read — {@code Files.readString} ran before every lookup, hit or miss.
+     * That is most of why a read-only {@code jk status} on a 31-module workspace read <b>379 MB</b>
+     * in 260,971 read syscalls against 30 KB of manifest on disk: {@code parse} fans out over every
+     * sibling, so the same handful of files were re-read thousands of times (JK-1028).
      */
-    private static final StampedMemo<Path, String, JkBuild> PARSE_CACHE = StampedMemo.create();
+    private static final StampedMemo<Path, ManifestStamp, JkBuild> PARSE_CACHE = StampedMemo.create();
 
     /**
-     * Memo of {@link #document(Path)}, keyed by absolute path and stamped with the file's bytes —
+     * Memo of {@link #document(Path)}, keyed by absolute path and stamped by {@link ManifestStamp} —
      * the same staleness rule as {@link #PARSE_CACHE}, for the same reason. Holds the TOML document
      * rather than the {@link JkBuild}, so the single-table entry points below ({@code [deny]},
      * {@code [train]}, {@code [image]}, {@code [test]} tags, {@code [jvm]}) share one disk read and
      * one {@link Interpolation#guard} with the full parse instead of each doing their own.
      */
-    private static final StampedMemo<Path, String, TomlParseResult> DOC_CACHE = StampedMemo.create();
+    private static final StampedMemo<Path, ManifestStamp, TomlParseResult> DOC_CACHE = StampedMemo.create();
+
+    /**
+     * Two-tier staleness stamp for a manifest: {@code (size, mtime)} normally, plus the file's bytes
+     * while its mtime is too fresh to trust.
+     *
+     * <p>The bytes are not gratuitous. A same-length edit landing inside one filesystem mtime tick is
+     * invisible to {@code (size, mtime)}, and on Windows the tick is coarse enough that an editor
+     * save followed immediately by a build hits it — that hazard is why this memo was stamped on
+     * bytes in the first place. But it only exists for a file written moments ago, so the read only
+     * has to happen for one. Outside {@link #SETTLE_MS} the stamp is one {@code readAttributes} and
+     * the read is skipped entirely.
+     *
+     * <p>Crossing the window changes the stamp shape for the same file, so the first lookup after a
+     * manifest settles recomputes once. That is one extra parse, in the safe direction: the rule can
+     * only ever be too suspicious, never too trusting.
+     *
+     * <p>Same reasoning, same constant, as {@code FileHashMemo}'s settle gate on the engine side.
+     *
+     * @param body the file's contents while its mtime is inside the settle window, else {@code null}
+     */
+    private record ManifestStamp(long size, FileTime modified, @Nullable String body) {
+
+        /** Distrust {@code (size, mtime)} for a file modified within this window. */
+        private static final long SETTLE_MS = 2_000;
+
+        static ManifestStamp of(Path file, ByteSource read) throws IOException {
+            BasicFileAttributes attrs;
+            try {
+                attrs = Files.readAttributes(file, BasicFileAttributes.class);
+            } catch (NoSuchFileException e) {
+                throw new JkBuildParseException("jk.toml not found: " + file);
+            }
+            long mtime = attrs.lastModifiedTime().toMillis();
+            boolean settled = System.currentTimeMillis() - mtime >= SETTLE_MS;
+            return new ManifestStamp(
+                    attrs.size(), attrs.lastModifiedTime(), settled ? null : read.read(file));
+        }
+    }
+
+    /** Reads a manifest's text; separate so {@link ManifestStamp} can stay IO-policy-free. */
+    private interface ByteSource {
+        String read(Path file) throws IOException;
+    }
+
+    /**
+     * Test seams: how often a manifest was asked for, and how often that cost a read.
+     *
+     * <p>The ratio is the property JK-1028 is about, and it is not observable any other way — a
+     * memo that returns the right answer while re-reading the file every time passes every
+     * correctness test there is. {@code FileHashMemo} exports the same pair for the same reason.
+     */
+    private static final AtomicLong PARSE_REQUESTS = new AtomicLong();
+
+    private static final AtomicLong MANIFEST_READS = new AtomicLong();
+
+    /** Manifest parses requested since process start (or the last {@link #resetStats()}). */
+    public static long parseRequests() {
+        return PARSE_REQUESTS.get();
+    }
+
+    /** Requests that had to read the file's bytes. */
+    public static long manifestReads() {
+        return MANIFEST_READS.get();
+    }
+
+    /** Test seam. */
+    public static void resetStats() {
+        PARSE_REQUESTS.set(0);
+        MANIFEST_READS.set(0);
+    }
+
+    /** {@code Files.readString}, with the absent-file message every entry point shares. */
+    private static String readManifest(Path file) throws IOException {
+        MANIFEST_READS.incrementAndGet();
+        try {
+            return Files.readString(file);
+        } catch (NoSuchFileException e) {
+            throw new JkBuildParseException("jk.toml not found: " + file);
+        }
+    }
 
     /**
      * Parse {@code jk.toml} and resolve workspace inheritance / sibling placeholders for the module
@@ -80,24 +170,31 @@ public final class JkBuildParser {
      */
     public static JkBuild parseLocal(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
-        String body;
-        try {
-            body = Files.readString(file);
-        } catch (NoSuchFileException e) {
-            throw new JkBuildParseException("jk.toml not found: " + file);
-        }
         Path key = file.toAbsolutePath().normalize();
-        return PARSE_CACHE.get(key, body, () -> {
-            TomlParseResult root = document(key, body);
-            Path moduleDir = key.getParent();
-            LibraryCatalog catalog;
-            try {
-                catalog = LibraryCatalog.forProject(moduleDir);
-            } catch (IllegalStateException e) {
-                throw new JkBuildParseException(e.getMessage(), e);
-            }
-            return build(root, catalog, moduleDir);
-        });
+        PARSE_REQUESTS.incrementAndGet();
+        ManifestStamp stamp = ManifestStamp.of(key, JkBuildParser::readManifest);
+        try {
+            return PARSE_CACHE.get(key, stamp, () -> {
+                try {
+                    // The stamp already holds the bytes when the file is unsettled; otherwise this is
+                    // the one read, on the miss that needs it.
+                    String body = stamp.body() != null ? stamp.body() : readManifest(key);
+                    TomlParseResult root = document(key, stamp, body);
+                    Path moduleDir = key.getParent();
+                    LibraryCatalog catalog;
+                    try {
+                        catalog = LibraryCatalog.forProject(moduleDir);
+                    } catch (IllegalStateException e) {
+                        throw new JkBuildParseException(e.getMessage(), e);
+                    }
+                    return build(root, catalog, moduleDir);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
     }
 
     /**
@@ -112,17 +209,28 @@ public final class JkBuildParser {
      */
     static TomlParseResult document(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
-        String body;
+        Path key = file.toAbsolutePath().normalize();
+        ManifestStamp stamp = ManifestStamp.of(key, JkBuildParser::readManifest);
         try {
-            body = Files.readString(file);
-        } catch (NoSuchFileException e) {
-            throw new JkBuildParseException("jk.toml not found: " + file);
+            return document(key, stamp, null);
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
         }
-        return document(file.toAbsolutePath().normalize(), body);
     }
 
-    private static TomlParseResult document(Path key, String body) {
-        return DOC_CACHE.get(key, body, () -> document(body));
+    /**
+     * The memoized document for {@code key} at {@code stamp}. {@code body} is the text when a caller
+     * already holds it; {@code null} means read it here, and only on a miss.
+     */
+    private static TomlParseResult document(Path key, ManifestStamp stamp, @Nullable String body) {
+        return DOC_CACHE.get(key, stamp, () -> {
+            try {
+                String text = body != null ? body : stamp.body() != null ? stamp.body() : readManifest(key);
+                return document(text);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
     }
 
     /** As {@link #document(Path)} for text with no file behind it (string parses, tests). */

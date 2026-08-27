@@ -70,7 +70,7 @@ final class AabPackager {
      * bundletool's only answer to a wrong one is a rejected bundle at upload time.
      */
     static void assembleBase(PackageIo io, Path protoPackage, Path dexDir, Path baseZip) throws Exception {
-        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(baseZip));
+        try (ZipOutputStream zip = new ZipOutputStream(DeterministicZip.archiveStream(baseZip));
                 ZipFile in = new ZipFile(protoPackage.toFile())) {
             Enumeration<? extends ZipEntry> entries = in.entries();
             while (entries.hasMoreElements()) {

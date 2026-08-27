@@ -266,9 +266,11 @@ final class MinifiedJarPackager {
         }
         int kept = 0;
         try (Stream<Path> walk = Files.walk(classesDir)) {
-            List<Path> classes = walk.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(".class"))
+            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
+            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            List<Path> classes = walk.filter(p -> p.getFileName().toString().endsWith(".class"))
                     .filter(p -> !p.getFileName().toString().equals("module-info.class"))
+                    .filter(Files::isRegularFile)
                     .sorted(Comparator.naturalOrder())
                     .toList();
             // Relative paths present in the tree (for outer-class peer checks).
@@ -320,7 +322,7 @@ final class MinifiedJarPackager {
      */
     // Package-private for MinifiedJarPackagerTest.
     static void zipClasses(Path classesDir, Path jar) throws IOException {
-        try (OutputStream out = Files.newOutputStream(jar);
+        try (OutputStream out = DeterministicZip.archiveStream(jar);
                 JarOutputStream jos = new JarOutputStream(out);
                 Stream<Path> walk = Files.walk(classesDir)) {
             List<Path> files = walk.filter(Files::isRegularFile)
@@ -351,7 +353,7 @@ final class MinifiedJarPackager {
             manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
         }
         try (JarFile in = new JarFile(shrunk.toFile());
-                OutputStream out = Files.newOutputStream(artifact);
+                OutputStream out = DeterministicZip.archiveStream(artifact);
                 JarOutputStream jos = new JarOutputStream(out)) {
             Set<String> dirs = new HashSet<>();
             ZIP.writeParentDirs(jos, JarFile.MANIFEST_NAME, dirs);

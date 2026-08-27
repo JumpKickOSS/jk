@@ -38,6 +38,15 @@ public record Session(
         PluginTuning jvm,
         @Nullable String jdkSpec,
         @Nullable String graalSpec,
+        /**
+         * The caller's {@code GRAALVM_HOME}, when they set one.
+         *
+         * <p>A home path, not a spec, which is why it cannot ride {@link #graalSpec}. It carries here
+         * for the reason the specs do: the engine is a daemon, so a {@code System.getenv} inside it
+         * answers from whichever shell started it, and a resident engine was picking the Graal that
+         * shell knew about rather than the one the caller named (JK-1039).
+         */
+        @Nullable Path graalHome,
         @With boolean parallelTests,
         @With CancelToken cancel,
         // Variant selection + client-resolved env (env: indirection for signing secrets).
@@ -73,6 +82,7 @@ public record Session(
                 jvm,
                 jdkSpec,
                 graalSpec,
+                graalHome,
                 parallelTests,
                 cancel,
                 variant,
@@ -140,6 +150,7 @@ public record Session(
                 PluginTuning.NONE,
                 null,
                 null,
+                null,
                 false,
                 CancelToken.live(),
                 "",
@@ -159,6 +170,7 @@ public record Session(
                 jvm,
                 jdkSpec,
                 graalSpec,
+                graalHome,
                 parallelTests,
                 cancel,
                 variant,
@@ -178,6 +190,7 @@ public record Session(
                 tuning == null ? PluginTuning.NONE : tuning,
                 jdkSpec,
                 graalSpec,
+                graalHome,
                 parallelTests,
                 cancel,
                 variant,
@@ -187,8 +200,12 @@ public record Session(
                 io);
     }
 
-    /** The top-tier JDK / GraalVM selection ({@code --jdk} / {@code --graal}); blanks normalize to null. */
-    public Session withToolchainSpecs(String jdk, String graal) {
+    /**
+     * The request's toolchain selection: {@code --jdk} / {@code --graal} (with the {@code JK_JDK} /
+     * {@code JK_GRAAL} spellings folded in by the client), plus the caller's {@code GRAALVM_HOME}.
+     * Blanks normalize to null.
+     */
+    public Session withToolchainSpecs(String jdk, String graal, @Nullable Path graalHome) {
         return new Session(
                 config,
                 workingDir,
@@ -197,6 +214,7 @@ public record Session(
                 jvm,
                 blankToNull(jdk),
                 blankToNull(graal),
+                graalHome,
                 parallelTests,
                 cancel,
                 variant,

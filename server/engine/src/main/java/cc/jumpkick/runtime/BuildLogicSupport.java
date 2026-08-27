@@ -11,6 +11,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
@@ -727,16 +728,7 @@ public final class BuildLogicSupport {
     }
 
     private static void mergeIntoClasses(Path generated, Path classesDir) throws IOException {
-        if (!Files.isDirectory(generated)) return;
-        Files.createDirectories(classesDir);
-        try (Stream<Path> s = Files.walk(generated)) {
-            for (Path file : (Iterable<Path>) s::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                Path dest = classesDir.resolve(generated.relativize(file).toString());
-                Files.createDirectories(dest.getParent());
-                Files.copy(file, dest, StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
+        PathUtil.copyTree(generated, classesDir);
     }
 
     private static void deleteContents(Path dir) throws IOException {

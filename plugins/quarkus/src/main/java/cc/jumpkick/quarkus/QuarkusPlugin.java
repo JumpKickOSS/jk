@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.build.BuildContext;
@@ -236,6 +237,10 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             return direct;
         }
         try (Stream<Path> walk = Files.walk(root, 5)) {
+            // Cheapest rejection first: the name test is free, isRegularFile re-resolves the path for
+            // a stat, and the sibling-directory probe is a second stat — so the name goes first and
+            // the two stats only run for the handful of entries actually called quarkus-run.jar
+            // (JK-1030).
             return walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
                     .filter(Files::isRegularFile)
                     .filter(p -> Files.isDirectory(p.getParent().resolve("lib")))
@@ -250,8 +255,10 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path staged = root.resolve("quarkus-uber.jar");
         if (Files.isRegularFile(staged)) return staged;
         try (Stream<Path> walk = Files.walk(root, 5)) {
-            return walk.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith("-runner.jar"))
+            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
+            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            return walk.filter(p -> p.getFileName().toString().endsWith("-runner.jar"))
+                    .filter(Files::isRegularFile)
                     .findFirst()
                     .orElse(null);
         }
@@ -289,24 +296,9 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        Files.walkFileTree(from, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                // Skip nested bootstrap/maven scratch dirs if present under the layout root.
-                String name = dir.getFileName() != null ? dir.getFileName().toString() : "";
-                if (name.startsWith(".jk-")) return FileVisitResult.SKIP_SUBTREE;
-                Files.createDirectories(to.resolve(from.relativize(dir).toString()));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Path dest = to.resolve(from.relativize(file).toString());
-                Files.createDirectories(dest.getParent());
-                Files.copy(file, dest, StandardCopyOption.REPLACE_EXISTING);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        // `.jk-*` is the plugin-scratch convention; it must not ride into a staged layout.
+        PathUtil.copyTree(from, to, dir -> dir.getFileName() != null
+                && dir.getFileName().toString().startsWith(".jk-"));
     }
 
     private static void deleteTree(Path root) throws IOException {

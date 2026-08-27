@@ -12,6 +12,7 @@ import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -254,7 +255,9 @@ public final class ActivateCommand implements CliCommand {
         if (envOverride != null && !envOverride.isBlank()) return envOverride;
         try {
             Path shim = JkDirs.binDir().resolve("jk");
-            if (Files.isSymbolicLink(shim) || Files.isExecutable(shim)) {
+            // On Windows the shim is a .cmd and never a symlink, so the old isExecutable arm paid the
+            // 64x access check on every probe to learn what its extension already said (JK-1030).
+            if (Files.isSymbolicLink(shim) || PathUtil.isRunnable(shim)) {
                 return shim.toAbsolutePath().normalize().toString();
             }
         } catch (RuntimeException ignored) {
