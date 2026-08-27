@@ -10,16 +10,16 @@
 # rather than a ban, which makes the rule monotonic today instead of unwinnable.
 
 clients/cli 16
-plugins/android 11
+plugins/android 10
 plugins/formatter 2
 plugins/groovy-compiler 1
-plugins/image-builder 9
+plugins/image-builder 8
 plugins/java-compiler 3
 plugins/micronaut 1
 plugins/minified 2
 plugins/protobuf 1
 plugins/quarkus 10
-plugins/spring-boot 2
+plugins/spring-boot 1
 plugins/test-runner 1
 server/engine 91
 server/toolchain 2
@@ -29,3 +29,4 @@ shared/dynamic-surface 2
 shared/host 4
 shared/toolchain-jdk 29
 shared/wire 1
+
