@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.ToolchainSpec;
 import org.junit.jupiter.api.Test;
 
 class JkBuildParserJdkTest {
@@ -64,9 +65,20 @@ class JkBuildParserJdkTest {
     }
 
     @Test
-    void rejects_graal_point_release() {
-        assertThatThrownBy(() -> JkBuildParser.parse(graal("\"graalvm-25.0.3\"")))
-                .hasMessageContaining("[native].graal");
+    void accepts_a_graal_point_release_as_a_suggestion() {
+        JkBuild parsed = JkBuildParser.parse(graal("\"graalvm-25.0.3\""));
+        ToolchainSpec spec = parsed.nativeConfig().orElseThrow().graalSpec();
+        assertThat(spec.suggestedVendor()).isEqualTo("graalvm");
+        assertThat(spec.suggestedVersion()).isEqualTo("25.0.3");
+        assertThat(spec.requiredVersion()).isEmpty();
+    }
+
+    @Test
+    void an_equals_graal_spec_is_required() {
+        JkBuild parsed = JkBuildParser.parse(graal("\"=25.2.4-graalce\""));
+        ToolchainSpec spec = parsed.nativeConfig().orElseThrow().graalSpec();
+        assertThat(spec.requiredVendor()).isEqualTo("graalce");
+        assertThat(spec.requiredVersion()).isEqualTo("25.2.4");
     }
 
     @Test
@@ -82,26 +94,82 @@ class JkBuildParserJdkTest {
     }
 
     @Test
-    void rejects_jdk_point_release() {
-        assertThatThrownBy(() -> JkBuildParser.parse("""
+    void accepts_a_jdk_point_release_as_a_floor_on_the_major() {
+        // A bare point release records what built the lock. It is not a pin: the major is the
+        // floor, so 25.0.1 and 26.x both clear it. Pinning takes an = (jdk = "=25.0.3").
+        ToolchainSpec spec = JkBuildParser.parse("""
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
                 jdk      = "25.0.3"
-                """))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("point release");
+                """).project().jdkSpec();
+        assertThat(spec.suggestedVersion()).isEqualTo("25.0.3");
+        assertThat(spec.requiredVersion()).isEmpty();
     }
 
     @Test
-    void rejects_jdk_vendor_point_release() {
+    void an_equals_jdk_spec_requires_the_vendor_and_the_version() {
+        ToolchainSpec spec = JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = "=temurin-25.0.4"
+                """).project().jdkSpec();
+        assertThat(spec.requiredVendor()).isEqualTo("temurin");
+        assertThat(spec.requiredVersion()).isEqualTo("25.0.4");
+        assertThat(spec.suggestedVendor()).isEmpty();
+        assertThat(spec.suggestedVersion()).isEmpty();
+    }
+
+    @Test
+    void the_vendor_and_version_keys_carry_requiredness_separately() {
+        ToolchainSpec spec = JkBuildParser.parse("""
+                group       = "com.example"
+                name        = "widget"
+                version     = "1.0.0"
+                jdk-vendor  = "=Corretto"
+                jdk-version = 25
+                """).project().jdkSpec();
+        assertThat(spec.requiredVendor()).isEqualTo("corretto");
+        assertThat(spec.suggestedVersion()).isEqualTo("25");
+        assertThat(spec.requiredVersion()).isEmpty();
+    }
+
+    @Test
+    void naming_both_the_combined_key_and_the_pair_is_an_error() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                group       = "com.example"
+                name        = "widget"
+                version     = "1.0.0"
+                jdk         = "temurin-25"
+                jdk-version = 25
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("both set");
+    }
+
+    @Test
+    void an_equals_bare_major_with_no_vendor_pins_nothing() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = "temurin-25.0.3"
+                jdk      = "=25"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("point release");
+                .hasMessageContaining("pins nothing");
+    }
+
+    @Test
+    void a_vendor_and_point_release_reduces_to_a_bare_major_for_the_resolver() {
+        // `jdk` stays the resolver-facing projection: vendor plus major, no patch.
+        JkBuild parsed = JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = "temurin-25.0.3"
+                """);
+        assertThat(parsed.project().jdk()).isEqualTo("temurin-25");
+        assertThat(parsed.project().jdkSpec().suggestedVersion()).isEqualTo("25.0.3");
     }
 }

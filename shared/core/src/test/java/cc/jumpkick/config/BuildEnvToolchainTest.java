@@ -34,8 +34,8 @@ class BuildEnvToolchainTest {
 
     @Test
     void request_env_supplies_every_toolchain_name() {
-        Map<String, String> requestEnv = Map.of(
-                "JK_JDK", "temurin-21", "JAVA_HOME", "/opt/jdk-21", "GRAALVM_HOME", "/opt/graal-21");
+        Map<String, String> requestEnv =
+                Map.of("JK_JDK", "temurin-21", "JAVA_HOME", "/opt/jdk-21", "GRAALVM_HOME", "/opt/graal-21");
 
         SessionContext.runWhere(sessionWith(requestEnv), () -> {
             UnaryOperator<String> env = BuildEnv.ambient();

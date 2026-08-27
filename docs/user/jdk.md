@@ -28,8 +28,9 @@ the `.jk-owned` marker. There is no on-disk “current” JDK pointer: `JAVA_HOM
 are whatever the [shell hook](install.md#shell-integration) last exported. When inventory
 defaults are unset, the hook still activates a de-facto JDK (`DefaultJdkPolicy`) and, if any
 GraalVM is installed, a de-facto Graal (`DefaultGraalPolicy` — preferred newest Oracle GraalVM,
-then GraalVM CE). A project `jk-lock.toml` `[jdk]` / `[graal]` pin overrides those defaults when
-satisfiable (same major or newer).
+then GraalVM CE). A project `jk-lock.toml` `[jdk]` / `[graal]` entry overrides those defaults when
+satisfiable — `suggested-*` floors on the major, `required-*` must match exactly
+([lockfile](lockfile.md#toolchain-pins)).
 
 **GraalVM** for [native-image](native.md): `jk jdk` can provision a Graal-capable
 distribution when native work needs it. The first installed Graal becomes the native default

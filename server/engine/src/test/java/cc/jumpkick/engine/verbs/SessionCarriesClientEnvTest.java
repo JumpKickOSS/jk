@@ -103,7 +103,9 @@ class SessionCarriesClientEnvTest {
             for (Path f : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".java"))::iterator) {
                 String src = Files.readString(f);
                 if (!src.contains("requestLine")) continue;
-                if (!BUILD_PATH.matcher(src).find() && !src.contains("ExecPlans.") && !src.contains("PluginCommands.")) {
+                if (!BUILD_PATH.matcher(src).find()
+                        && !src.contains("ExecPlans.")
+                        && !src.contains("PluginCommands.")) {
                     continue;
                 }
                 // Builds its own session, or takes one from the bridge, or installs one for the call.

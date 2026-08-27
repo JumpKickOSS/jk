@@ -235,5 +235,4 @@ public final class CompileSupport {
 
     /** Memo key for a source scan: one enumeration per directory per extension per request. */
     private record ScanKey(Path root, String extension) {}
-
 }

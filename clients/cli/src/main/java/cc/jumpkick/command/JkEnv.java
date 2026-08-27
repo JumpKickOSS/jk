@@ -154,10 +154,12 @@ public final class JkEnv {
         }
         String graalFloor = null;
         if (lockGraal != null) {
-            Optional<JdkHit> locked =
-                    LockPinMatch.chooseGraal(registry.listHits(), lockGraal.vendor(), lockGraal.version());
+            Optional<JdkHit> locked = LockPinMatch.chooseGraal(registry.listHits(), lockGraal);
             if (locked.isPresent()) return Optional.of(locked.get().home());
-            graalFloor = lockGraal.version();
+            // Nothing here satisfies a required vendor/version. Exporting some other GraalVM would
+            // hand the shell a home the build itself will refuse; export none and let it install.
+            if (lockGraal.hasRequirement()) return Optional.empty();
+            graalFloor = lockGraal.suggestedVersion().isEmpty() ? null : lockGraal.suggestedVersion();
         }
         Optional<Path> ghome = globalDefault.graalHome();
         if (ghome.isPresent()

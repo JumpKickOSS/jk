@@ -46,17 +46,15 @@ object TestTiers {
     const val NETWORK = "networkTest"
 
     /**
-     * Framework and language end-to-end suites: does an Android / Grails / Scala / KSP / Protobuf
-     * project still build all the way through. **Deliberately not part of `checkAll`** as of
-     * JK-1023.
+     * Framework and language end-to-end suites: does an Android / Grails / Scala / KSP / Protobuf project still build
+     * all the way through. **Deliberately not part of `checkAll`** as of JK-1023.
      *
-     * Measured 2026-08-26: 19 classes, 28 tests, 426s of `integrationTest`'s 1419s — 30% of the
-     * gating tier for **15 seconds per test**, the worst ratio in the tree. What they assert breaks
-     * when a plugin or a toolchain moves, not when engine or CLI core does, so the average change
-     * pays that cost for coverage it cannot affect.
+     * Measured 2026-08-26: 19 classes, 28 tests, 426s of `integrationTest`'s 1419s — 30% of the gating tier for **15
+     * seconds per test**, the worst ratio in the tree. What they assert breaks when a plugin or a toolchain moves, not
+     * when engine or CLI core does, so the average change pays that cost for coverage it cannot affect.
      *
-     * The tag already existed and already meant this; before JK-1023 it simply routed to
-     * [INTEGRATION] alongside `integration`, which is what put it on the merge bar.
+     * The tag already existed and already meant this; before JK-1023 it simply routed to [INTEGRATION] alongside
+     * `integration`, which is what put it on the merge bar.
      */
     const val SLOW = "slowTest"
 

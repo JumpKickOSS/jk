@@ -57,7 +57,8 @@ class SourcelessModuleForecastTest {
                 java = 25
                 """);
         // A fresh (non-stale) workspace lock so the forecast reaches the per-step walk.
-        Lockfile lf = new Lockfile(1, "test", "pubgrub-v1", null, null, List.of(), List.of(), List.of());
+        Lockfile lf = new Lockfile(
+                Lockfile.CURRENT_VERSION, "test", "pubgrub-v1", null, null, List.of(), List.of(), List.of());
         LockfileWriter.write(lf, tmp.resolve("jk-lock.toml"), LockManifestDigest.compute(tmp));
         return libb;
     }

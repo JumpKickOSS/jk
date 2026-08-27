@@ -175,6 +175,27 @@ tasks.withType<Test>().configureEach {
     //     them. It used to be a `junit-platform.properties` on the test classpath, which is a
     //     second mechanism for the same policy and invisible to anyone reading the build.
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
+    // JK-1017: opt-in class shuffle, so order-dependence is FOUND rather than waited for.
+    //
+    // Off by default and deliberately not in any gate: a gate that fails on an unlucky seed is a
+    // gate people learn to re-run, which is the opposite of the trust JK-1018 exists to build. Use
+    // it when hunting a suspected order-dependent failure — JK-1019 is the standing example.
+    //
+    //   ./gradlew :cli:integrationTest -Pjk.test.shuffle           # random seed, printed
+    //   ./gradlew :cli:integrationTest -Pjk.test.shuffle=12345     # replay that seed
+    //
+    // The seed is printed on every run, failing or not, because a seed you only learn about when
+    // something breaks cannot be used to prove something is fixed.
+    val shuffle = providers.gradleProperty("jk.test.shuffle").orNull
+    if (shuffle != null) {
+        val seed = if (shuffle.isBlank() || shuffle == "true") System.nanoTime().toString() else shuffle
+        systemProperty("junit.jupiter.testclass.order.default", "org.junit.jupiter.api.ClassOrderer\$Random")
+        systemProperty("junit.jupiter.execution.order.random.seed", seed)
+        doFirst {
+            logger.lifecycle("jk: $path shuffling test classes serially, seed=$seed"
+                    + "  (replay with -Pjk.test.shuffle=$seed)")
+        }
+    }
     // The external runtime this tier execs is an input (JK-2465); see `externalTestRuntimes`.
     val declared = externalTestRuntimes["${project.path}:$name"].orEmpty()
     if (declared.isNotEmpty()) {
@@ -3528,3 +3549,16 @@ val checkOneRecursiveDelete by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkOneRecursiveDelete) }
 tasks.named("jar") { dependsOn(checkOneRecursiveDelete) }
+
+// JK-1017: serial execution when shuffling, applied after the modules have had their say.
+//
+// The orderer decides order WITHIN a JVM; Gradle decides which classes go to which fork, and that
+// distribution is not seeded. With parallel forks the same seed does not reproduce a run, which
+// makes "replay with this seed" a lie — and setting maxParallelForks inside the conventions'
+// configureEach does not hold, because a module's own `tasks.named<Test>("test") { … }` block runs
+// afterwards and overwrites it. Measured: :cli:test still forked 10 JVMs. Hence afterEvaluate.
+if (providers.gradleProperty("jk.test.shuffle").isPresent) {
+    afterEvaluate {
+        tasks.withType<Test>().configureEach { maxParallelForks = 1 }
+    }
+}

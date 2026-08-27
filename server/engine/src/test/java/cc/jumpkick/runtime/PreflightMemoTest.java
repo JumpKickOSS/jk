@@ -425,7 +425,7 @@ class PreflightMemoTest {
                 java = 25
                 """);
         Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 1
+                version = 2
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"
                 """);
@@ -458,7 +458,7 @@ class PreflightMemoTest {
         Files.createDirectories(src);
         Files.writeString(src.resolve("App.java"), "class App {}\n");
         Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 1
+                version = 2
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"
                 """);
@@ -491,7 +491,7 @@ class PreflightMemoTest {
                     """.formatted(m));
             Files.writeString(md.resolve("src/main/java/M.java"), "class M {}\n");
             Files.writeString(md.resolve("jk-lock.toml"), """
-                    version = 1
+                    version = 2
                     generated-by = "test"
                     resolution-algorithm = "pubgrub-v1"
                     """);

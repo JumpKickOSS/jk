@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -139,16 +140,52 @@ class JdkResolutionTest {
     }
 
     @Test
-    void build_would_install_when_lock_major_is_unmet(@TempDir Path tmp) throws IOException {
+    void build_would_install_when_a_required_version_is_unmet(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);
         makeJdk(jdks, "temurin-21.0.5");
-        var req = req(tmp).lockJdk("temurin", "25.0.4").build();
+        // required-version admits that version and nothing else, so an install is the only answer
+        // — it never settles for what happens to be here, and never falls through to a later tier.
+        var req = req(tmp).lockJdk(new Lockfile.JdkPin("", "", "temurin", "25.0.4"))
+                .build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.jdk()).isEmpty();
         assertThat(r.wouldInstall()).isTrue();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
-        assertThat(r.installSpec()).isEqualTo("temurin-25");
+        assertThat(r.installSpec()).isEqualTo("temurin-25.0.4");
+    }
+
+    @Test
+    void an_unmet_suggestion_falls_through_to_an_ambient_jdk_above_the_floor(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-21.0.5");
+        Path ambient = makeJdk(Files.createDirectories(tmp.resolve("ambient")), "temurin-26.0.1");
+        // Nothing in the registry meets the floor, but JAVA_HOME is a 26 — which satisfies a
+        // suggestion of 25.0.4 completely. Downloading here would be answering a question the
+        // lock never asked; only a required-* pin insists on a particular install.
+        var req = req(tmp).lockJdk("temurin", "25.0.4")
+                .env("JAVA_HOME", ambient.toString())
+                .build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.wouldInstall()).isFalse();
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JAVA_HOME);
+        assertThat(r.jdk().orElseThrow().home()).isEqualTo(ambient);
+    }
+
+    @Test
+    void an_ambient_jdk_below_the_floor_does_not_satisfy_the_lock(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        Path ambient = makeJdk(Files.createDirectories(tmp.resolve("ambient")), "temurin-21.0.5");
+        // A floor JAVA_HOME can sidestep is not a floor. What jk falls to next depends on the host
+        // running these tests, so the property under test is only that this 21 is refused.
+        var req = req(tmp).lockJdk("temurin", "25.0.4")
+                .env("JAVA_HOME", ambient.toString())
+                .build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.tier()).isNotEqualTo(JdkResolution.Tier.JAVA_HOME);
+        assertThat(r.jdk().map(InstalledJdk::home)).isNotEqualTo(Optional.of(ambient));
     }
 
     @Test
@@ -218,7 +255,17 @@ class JdkResolutionTest {
         }
 
         ReqBuilder lockJdk(String vendor, String version) {
-            this.lockJdk = new Lockfile.JdkPin(vendor, version);
+            this.lockJdk = Lockfile.JdkPin.suggested(vendor, version);
+            return this;
+        }
+
+        ReqBuilder lockJdk(Lockfile.JdkPin pin) {
+            this.lockJdk = pin;
+            return this;
+        }
+
+        ReqBuilder env(String key, String value) {
+            this.env.put(key, value);
             return this;
         }
 

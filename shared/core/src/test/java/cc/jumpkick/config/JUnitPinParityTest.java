@@ -5,15 +5,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -90,23 +92,43 @@ class JUnitPinParityTest {
                 .as("fixture manifests pinning the JUnit train — a regex that finds none would pass vacuously")
                 .isGreaterThanOrEqualTo(20);
         assertThat(wrong)
-                .as("every fixture pin must be %s, the version jk-lock.toml resolved. Bump the lock"
-                        + " deliberately and carry the fixtures with it; do not hand-edit one pin.%n%s",
+                .as(
+                        "every fixture pin must be %s, the version jk-lock.toml resolved. Bump the lock"
+                                + " deliberately and carry the fixtures with it; do not hand-edit one pin.%n%s",
                         expected, String.join("\n", wrong))
                 .isEmpty();
     }
 
+    /**
+     * Every test source in the tree, pruning output directories rather than filtering them out of
+     * the results. {@code Files.walk} descends first and filters after, so it would enter
+     * {@code build/tmp/junit-*} while tests running in parallel delete those very directories —
+     * the walk then dies on a file that was there a moment ago. Skipping the subtree never looks.
+     */
     private static List<Path> testSources() throws IOException {
-        try (Stream<Path> walk = Files.walk(REPO)) {
-            return walk.filter(Files::isRegularFile)
-                    .filter(p -> p.toString().endsWith(".java"))
-                    .filter(p -> {
-                        String s = p.toString();
-                        return (s.contains("/src/test/") || s.contains("/src/integrationTest/"))
-                                && !s.contains("/build/")
-                                && !s.contains("/target/");
-                    })
-                    .toList();
-        }
+        List<Path> found = new ArrayList<>();
+        Files.walkFileTree(REPO, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                boolean output = name.equals("build") || name.equals("target") || name.equals(".git");
+                return output ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                String s = file.toString();
+                if (s.endsWith(".java") && (s.contains("/src/test/") || s.contains("/src/integrationTest/"))) {
+                    found.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException e) {
+                return FileVisitResult.CONTINUE; // vanished mid-walk — not this guard's business
+            }
+        });
+        return found;
     }
 }

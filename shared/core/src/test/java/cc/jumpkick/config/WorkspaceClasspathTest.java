@@ -58,8 +58,7 @@ class WorkspaceClasspathTest {
      * tolerance later and expects the classpath to follow.
      */
     @Test
-    void a_member_with_no_manifest_is_fatal_for_a_module_with_workspace_deps(@TempDir Path root)
-            throws Exception {
+    void a_member_with_no_manifest_is_fatal_for_a_module_with_workspace_deps(@TempDir Path root) throws Exception {
         scaffold(root);
         Files.writeString(root.resolve("jk.toml"), """
                 group = "com.ex"

@@ -89,7 +89,9 @@ class PathUtilCopyTreeTest {
         Path to = tmp.resolve("to");
 
         PathUtil.copyTree(
-                from, to, dir -> dir.getFileName() != null && dir.getFileName().toString().startsWith(".jk-"));
+                from,
+                to,
+                dir -> dir.getFileName() != null && dir.getFileName().toString().startsWith(".jk-"));
 
         assertThat(to.resolve("real.txt")).exists();
         assertThat(to.resolve(".jk-scratch")).doesNotExist();

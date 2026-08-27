@@ -4,29 +4,44 @@ package cc.jumpkick.lock;
 import cc.jumpkick.config.TomlScan;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.function.BiFunction;
 
 /**
  * The workspace lock's {@code [jdk]} / {@code [graal]} toolchain pins, read by line scan — not
  * {@link LockfileReader} — because the lockfile can be large and callers include the per-prompt
- * shell hook. A pin missing either field reads as absent, never as a partial pin.
+ * shell hook. A table naming neither a vendor nor a version reads as absent.
  */
 public record ToolchainPins(Lockfile.JdkPin jdk, Lockfile.GraalPin graal) {
 
     public static final ToolchainPins NONE = new ToolchainPins(null, null);
 
+    private static final String[] FIELDS = {
+        "suggested-vendor", "suggested-version", "required-vendor", "required-version"
+    };
+
     /** Pins of the lock owning {@code projectDir} (workspace-aware); {@link #NONE} without a lock. */
     public static ToolchainPins scan(Path projectDir) {
         Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.isRegularFile(lockPath)) return NONE;
-        TomlScan scan = TomlScan.scanScalarHead(lockPath, "jdk.vendor", "jdk.version", "graal.vendor", "graal.version");
-        return new ToolchainPins(
-                pin(scan.get("jdk.vendor"), scan.get("jdk.version"), Lockfile.JdkPin::new),
-                pin(scan.get("graal.vendor"), scan.get("graal.version"), Lockfile.GraalPin::new));
+        String[] keys = new String[FIELDS.length * 2];
+        for (int i = 0; i < FIELDS.length; i++) {
+            keys[i] = "jdk." + FIELDS[i];
+            keys[FIELDS.length + i] = "graal." + FIELDS[i];
+        }
+        TomlScan scan = TomlScan.scanScalarHead(lockPath, keys);
+        return new ToolchainPins(pin(scan, "jdk", Lockfile.JdkPin::new), pin(scan, "graal", Lockfile.GraalPin::new));
     }
 
-    private static <T> T pin(String vendor, String version, BiFunction<String, String, T> factory) {
-        if (vendor == null || vendor.isBlank() || version == null || version.isBlank()) return null;
-        return factory.apply(vendor, version);
+    private static <T extends Lockfile.ToolchainPin> T pin(TomlScan scan, String table, Pins<T> factory) {
+        T pin = factory.of(
+                scan.get(table + ".suggested-vendor"),
+                scan.get(table + ".suggested-version"),
+                scan.get(table + ".required-vendor"),
+                scan.get(table + ".required-version"));
+        return pin.isEmpty() ? null : pin;
+    }
+
+    /** The four-argument constructor shared by {@link Lockfile.JdkPin} and {@link Lockfile.GraalPin}. */
+    private interface Pins<T> {
+        T of(String suggestedVendor, String suggestedVersion, String requiredVendor, String requiredVersion);
     }
 }

@@ -52,7 +52,7 @@ class TaskForecasterGroovyTest {
         // short-circuits to a single "compile-main" step (no compile-groovy).
         String manifestsSha = LockManifestDigest.compute(tmp);
         Files.writeString(tmp.resolve("jk-lock.toml"), """
-            version = 1
+            version = 2
             generated-by = "test"
             resolution-algorithm = "pubgrub-v1"
             manifests-sha256 = "%s"

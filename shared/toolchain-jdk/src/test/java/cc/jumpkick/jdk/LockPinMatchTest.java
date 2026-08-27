@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.lock.Lockfile;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -34,10 +35,32 @@ class LockPinMatchTest {
     }
 
     @Test
-    void older_patch_on_the_same_major_is_not_better() {
+    void an_older_patch_on_the_same_major_still_clears_the_floor() {
+        // The floor is the major and only the major: a suggestion records what built the lock, it
+        // does not hold a later build to that patch. Requiring 25.0.4 exactly is what = is for.
         JdkHit older = hit("25.0.3", JdkVendor.TEMURIN);
-        assertThat(LockPinMatch.meetsFloor("25.0.3", "25.0.4")).isFalse();
-        assertThat(LockPinMatch.choose(List.of(older), "temurin", "25.0.4")).isEmpty();
+        assertThat(LockPinMatch.meetsFloor("25.0.3", "25.0.4")).isTrue();
+        assertThat(LockPinMatch.choose(List.of(older), "temurin", "25.0.4")).contains(older);
+        assertThat(LockPinMatch.meetsFloor("21.0.9", "25.0.4")).isFalse();
+    }
+
+    @Test
+    void a_required_version_admits_nothing_else() {
+        JdkHit older = hit("25.0.3", JdkVendor.TEMURIN);
+        JdkHit exact = hit("25.0.4", JdkVendor.TEMURIN);
+        JdkHit newer = hit("25.1.0", JdkVendor.TEMURIN);
+        Lockfile.JdkPin pin = new Lockfile.JdkPin("", "", "", "25.0.4");
+        assertThat(LockPinMatch.choose(List.of(older, newer), pin)).isEmpty();
+        assertThat(LockPinMatch.choose(List.of(older, exact, newer), pin)).contains(exact);
+    }
+
+    @Test
+    void a_required_vendor_admits_no_other_vendor() {
+        JdkHit corretto = hit("25.0.9", JdkVendor.CORRETTO);
+        JdkHit temurin = hit("25.0.4", JdkVendor.TEMURIN);
+        Lockfile.JdkPin pin = new Lockfile.JdkPin("", "25", "temurin", "");
+        assertThat(LockPinMatch.choose(List.of(corretto), pin)).isEmpty();
+        assertThat(LockPinMatch.choose(List.of(corretto, temurin), pin)).contains(temurin);
     }
 
     @Test

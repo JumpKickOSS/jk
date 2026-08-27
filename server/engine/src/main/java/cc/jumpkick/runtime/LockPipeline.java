@@ -22,11 +22,13 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkBuild.NativeConfig;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -140,7 +142,14 @@ public final class LockPipeline {
             boolean pinGitRefsFromLock,
             boolean forceRevalidate,
             boolean sources,
-            PlatformPolicy platform) {}
+            PlatformPolicy platform,
+            /**
+             * Whether {@code [jdk]} / {@code [graal]} keep the suggestion already on disk. A
+             * suggestion records what built the lock, so re-locking on a different machine must
+             * not quietly rewrite it — only {@code jk update}, whose job is moving forward, does.
+             * Distinct from {@link #keepPins}, which is about reusing the resolved graph.
+             */
+            boolean keepToolchainSuggestion) {}
 
     private final Path lockDir;
     private final JkBuild effective;
@@ -178,11 +187,18 @@ public final class LockPipeline {
     private static Policy policyFor(LockMode mode, JkBuild effective) {
         return switch (mode) {
             case LockMode.Explicit(boolean sources) ->
-                new Policy(OfflineReuse.REQUIRED, false, true, false, sources, platformPolicy(effective, null));
+                new Policy(OfflineReuse.REQUIRED, false, true, false, sources, platformPolicy(effective, null), true);
             case LockMode.Update(String platformOverride) ->
-                new Policy(OfflineReuse.NEVER, false, false, true, false, platformPolicy(effective, platformOverride));
+                new Policy(
+                        OfflineReuse.NEVER,
+                        false,
+                        false,
+                        true,
+                        false,
+                        platformPolicy(effective, platformOverride),
+                        false);
             case LockMode.Freshen ignored ->
-                new Policy(OfflineReuse.PREFERRED, true, true, false, false, platformPolicy(effective, null));
+                new Policy(OfflineReuse.PREFERRED, true, true, false, false, platformPolicy(effective, null), true);
         };
     }
 
@@ -273,9 +289,11 @@ public final class LockPipeline {
         // which is what "the project asked for Graal" means (JK-1020).
         lock = ToolchainLockStamp.apply(
                 lock,
+                policy.keepToolchainSuggestion() ? existing : null,
                 javaHome,
                 jdkRegistry,
-                pathPrep.project().project().jdkMajor(),
+                pathPrep.project().project().jdkSpec(),
+                pathPrep.project().nativeConfig().map(NativeConfig::graalSpec).orElse(ToolchainSpec.NONE),
                 pathPrep.project().graal() != null);
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);

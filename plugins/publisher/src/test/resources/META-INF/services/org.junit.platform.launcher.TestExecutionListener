@@ -1,1 +1,2 @@
 cc.jumpkick.config.testing.SessionBoundary
+cc.jumpkick.config.testing.ClassOrderRecorder

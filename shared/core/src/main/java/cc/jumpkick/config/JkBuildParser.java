@@ -89,7 +89,8 @@ public final class JkBuildParser {
      *
      * @param body the file's contents while its mtime is inside the settle window, else {@code null}
      */
-    private record ManifestStamp(long size, FileTime modified, @Nullable String body) {
+    private record ManifestStamp(
+            long size, FileTime modified, @Nullable String body) {
 
         /** Distrust {@code (size, mtime)} for a file modified within this window. */
         private static final long SETTLE_MS = 2_000;
@@ -103,8 +104,7 @@ public final class JkBuildParser {
             }
             long mtime = attrs.lastModifiedTime().toMillis();
             boolean settled = System.currentTimeMillis() - mtime >= SETTLE_MS;
-            return new ManifestStamp(
-                    attrs.size(), attrs.lastModifiedTime(), settled ? null : read.read(file));
+            return new ManifestStamp(attrs.size(), attrs.lastModifiedTime(), settled ? null : read.read(file));
         }
     }
 

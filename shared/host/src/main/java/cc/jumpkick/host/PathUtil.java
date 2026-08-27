@@ -159,8 +159,7 @@ public final class PathUtil {
      * staged layout. A predicate rather than a baked-in rule: {@code :host} has no business knowing
      * what a plugin's scratch directory is called.
      */
-    public static void copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options)
-            throws IOException {
+    public static void copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options) throws IOException {
         if (!Files.isDirectory(from)) return;
         Set<Copy> opts = options.length == 0 ? Set.of() : EnumSet.copyOf(Arrays.asList(options));
         if (opts.contains(Copy.CLEAN_TARGET)) deleteRecursivelyOrThrow(to);
@@ -181,8 +180,7 @@ public final class PathUtil {
                 Path target = to.resolve(from.relativize(file).toString());
                 if (!always && identical(target, attrs)) return FileVisitResult.CONTINUE;
                 if (preserve) {
-                    Files.copy(
-                            file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
                 } else {
                     Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
                 }

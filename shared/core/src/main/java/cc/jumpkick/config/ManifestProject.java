@@ -7,8 +7,8 @@ import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.ProjectInherit;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
-import java.util.Locale;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.tomlj.TomlTable;
@@ -29,6 +29,8 @@ public final class ManifestProject {
             "group",
             "version",
             "jdk",
+            "jdk-vendor",
+            "jdk-version",
             "java",
             "kotlin",
             "groovy",
@@ -72,12 +74,13 @@ public final class ManifestProject {
                 workspaceRoot,
                 /* requiredWhenRootOrStandalone */ true);
 
-        String jdk;
-        if (isWorkspaceInherit(root, "jdk") || (!workspaceRoot && !root.contains("jdk"))) {
+        ToolchainSpec jdkSpec;
+        boolean declaresJdk = root.contains("jdk") || root.contains("jdk-vendor") || root.contains("jdk-version");
+        if (isWorkspaceInherit(root, "jdk") || (!workspaceRoot && !declaresJdk)) {
             inherits.add(ProjectInherit.JDK);
-            jdk = null;
+            jdkSpec = ToolchainSpec.NONE;
         } else {
-            jdk = parseJdkSpec(root);
+            jdkSpec = parseJdkToolchain(root);
         }
 
         int java;
@@ -158,6 +161,8 @@ public final class ManifestProject {
             layout = Layout.AUTO;
         }
 
+        String jdk = jdkSpec.resolverSpec(java);
+        if (jdk.isEmpty()) jdk = null;
         return new Project(
                 group,
                 name,
@@ -172,7 +177,8 @@ public final class ManifestProject {
                 m2integration,
                 m2install,
                 layout,
-                inherits);
+                inherits,
+                jdkSpec);
     }
 
     private record M2Flags(boolean integration, boolean install) {}
@@ -301,63 +307,39 @@ public final class ManifestProject {
     }
 
     /**
-     * {@code jdk}: vendor+major, bare major, unquoted int, or keyword
-     * ({@code lts}/{@code stable}/{@code latest}/{@code native}). Point releases rejected.
-     * Absent/blank → null.
+     * {@code jdk} / {@code jdk-vendor} / {@code jdk-version}, as a suggestion or — with a leading
+     * {@code =} — a pin. Absent → {@link ToolchainSpec#NONE}.
      */
-    static String parseJdkSpec(TomlTable root) {
-        String spec = parseVersionSpec(root, "jdk", "jdk", "\"temurin-25\" or \"25\"");
-        if (spec == null || isVersionKeyword(spec)) return spec;
-        int major = Project.majorOf(spec);
-        if (major == 0) {
-            throw new JkBuildParseException(
-                    "jdk = \"" + spec + "\" must include a major version (e.g. \"temurin-25\" or \"25\")");
-        }
-        requireSupportedMajor("jdk", major);
+    static ToolchainSpec parseJdkToolchain(TomlTable root) {
+        ToolchainSpec spec = parseToolchain(root, "jdk", "jdk", "\"temurin-25\" or \"25\"");
+        if (spec.isEmpty() || ToolchainSpec.isKeyword(spec.version())) return spec;
+        if (spec.version().isEmpty()) return spec; // vendor alone; the major comes from `java`
+        requireSupportedMajor("jdk", Project.majorOf(spec.version()));
         return spec;
     }
 
     /**
-     * {@code [native].graal}: same shape as {@code jdk}; {@code "native"} ≡ {@code "graalvm"}.
-     * Point releases rejected. Absent/blank → null.
+     * {@code [native].graal} / {@code graal-vendor} / {@code graal-version}; {@code "native"} ≡
+     * {@code "graalvm"}. Absent → {@link ToolchainSpec#NONE}.
      */
-    static String parseGraalSpec(TomlTable native_) {
-        return parseVersionSpec(native_, "graal", "[native].graal", "\"graalvm-25\", \"25\", or \"native\"");
+    static ToolchainSpec parseGraalToolchain(TomlTable native_) {
+        return parseToolchain(native_, "graal", "[native].graal", "\"graalvm-25\", \"25\", or \"native\"");
     }
 
     /**
-     * Shared {@code jdk}/{@code graal} spec parser: int or string; keywords pass through; point
-     * releases rejected. Null when absent/blank.
+     * Shared reader for the three keys that describe one toolchain — {@code <key>},
+     * {@code <key>-vendor}, {@code <key>-version}. Point releases are welcome now: they are the
+     * whole point of an {@code =} pin, and a bare one simply records what built the lock.
      */
-    static String parseVersionSpec(TomlTable table, String key, String pathLabel, String exampleHint) {
-        if (!table.contains(key)) return null;
-        Object raw = table.get(key);
-        String spec;
-        if (raw instanceof Long l) {
-            spec = Long.toString(l);
-        } else if (raw instanceof String s) {
-            spec = s.trim();
-        } else {
-            throw new JkBuildParseException(pathLabel + " must be a string, e.g. " + exampleHint);
+    static ToolchainSpec parseToolchain(TomlTable table, String key, String pathLabel, String exampleHint) {
+        String combined = scalarSpec(table, key, pathLabel, exampleHint);
+        String vendor = scalarSpec(table, key + "-vendor", pathLabel + "-vendor", "\"temurin\"");
+        String version = scalarSpec(table, key + "-version", pathLabel + "-version", "25 or \"25.0.4\"");
+        try {
+            return ToolchainSpec.of(pathLabel, combined, vendor, version);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(e.getMessage());
         }
-        if (spec.isEmpty()) return null;
-        if (isVersionKeyword(spec)) return spec;
-        if (Project.hasPointRelease(spec)) {
-            throw new JkBuildParseException(pathLabel
-                    + " = \""
-                    + spec
-                    + "\" must not pin a point release — use \"<vendor>-<major>\" or "
-                    + "\"<major>\" (e.g. "
-                    + exampleHint
-                    + "); jk keeps the patch current.");
-        }
-        return spec;
-    }
-
-    /** Version keywords (kept local so :core does not depend on :toolchain-jdk). */
-    static boolean isVersionKeyword(String spec) {
-        String norm = spec.toLowerCase(Locale.ROOT);
-        return norm.equals("lts") || norm.equals("stable") || norm.equals("latest") || norm.equals("native");
     }
 
     /**
@@ -383,6 +365,21 @@ public final class ManifestProject {
             throw new JkBuildParseException("java out of range: " + value);
         }
         return (int) value;
+    }
+
+    /** One toolchain key as text: unquoted int or string. Null when absent/blank. */
+    private static String scalarSpec(TomlTable table, String key, String pathLabel, String exampleHint) {
+        if (!table.contains(key)) return null;
+        Object raw = table.get(key);
+        String spec;
+        if (raw instanceof Long l) {
+            spec = Long.toString(l);
+        } else if (raw instanceof String s) {
+            spec = s.trim();
+        } else {
+            throw new JkBuildParseException(pathLabel + " must be a string, e.g. " + exampleHint);
+        }
+        return spec.isEmpty() ? null : spec;
     }
 
     /**

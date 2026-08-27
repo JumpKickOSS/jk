@@ -64,7 +64,7 @@ final class EngineJobs {
                                 // refresh — verify's scratch rebuild stays CAS-local (no re-download).
                                 session.config().rebuildOr(false),
                                 TimelineOpts.noTimeline(),
-                            session.assemblyOverride()),
+                                session.assemblyOverride()),
                         SessionContext.current().jdkSpec(),
                         SessionContext.current().graalSpec(),
                         SessionContext.current().graalHome() == null
@@ -163,21 +163,21 @@ final class EngineJobs {
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
                                 ProtoJobs.testRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.workers(),
-                                req.profile(),
-                                req.verbose(),
-                                req.offline(),
-                                req.force(),
-                                req.parallelTests() || session.parallelTests(),
-                                sel),
+                                        req.entryDir().toString(),
+                                        req.cache().toString(),
+                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                        req.workers(),
+                                        req.profile(),
+                                        req.verbose(),
+                                        req.offline(),
+                                        req.force(),
+                                        req.parallelTests() || session.parallelTests(),
+                                        sel),
                                 session.variant(),
                                 session.clientEnv(),
                                 session.jvm(),
                                 session.config().rebuildOr(false),
-                            TimelineOpts.noTimeline()),
+                                TimelineOpts.noTimeline()),
                         SessionContext.current().jdkSpec(),
                         SessionContext.current().graalSpec(),
                         SessionContext.current().graalHome() == null
@@ -208,23 +208,23 @@ final class EngineJobs {
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
                                 ProtoJobs.singleBuildRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.workers(),
-                                req.profile(),
-                                req.skipTests(),
-                                req.verbose(),
-                                req.offline(),
-                                req.force(),
-                                // jk build --all / tag flags on a single project (JK-2182).
-                                session.testSelection()),
+                                        req.entryDir().toString(),
+                                        req.cache().toString(),
+                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                        req.workers(),
+                                        req.profile(),
+                                        req.skipTests(),
+                                        req.verbose(),
+                                        req.offline(),
+                                        req.force(),
+                                        // jk build --all / tag flags on a single project (JK-2182).
+                                        session.testSelection()),
                                 req.variant(),
                                 req.clientEnv(),
                                 session.jvm(),
                                 session.config().rebuildOr(false),
                                 TimelineOpts.noTimeline(),
-                            session.assemblyOverride()),
+                                session.assemblyOverride()),
                         SessionContext.current().jdkSpec(),
                         SessionContext.current().graalSpec(),
                         SessionContext.current().graalHome() == null
@@ -357,18 +357,18 @@ final class EngineJobs {
     private static String envelope(String body) {
         Session session = SessionContext.current();
         return ProtoSession.withToolchain(
-                        ProtoSession.withSession(
-                    body,
-                    session.variant(),
-                    session.clientEnv(),
-                    session.jvm(),
-                    session.config().rebuildOr(false),
-                    TimelineOpts.noTimeline()),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString());
+                ProtoSession.withSession(
+                        body,
+                        session.variant(),
+                        session.clientEnv(),
+                        session.jvm(),
+                        session.config().rebuildOr(false),
+                        TimelineOpts.noTimeline()),
+                SessionContext.current().jdkSpec(),
+                SessionContext.current().graalSpec(),
+                SessionContext.current().graalHome() == null
+                        ? null
+                        : SessionContext.current().graalHome().toString());
     }
 
     /** Send {@code requestLine} and replay the workspace event stream into {@code listener}. */

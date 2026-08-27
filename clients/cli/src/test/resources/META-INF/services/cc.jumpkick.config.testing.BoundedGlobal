@@ -1,0 +1,4 @@
+cc.jumpkick.config.testing.SessionGlobal
+cc.jumpkick.cli.theme.ThemeGlobal
+cc.jumpkick.cli.tui.TerminalReflowGlobal
+cc.jumpkick.cli.tui.SizeGlobal

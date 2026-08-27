@@ -3,7 +3,6 @@ name = "jk"
 version = "0.12.0"
 description = "JumpKick: The best damn build system for the JVM"
 java = 25
-graal = 25
 
 [workspace]
 modules = [
