@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.SourceLayout;
@@ -208,15 +210,30 @@ public final class CompileSupport {
     }
 
     private static List<Path> collectFilesWithExtension(Path root, String extension) throws IOException {
-        if (!Files.exists(root)) return List.of();
-        List<Path> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards (JK-1030).
-            stream.filter(p -> p.getFileName().toString().endsWith(extension))
-                    .filter(Files::isRegularFile)
-                    .forEach(result::add);
-        }
-        return result;
+        // Once per (root, extension) per request. The Groovy and Scala root sets deliberately
+        // include the Java root — a stray .groovy under src/main/java must still compile (JK-2479) —
+        // and TaskForecaster runs the Java, Kotlin and Groovy collectors before it resolves which
+        // languages the module actually uses. So src/main/java was walked four times per forecast
+        // pass and src/test/java five, and the pass itself repeats across forecast, pricing, plan
+        // assembly and the test lane (JK-1043).
+        //
+        // Request-scoped, so there is nothing to invalidate: a source tree is fixed for the length of
+        // the build it was launched against, and a jk watch iteration is a new request with a new
+        // scope.
+        return RequestScope.current().get(new ScanKey(root.toAbsolutePath().normalize(), extension), key -> {
+            List<Path> result = new ArrayList<>();
+            try {
+                PathUtil.forEachRegularFile(key.root(), (file, attrs) -> {
+                    if (file.getFileName().toString().endsWith(key.extension())) result.add(file);
+                });
+            } catch (IOException unreadable) {
+                return List.<Path>of();
+            }
+            return List.copyOf(result);
+        });
     }
+
+    /** Memo key for a source scan: one enumeration per directory per extension per request. */
+    private record ScanKey(Path root, String extension) {}
+
 }
