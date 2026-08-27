@@ -194,17 +194,18 @@ public final class EngineVerbBridge implements VerbHost {
      */
     static Session resolve(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
         Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-        Path cache = Path.of(Jsonl.str(requestLine, "cache"));
+        // Read-only verbs need no cache path and no longer send one (project-info dropped the
+        // field in JK-2168, before JK-1040 gave the verb a session at all). Absent means "the
+        // engine's own", which is what Session.defaults() already holds — not a null Path.
+        String cacheStr = Jsonl.str(requestLine, "cache");
         JkConfig config = JkConfig.empty()
                 .withOffline(Jsonl.bool(requestLine, "offline", false))
                 .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
                 .withVerbose(Jsonl.bool(requestLine, "verbose", false))
                 .withForce(Jsonl.bool(requestLine, "force", false) || refresh);
-        return Session.defaults()
-                .withConfig(config)
-                .withWorkingDir(entryDir)
-                .withCacheDir(cache)
-                .withCancel(cancelToken)
+        Session base = Session.defaults().withConfig(config).withWorkingDir(entryDir);
+        if (cacheStr != null && !cacheStr.isBlank()) base = base.withCacheDir(Path.of(cacheStr));
+        return base.withCancel(cancelToken)
                 .withJvm(ProtoSession.jvmTuning(requestLine))
                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                 // The request's toolchain selection, resolved once for every verb that takes a
