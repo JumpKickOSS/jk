@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
@@ -76,11 +77,12 @@ public final class ModuleLayout {
         return !SourceLayout.looksTraditional(moduleDir);
     }
 
-    private record LayoutMemo(long mtime, long size, Boolean value) {}
-
-    // isCompact runs per module per build (and now walks to the workspace root); cache the per-file
+    // isCompact runs per module per build (and walks to the workspace root); cache the per-file
     // layout-key scan by (mtime,size) so repeated calls don't re-read jk.toml each time (JK-2327).
-    private static final ConcurrentHashMap<Path, LayoutMemo> LAYOUT_CACHE = new ConcurrentHashMap<>();
+    // Through StampedMemo since JK-1048: the hand-rolled version spent three metadata ops
+    // (isRegularFile + getLastModifiedTime + size) to guard a 550-byte read, where FileStamp.of does
+    // one readAttributes and answers absence with it.
+    private static final StampedMemo<Path, StampedMemo.FileStamp, Boolean> LAYOUT_CACHE = StampedMemo.create();
 
     /**
      * The explicit {@code layout} choice for a module dir: {@code TRUE} = simple, {@code FALSE} =
@@ -88,21 +90,10 @@ public final class ModuleLayout {
      */
     private static Boolean explicitLayout(Path dir) {
         Path toml = dir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.isRegularFile(toml)) return null;
         Path key = toml.toAbsolutePath().normalize();
-        long mtime;
-        long size;
-        try {
-            mtime = Files.getLastModifiedTime(toml).toMillis();
-            size = Files.size(toml);
-        } catch (IOException e) {
-            return scanLayout(toml);
-        }
-        LayoutMemo memo = LAYOUT_CACHE.get(key);
-        if (memo != null && memo.mtime() == mtime && memo.size() == size) return memo.value();
-        Boolean value = scanLayout(toml);
-        LAYOUT_CACHE.put(key, new LayoutMemo(mtime, size, value));
-        return value;
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
+        if (stamp == null) return null; // absent or unreadable — let the tree decide
+        return LAYOUT_CACHE.get(key, stamp, () -> scanLayout(toml));
     }
 
     private static Boolean scanLayout(Path toml) {

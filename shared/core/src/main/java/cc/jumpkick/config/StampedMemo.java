@@ -51,11 +51,38 @@ public final class StampedMemo<K, S, V> {
     /** {@code ConcurrentHashMap} rejects null values, so the entry wrapper carries the nullable one. */
     private record Entry<S, V>(S stamp, @Nullable V value) {}
 
-    private StampedMemo() {}
+    /**
+     * Entries kept before the map is cleared, or {@link Integer#MAX_VALUE} for no bound.
+     *
+     * <p>Unbounded is right for the original readers: a config scalar or a parsed {@code jk.toml} is
+     * small, and the map is bounded in practice by the number of distinct files a process reads. It is
+     * <em>not</em> right for a memo whose values are large — a parsed {@code Lockfile} can be
+     * megabytes, and the engine runs on a 256&nbsp;MB heap. Two readers hand-rolled this rule with
+     * their own bounds rather than use this class, which is a fair sign the class was missing it
+     * (JK-1048).
+     */
+    private final int maxEntries;
 
-    /** A fresh, empty memo. */
+    private StampedMemo(int maxEntries) {
+        this.maxEntries = maxEntries;
+    }
+
+    /** A fresh, empty memo with no entry bound. */
     public static <K, S, V> StampedMemo<K, S, V> create() {
-        return new StampedMemo<>();
+        return new StampedMemo<>(Integer.MAX_VALUE);
+    }
+
+    /**
+     * A fresh memo that clears itself once it holds {@code maxEntries}.
+     *
+     * <p>Clear-on-overflow rather than eviction, deliberately: the readers that need a bound hold
+     * values far larger than any bookkeeping an LRU would justify, and the cost of a clear is a
+     * re-read. {@code FileHashMemo} ranks victims instead, because its entries are ~200 B and it is
+     * the one memo where the eviction order is worth paying for.
+     */
+    public static <K, S, V> StampedMemo<K, S, V> bounded(int maxEntries) {
+        if (maxEntries < 1) throw new IllegalArgumentException("maxEntries must be positive");
+        return new StampedMemo<>(maxEntries);
     }
 
     /**
@@ -67,6 +94,7 @@ public final class StampedMemo<K, S, V> {
         Entry<S, V> hit = entries.get(key);
         if (hit != null && hit.stamp().equals(stamp)) return hit.value();
         V fresh = compute.get();
+        if (entries.size() >= maxEntries) entries.clear();
         entries.put(key, new Entry<>(stamp, fresh));
         return fresh;
     }
