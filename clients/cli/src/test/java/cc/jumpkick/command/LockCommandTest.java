@@ -5,7 +5,6 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
@@ -24,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
-@IsolatedStore
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")
 class LockCommandTest {
@@ -47,7 +45,7 @@ class LockCommandTest {
         // Set up a tiny graph: root -> leaf.
         maven.registerMetadata("com.foo", "leaf", "1.0");
         maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        byte[] leafJar = "leaf-jar-bytes".getBytes(StandardCharsets.UTF_8);
+        byte[] leafJar = "leaf".getBytes(StandardCharsets.UTF_8);
         maven.registerJar("com.foo", "leaf", "1.0", leafJar);
 
         maven.registerMetadata("com.foo", "root", "1.0");
@@ -58,7 +56,7 @@ class LockCommandTest {
                   <version>1.0</version>
                 </dependency>
                 """));
-        byte[] rootJar = "root-jar-bytes".getBytes(StandardCharsets.UTF_8);
+        byte[] rootJar = "root".getBytes(StandardCharsets.UTF_8);
         maven.registerJar("com.foo", "root", "1.0", rootJar);
 
         // Run the commands against the test repo.
@@ -441,7 +439,7 @@ class LockCommandTest {
     private void registerRootLeafGraph() {
         maven.registerMetadata("com.foo", "leaf", "1.0");
         maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        maven.registerJar("com.foo", "leaf", "1.0", "leaf-jar".getBytes(StandardCharsets.UTF_8));
+        maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
         maven.registerMetadata("com.foo", "root", "1.0");
         maven.registerPom("com.foo", "root", "1.0", pom("com.foo", "root", "1.0", """
                 <dependency>
@@ -450,7 +448,7 @@ class LockCommandTest {
                   <version>1.0</version>
                 </dependency>
                 """));
-        maven.registerJar("com.foo", "root", "1.0", "root-jar".getBytes(StandardCharsets.UTF_8));
+        maven.registerJar("com.foo", "root", "1.0", "root".getBytes(StandardCharsets.UTF_8));
     }
 
     private static void writeProjectWithRootDep(Path dir) throws IOException {

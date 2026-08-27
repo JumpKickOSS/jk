@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.cache.Linking;
+import cc.jumpkick.host.Linking;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;

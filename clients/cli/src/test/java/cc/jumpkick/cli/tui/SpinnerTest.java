@@ -371,6 +371,28 @@ class SpinnerTest {
         });
     }
 
+    @Test
+    void a_plain_build_does_not_poison_the_pulse_cache_for_a_later_ansi_build() throws Exception {
+        // JK-1012. PULSE_CACHE memoizes Style[] and Theme.bright() bakes the colour decision into
+        // every Style it returns — a colourless one has an empty SGR body. The key carried
+        // Theme.active(), which looks like it carries the mode and does not: one JkDarkTheme
+        // instance serves both modes and re-derives the answer per call. So the FIRST caller's mode
+        // won for the life of the JVM, and a plain frame rendered before an ANSI one silently
+        // stripped its colour. Latent in production, not only in tests.
+        //
+        // Order matters: plain first, so a key that has lost the decision hands these styles back.
+        NoAnsi.forced(() -> Spinner.buildOpenPulseStyles(Spinner.PULSE_FRAMES));
+
+        NoAnsi.forcedAnsi(() -> {
+            var colors = Spinner.buildOpenPulseStyles(Spinner.PULSE_FRAMES);
+            var bright = Spinner.PULSE_OPEN_BRIGHT;
+            assertThat(colors[0].sgrBody())
+                    .describedAs("an ANSI build must not inherit the plain build's colourless styles")
+                    .isEqualTo("38;2;" + bright.r() + ";" + bright.g() + ";" + bright.b());
+            return null;
+        });
+    }
+
     private static PrintStream stream(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
     }

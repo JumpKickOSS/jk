@@ -6,7 +6,6 @@ import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.testing.SysProps;
@@ -21,7 +20,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Exercises the full plan: init -> add -> lock -> tree / why / sync. */
-@IsolatedStore
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")
 class ReadSideIntegrationTest {
@@ -38,7 +36,7 @@ class ReadSideIntegrationTest {
     void full_pipeline_init_add_lock_tree_why_sync(@TempDir Path tempDir) throws Exception {
         maven.registerMetadata("com.foo", "leaf", "1.0");
         maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        maven.registerJar("com.foo", "leaf", "1.0", "leaf-jar".getBytes(StandardCharsets.UTF_8));
+        maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
         maven.registerMetadata("com.foo", "root", "1.0");
         maven.registerPom("com.foo", "root", "1.0", pom("com.foo", "root", "1.0", """
                 <dependency>
@@ -47,7 +45,7 @@ class ReadSideIntegrationTest {
                   <version>1.0</version>
                 </dependency>
                 """));
-        maven.registerJar("com.foo", "root", "1.0", "root-jar".getBytes(StandardCharsets.UTF_8));
+        maven.registerJar("com.foo", "root", "1.0", "root".getBytes(StandardCharsets.UTF_8));
 
         Path cache = tempDir.resolve("cache");
 

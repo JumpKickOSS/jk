@@ -269,11 +269,14 @@ public final class RepoArtifactStore {
                 // A unique temp + atomic move makes the published file exactly the (already
                 // caller-verified) source bytes, so the memo's pinned sha describes them correctly.
                 Path tmp = Files.createTempFile(artifact.getParent(), "." + artifact.getFileName() + ".", ".part");
+                // Failure path only — moveInto consumed tmp on success (JK-1029).
+                boolean moved = false;
                 try {
                     Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
                     AtomicWrites.moveInto(tmp, artifact);
+                    moved = true;
                 } finally {
-                    Files.deleteIfExists(tmp);
+                    if (!moved) Files.deleteIfExists(tmp);
                 }
             }
             writeMemo(relativePath, artifact, sha256);
@@ -330,8 +333,10 @@ public final class RepoArtifactStore {
         // Group tracked files by their version directory (the file's parent).
         Map<Path, Boolean> versionDirs = new TreeMap<>();
         try (Stream<Path> walk = Files.walk(root)) {
-            walk.filter(Files::isRegularFile)
-                    .filter(p -> !isMemoName(p.getFileName().toString()))
+            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
+            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            walk.filter(p -> !isMemoName(p.getFileName().toString()))
+                    .filter(Files::isRegularFile)
                     .forEach(p -> versionDirs.put(p.getParent(), Boolean.TRUE));
         } catch (IOException e) {
             return List.of();
@@ -503,11 +508,14 @@ public final class RepoArtifactStore {
                 artifactRoot.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL), relativePath);
         Files.createDirectories(target.getParent());
         Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
+        // Failure path only — moveInto consumed tmp on success (JK-1029).
+        boolean moved = false;
         try {
             Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
             AtomicWrites.moveInto(tmp, target);
+            moved = true;
         } finally {
-            Files.deleteIfExists(tmp);
+            if (!moved) Files.deleteIfExists(tmp);
         }
         String hex = Hashing.sha256Hex(target);
         ArtifactMemo.ofBlob(target, inferGav(relativePath), hex)

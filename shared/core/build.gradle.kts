@@ -70,3 +70,18 @@ tasks.named<Test>("test") {
         }
     )
 }
+
+// JUnitPinParityTest and SelfHostingTomlTest read files that live OUTSIDE this module — every test
+// source's fixture pins, and the workspace lock — so Gradle cannot infer them from the task graph.
+// Undeclared, the task goes UP-TO-DATE while the very files it checks change underneath it, and the
+// guard reports a pass it never ran (JK-1018 is the same hole one level up). The cost is that
+// :core:test re-runs when any test source in the tree changes, which is the honest price of a
+// tripwire that reads the tree.
+tasks.named<Test>("test") {
+    inputs.files(rootProject.fileTree(rootProject.layout.projectDirectory) {
+        include("jk-lock.toml", "**/src/test/**/*.java", "**/src/integrationTest/**/*.java")
+        exclude("**/build/**", "**/target/**", "**/.git/**")
+    })
+            .withPropertyName("repoSourceTripwires")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+}

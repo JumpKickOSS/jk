@@ -71,10 +71,9 @@ public final class EnvLookup {
         return new EnvLookup(layered, realEnv);
     }
 
-    /** One cached {@code .env} parse, invalidated by (size, mtime). */
-    private record CachedEnv(long size, long mtime, Map<String, String> values) {}
-
-    private static final ConcurrentHashMap<Path, CachedEnv> READ_MEMO = new ConcurrentHashMap<>();
+    /** One cached {@code .env} parse, invalidated by (size, mtime). Bounded: tiny working set. */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, Map<String, String>> READ_MEMO =
+            StampedMemo.bounded(256);
 
     /**
      * {@link DotEnv#read} behind a freshness memo. Redaction resolves the lookup for every output
@@ -83,19 +82,10 @@ public final class EnvLookup {
      */
     private static Map<String, String> readCached(Path file) {
         Path key = file.toAbsolutePath().normalize();
-        try {
-            var attrs = Files.readAttributes(key, BasicFileAttributes.class);
-            long size = attrs.size();
-            long mtime = attrs.lastModifiedTime().toMillis();
-            CachedEnv hit = READ_MEMO.get(key);
-            if (hit != null && hit.size() == size && hit.mtime() == mtime) return hit.values();
-            Map<String, String> parsed = DotEnv.read(key);
-            if (READ_MEMO.size() > 256) READ_MEMO.clear(); // tiny working set; crude bound is fine
-            READ_MEMO.put(key, new CachedEnv(size, mtime, parsed));
-            return parsed;
-        } catch (IOException e) {
-            return Map.of(); // missing/unreadable → empty, exactly like DotEnv.read
-        }
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
+        if (stamp == null) return Map.of(); // missing/unreadable → empty, exactly like DotEnv.read
+        Map<String, String> hit = READ_MEMO.get(key, stamp, () -> DotEnv.read(key));
+        return hit == null ? Map.of() : hit;
     }
 
     /** A lookup over {@code .env} values only — for tests and for callers with no real environment. */
@@ -127,11 +117,33 @@ public final class EnvLookup {
         return fromFiles.keySet();
     }
 
+    /**
+     * The enclosing workspace root for {@code moduleDir}, memoized for the process.
+     *
+     * <p>The {@code .env} parse behind {@link #readCached} was memoized; the walk that finds the
+     * workspace root was not — and this class's own javadoc says the lookup resolves "for every
+     * output line that leaves the engine". {@code WorkspaceLocator.findRoot} is an ancestor walk with
+     * a {@code jk.toml} scan per level, so redaction was paying it per line (JK-1033).
+     *
+     * <p>Keyed by module directory and never invalidated: a module does not change which workspace
+     * encloses it while a build runs, and the answer is a path rather than a file's contents. A
+     * {@code jk watch} iteration that adds a workspace root above an existing module is the one case
+     * this would miss, and that already requires a re-plan for other reasons.
+     */
     private static Optional<Path> workspaceRoot(Path moduleDir) {
-        try {
-            return WorkspaceLocator.findRoot(moduleDir);
-        } catch (Exception e) {
-            return Optional.empty();
-        }
+        return ROOT_MEMO.computeIfAbsent(moduleDir.toAbsolutePath().normalize(), dir -> {
+            try {
+                return WorkspaceLocator.findRoot(dir);
+            } catch (Exception e) {
+                return Optional.empty();
+            }
+        });
+    }
+
+    private static final ConcurrentHashMap<Path, Optional<Path>> ROOT_MEMO = new ConcurrentHashMap<>();
+
+    /** Test seam: drop the memoized workspace roots. */
+    public static void clearRootCache() {
+        ROOT_MEMO.clear();
     }
 }

@@ -60,15 +60,80 @@ class CodeFormatterStampKeyTest {
                 .isFalse();
     }
 
-    /** Same config, same bytes: the skip that makes a clean re-run free still works. */
+    /**
+     * Same config, same bytes: the skip that makes a clean re-run free still works.
+     *
+     * <p>The {@code save()} is the contract, not ceremony. The store is write-behind since JK-1034 —
+     * {@code record} is a map write and the whole index reaches disk once at the end of a run — so
+     * what a later run sees is what the previous run flushed. That is the real worker lifecycle:
+     * {@code CodeFormatter} saves beside {@code workers.close()}.
+     */
     @Test
-    void the_same_config_and_bytes_hit(@TempDir Path tmp) {
+    void the_same_config_and_bytes_hit_across_runs(@TempDir Path tmp) {
+        byte[] source = "class A {}\n".getBytes(StandardCharsets.UTF_8);
+        Path root = tmp.resolve("format-stamps");
+        FormatStampCache cache = new FormatStampCache(root, "config-digest");
+        cache.record(cache.keyFor(source));
+        cache.save();
+
+        assertThat(new FormatStampCache(root, "config-digest").contains(cache.keyFor(source)))
+                .isTrue();
+    }
+
+    /** A run that records and never flushes leaves nothing behind — one write, or none. */
+    @Test
+    void an_unflushed_run_persists_nothing(@TempDir Path tmp) {
         byte[] source = "class A {}\n".getBytes(StandardCharsets.UTF_8);
         Path root = tmp.resolve("format-stamps");
         FormatStampCache cache = new FormatStampCache(root, "config-digest");
         cache.record(cache.keyFor(source));
 
         assertThat(new FormatStampCache(root, "config-digest").contains(cache.keyFor(source)))
+                .as("record is a map write; only save() reaches disk")
+                .isFalse();
+    }
+
+    /** The whole point: N stamps cost one file, not N files in N directories. */
+    @Test
+    void the_store_is_one_file_per_configuration(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("format-stamps");
+        FormatStampCache cache = new FormatStampCache(root, "config-digest");
+        for (int i = 0; i < 500; i++) {
+            cache.record(cache.keyFor(("class A" + i + " {}\n").getBytes(StandardCharsets.UTF_8)));
+        }
+        cache.save();
+
+        try (var walk = Files.walk(root)) {
+            var files = walk.filter(Files::isRegularFile).toList();
+            assertThat(files).as("500 stamps, one index file").hasSize(1);
+        }
+        try (var walk = Files.walk(root)) {
+            assertThat(walk.filter(Files::isDirectory).toList())
+                    .as("and no shard directories")
+                    .hasSize(1);
+        }
+        assertThat(new FormatStampCache(root, "config-digest").size()).isEqualTo(500);
+    }
+
+    /** The old sharded layout cleans itself up on load, so no `jk cache nuke` is needed. */
+    @Test
+    void loading_sweeps_the_old_sharded_layout(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("format-stamps");
+        // A stamp the previous layout would have written: <aa>/<bb>/<60-hex>, zero bytes.
+        Path stale = root.resolve("ab").resolve("cd").resolve("e".repeat(60));
+        Files.createDirectories(stale.getParent());
+        Files.writeString(stale, "");
+        // And a sibling configuration's index, which must survive.
+        FormatStampCache other = new FormatStampCache(root, "other-config");
+        other.record(other.keyFor("class B {}\n".getBytes(StandardCharsets.UTF_8)));
+        other.save();
+
+        new FormatStampCache(root, "config-digest");
+
+        assertThat(Files.exists(stale)).as("the sharded tree is gone").isFalse();
+        assertThat(Files.exists(root.resolve("ab"))).isFalse();
+        assertThat(Files.exists(root.resolve("other-config.keys")))
+                .as("another configuration's index is not collateral")
                 .isTrue();
     }
 }

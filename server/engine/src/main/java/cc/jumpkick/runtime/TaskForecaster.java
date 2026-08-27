@@ -15,6 +15,7 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -38,11 +39,13 @@ import cc.jumpkick.task.JavaCompile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -980,22 +983,32 @@ public final class TaskForecaster {
     }
 
     static boolean resourcesOutOfSync(Path resDir, Path outDir) {
-        if (!Files.isDirectory(resDir)) return false;
-        try (var stream = Files.walk(resDir)) {
-            for (Path source : (Iterable<Path>) stream::iterator) {
-                if (Files.isDirectory(source)) continue;
+        // Two readAttributes per resource, not six metadata ops. The source's come from the walk for
+        // free; the copy's answer presence, size and mtime together — where isRegularFile + size +
+        // size + mtime + mtime each re-resolved a path (JK-1031).
+        boolean[] dirty = {false};
+        try {
+            PathUtil.forEachRegularFile(resDir, (source, attrs) -> {
+                if (dirty[0]) return;
                 Path copy = outDir.resolve(resDir.relativize(source));
-                if (!Files.isRegularFile(copy)) return true;
-                if (Files.size(copy) != Files.size(source)) return true;
-                if (Files.getLastModifiedTime(source).compareTo(Files.getLastModifiedTime(copy)) > 0
-                        && Files.mismatch(source, copy) >= 0) {
-                    return true;
+                Optional<BasicFileAttributes> target = PathUtil.stat(copy);
+                if (target.isEmpty() || !target.get().isRegularFile()) {
+                    dirty[0] = true;
+                    return;
                 }
-            }
-            return false;
+                if (target.get().size() != attrs.size()) {
+                    dirty[0] = true;
+                    return;
+                }
+                if (attrs.lastModifiedTime().compareTo(target.get().lastModifiedTime()) > 0
+                        && Files.mismatch(source, copy) >= 0) {
+                    dirty[0] = true;
+                }
+            });
         } catch (IOException e) {
             return true; // unreadable ⇒ treat as dirty
         }
+        return dirty[0];
     }
 
     /** Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. */

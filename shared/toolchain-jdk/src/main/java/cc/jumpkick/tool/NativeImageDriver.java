@@ -2,6 +2,7 @@
 package cc.jumpkick.tool;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
@@ -398,7 +399,9 @@ public final class NativeImageDriver {
         Attributes attrs = mf.getMainAttributes();
         attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
         attrs.putValue("Class-Path", cp.toString());
-        try (OutputStream out = Files.newOutputStream(jar);
+        // A manifest-only classpath jar: tiny, but it goes through the one owner like every
+        // other archive so the buffering question is not re-decided here (JK-1029).
+        try (OutputStream out = DeterministicZip.archiveStream(jar);
                 JarOutputStream jos = new JarOutputStream(out, mf)) {
             // manifest-only
         }

@@ -251,7 +251,8 @@ public final class GlobalOptions {
         SessionContext.install(SessionContext.current()
                 .withToolchainSpecs(
                         firstNonBlank(g.jdk, System.getenv("JK_JDK")),
-                        firstNonBlank(g.graal, System.getenv("JK_GRAAL")))
+                        firstNonBlank(g.graal, System.getenv("JK_GRAAL")),
+                        graalHomeFromEnv())
                 .withWorkingDir(g.workingDir())
                 .withJvm(PluginTunings.resolveClient(g.jvmCli())));
         return g;
@@ -309,6 +310,15 @@ public final class GlobalOptions {
      */
     private static @Nullable Boolean flag(boolean set) {
         return set ? Boolean.TRUE : null;
+    }
+
+    /**
+     * The caller's {@code GRAALVM_HOME} as a path, or null. A home rather than a spec, so it travels
+     * as its own field (JK-1039).
+     */
+    private static @Nullable Path graalHomeFromEnv() {
+        String raw = System.getenv("GRAALVM_HOME");
+        return raw == null || raw.isBlank() ? null : Path.of(raw.trim());
     }
 
     /** First non-blank of {@code a}, {@code b}, or {@code null} — the flag beats the environment. */

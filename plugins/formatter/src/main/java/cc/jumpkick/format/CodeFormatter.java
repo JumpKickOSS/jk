@@ -106,6 +106,9 @@ public final class CodeFormatter implements Plugin {
             }
         } finally {
             workers.close();
+            // One write for the whole run: every contains/record above was a map operation
+            // (JK-1034).
+            if (stampCache != null) stampCache.save();
         }
 
         int exit = errors > 0 || (!spec.apply && changed > 0) ? 1 : 0;

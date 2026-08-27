@@ -5,13 +5,17 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
 import cc.jumpkick.config.BuildEnv;
 import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolve-or-install a project JDK for {@code jk sync} via {@link JdkResolution}. Missing pins
@@ -124,7 +128,7 @@ public final class JdkEnsure {
             boolean allowInstall,
             JdkInstallListener progress)
             throws IOException, InterruptedException {
-        JdkRegistry registry = jdksDirOverride != null ? new JdkRegistry(jdksDirOverride) : new JdkRegistry();
+        JdkRegistry registry = sharedRegistry(jdksDirOverride);
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         int latestLts = JdkLts.OFFLINE_LATEST_LTS;
 
@@ -187,6 +191,36 @@ public final class JdkEnsure {
      */
     public static InstalledJdk install(String spec, Consumer<String> warn) throws IOException, InterruptedException {
         return install(spec, new JdkRegistry(), warn, JdkInstallListener.NO_OP);
+    }
+
+    /**
+     * One {@link JdkRegistry} per JDK root, for the life of the process.
+     *
+     * <p>The registry's hit-list memo is a per-instance field, and this method used to construct a
+     * fresh instance on every call — so the memo never survived, and {@code ensure} is called
+     * <em>per module</em>. Each construction is a cold eleven-probe host scan (jk dir, SDKMAN, mise,
+     * IntelliJ, {@code $JAVA_HOME}, {@code PATH}, plus a {@code release} file parse per candidate),
+     * about 65 metadata operations. Sixty-two constructions in a workspace build is ~4,000 stats for
+     * facts that cannot change mid-build. A per-instance memo on an object built per call is not a
+     * missed optimisation, it is a bug the resident engine makes permanent (JK-1033).
+     *
+     * <p>Sharing is safe because the registry already has the invalidation hook this needs:
+     * {@link JdkRegistry#refresh()} drops the memo after an install or uninstall, and because the
+     * instance is now shared that drop is seen by every later caller instead of only the one that
+     * happened to hold it.
+     */
+    private static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride) {
+        Path root = jdksDirOverride != null ? jdksDirOverride : JkDirs.jdks();
+        return REGISTRIES.computeIfAbsent(
+                root.toAbsolutePath().normalize(),
+                r -> jdksDirOverride != null ? new JdkRegistry(r) : new JdkRegistry());
+    }
+
+    private static final ConcurrentMap<Path, JdkRegistry> REGISTRIES = new ConcurrentHashMap<>();
+
+    /** Test seam: forget every shared registry, so the next ensure re-probes the host. */
+    public static void resetSharedRegistries() {
+        REGISTRIES.clear();
     }
 
     private static InstalledJdk install(

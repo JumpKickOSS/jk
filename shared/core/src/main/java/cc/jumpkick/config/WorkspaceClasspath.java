@@ -16,6 +16,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -78,21 +79,26 @@ public final class WorkspaceClasspath {
         Map<String, Path> siblingTestResourcesByModule = new HashMap<>();
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
-        List<Path> unitDirs = new ArrayList<>();
-        for (String moduleName : rootManifest.workspace().modules()) {
-            unitDirs.add(root.resolve(moduleName));
-        }
-        unitDirs.add(root); // the root is a unit too
-        for (Path unitDir : unitDirs) {
+        // One load for the whole workspace, not one parse per sibling.
+        //
+        // This loop used to call JkBuildParser.parse per unit, and parse runs applyWorkspace, which
+        // walks for the root, re-parses it, and loads *every* member — so resolving one module's
+        // classpath was O(N) work per sibling over N siblings, and the forecast calls resolve up to
+        // four times per module. On a 31-module workspace that is ~3,800 whole-workspace resolutions
+        // for one command. loadModules already returns every member with root inheritance applied,
+        // which is exactly what the index below needs (JK-1046).
+        //
+        // It cannot change the missing-member behaviour: loadModules throws for a member with no
+        // manifest, but parse on the *consumer* already went through applyWorkspace and rethrew for
+        // any module carrying workspace deps, so a caller never reaches here with a broken workspace.
+        // WorkspaceClasspathTest pins that from both sides.
+        Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root, rootManifest);
+        Map<Path, JkBuild> units = new LinkedHashMap<>(members);
+        units.put(root, rootManifest); // the root is a unit too
+        for (Map.Entry<Path, JkBuild> unit0 : units.entrySet()) {
+            Path unitDir = unit0.getKey();
             if (unitDir.toAbsolutePath().normalize().equals(self)) continue; // exclude self
-            Path manifest = unitDir.resolve(ManifestPaths.MANIFEST);
-            if (!Files.exists(manifest)) continue;
-            JkBuild unit;
-            try {
-                unit = unitDir.equals(root) ? rootManifest : JkBuildParser.parse(manifest);
-            } catch (RuntimeException ignored) {
-                continue;
-            }
+            JkBuild unit = unit0.getValue();
             String coord = unit.project().group() + ":" + unit.project().name();
             BuildLayout layout = BuildLayout.of(unitDir, unit);
             siblingDirByModule.put(coord, unitDir);

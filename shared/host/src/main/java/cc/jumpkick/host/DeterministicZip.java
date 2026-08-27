@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,6 +44,9 @@ public final class DeterministicZip {
     /** The writer for an archive with no build-supplied timestamp: everything at the epoch. */
     public static final DeterministicZip PINNED = new DeterministicZip(EPOCH_SECONDS);
 
+    /** Archive write buffer. 64 KB is where per-syscall cost stops dominating on NTFS. */
+    private static final int ARCHIVE_BUFFER = 1 << 16;
+
     private final LocalDateTime instant;
 
     /** A writer stamping entries at {@code epochSeconds}, clamped up to {@link #EPOCH_SECONDS}. */
@@ -58,6 +62,41 @@ public final class DeterministicZip {
     }
 
     /** Write {@code data} as one deflated entry. */
+    /**
+     * A buffered {@link ZipOutputStream} over {@code target}.
+     *
+     * <p>Use this rather than {@code new ZipOutputStream(Files.newOutputStream(p))}. This class owned
+     * entry writing but not stream construction, so all twelve archive writers re-decided the
+     * buffering question independently and all twelve decided wrong: {@code ZipOutputStream} inherits
+     * {@link java.util.zip.DeflaterOutputStream}'s <strong>512-byte</strong> buffer, which turned a
+     * 9&nbsp;MB engine jar into ~18,000 {@code write(2)} calls where 64&nbsp;KB gives ~143. On NTFS
+     * every one of those traverses the full filter stack, and an antivirus minifilter that hooks
+     * writes rather than closes sees 18,000 IRPs on one file (JK-1029).
+     *
+     * <p>Buffering cannot change the bytes produced — entry order, timestamps and compression are
+     * this class's business and are unaffected.
+     */
+    public static ZipOutputStream newArchive(Path target) throws IOException {
+        return new ZipOutputStream(archiveStream(target));
+    }
+
+    /**
+     * The buffered byte sink an archive is written through.
+     *
+     * <p>For callers that need {@link java.util.jar.JarOutputStream} specifically, or that wrap the
+     * stream themselves: {@code new JarOutputStream(DeterministicZip.archiveStream(p))}. The point is
+     * that the buffering decision has one owner, not that every caller ends up with the same wrapper
+     * type.
+     */
+    public static OutputStream archiveStream(Path target) throws IOException {
+        return new BufferedOutputStream(Files.newOutputStream(target), ARCHIVE_BUFFER);
+    }
+
+    /** As {@link #archiveStream(Path)} over an already-open stream (a digesting or counting wrapper). */
+    public static OutputStream archiveStream(OutputStream out) {
+        return new BufferedOutputStream(out, ARCHIVE_BUFFER);
+    }
+
     public void writeEntry(ZipOutputStream zip, String name, byte[] data) throws IOException {
         zip.putNextEntry(entry(name));
         zip.write(data);

@@ -359,24 +359,7 @@ public final class VerifyBuildCommand implements CliCommand {
      * relationship survives; {@link #touchLockfiles} then bumps the locks regardless.
      */
     private static void copyProjectTree(Path srcRoot, Path destRoot) throws IOException {
-        Files.walkFileTree(srcRoot, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes attrs) throws IOException {
-                if (!d.equals(srcRoot) && skip(d)) return FileVisitResult.SKIP_SUBTREE;
-                Files.createDirectories(destRoot.resolve(srcRoot.relativize(d)));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) throws IOException {
-                Files.copy(
-                        f,
-                        destRoot.resolve(srcRoot.relativize(f)),
-                        StandardCopyOption.COPY_ATTRIBUTES,
-                        StandardCopyOption.REPLACE_EXISTING);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        PathUtil.copyTree(srcRoot, destRoot, VerifyBuildCommand::skip, PathUtil.Copy.PRESERVE_ATTRIBUTES);
     }
 
     /** True for directories the scratch copy must not carry: VCS metadata and build outputs. */

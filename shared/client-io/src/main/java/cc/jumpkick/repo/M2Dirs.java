@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.MinimalXml;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves the Maven local repository root ({@code ~/.m2/repository} by default).
@@ -48,7 +50,24 @@ public final class M2Dirs {
     /** Top-level {@code <localRepository>} only; null when missing or unusable. */
     static Path settingsLocalRepository() {
         Path settings = settingsXml();
-        if (settings == null || !Files.isRegularFile(settings)) return null;
+        if (settings == null) return null;
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(settings);
+        if (stamp == null) return null; // absent or unreadable
+        return SETTINGS_REPO.get(settings.toAbsolutePath().normalize(), stamp, () -> parseSettings(settings));
+    }
+
+    /**
+     * Memo of the {@code <localRepository>} parse, stamped on {@code (size, mtime)}.
+     *
+     * <p>{@code localRepository} is reached on <em>per-artifact</em> paths — {@code MavenRepo}
+     * consults it when placing an artifact, when trying {@code ~/.m2}, and when trying the local
+     * mirror — so a 500-artifact sync stat'ed, read and XML-parsed {@code ~/.m2/settings.xml} over a
+     * thousand times for a value that cannot change during a resolve. {@code RunNotices.warnOnce}
+     * beside the failure paths is a good hint that the authors expected repeat entry (JK-1033).
+     */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, Path> SETTINGS_REPO = StampedMemo.create();
+
+    private static @Nullable Path parseSettings(Path settings) {
         try {
             MinimalXml.Element doc = MinimalXml.parse(Files.readString(settings));
             String raw =

@@ -4,7 +4,6 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.host.Hashing;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -29,7 +28,6 @@ import org.junit.jupiter.api.io.TempDir;
  * locally-installed JARs are usable as compile-time dependencies and that incremental compilation
  * behaves correctly against them.
  */
-@IsolatedStore
 @Tag("integration")
 class InstallAndBuildTest {
 

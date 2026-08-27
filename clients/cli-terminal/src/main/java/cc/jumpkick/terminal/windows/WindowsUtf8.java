@@ -78,12 +78,20 @@ public final class WindowsUtf8 {
         }
     }
 
+    /**
+     * A UTF-8 {@link PrintStream} over {@code fd}, buffered at 8&nbsp;KB either way.
+     *
+     * <p>The TTY arm used to buffer at <strong>128 bytes</strong> against a measured 220-byte mean
+     * line, so every line wrote through twice and a truecolor tree row could split mid-SGR-sequence.
+     * A larger buffer costs nothing in liveness here: {@link PrintStream} with {@code autoFlush}
+     * flushes on every {@code println} regardless of buffer size, so the size only decides how many
+     * {@code WriteFile} calls one line takes — and each of those is a round trip through conhost
+     * (JK-1029).
+     */
     static PrintStream utf8Stream(FileDescriptor fd) {
         boolean autoflush = Terminals.stdoutIsTty();
         return new PrintStream(
-                new BufferedOutputStream(new FileOutputStream(fd), autoflush ? 128 : 8192),
-                autoflush,
-                StandardCharsets.UTF_8);
+                new BufferedOutputStream(new FileOutputStream(fd), 8192), autoflush, StandardCharsets.UTF_8);
     }
 
     private static void saveAndSetUtf8CodePages() throws Throwable {

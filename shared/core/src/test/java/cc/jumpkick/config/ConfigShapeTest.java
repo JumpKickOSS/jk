@@ -115,7 +115,7 @@ class ConfigShapeTest {
                 .withCacheDir(Path.of("/tmp/jk-cache-a"))
                 .withJdksDir(Path.of("/tmp/jk-jdks-a"))
                 .withJvm(PluginTuning.NONE)
-                .withToolchainSpecs("21", "graal-21")
+                .withToolchainSpecs("21", "graal-21", Path.of("/opt/graal-21"))
                 .withParallelTests(false)
                 .withCancel(Session.CancelToken.live())
                 .withVariant("alpha", Map.of("A", "1"))
@@ -144,7 +144,10 @@ class ConfigShapeTest {
                 new Wither("withIo", new Object[] {new IoLedger()}, List.of("io")),
                 // Two components, one fact — the pairs that are only meaningful together.
                 new Wither("withVariant", new Object[] {"beta", Map.of("B", "2")}, List.of("variant", "clientEnv")),
-                new Wither("withToolchainSpecs", new Object[] {"25", "graal-25"}, List.of("jdkSpec", "graalSpec")));
+                new Wither(
+                        "withToolchainSpecs",
+                        new Object[] {"25", "graal-25", Path.of("/opt/graal-25")},
+                        List.of("jdkSpec", "graalSpec", "graalHome")));
     }
 
     @Test

@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -252,7 +253,7 @@ final class SourceProjectBuilder {
             wrapperPath = projectDir.resolve("mvnw.cmd");
         }
         if (Files.isRegularFile(wrapperPath)) {
-            if (!Files.isExecutable(wrapperPath)) {
+            if (!PathUtil.isRunnable(wrapperPath)) {
                 throw new IOException(wrapperPath + " is not executable — `chmod +x` it, or remove it to"
                         + " fall back to the tool on PATH");
             }
@@ -274,7 +275,7 @@ final class SourceProjectBuilder {
             if (dir.isBlank()) continue;
             for (String name : names) {
                 Path candidate = Path.of(dir, name);
-                if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+                if (Files.isRegularFile(candidate) && PathUtil.isRunnable(candidate)) {
                     return candidate;
                 }
             }

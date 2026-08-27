@@ -89,4 +89,28 @@ class BuildEnvToolchainTest {
     private static Session sessionWith(Map<String, String> clientEnv) {
         return Session.defaults().withVariant(null, clientEnv);
     }
+
+    @Test
+    void the_request_carries_graal_home_as_a_typed_field() {
+        // GRAALVM_HOME is a home path, not a spec, so it cannot ride the graal selection — it needs
+        // its own field, and it needs one for the same reason: a getenv inside a resident engine
+        // answers from the shell that started the daemon (JK-1039).
+        Path home = Path.of("/opt/graal-25");
+        Session session = Session.defaults().withToolchainSpecs("temurin-21", "graal-25", home);
+
+        assertThat(session.jdkSpec()).isEqualTo("temurin-21");
+        assertThat(session.graalSpec()).isEqualTo("graal-25");
+        assertThat(session.graalHome()).isEqualTo(home);
+    }
+
+    @Test
+    void a_request_with_no_graal_home_carries_null_rather_than_the_daemons() {
+        // The engine must be able to tell "the caller named none" from "the caller named this", or it
+        // would fall back to its own environment and be right by accident.
+        assertThat(Session.defaults().graalHome()).isNull();
+        assertThat(Session.defaults()
+                        .withToolchainSpecs("temurin-21", null, null)
+                        .graalHome())
+                .isNull();
+    }
 }

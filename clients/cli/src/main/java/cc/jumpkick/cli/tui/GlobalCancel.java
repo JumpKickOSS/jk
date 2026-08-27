@@ -104,6 +104,10 @@ public final class GlobalCancel {
             }
             err.print(Ansi.RESET);
             err.flush();
+            // stdout too, not only err: when stdout is not a TTY it is buffered with autoFlush off,
+            // and halt() below skips shutdown hooks — so up to a full buffer of `-O json` output was
+            // silently lost on Ctrl-C into a pipe (JK-1029).
+            System.out.flush();
 
             // 3) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
             // halt() skips shutdown hooks, so nothing else puts the terminal back. Bounded so

@@ -3,6 +3,7 @@ package cc.jumpkick.quarkus;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import io.quarkus.bootstrap.app.AugmentResult;
 import io.quarkus.bootstrap.app.CuratedApplication;
@@ -313,23 +314,9 @@ public final class QuarkusAugmentMain {
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        Files.walkFileTree(from, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                String name = dir.getFileName() != null ? dir.getFileName().toString() : "";
-                if (name.startsWith(".jk-")) return FileVisitResult.SKIP_SUBTREE;
-                Files.createDirectories(to.resolve(from.relativize(dir).toString()));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Path dest = to.resolve(from.relativize(file).toString());
-                Files.createDirectories(dest.getParent());
-                Files.copy(file, dest, StandardCopyOption.REPLACE_EXISTING);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        // `.jk-*` is the plugin-scratch convention; it must not ride into a staged layout.
+        PathUtil.copyTree(from, to, dir -> dir.getFileName() != null
+                && dir.getFileName().toString().startsWith(".jk-"));
     }
 
     private static void deleteTree(Path root) throws IOException {

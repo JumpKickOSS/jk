@@ -55,7 +55,7 @@ class KotlinSerializationTest {
                 # whose POM still 404s, observed live with junit 6.1.2 — no longer fail the
                 # solve: the resolver retreats to the prior release.)
                 [test-dependencies]
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

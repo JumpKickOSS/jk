@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.LongAdder;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-run byte accounting: how much this invocation moved over the network ({@code remote}) and
@@ -74,6 +75,18 @@ public final class IoLedger {
      * {@code Session.defaults()} uses so a session built inside a request joins that request's
      * accounting and one built anywhere else meters harmlessly into the void.
      */
+    /**
+     * The ledger this thread's request opened, or {@code null} off a request.
+     *
+     * <p>Distinct from {@link #currentOrNew()}, which mints one rather than answer "none" — useful
+     * for accounting, useless as a request discriminator. {@link RequestScope} needs the honest
+     * answer: it caches facts for the length of a request, so it must be able to tell that there is
+     * no request rather than cache into a ledger nobody opened (JK-1043).
+     */
+    public static @Nullable IoLedger ambient() {
+        return AMBIENT.get();
+    }
+
     public static IoLedger currentOrNew() {
         IoLedger ambient = AMBIENT.get();
         return ambient != null ? ambient : new IoLedger();

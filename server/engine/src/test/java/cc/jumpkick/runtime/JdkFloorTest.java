@@ -25,7 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network tests (Maven Central; provisions the pin on first run); the CAS under build/
  * keeps repeats warm.
  */
-@Tag("integration")
+@Tag("network")
 class JdkFloorTest {
 
     @Test
@@ -51,8 +51,8 @@ class JdkFloorTest {
                 kotlin  = "^2.4.0"
 
                 [test-dependencies]
-                junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+                junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

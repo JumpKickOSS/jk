@@ -16,8 +16,16 @@ tasks.wrapper {
 // is buildSrc/src/main/kotlin/TestTiers.kt and `checkAll` below runs `integrationTest` only.
 tasks.register("integrationTest") {
     group = "verification"
-    description = "Run @Tag(integration|slow) tests in every module (not part of check)"
+    description = "Run @Tag(integration) tests in every module (not part of check)"
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "integrationTest" } })
+}
+
+// Off checkAll as of JK-1023: framework/language e2e, 426s of the gating tier for 28 tests. What
+// they assert moves with a plugin or a toolchain, not with the change under review.
+tasks.register("slowTest") {
+    group = "verification"
+    description = "Run @Tag(slow) framework/language e2e suites in every module (nightly, not in checkAll)"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "slowTest" } })
 }
 
 // Deliberately NOT reachable from checkAll (JK-2447). These tests talk to a real remote, and

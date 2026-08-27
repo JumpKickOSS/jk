@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
 
@@ -657,6 +658,50 @@ public final class EffortWeights {
             boolean useKotlin,
             boolean useGroovy,
             boolean forceRebuild) {
+        return predict(in, cas, compact, useJava, useKotlin, useGroovy, forceRebuild, SourceRefs.unshared());
+    }
+
+    /**
+     * Per-language source lists shared between this prediction and the plan that follows it.
+     *
+     * <p>{@code BuildPlanner} declares exactly these caches, with a comment saying they exist so
+     * "parse-build execute reuses the result instead of walking the same directories again" — and
+     * {@code predict} was called thirteen lines above their declaration, so it could not capture them
+     * and walked every source tree a second time. Moving the declarations up and threading them here
+     * is the whole fix (JK-1031).
+     */
+    public record SourceRefs(
+            AtomicReference<List<Path>> java, AtomicReference<List<Path>> kotlin, AtomicReference<List<Path>> groovy) {
+
+        /** Refs nobody else shares — for a caller that predicts without a plan behind it. */
+        public static SourceRefs unshared() {
+            return new SourceRefs(new AtomicReference<>(), new AtomicReference<>(), new AtomicReference<>());
+        }
+
+        /** {@code ref}'s value, computing and storing it on first use. */
+        static List<Path> get(AtomicReference<List<Path>> ref, IoSupplier<List<Path>> compute) throws IOException {
+            List<Path> hit = ref.get();
+            if (hit != null) return hit;
+            List<Path> fresh = compute.get();
+            ref.compareAndSet(null, fresh);
+            return ref.get();
+        }
+    }
+
+    /** A supplier that may fail on the filesystem. */
+    interface IoSupplier<T> {
+        T get() throws IOException;
+    }
+
+    public static Plan predict(
+            BuildPlanner.Inputs in,
+            Cas cas,
+            boolean compact,
+            boolean useJava,
+            boolean useKotlin,
+            boolean useGroovy,
+            boolean forceRebuild,
+            SourceRefs shared) {
         boolean rerun = in.session().config().rebuildOr(false) || forceRebuild;
         // Same digest-only staleness predicate the build's freshen uses: a stale digest
         // means parse-lock will run a conservative re-lock, so forecast it.
@@ -681,8 +726,10 @@ public final class EffortWeights {
 
             boolean javaRun = false;
             if (useJava) {
-                List<Path> src = CompileSupport.collectJavaSources(
-                        compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java"));
+                List<Path> src = SourceRefs.get(
+                        shared.java(),
+                        () -> CompileSupport.collectJavaSources(
+                                compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java")));
                 javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, src);
                 compileJava = javaRun
                         ? learned(
@@ -696,7 +743,8 @@ public final class EffortWeights {
             }
             boolean ktRun = false;
             if (useKotlin) {
-                List<Path> src = PlannerCompile.mainKotlinSources(project, in.dir(), compact);
+                List<Path> src =
+                        SourceRefs.get(shared.kotlin(), () -> PlannerCompile.mainKotlinSources(project, in.dir(), compact));
                 ktRun = rerun || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, src);
                 compileKotlin = ktRun
                         ? learned(
@@ -712,7 +760,8 @@ public final class EffortWeights {
             if (useGroovy) {
                 // The groovy stamp lives in the merged classes dir — that is where
                 // write-stamp-groovy writes it (stamp-only freshness, like Kotlin's).
-                List<Path> src = PlannerCompile.mainGroovySources(project, in.dir(), compact);
+                List<Path> src =
+                        SourceRefs.get(shared.groovy(), () -> PlannerCompile.mainGroovySources(project, in.dir(), compact));
                 gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, src);
                 compileGroovy = gvRun
                         ? learned(

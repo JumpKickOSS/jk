@@ -1,0 +1,33 @@
+# G45 (JK-1031) ratchet: blind Files.walk / walkFileTree / newDirectoryStream / list calls
+# per module in src/main/java. A module may only shrink. Prefer
+# PathUtil.forEachRegularFile, which hands the walk's attributes to the visitor instead of
+# discarding them and re-resolving each path to ask again.
+#
+# Measured 2026-08-26 after JK-1031 migrated the hot path (FreshnessStamp.newerThan,
+# TaskForecaster.resourcesOutOfSync, CasSweep, TmpGc) and JK-1030 reordered 24 predicate
+# chains. The tail is long and each remaining site needs its own read -- some walks want
+# directories, some want a depth limit, some want ordering -- so this ships as a ratchet
+# rather than a ban, which makes the rule monotonic today instead of unwinnable.
+
+clients/cli 16
+plugins/android 10
+plugins/formatter 2
+plugins/groovy-compiler 1
+plugins/image-builder 8
+plugins/java-compiler 3
+plugins/micronaut 1
+plugins/minified 2
+plugins/protobuf 1
+plugins/quarkus 10
+plugins/spring-boot 1
+plugins/test-runner 1
+server/engine 90
+server/toolchain 2
+shared/client-io 15
+shared/core 16
+shared/dynamic-surface 2
+shared/host 4
+shared/toolchain-jdk 29
+shared/wire 1
+
+

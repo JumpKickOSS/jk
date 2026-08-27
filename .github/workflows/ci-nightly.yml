@@ -31,6 +31,25 @@ jobs:
       - name: Integration test
         run: ./gradlew integrationTest --no-daemon
 
+  # @Tag("slow") lives here as of JK-1023. Framework/language e2e — Android, Grails, Scala, KSP,
+  # Protobuf, Groovy, Minified — measured at 426s of integrationTest's 1419s for 28 tests, 15s
+  # each. What it asserts moves when a plugin or a toolchain moves, not when the change under
+  # review does, so paying it on every merge bought coverage the change could not affect.
+  slow:
+    name: Gradle slow e2e test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - name: Slow e2e test
+        run: ./gradlew slowTest --no-daemon
+
   # @Tag("network") lives here and nowhere else (JK-2447). It is off `checkAll` on purpose:
   # Sonatype enforces a per-IP quota on Maven Central and this repo has a documented history of
   # 429s from it (JK-1277), so a PR gate that needs the network fails for reasons the change did

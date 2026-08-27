@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -183,18 +184,6 @@ public final class ModuleOutputRestore {
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
-        Files.createDirectories(to);
-        try (var walk = Files.walk(from)) {
-            for (Path src : (Iterable<Path>) walk::iterator) {
-                Path rel = from.relativize(src);
-                Path dest = to.resolve(rel);
-                if (Files.isDirectory(src)) {
-                    Files.createDirectories(dest);
-                } else if (Files.isRegularFile(src)) {
-                    Files.createDirectories(dest.getParent());
-                    Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
+        PathUtil.copyTree(from, to);
     }
 }

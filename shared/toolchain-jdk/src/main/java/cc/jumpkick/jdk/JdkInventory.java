@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Stream;
 
 /**
@@ -57,7 +58,29 @@ public final class JdkInventory {
 
     /** Inventory file in {@link JkDirs#state()}, trees under {@code jdksRoot}. */
     public static JdkInventory of(Path jdksRoot) {
-        return new JdkInventory(jdksRoot, JkDirs.state().resolve(FILE_NAME), JkDirs.userConfigFile(), JkDirs.data());
+        return SHARED.computeIfAbsent(
+                jdksRoot.toAbsolutePath().normalize(),
+                root -> new JdkInventory(
+                        root, JkDirs.state().resolve(FILE_NAME), JkDirs.userConfigFile(), JkDirs.data()));
+    }
+
+    /**
+     * One inventory per JDK root for the life of the process.
+     *
+     * <p>{@link #snapshot()} memoizes on {@code (size, mtime)} in <em>instance</em> fields, and this
+     * factory built a fresh instance on every call — so the memo never survived, exactly the shape
+     * JK-1033 fixed for {@code JdkRegistry}. {@code jk hook-env} runs on every shell prompt and asks
+     * for defaultId, graalId, defaultHome and graalHome; a per-call instance re-read and re-parsed the
+     * file for each (JK-1048).
+     *
+     * <p>Correctness is unchanged: the snapshot still re-stats on every read and re-parses when the
+     * file moves, so sharing the instance shares the memo, not a stale answer.
+     */
+    private static final ConcurrentMap<Path, JdkInventory> SHARED = new ConcurrentHashMap<>();
+
+    /** Test seam: forget every shared inventory, so the next {@link #of} re-reads. */
+    public static void resetShared() {
+        SHARED.clear();
     }
 
     /** Test seam: inventory file + jdks root, no config/symlink migration. */
@@ -342,8 +365,10 @@ public final class JdkInventory {
     private synchronized Snapshot snapshot() {
         ensureMigrated();
         try {
-            if (!Files.isRegularFile(file)) return Snapshot.empty();
+            // One readAttributes, not isRegularFile-then-readAttributes: it answers presence, size and
+            // mtime together, and this runs on every shell prompt via `jk hook-env` (JK-1033).
             var attrs = Files.readAttributes(file, BasicFileAttributes.class);
+            if (!attrs.isRegularFile()) return Snapshot.empty();
             if (cachedSnapshot != null
                     && attrs.size() == cachedSize
                     && attrs.lastModifiedTime().equals(cachedModified)) {

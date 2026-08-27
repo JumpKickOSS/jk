@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -198,34 +199,33 @@ public final class CliSessionTranscript {
         openFile(run.detailsFile());
     }
 
+    /**
+     * The {@code group:name} of the project at {@code dir}.
+     *
+     * <p>Through {@code TomlScan}, which owns reading scalars out of a {@code jk.toml} and memoizes
+     * the file. This was the fourth hand-rolled reader of the same two keys in the client, complete
+     * with its own {@code unquote} and its own {@code namespace} special-case — and it read the whole
+     * manifest to find them (JK-1042).
+     *
+     * <p>Not {@code ProjectInfo.coord()}, which already carries this over the wire: the transcript is
+     * opened on the path that reports a build, and making it depend on an engine round trip would put
+     * an RPC where a local read belongs. The memoized scan costs one {@code readAttributes} once the
+     * manifest has been seen, which every build path has already done.
+     */
     private static String coordOf(Path dir) {
         try {
-            Path toml = dir.resolve(ManifestPaths.MANIFEST);
-            if (!Files.isRegularFile(toml)) return "unknown:unknown";
-            String text = Files.readString(toml, StandardCharsets.UTF_8);
-            String group = null, name = null;
-            for (String line : text.split("\n")) {
-                String t = line.trim();
-                if (t.startsWith("group") && t.contains("=")) {
-                    group = unquote(t.substring(t.indexOf('=') + 1).trim());
-                } else if (t.startsWith("name") && t.contains("=") && !t.startsWith("namespace")) {
-                    name = unquote(t.substring(t.indexOf('=') + 1).trim());
-                }
+            TomlScan scan = TomlScan.scan(dir.resolve(ManifestPaths.MANIFEST), "group", "name");
+            String group = scan.get("group");
+            String name = scan.get("name");
+            if (group != null && !group.isBlank() && name != null && !name.isBlank()) {
+                return group + ":" + name;
             }
-            if (group != null && name != null) return group + ":" + name;
-        } catch (Exception ignored) {
+        } catch (RuntimeException ignored) {
+            // A malformed or absent manifest is not a reason to fail the transcript.
         }
         return "unknown:unknown";
     }
 
-    private static String unquote(String s) {
-        if (s == null) return null;
-        s = s.trim();
-        if (s.length() >= 2 && s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') {
-            return s.substring(1, s.length() - 1);
-        }
-        return s;
-    }
 
     public CliSessionTranscript modules(Iterable<String> coords) {
         if (coords == null) return this;

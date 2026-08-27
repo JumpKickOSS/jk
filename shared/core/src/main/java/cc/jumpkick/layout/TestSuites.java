@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -271,13 +273,22 @@ public final class TestSuites {
      * test tier and are never selected to run — and that collection rule has one owner, here.
      */
     public static List<Path> collectExt(Path root, String ext) throws IOException {
-        if (!Files.isDirectory(root)) return List.of();
-        List<Path> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(ext))
-                    .forEach(result::add);
-        }
-        return result;
+        // Once per (root, extension) per request — see CompileSupport for why the same roots are
+        // asked repeatedly. TestSuites.hasSources alone calls this four times per root, and
+        // discover() is reached from every test-count estimate (JK-1043).
+        return RequestScope.current().get(new ExtKey(root.toAbsolutePath().normalize(), ext), key -> {
+            List<Path> result = new ArrayList<>();
+            try {
+                PathUtil.forEachRegularFile(key.root(), (file, attrs) -> {
+                    if (file.getFileName().toString().endsWith(key.ext())) result.add(file);
+                });
+            } catch (IOException unreadable) {
+                return List.<Path>of();
+            }
+            return List.copyOf(result);
+        });
     }
+
+    /** Memo key for a suite scan: one enumeration per directory per extension per request. */
+    private record ExtKey(Path root, String ext) {}
 }

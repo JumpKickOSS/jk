@@ -46,6 +46,21 @@ object TestTiers {
     const val NETWORK = "networkTest"
 
     /**
+     * Framework and language end-to-end suites: does an Android / Grails / Scala / KSP / Protobuf
+     * project still build all the way through. **Deliberately not part of `checkAll`** as of
+     * JK-1023.
+     *
+     * Measured 2026-08-26: 19 classes, 28 tests, 426s of `integrationTest`'s 1419s — 30% of the
+     * gating tier for **15 seconds per test**, the worst ratio in the tree. What they assert breaks
+     * when a plugin or a toolchain moves, not when engine or CLI core does, so the average change
+     * pays that cost for coverage it cannot affect.
+     *
+     * The tag already existed and already meant this; before JK-1023 it simply routed to
+     * [INTEGRATION] alongside `integration`, which is what put it on the merge bar.
+     */
+    const val SLOW = "slowTest"
+
+    /**
      * Microbenchmarks. Not part of any gate — they print medians and assert nothing about deltas, so gating on them
      * would gate on CI noise. They still have to *run* somewhere or they rot: before JK-2447 this tier did not exist
      * and `@Tag("bench")` was excluded from both tasks.
@@ -62,12 +77,13 @@ object TestTiers {
     val all =
         listOf(
             TestTier(UNIT, include = emptySet(), exclude = slowTags.toSet()),
-            TestTier(INTEGRATION, include = setOf("integration", "slow"), exclude = setOf("network", "bench")),
+            TestTier(INTEGRATION, include = setOf("integration"), exclude = setOf("slow", "network", "bench")),
+            TestTier(SLOW, include = setOf("slow"), exclude = setOf("network", "bench")),
             TestTier(NETWORK, include = setOf("network"), exclude = setOf("bench")),
             TestTier(BENCH, include = setOf("bench"), exclude = emptySet()),
         )
 
-    /** The tiers `checkAll` runs. [NETWORK] and [BENCH] are absent on purpose; see their docs. */
+    /** The tiers `checkAll` runs. [SLOW], [NETWORK] and [BENCH] are absent on purpose; see their docs. */
     val gating = setOf(UNIT, INTEGRATION)
 
     /** The tasks that would run an element carrying exactly [tags]. Invariant: exactly one. */
