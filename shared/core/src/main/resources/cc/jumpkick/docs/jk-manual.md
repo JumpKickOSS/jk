@@ -193,7 +193,7 @@ daemonless OCI `jk image`; `jk publish` with optional signing / Sigstore / SBOM.
 | `target/` | Build outputs (gitignored). |
 | `target/jk-results.md` | High-level report of the last run. **Read this on failure.** |
 | `.jdk-version` | Optional JDK pin. |
-| `.jk/` | Optional generate steps *outside* the manifest — not a Gradle script. |
+| `jk/` or `.jk/` | Optional generate steps *outside* the manifest — not a Gradle script. |
 | `~/.config/jk/config.toml` | Machine config (heap, jobs, MCP, …). |
 
 Layout is by directory shape, not a `jk.toml` key: **traditional** Maven trees

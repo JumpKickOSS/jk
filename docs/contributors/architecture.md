@@ -368,14 +368,15 @@ to residual so both end on time with `R → 0`. See [progress-contract.md](progr
 
 ### Project build logic (`.jk/`)
 
-Convention directory **`.jk/`** (hidden) next to that module's `jk.toml` holds project-local
-stem scripts (overridable via `[build].logic`): `before-compile.groovy` / `.kts` and sibling
-stems. `.kts` wins a same-stem `.groovy`. Groovy and Kotlin scripts run in forked processes.
-Compiled `.java` / `.kt` under `.jk/` is rejected. The engine action-caches each task’s
-`outDir` and merges into the classes tree (`BEFORE_COMPILE` is a generated-source root).
-No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`, `AFTER_RESOURCES`,
-`BEFORE_PACKAGE` — each carries a stage wire name aligned with `BuildStage`. See
-[user build logic](../user/build-logic.md).
+Convention directories **`jk/`** (visible) or **`.jk/`** (hidden) next to that module's
+`jk.toml` hold project-local stem scripts (overridable via `[build].logic`):
+`before-compile.groovy` / `.kts` and sibling stems. If both dirs exist, `jk/` wins.
+`.kts` wins a same-stem `.groovy`. Groovy and Kotlin scripts run in forked processes.
+Compiled `.java` / `.kt` under the logic dir is rejected. The engine action-caches each
+task’s `outDir` and merges into the classes tree (`BEFORE_COMPILE` is a generated-source
+root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
+`AFTER_RESOURCES`, `BEFORE_PACKAGE` — each carries a stage wire name aligned with
+`BuildStage`. See [user build logic](../user/build-logic.md).
 
 ## Status
 

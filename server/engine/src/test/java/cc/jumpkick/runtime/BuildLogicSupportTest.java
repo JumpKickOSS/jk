@@ -37,6 +37,35 @@ class BuildLogicSupportTest {
     }
 
     @Test
+    void visible_jk_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve("jk"));
+        writeLineCountGroovy(project.resolve("jk/after-resources.groovy"));
+        runTwice(project, dir.resolve("cache"));
+    }
+
+    @Test
+    void visible_jk_wins_over_hidden_when_both_exist(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve("jk"));
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(
+                project.resolve("jk/after-resources.groovy"),
+                "outDir.resolve('which.txt').toFile().text = 'visible'\n");
+        Files.writeString(
+                project.resolve(".jk/after-resources.groovy"),
+                "outDir.resolve('which.txt').toFile().text = 'hidden'\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> {}));
+        assertEquals("visible", Files.readString(classes.resolve("which.txt")).trim());
+    }
+
+    @Test
     void logic_path_override(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
         Files.writeString(project.resolve("jk.toml"), """

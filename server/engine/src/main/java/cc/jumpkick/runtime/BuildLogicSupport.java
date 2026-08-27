@@ -32,8 +32,8 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 /**
- * Project-local <strong>build logic</strong>. Convention directory is {@code .jk/}; override with
- * {@code [build].logic}.
+ * Project-local <strong>build logic</strong>. Convention directories are {@code jk/} (visible,
+ * wins if both exist) and {@code .jk/}; override with {@code [build].logic}.
  *
  * <p>Top-level stem scripts only ({@code before-compile.groovy} / {@code .kts} and sibling stems).
  * Groovy runs in a forked JVM; Kotlin via {@code kotlinc -script}. Compiled {@code .java}/{@code

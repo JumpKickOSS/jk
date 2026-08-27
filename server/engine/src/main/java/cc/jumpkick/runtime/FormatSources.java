@@ -90,6 +90,7 @@ final class FormatSources {
         if (s.equals(BuildLayout.TARGET)
                 || s.equals("build")
                 || s.equals(".jk")
+                || s.equals("jk")
                 || s.equals(".git")
                 || s.equals("node_modules")) {
             return true;

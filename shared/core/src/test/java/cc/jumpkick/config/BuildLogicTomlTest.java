@@ -33,6 +33,21 @@ class BuildLogicTomlTest {
     }
 
     @Test
+    void visible_jk_dir_when_the_key_is_absent() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectory(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+        assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+    }
+
+    @Test
+    void visible_jk_wins_when_both_convention_dirs_exist() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectory(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+        Files.createDirectory(dir.resolve(BuildLogicToml.DEFAULT_DIR));
+        assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+    }
+
+    @Test
     void empty_when_the_default_directory_does_not_exist() throws IOException {
         manifest("name = \"demo\"\n");
         assertThat(BuildLogicToml.resolve(dir)).isEmpty();
