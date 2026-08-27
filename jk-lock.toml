@@ -1,9 +1,13 @@
-version = 1
+version = 2
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
 manifests-sha256 = "984fdaa389999953fe3652ddb306651982959d65c403dc65ab3865c58cae23ac"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
+
+[jdk]
+suggested-vendor = "temurin"
+suggested-version = "25.0.4.1"
 
 [native]
 metadata-repository = "1.1.10"

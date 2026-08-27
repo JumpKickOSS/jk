@@ -103,7 +103,7 @@ class AutoLockWorkspaceTest {
         // live manifests-sha256, so staleness must come from a real manifest edit — mtimes are
         // irrelevant since the invisible-freshen change (LockFreshness digest regime).
         Path rootLock = LockPaths.lockFile(ws);
-        LockfileWriter.write(new Lockfile(1, "test", "jk-test", List.of()), rootLock);
+        LockfileWriter.write(new Lockfile(Lockfile.CURRENT_VERSION, "test", "jk-test", List.of()), rootLock);
         // Now app grows a dep: the workspace digest no longer matches the stamp → stale.
         Files.writeString(ws.resolve("app/jk.toml"), """
                 group = "com.example"
@@ -156,7 +156,7 @@ class AutoLockWorkspaceTest {
 
         // The on-disk lock pins 1.0.0 identity (digest stamped against the 1.0.0 manifest).
         Path lockFile = LockPaths.lockFile(proj);
-        Lockfile stale = new Lockfile(1, "test", "jk-test", List.of())
+        Lockfile stale = new Lockfile(Lockfile.CURRENT_VERSION, "test", "jk-test", List.of())
                 .withModules(List.of(new Lockfile.ModuleEntry(
                         ".", "com.example", "solo", "1.0.0", 21, null, null, null, null, null)));
         LockfileWriter.write(stale, lockFile);

@@ -8,12 +8,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -35,8 +31,7 @@ public final class LockfileReader {
      * {@code jk add} / {@code jk update} would strand the previous {@code Lockfile} — hundreds of
      * artifacts each — for the engine's lifetime.
      */
-    private static final StampedMemo<Path, StampedMemo.FileStamp, Lockfile> READ_CACHE =
-            StampedMemo.bounded(64);
+    private static final StampedMemo<Path, StampedMemo.FileStamp, Lockfile> READ_CACHE = StampedMemo.bounded(64);
 
     /** Test seam: drop the per-process read memo so freshly-written files re-parse. */
     public static void clearCache() {
@@ -95,7 +90,7 @@ public final class LockfileReader {
                     + Lockfile.MIN_SUPPORTED_VERSION
                     + "-v"
                     + Lockfile.CURRENT_VERSION
-                    + ")");
+                    + ") — re-run `jk lock` to restate it");
         }
         String generatedBy = requireString(result, "generated-by");
         String resolutionAlgorithm = requireString(result, "resolution-algorithm");
@@ -223,14 +218,34 @@ public final class LockfileReader {
     }
 
     /** A {@code [jdk]}/{@code [graal]} pin, or null when absent. Both fields required when present. */
-    private static <T> T toPin(TomlTable table, String section, BiFunction<String, String, T> factory) {
+    /**
+     * One {@code [jdk]} / {@code [graal]} table. The pre-{@code suggested-*} shape (a bare
+     * {@code vendor} + {@code version} pair) said nothing about whether it bound a later build, so
+     * it cannot be read either way without guessing — it is rejected, and {@code jk lock} restates
+     * it honestly.
+     */
+    private static <T> T toPin(TomlTable table, String section, Pins<T> factory) {
         if (table == null) return null;
-        String vendor = table.getString("vendor");
-        String version = table.getString("version");
-        if (vendor == null || vendor.isBlank() || version == null || version.isBlank()) {
-            throw new IllegalArgumentException("[" + section + "] requires both vendor and version");
+        if (table.contains("vendor") || table.contains("version")) {
+            throw new IllegalArgumentException("["
+                    + section
+                    + "] uses the old vendor/version shape, which does not say whether it is a"
+                    + " suggestion or a pin — re-run `jk lock` to restate it as suggested-*/required-*");
         }
-        return factory.apply(vendor, version);
+        T pin = factory.of(
+                table.getString("suggested-vendor"),
+                table.getString("suggested-version"),
+                table.getString("required-vendor"),
+                table.getString("required-version"));
+        if (((Lockfile.ToolchainPin) pin).isEmpty()) {
+            throw new IllegalArgumentException("[" + section + "] names no vendor or version — omit the table instead");
+        }
+        return pin;
+    }
+
+    /** The four-argument constructor shared by {@link Lockfile.JdkPin} and {@link Lockfile.GraalPin}. */
+    private interface Pins<T> {
+        T of(String suggestedVendor, String suggestedVersion, String requiredVendor, String requiredVersion);
     }
 
     /**

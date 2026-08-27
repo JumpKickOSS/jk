@@ -82,12 +82,8 @@ public record ToolchainSpec(
         boolean hasCombined = combined != null && !combined.isBlank();
         boolean hasParts = notBlank(vendorRaw) || notBlank(versionRaw);
         if (hasCombined && hasParts) {
-            throw new IllegalArgumentException(label
-                    + " and "
-                    + label
-                    + "-vendor/"
-                    + label
-                    + "-version both set — use one or the other");
+            throw new IllegalArgumentException(
+                    label + " and " + label + "-vendor/" + label + "-version both set — use one or the other");
         }
         if (hasCombined) return parse(label, combined);
         if (!hasParts) return NONE;

@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.Scope;
 import java.util.List;
@@ -17,7 +18,7 @@ class LockfileRoundTripTest {
         // The header is deterministic; a floor-less lock is stamped with the FORMAT floor —
         // never the running version (the floor moves only when the lock format requires it).
         assertThat(rendered).startsWith("""
-                version = 1
+                version = 2
                 generated-by = "jk 0.1.0-SNAPSHOT"
                 resolution-algorithm = "pubgrub-v1"
                 """);
@@ -35,7 +36,7 @@ class LockfileRoundTripTest {
         // A legacy artifact pin reads as the floor; the sha is ignored (a floor needs no engine
         // artifact) and the next write renders it in floor form.
         String legacy = """
-                version = 1
+                version = 2
                 generated-by = "jk 0.9.0"
                 resolution-algorithm = "pubgrub-v1"
                 jk = { version = "0.9.0", sha256 = "abcd" }
@@ -51,7 +52,7 @@ class LockfileRoundTripTest {
         // A user remote named local always carries its URL ("local+file://…"), so the bare form is
         // unambiguous and folds to the current marker; the URL form must pass through untouched.
         String legacy = """
-                version = 1
+                version = 2
                 generated-by = "jk 0.12.0"
                 resolution-algorithm = "pubgrub-v1"
 
@@ -158,28 +159,70 @@ class LockfileRoundTripTest {
 
     @Test
     void kotlin_version_round_trips() {
-        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", new Lockfile.JdkPin("temurin", "25.0.3"))
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", Lockfile.JdkPin.suggested("temurin", "25.0.3"))
                 .withKotlin("2.3.21");
         String rendered = LockfileWriter.render(original);
         assertThat(rendered).contains("kotlin = \"2.3.21\"");
 
         Lockfile parsed = LockfileReader.parse(rendered);
         assertThat(parsed.kotlin()).isEqualTo("2.3.21");
-        assertThat(parsed.jdk()).isEqualTo(new Lockfile.JdkPin("temurin", "25.0.3"));
+        assertThat(parsed.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.3"));
     }
 
     @Test
     void jdk_and_graal_pins_round_trip() {
-        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", new Lockfile.JdkPin("temurin", "25.0.4.1"))
-                .withGraal(new Lockfile.GraalPin("graalvm-ce", "25.0.4"));
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", Lockfile.JdkPin.suggested("temurin", "25.0.4.1"))
+                .withGraal(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.4"));
         String rendered = LockfileWriter.render(original);
         assertThat(rendered)
-                .contains("[jdk]\nvendor  = \"temurin\"\nversion = \"25.0.4.1\"\n")
-                .contains("[graal]\nvendor  = \"graalvm-ce\"\nversion = \"25.0.4\"\n")
-                .doesNotContain("jdk = ");
+                .contains("[jdk]\nsuggested-vendor = \"temurin\"\nsuggested-version = \"25.0.4.1\"\n")
+                .contains("[graal]\nsuggested-vendor = \"graalvm-ce\"\nsuggested-version = \"25.0.4\"\n")
+                .doesNotContain("jdk = ")
+                .doesNotContain("required-");
         Lockfile parsed = LockfileReader.parse(rendered);
         assertThat(parsed.jdk()).isEqualTo(original.jdk());
         assertThat(parsed.graal()).isEqualTo(original.graal());
+    }
+
+    @Test
+    void required_pins_round_trip_and_leave_the_suggestion_out() {
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", new Lockfile.JdkPin("", "25", "microsoft", ""))
+                .withGraal(new Lockfile.GraalPin("", "", "graalvm-ce", "25.0.4"));
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered)
+                .contains("[jdk]\nsuggested-version = \"25\"\nrequired-vendor = \"microsoft\"\n")
+                .contains("[graal]\nrequired-vendor = \"graalvm-ce\"\nrequired-version = \"25.0.4\"\n");
+        Lockfile parsed = LockfileReader.parse(rendered);
+        assertThat(parsed.jdk()).isEqualTo(original.jdk());
+        assertThat(parsed.graal()).isEqualTo(original.graal());
+    }
+
+    @Test
+    void the_old_vendor_version_shape_is_rejected_rather_than_guessed_at() {
+        String legacy = """
+                version = 2
+                generated-by = "jk 0.1.0"
+                resolution-algorithm = "nearest-wins"
+
+                [jdk]
+                vendor  = "temurin"
+                version = "25.0.4"
+                """;
+        assertThatThrownBy(() -> LockfileReader.parse(legacy))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("re-run `jk lock`");
+    }
+
+    @Test
+    void a_v1_lock_is_rejected_because_its_toolchain_tables_cannot_be_read() {
+        String v1 = """
+                version = 1
+                generated-by = "jk 0.1.0"
+                resolution-algorithm = "nearest-wins"
+                """;
+        assertThatThrownBy(() -> LockfileReader.parse(v1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("re-run `jk lock`");
     }
 
     @Test
@@ -271,13 +314,13 @@ class LockfileRoundTripTest {
     @Test
     void a_lock_without_the_native_table_has_no_pin() {
         assertThat(LockfileReader.parse("""
-                        version = 1
+                        version = 2
                         generated-by = "jk 0.9.0"
                         resolution-algorithm = "pubgrub-v1"
                         """).nativeMetadata()).isNull();
         // A table with no version is the same as no table: there is nothing to extract.
         assertThat(LockfileReader.parse("""
-                        version = 1
+                        version = 2
                         generated-by = "jk 0.9.0"
                         resolution-algorithm = "pubgrub-v1"
 

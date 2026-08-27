@@ -111,18 +111,8 @@ public final class LockfileWriter {
         }
         // Tables after top-level scalars: opening one would swallow any key written after it.
         // The [[artifact]] rows below close whatever table is open.
-        Lockfile.JdkPin jdk = lockfile.jdk();
-        if (jdk != null) {
-            out.append("\n[jdk]\n");
-            out.append("vendor  = ").append(quote(jdk.vendor())).append('\n');
-            out.append("version = ").append(quote(jdk.version())).append('\n');
-        }
-        Lockfile.GraalPin graal = lockfile.graal();
-        if (graal != null) {
-            out.append("\n[graal]\n");
-            out.append("vendor  = ").append(quote(graal.vendor())).append('\n');
-            out.append("version = ").append(quote(graal.version())).append('\n');
-        }
+        writeToolchain(out, "jdk", lockfile.jdk());
+        writeToolchain(out, "graal", lockfile.graal());
         Lockfile.NativeMetadata pin = lockfile.nativeMetadata();
         if (pin != null) {
             out.append("\n[native]\n");
@@ -238,6 +228,24 @@ public final class LockfileWriter {
         }
 
         return out.toString();
+    }
+
+    /**
+     * One toolchain table. Each axis is written on exactly one side — a required vendor makes the
+     * suggested one noise — and a blank field is left out rather than written empty.
+     */
+    private static void writeToolchain(StringBuilder out, String table, Lockfile.ToolchainPin pin) {
+        if (pin == null || pin.isEmpty()) return;
+        out.append('\n').append('[').append(table).append(']').append('\n');
+        field(out, "suggested-vendor", pin.suggestedVendor());
+        field(out, "suggested-version", pin.suggestedVersion());
+        field(out, "required-vendor", pin.requiredVendor());
+        field(out, "required-version", pin.requiredVersion());
+    }
+
+    private static void field(StringBuilder out, String key, String value) {
+        if (value == null || value.isEmpty()) return;
+        out.append(key).append(" = ").append(quote(value)).append('\n');
     }
 
     private static String quote(String value) {

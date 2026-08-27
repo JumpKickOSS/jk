@@ -22,11 +22,13 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkBuild.NativeConfig;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -275,7 +277,8 @@ public final class LockPipeline {
                 lock,
                 javaHome,
                 jdkRegistry,
-                pathPrep.project().project().jdkMajor(),
+                pathPrep.project().project().jdkSpec(),
+                pathPrep.project().nativeConfig().map(NativeConfig::graalSpec).orElse(ToolchainSpec.NONE),
                 pathPrep.project().graal() != null);
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);

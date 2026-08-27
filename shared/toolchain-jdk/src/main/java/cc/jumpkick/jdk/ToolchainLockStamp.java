@@ -2,64 +2,58 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.ToolchainSpec;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Stamps lock {@code [jdk]} / {@code [graal]} from the JDK (and optional GraalVM) actually selected
- * at lock time.
+ * Stamps lock {@code [jdk]} / {@code [graal]} from the manifest's declaration and the toolchain
+ * that actually resolved at lock time.
  *
- * <p>{@code [jdk]} is written only when the project declared a {@code jdk} major and the selected
- * home is that major. Every consumer reads the table as a pin, so stamping the JVM jk happened to
- * run on would answer a question the project never asked: on a host without the declared JDK the
- * stamp names the host's own JVM, that pin then reads as satisfied, and the declared JDK is never
- * provisioned — the build succeeds on the wrong JDK in silence. A project that declares no
- * {@code jdk} gets no table, which is what leaves resolution free to pick.
+ * <p>{@code [jdk]} is always written. The table is a record of what built the lock, and its
+ * suggested version is a floor on the major only — so naming the host's JVM constrains a later
+ * build to the same major, not to the same install. An earlier revision suppressed the stamp
+ * unless the project declared a matching {@code jdk} major, because every consumer then read the
+ * table as a hard pin and a stamp of the ambient JVM would silently satisfy a JDK the project
+ * never got. That is no longer how the table reads: a pin now has to say {@code required-*}, and
+ * only an {@code =} in the manifest writes one.
  *
- * <p>{@code [graal]} is written when the Java home is itself a GraalVM — that is a real answer to a
- * real question — or when the project declared Graal ({@code [native].graal}, or any
- * {@code [native]} that turns native-image on) and one is installed. It is <em>not</em> written
- * merely because the machine happens to have a GraalVM: an ambient SDKMAN install stamped into a
- * shared lock becomes a constraint every other consumer of that lock must satisfy, and nobody wrote
- * it down. Observed on jk's own repo, where `jk lock` added a graalvm-ce pin no manifest asked for.
+ * <p>{@code [graal]} is written when the Java home is itself a GraalVM, or when the project asked
+ * for Graal via {@code [native]}. A bare {@code [native]} declares no vendor, so whichever GraalVM
+ * distribution resolves is the one recorded — as a suggestion, which is all it is.
  */
 public final class ToolchainLockStamp {
 
     private ToolchainLockStamp() {}
 
     public static Lockfile apply(
-            Lockfile lock, Path javaHome, JdkRegistry registry, int declaredJdkMajor, boolean graalDeclared) {
+            Lockfile lock,
+            Path javaHome,
+            JdkRegistry registry,
+            ToolchainSpec jdkSpec,
+            ToolchainSpec graalSpec,
+            boolean graalDeclared) {
         if (lock == null) return null;
+        ToolchainSpec jdk = jdkSpec == null ? ToolchainSpec.NONE : jdkSpec;
+        ToolchainSpec graal = graalSpec == null ? ToolchainSpec.NONE : graalSpec;
         List<JdkHit> hits = registry.listHits();
-        Optional<JdkHit> javaHit = LockPinMatch.hitFor(javaHome, hits);
-        if (javaHit.isPresent()
-                && javaHit.get().version() != null
-                && !javaHit.get().version().isBlank()
-                && isDeclaredMajor(javaHit.get(), declaredJdkMajor)) {
-            lock = lock.withJdk(LockPinMatch.jdkPin(javaHit.get()));
+        JdkHit javaHit = LockPinMatch.hitFor(javaHome, hits).orElse(null);
+
+        Lockfile.JdkPin jdkPin = LockPinMatch.jdkPin(jdk, javaHit);
+        if (!jdkPin.isEmpty()) lock = lock.withJdk(jdkPin);
+
+        if (javaHit != null && DefaultGraalPolicy.isGraal(javaHit)) {
+            return withGraal(lock, LockPinMatch.graalPin(graal, javaHit));
         }
-        if (javaHit.isPresent() && DefaultGraalPolicy.isGraal(javaHit.get())) {
-            return lock.withGraal(LockPinMatch.graalPin(javaHit.get()));
-        }
-        // Only when the project asked for Graal. Presence on the machine is not a declaration: an
-        // ambient SDKMAN install would otherwise be stamped into a shared lock and then demanded
-        // from every other consumer of it, which is the same over-reach the [jdk] gate above fixes.
-        if (graalDeclared) {
-            Optional<JdkHit> graal = DefaultGraalPolicy.choose(hits);
-            if (graal.isPresent()
-                    && graal.get().version() != null
-                    && !graal.get().version().isBlank()) {
-                return lock.withGraal(LockPinMatch.graalPin(graal.get()));
-            }
+        if (graalDeclared || !graal.isEmpty()) {
+            Optional<JdkHit> graalHit = DefaultGraalPolicy.choose(hits);
+            return withGraal(lock, LockPinMatch.graalPin(graal, graalHit.orElse(null)));
         }
         return lock;
     }
 
-    /** True when the project declared a {@code jdk} major (non-zero) and {@code hit} is that major. */
-    private static boolean isDeclaredMajor(JdkHit hit, int declaredJdkMajor) {
-        if (declaredJdkMajor <= 0) return false;
-        Integer major = JdkKeywords.leadingMajor(hit.version());
-        return major != null && major == declaredJdkMajor;
+    private static Lockfile withGraal(Lockfile lock, Lockfile.GraalPin pin) {
+        return pin.isEmpty() ? lock : lock.withGraal(pin);
     }
 }

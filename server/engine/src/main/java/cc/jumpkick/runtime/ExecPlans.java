@@ -3,19 +3,18 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.host.Linking;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Linking;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
@@ -183,7 +182,7 @@ public final class ExecPlans {
             if (hasLock) {
                 try {
                     var pin = LockfileReader.read(lockFile).jdk();
-                    if (pin != null) lockJdk = pin.vendor() + "-" + pin.version();
+                    if (pin != null) lockJdk = pin.fingerprint();
                 } catch (IOException ignored) {
                     // unreadable lock — summarized as jdk-unknown, not an error
                 }

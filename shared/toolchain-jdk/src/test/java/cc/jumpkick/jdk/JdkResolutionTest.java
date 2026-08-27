@@ -218,7 +218,7 @@ class JdkResolutionTest {
         }
 
         ReqBuilder lockJdk(String vendor, String version) {
-            this.lockJdk = new Lockfile.JdkPin(vendor, version);
+            this.lockJdk = Lockfile.JdkPin.suggested(vendor, version);
             return this;
         }
 

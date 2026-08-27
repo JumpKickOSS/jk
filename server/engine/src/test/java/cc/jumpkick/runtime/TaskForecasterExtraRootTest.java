@@ -125,7 +125,7 @@ class TaskForecasterExtraRootTest {
     private static void lock(Path tmp) throws Exception {
         String manifestsSha = LockManifestDigest.compute(tmp);
         Files.writeString(tmp.resolve("jk-lock.toml"), """
-            version = 1
+            version = 2
             generated-by = "test"
             resolution-algorithm = "pubgrub-v1"
             manifests-sha256 = "%s"

@@ -64,7 +64,7 @@ class LockFloorTest {
 
     private static void writeLock(Path dir, String jkLine) throws IOException {
         Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 1
+                version = 2
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 %s

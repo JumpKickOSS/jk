@@ -544,7 +544,8 @@ public record JkBuild(
             List<String> args,
             String graal,
             NativeMode enabled,
-            VersionSelector metadataRepository) {
+            VersionSelector metadataRepository,
+            ToolchainSpec graalSpec) {
 
         /** {@code metadata-repository} when the key is omitted: newest stable at lock time. */
         public static final VersionSelector METADATA_REPOSITORY_DEFAULT = VersionSelector.parseFloating("latest");
@@ -556,6 +557,21 @@ public record JkBuild(
             if (graal != null && graal.isBlank()) graal = null;
             if (enabled == null) enabled = NativeMode.SUPPORTED;
             if (metadataRepository == null) metadataRepository = METADATA_REPOSITORY_DEFAULT;
+            if (graalSpec == null) graalSpec = ToolchainSpec.NONE;
+        }
+
+        /**
+         * The pre-{@link ToolchainSpec} arity: {@code graal} alone says what to resolve, never
+         * whether the author pinned it, so the spec reads as undeclared.
+         */
+        public NativeConfig(
+                String mainClass,
+                String name,
+                List<String> args,
+                String graal,
+                NativeMode enabled,
+                VersionSelector metadataRepository) {
+            this(mainClass, name, args, graal, enabled, metadataRepository, ToolchainSpec.NONE);
         }
 
         /**

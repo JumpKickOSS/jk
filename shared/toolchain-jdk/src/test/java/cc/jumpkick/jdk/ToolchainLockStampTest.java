@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.discovery.JkProbe;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.ToolchainSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,8 +21,10 @@ class ToolchainLockStampTest {
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, 25, false);
-        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("temurin", "25.0.4"));
+        Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "25"), false);
+        // The declared "25" is what the lock records for the version — a floor on the major, not
+        // the patch. No vendor was declared, so the one that resolved fills that field in.
+        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25"));
         assertThat(stamped.graal()).isNull();
     }
 
@@ -32,9 +35,9 @@ class ToolchainLockStampTest {
         fakeJdk(jdks.resolve("graalce-25.0.4"), "25.0.4", "GraalVM Community", "GRAALVM_VERSION=\"25.0.4\"\n");
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), java, registry, 25, true);
-        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("temurin", "25.0.4"));
-        assertThat(stamped.graal()).isEqualTo(new Lockfile.GraalPin("graalvm-ce", "25.0.4"));
+        Lockfile stamped = apply(java, registry, ToolchainSpec.NONE, true);
+        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+        assertThat(stamped.graal()).isEqualTo(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.4"));
     }
 
     @Test
@@ -47,32 +50,66 @@ class ToolchainLockStampTest {
                 "IMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\nGRAALVM_VERSION=\"25.0.4\"\n");
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), graal, registry, 25, false);
-        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("graalvm", "25.0.4"));
-        assertThat(stamped.graal()).isEqualTo(new Lockfile.GraalPin("graalvm", "25.0.4"));
+        Lockfile stamped = apply(graal, registry, ToolchainSpec.NONE, false);
+        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("graalvm", "25.0.4"));
+        assertThat(stamped.graal()).isEqualTo(Lockfile.GraalPin.suggested("graalvm", "25.0.4"));
     }
 
     @Test
-    void no_jdk_table_when_the_selected_home_is_not_the_declared_major(@TempDir Path tmp) throws IOException {
+    void records_the_declared_jdk_even_when_the_host_has_a_different_major(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        // The host has only 25; the project asked for 17. Stamping 25 here is what would let the
-        // pin read as satisfied and leave 17 unprovisioned, so no table is written at all.
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, 17, false);
-        assertThat(stamped.jdk()).isNull();
+        // The host has only 25; the project asked for 17. The declaration is what gets recorded —
+        // stamping the host's 25 is what would let a floor read as met and leave 17 unprovisioned.
+        Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "17"), false);
+        assertThat(stamped.jdk().suggestedVersion()).isEqualTo("17");
     }
 
     @Test
-    void no_jdk_table_when_the_project_declares_no_jdk(@TempDir Path tmp) throws IOException {
+    void records_the_resolved_jdk_when_the_project_declares_none(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        // Nothing declared: the ambient JVM is not a pin the project chose.
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, 0, false);
-        assertThat(stamped.jdk()).isNull();
+        // Nothing declared, so the lock records what built it. That is a suggestion and a floor on
+        // the major — it does not hold a later build to Temurin, or to 25.0.4.
+        Lockfile stamped = apply(home, registry, ToolchainSpec.NONE, false);
+        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+    }
+
+    @Test
+    void an_equals_pin_becomes_required_and_leaves_the_suggestion_empty(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "=corretto-25.0.4"), false);
+        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("", "", "corretto", "25.0.4"));
+    }
+
+    @Test
+    void an_equals_vendor_with_a_bare_major_pins_only_the_vendor(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        // No patch to be exact about, so the major stays a floor and the = binds the vendor.
+        Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "=temurin-25"), false);
+        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("", "25", "temurin", ""));
+    }
+
+    @Test
+    void graal_records_what_resolved_when_a_bare_native_block_declared_it(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path java = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        fakeJdk(jdks.resolve("graalce-25.0.4"), "25.0.4", "GraalVM Community", "GRAALVM_VERSION=\"25.0.4\"\n");
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        // [native] with no graal names no vendor, so whichever distribution resolves is recorded.
+        Lockfile stamped = apply(java, registry, ToolchainSpec.NONE, true);
+        assertThat(stamped.graal()).isEqualTo(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.4"));
     }
 
     @Test
@@ -82,12 +119,16 @@ class ToolchainLockStampTest {
         fakeJdk(jdks.resolve("graalce-25.0.4"), "25.0.4", "GraalVM Community", "GRAALVM_VERSION=\"25.0.4\"\n");
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        // The machine has a GraalVM; no manifest asked for one. This is the case that produced
-        // JK-1020 — an ambient SDKMAN graalvm-ce stamped into jk's own shared lock, which would
-        // then demand that distribution from everyone else reading it.
-        Lockfile stamped = ToolchainLockStamp.apply(Lockfile.empty("0.1"), java, registry, 25, false);
+        // The machine has a GraalVM; no manifest asked for one. An ambient install is still not a
+        // declaration — the [jdk] table records what built the lock, [graal] answers a question
+        // nobody put. This is the shape JK-1020 was filed against.
+        Lockfile stamped = apply(java, registry, ToolchainSpec.NONE, false);
         assertThat(stamped.graal()).isNull();
-        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("temurin", "25.0.4"));
+        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+    }
+
+    private static Lockfile apply(Path home, JdkRegistry registry, ToolchainSpec jdk, boolean graalDeclared) {
+        return ToolchainLockStamp.apply(Lockfile.empty("0.1"), home, registry, jdk, ToolchainSpec.NONE, graalDeclared);
     }
 
     private static Path fakeJdk(Path home, String version, String implementor, String extra) throws IOException {

@@ -10,6 +10,7 @@ import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -202,11 +203,14 @@ public final class ManifestBuild {
                 args.add(s);
             }
         }
-        String graal = ManifestProject.parseGraalSpec(native_);
-        if (graal == null) graal = "graalvm";
+        ToolchainSpec graalSpec = ManifestProject.parseGraalToolchain(native_);
+        // A bare [native] contrives its Graal from the project's own major (jdk, else java); the
+        // vendor is left open, so whichever GraalVM distribution resolves is the one recorded.
+        String graal = graalSpec.resolverSpec();
+        if (graal.isEmpty()) graal = "graalvm";
         JkBuild.NativeMode enabled = parseNativeEnabled(native_);
-        return Optional.of(
-                new JkBuild.NativeConfig(mainClass, name, args, graal, enabled, parseMetadataRepository(native_)));
+        return Optional.of(new JkBuild.NativeConfig(
+                mainClass, name, args, graal, enabled, parseMetadataRepository(native_), graalSpec));
     }
 
     /**

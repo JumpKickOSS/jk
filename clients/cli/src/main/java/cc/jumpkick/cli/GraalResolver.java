@@ -88,13 +88,12 @@ public final class GraalResolver {
         //    installs the pinned spec rather than falling through to an older Graal.
         Lockfile.GraalPin lockGraal = ToolchainPins.scan(projectDir).graal();
         if (lockGraal != null) {
-            Optional<JdkHit> locked =
-                    LockPinMatch.chooseGraal(registry.listHits(), lockGraal.vendor(), lockGraal.version());
+            Optional<JdkHit> locked = LockPinMatch.chooseGraal(registry.listHits(), lockGraal);
             if (locked.isPresent()
                     && NativeImageDriver.resolve(locked.get().home()).isPresent()) {
                 return locked.get().home();
             }
-            String spec = LockPinMatch.installSpec(lockGraal.vendor(), lockGraal.version());
+            String spec = LockPinMatch.installSpec(lockGraal);
             return install(
                     spec,
                     registry, /*announce*/

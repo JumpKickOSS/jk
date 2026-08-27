@@ -185,18 +185,19 @@ public final class JdkResolution {
     }
 
     /**
-     * Lock {@code [jdk]} pin: major-or-better among installed hits. Build: unsatisfied → would
-     * install. Hook: unsatisfied → fall through with a major floor.
+     * Lock {@code [jdk]} pin. A {@code required-*} field must be matched exactly; a suggestion is
+     * only a floor on the major. Build: unsatisfied → would install. Hook: unsatisfied → fall
+     * through with a major floor, unless the pin states a requirement, which a fall-through would
+     * quietly ignore.
      */
     private static Resolved lockfile(Lockfile.JdkPin pin, JdkRegistry reg, boolean canInstall) {
         if (pin == null) return null;
-        Optional<JdkHit> hit = LockPinMatch.choose(reg.listHits(), pin.vendor(), pin.version());
+        Optional<JdkHit> hit = LockPinMatch.choose(reg.listHits(), pin);
         if (hit.isPresent()) {
-            return Resolved.found(
-                    installed(hit.get().home()), Tier.LOCKFILE, LockPinMatch.installSpec(pin.vendor(), pin.version()));
+            return Resolved.found(installed(hit.get().home()), Tier.LOCKFILE, LockPinMatch.installSpec(pin));
         }
         if (canInstall) {
-            return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(pin.vendor(), pin.version()));
+            return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(pin));
         }
         return null;
     }

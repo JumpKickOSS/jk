@@ -62,22 +62,40 @@ the catalog short name when known.
 
 ## Toolchain pins
 
-`jk lock` records the JDK (and GraalVM, when one was in play) that resolved the graph:
+`jk lock` records the JDK (and GraalVM, when one was in play) that resolved the graph, on two
+independent axes:
 
 ```toml
 [jdk]
-vendor  = "temurin"
-version = "25.0.4.1"
+suggested-vendor  = "temurin"     # what built it; a later build may differ
+suggested-version = "25.0.4.1"    # floor on the MAJOR: 25.0.1 and 26.x clear it, 21 does not
 
-[graal]                 # omitted when no Graal was used
-vendor  = "graalvm-ce"
-version = "25.0.4"
+[graal]                           # omitted when no Graal was used
+required-vendor   = "graalvm-ce"  # no choice — install it or the build fails
+required-version  = "25.0.4"      # exact: 25.0.3, 25.1.0 and 26.0.2 all fail
 ```
 
-The hook prefers an install that matches that pin (exact vendor+version, then same vendor
-newer, then any vendor at the **same major or newer**). A lower major than the lock is a
-failure for `jk build` / `jk sync` (`jk jdk install …`); the shell hook stays silent and
-does not export a too-old JDK as if it satisfied the lock.
+`suggested-*` is a record of what created the lock. It binds nothing but the major: a build on a
+newer JDK is fine, an older one is not. `required-*` is a pin the project asked for, and only an
+`=` in `jk.toml` writes one:
+
+| jk.toml | lock |
+| --- | --- |
+| `jdk = "temurin-25"` | `suggested-vendor`, `suggested-version` |
+| `jdk = "=temurin-25.0.4"` | `required-vendor`, `required-version` |
+| `jdk = "=temurin-25"` | `required-vendor` + `suggested-version` (no patch to be exact about) |
+| `jdk-vendor = "=corretto"`, `jdk-version = 25` | `required-vendor` + `suggested-version` |
+| `[native] graal = "=25.2.4-graalce"` | `required-vendor`, `required-version` (SDKMAN order) |
+
+The fields mix freely, and each axis is written on one side only — a required vendor makes the
+suggested one meaningless. Vendors are lower-cased short ids.
+
+Among installs that satisfy the pin, the hook prefers exact vendor+version, then the same vendor,
+then the newest. A `required-*` nothing satisfies means install, never settle: the shell hook
+exports nothing rather than hand over a JDK the build itself will refuse.
+
+Locks written before this shape (a bare `vendor` / `version` pair, schema `version = 1`) are
+rejected rather than guessed at — re-run `jk lock`.
 
 ## Pre-release pins
 
