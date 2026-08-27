@@ -103,12 +103,12 @@ class CodeFormatterStampKeyTest {
         }
         cache.save();
 
-        try (var walk = java.nio.file.Files.walk(root)) {
-            var files = walk.filter(java.nio.file.Files::isRegularFile).toList();
+        try (var walk = Files.walk(root)) {
+            var files = walk.filter(Files::isRegularFile).toList();
             assertThat(files).as("500 stamps, one index file").hasSize(1);
         }
-        try (var walk = java.nio.file.Files.walk(root)) {
-            assertThat(walk.filter(java.nio.file.Files::isDirectory).toList())
+        try (var walk = Files.walk(root)) {
+            assertThat(walk.filter(Files::isDirectory).toList())
                     .as("and no shard directories")
                     .hasSize(1);
         }
@@ -121,8 +121,8 @@ class CodeFormatterStampKeyTest {
         Path root = tmp.resolve("format-stamps");
         // A stamp the previous layout would have written: <aa>/<bb>/<60-hex>, zero bytes.
         Path stale = root.resolve("ab").resolve("cd").resolve("e".repeat(60));
-        java.nio.file.Files.createDirectories(stale.getParent());
-        java.nio.file.Files.writeString(stale, "");
+        Files.createDirectories(stale.getParent());
+        Files.writeString(stale, "");
         // And a sibling configuration's index, which must survive.
         FormatStampCache other = new FormatStampCache(root, "other-config");
         other.record(other.keyFor("class B {}\n".getBytes(StandardCharsets.UTF_8)));
@@ -130,9 +130,9 @@ class CodeFormatterStampKeyTest {
 
         new FormatStampCache(root, "config-digest");
 
-        assertThat(java.nio.file.Files.exists(stale)).as("the sharded tree is gone").isFalse();
-        assertThat(java.nio.file.Files.exists(root.resolve("ab"))).isFalse();
-        assertThat(java.nio.file.Files.exists(root.resolve("other-config.keys")))
+        assertThat(Files.exists(stale)).as("the sharded tree is gone").isFalse();
+        assertThat(Files.exists(root.resolve("ab"))).isFalse();
+        assertThat(Files.exists(root.resolve("other-config.keys")))
                 .as("another configuration's index is not collateral")
                 .isTrue();
     }
