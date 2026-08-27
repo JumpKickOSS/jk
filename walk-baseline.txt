@@ -9,7 +9,7 @@
 # directories, some want a depth limit, some want ordering -- so this ships as a ratchet
 # rather than a ban, which makes the rule monotonic today instead of unwinnable.
 
-clients/cli 15
+clients/cli 14
 plugins/android 10
 plugins/formatter 2
 plugins/groovy-compiler 1
@@ -22,12 +22,12 @@ plugins/quarkus 10
 plugins/spring-boot 1
 plugins/test-runner 1
 server/engine 86
-server/toolchain 2
+server/toolchain 1
 shared/client-io 15
 shared/core 16
 shared/dynamic-surface 2
 shared/host 4
-shared/toolchain-jdk 29
+shared/toolchain-jdk 30
 shared/wire 1
 
 

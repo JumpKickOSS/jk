@@ -4,6 +4,9 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -46,18 +49,25 @@ public final class ToolListCommand implements CliCommand {
         Path state = stateDir != null ? stateDir : JkDirs.state();
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
         Path envsRoot = state.resolve("tools").resolve("envs");
-        if (!Files.isDirectory(envsRoot)) {
-            CliOutput.out("No tools installed. Try `jk tool install <coord>`.");
-            return 0;
-        }
+        List<List<String>> buildTools = buildToolRows();
         List<Path> envs = new ArrayList<>();
-        try (var stream = Files.list(envsRoot)) {
-            stream.filter(Files::isDirectory).forEach(envs::add);
+        if (Files.isDirectory(envsRoot)) {
+            try (var stream = Files.list(envsRoot)) {
+                stream.filter(Files::isDirectory).forEach(envs::add);
+            }
         }
-        if (envs.isEmpty()) {
-            CliOutput.out("No tools installed. Try `jk tool install <coord>`.");
+        if (envs.isEmpty() && buildTools.isEmpty()) {
+            CliOutput.out("No tools installed. Try `jk tool install <coord>` or `jk tool install "
+                    + BuildTool.KOTLIN.slug() + ":" + BuildTool.LATEST + "`.");
             return 0;
         }
+        if (!buildTools.isEmpty()) {
+            CommandWedge.envelopeStart();
+            for (String line : Table.render("Build tools", List.of("Tool", "Version", "Home"), buildTools)) {
+                CliOutput.out(line);
+            }
+        }
+        if (envs.isEmpty()) return 0;
         envs.sort(Comparator.comparing(p -> p.getFileName().toString()));
         List<List<String>> rows = new ArrayList<>();
         for (Path envDir : envs) {
@@ -78,6 +88,22 @@ public final class ToolListCommand implements CliCommand {
             CliOutput.out(line);
         }
         return 0;
+    }
+
+    /**
+     * Provisioned build-tool distributions, read through {@link ToolRegistry} — the same layout the
+     * engine writes, rather than a second walk that would drift from it.
+     */
+    private static List<List<String>> buildToolRows() throws IOException {
+        ToolRegistry registry = new ToolRegistry(JkDirs.tools());
+        List<List<String>> rows = new ArrayList<>();
+        for (BuildTool tool : BuildTool.values()) {
+            for (InstalledTool installed : registry.list(tool)) {
+                rows.add(List.of(
+                        tool.slug(), installed.version(), installed.home().toString()));
+            }
+        }
+        return rows;
     }
 
     /**

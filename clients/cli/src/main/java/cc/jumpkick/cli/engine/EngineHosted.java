@@ -228,6 +228,20 @@ final class EngineHosted {
     }
 
     /**
+     * Provision {@code tool} at {@code version} into {@code toolsRoot} — {@code jk tool install
+     * kotlin:latest}. {@code dir} is still sent (the engine's request shape has always carried it)
+     * but is unread on this path: the distribution comes from the name, not from a wrapper file.
+     */
+    static HostedEvents.Provision provisionTool(
+            EnginePaths.Paths paths, String tool, String version, Path toolsRoot, boolean noDiscover)
+            throws IOException {
+        return EnginePluginAdapter.provision(
+                paths,
+                ProtoJobs.provisionRequest(
+                        toolsRoot.toString(), toolsRoot.toString(), noDiscover, false, tool, version));
+    }
+
+    /**
      * Run {@code jk compile}'s compile-only plan against the engine — {@code jk test}'s
      * listener-factory shape, plain terminal plan-finish.
      */

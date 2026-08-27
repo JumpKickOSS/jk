@@ -10,6 +10,7 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
@@ -22,6 +23,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.runtime.HostedEvents;
 import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
@@ -40,6 +42,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * {@code jk tool install [<target>]} — install a catalog name, Maven coord, script/jar, project dir,
@@ -69,6 +72,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
                 Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
+                Opt.flag("Download a build tool rather than linking a host install.", "--no-discover"),
                 Opt.value(
                                 "<dir>",
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
@@ -89,7 +93,8 @@ public final class ToolInstallCommand implements CliCommand {
         return List.of(Param.of(
                 "target",
                 Arity.ZERO_OR_ONE,
-                "Catalog name, Maven coordinate spec (g:a[:version|@selector]),\n"
+                "Build tool (" + BuildTool.slugs() + ", optionally :<version>),\n"
+                        + "catalog name, Maven coordinate spec (g:a[:version|@selector]),\n"
                         + "script/jar file, project directory, or git URL. Omit to\n"
                         + "install the current jk.toml project."));
     }
@@ -138,6 +143,11 @@ public final class ToolInstallCommand implements CliCommand {
             return Exit.USAGE;
         }
         this.coord = in.positionals().get(0);
+        // A build tool is neither a coordinate nor a launcher: `kotlin:latest` names a
+        // distribution the engine unpacks into the tools root and consumes as a home. Checked
+        // before classification because `<slug>:<version>` would otherwise read as a coordinate.
+        Integer buildTool = installBuildTool(coord, in.isSet("no-discover"));
+        if (buildTool != null) return buildTool;
         // A local script/jar installs as a snapshot env (launcher must not depend on the source
         // path). Project dirs and git URLs delegate to InstallCommand. Local paths resolve
         // against -C/--dir, not the process cwd.
@@ -410,6 +420,50 @@ public final class ToolInstallCommand implements CliCommand {
     }
 
     /** The app-install plan, shared with {@code jk install}. */
+    /**
+     * Provision a build-tool distribution when {@code target} names one: {@code kotlin},
+     * {@code kotlin:latest}, {@code maven:3.9.9}. Returns {@code null} when it does not, so the
+     * caller falls through to the coordinate / file / project / git shapes.
+     *
+     * <p>Engine-side, through the same {@code ToolProvisioning} door a build uses when it needs the
+     * tool mid-flight — so installing ahead of time makes that build a cache hit rather than
+     * seeding a second copy the engine will not look at.
+     */
+    private Integer installBuildTool(String target, boolean noDiscover) throws IOException {
+        int colon = target.indexOf(':');
+        String slug = colon < 0 ? target : target.substring(0, colon);
+        String version = colon < 0 ? BuildTool.LATEST : target.substring(colon + 1);
+        Optional<BuildTool> tool = BuildTool.bySlug(slug);
+        if (tool.isEmpty()) return null;
+        if (version.isBlank()) {
+            CommandWedge.printFail(
+                    "Tool",
+                    "no version after ':' in '" + target + "' — use " + slug + ":<version> or " + slug + ":"
+                            + BuildTool.LATEST);
+            return Exit.USAGE;
+        }
+
+        Path toolsRoot = JkDirs.tools();
+        HostedEvents.Provision p;
+        try {
+            p = EngineClient.provisionTool(EnginePaths.current(), slug, version, toolsRoot, noDiscover);
+        } catch (IOException e) {
+            CommandWedge.printFail("Tool", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (p.error() != null) {
+            CommandWedge.printFail("Tool", p.error());
+            return p.exit() == Exit.SUCCESS ? Exit.SOFTWARE : p.exit();
+        }
+        if (p.exit() != Exit.SUCCESS) return p.exit();
+        CliOutput.out(slug + " " + p.version() + " "
+                + ("CACHED".equals(p.source())
+                        ? "already installed"
+                        : p.source().toLowerCase(Locale.ROOT))
+                + " — " + p.bin());
+        return Exit.SUCCESS;
+    }
+
     private InstallCommand appInstallDelegate() {
         InstallCommand delegate = new InstallCommand();
         delegate.binName = binName;

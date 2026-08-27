@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolInstaller;
 import cc.jumpkick.compat.ToolProvisioning;
@@ -15,13 +14,12 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
 /**
  * Resolves the Kotlin distribution for {@code kotlinc}: {@code KOTLIN_HOME}, else auto-install
- * under {@code $JK_CACHE_DIR/tools/kotlin/}.
+ * under {@code $JK_STORE_DIR/tools/kotlin/}.
  */
 public final class CompileToolchain {
 
@@ -29,7 +27,7 @@ public final class CompileToolchain {
 
     /**
      * Resolve a Kotlin installation, auto-downloading via {@link ToolInstaller} if neither {@code
-     * KOTLIN_HOME} nor {@code $JK_CACHE_DIR/tools/kotlin/} is populated.
+     * KOTLIN_HOME} nor {@code $JK_STORE_DIR/tools/kotlin/} is populated.
      *
      * @param cacheDir the {@link Cas} root (typically {@link JkDirs#cache})
      */
@@ -117,21 +115,11 @@ public final class CompileToolchain {
         // ToolProvisioning already runs the EnvVarProbe (which reads
         // KOTLIN_HOME), so we don't need a separate fast-path. Going
         // through the full plan guarantees we leave a symlink under
-        // $JK_CACHE_DIR/tools/kotlin/<version>/ — subsequent invocations
+        // $JK_STORE_DIR/tools/kotlin/<version>/ — subsequent invocations
         // don't depend on the env var still being set.
         Path toolsRoot = JkDirs.tools();
         ToolRegistry registry = new ToolRegistry(toolsRoot);
-        ToolDistribution dist;
-        if (versionOverride == null || versionOverride.isBlank()) {
-            dist = KotlinResolver.defaultDistribution();
-        } else {
-            URI uri = URI.create("https://github.com/JetBrains/kotlin/releases/download/v"
-                    + versionOverride
-                    + "/kotlin-compiler-"
-                    + versionOverride
-                    + ".zip");
-            dist = new ToolDistribution(BuildTool.KOTLIN, versionOverride, uri, "zip");
-        }
+        ToolDistribution dist = KotlinResolver.distributionFor(versionOverride);
         try {
             boolean refresh = SessionContext.current().config().forceOr(false);
             ToolProvisioning.Result result =

@@ -17,6 +17,29 @@ jk tool run script.java                                 # JBang-compatible heade
 Trust gates stay on the CLI — MCP `jk_install action=list` shows installed tools but does
 not perform tool installs.
 
+## Build tools
+
+The same verb installs the **build-tool distributions** jk provisions for itself — Kotlin
+(for `.kt` sources and `.kts` build logic), Maven and Gradle (for `jk mvn` / `jk gradle`):
+
+```bash
+jk install kotlin:latest        # the version jk would provision on demand
+jk tool install kotlin:2.4.0    # a specific one
+jk tool install maven:3.9.9
+jk tool list                    # build tools, then CLI tools
+jk tool uninstall kotlin:2.4.0  # version required — several may be installed
+jk tool dir                     # $JK_STORE_DIR/tools
+```
+
+These are not launchers on `PATH`: a distribution is unpacked under
+`$JK_STORE_DIR/tools/<tool>/<version>/` and the engine consumes it as a home. Installing
+ahead of time is therefore a **cache hit** for the build that later needs it, not a second
+copy — same provisioning path either way.
+
+They live in the **store**, not the cache, because a fetched distribution is an artifact:
+`jk cache nuke` does not cost you an 83 MB Kotlin re-download. `--no-discover` forces a
+download instead of linking a host install.
+
 ## Lint is a recipe, not a first-party matrix
 
 | Concern | Path |

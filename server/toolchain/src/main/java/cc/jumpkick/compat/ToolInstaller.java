@@ -24,7 +24,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Download/extract a {@link ToolDistribution} under {@code $JK_CACHE_DIR/tools/<slug>/<version>/}
+ * Download/extract a {@link ToolDistribution} under {@code $JK_STORE_DIR/tools/<slug>/<version>/}
  * (zip/tar.gz; optional SHA-256; fail cleans partial install).
  */
 public final class ToolInstaller {

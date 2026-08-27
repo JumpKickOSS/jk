@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.engine.EnginePaths;
@@ -24,7 +25,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
@@ -370,17 +370,7 @@ public final class DoctorCommand implements CliCommand {
     }
 
     private static List<InstalledTool> listIncludingBrokenLinks(Path root, BuildTool tool) throws IOException {
-        Path slugDir = root.resolve(tool.slug());
-        if (!Files.exists(slugDir)) return List.of();
-        List<InstalledTool> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(slugDir)) {
-            stream.forEach(path -> {
-                if (Files.isDirectory(path) || Files.isSymbolicLink(path)) {
-                    result.add(new InstalledTool(tool, path.getFileName().toString(), path));
-                }
-            });
-        }
-        return result;
+        return new ToolRegistry(root).list(tool, /* includeBrokenLinks */ true);
     }
 
     private static String readlinkSafe(Path link) {

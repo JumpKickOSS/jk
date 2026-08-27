@@ -8,7 +8,7 @@ import java.net.URI;
 /**
  * Picks the Kotlin distribution to use for compiling {@code .kt} sources. Mirrors {@link
  * cc.jumpkick.mvn.MavenResolver} / {@link cc.jumpkick.gradle.GradleResolver}: a default pinned
- * version, downloaded once into {@code $JK_CACHE_DIR/tools/kotlin/<version>/} and reused
+ * version, downloaded once into {@code $JK_STORE_DIR/tools/kotlin/<version>/} and reused
  * thereafter.
  *
  * <p>v0.6 first iteration: no project-level pin yet (a {@code kotlin} field on {@code
@@ -28,7 +28,20 @@ public final class KotlinResolver {
     private KotlinResolver() {}
 
     public static ToolDistribution defaultDistribution() {
-        URI uri = URI.create(DEFAULT_BASE + "v" + DEFAULT_VERSION + "/kotlin-compiler-" + DEFAULT_VERSION + ".zip");
-        return new ToolDistribution(BuildTool.KOTLIN, DEFAULT_VERSION, uri, "zip");
+        return distributionFor(DEFAULT_VERSION);
+    }
+
+    /**
+     * The distribution for an explicit Kotlin version.
+     *
+     * <p>One place builds this URL. It was two — {@code CompileToolchain.resolveKotlinHome} assembled
+     * the same release path inline for its version-override branch — and a download URL spelled
+     * twice is a rename that half-lands: one caller keeps fetching from a path the other has moved
+     * off, and the only symptom is a 404 in whichever branch was not updated.
+     */
+    public static ToolDistribution distributionFor(String version) {
+        String v = version == null || version.isBlank() ? DEFAULT_VERSION : version.trim();
+        URI uri = URI.create(DEFAULT_BASE + "v" + v + "/kotlin-compiler-" + v + ".zip");
+        return new ToolDistribution(BuildTool.KOTLIN, v, uri, "zip");
     }
 }

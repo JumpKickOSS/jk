@@ -813,17 +813,25 @@ public final class ProtoJobs {
      * field is {@code dir} — same spelling as every other hosted request.
      */
     public static String provisionRequest(String dir, String toolsRoot, boolean noDiscover, boolean gradle) {
-        return "{\"type\":\""
-                + EngineProtocol.PROVISION_REQUEST
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"toolsRoot\":"
-                + Jsonl.quote(toolsRoot)
-                + ",\"noDiscover\":"
-                + noDiscover
-                + ",\"gradle\":"
-                + gradle
-                + "}";
+        return provisionRequest(dir, toolsRoot, noDiscover, gradle, null, null);
+    }
+
+    /**
+     * As above, plus an explicit {@code tool} + {@code version} for {@code jk tool install
+     * <tool>[:<version>]}.
+     *
+     * <p>Additive fields on the existing request rather than a second verb: both forms ask the same
+     * question — provision this distribution into this root — and differ only in how the
+     * distribution is chosen. When {@code tool} is absent the engine reads the project's wrapper as
+     * it always has.
+     */
+    public static String provisionRequest(
+            String dir, String toolsRoot, boolean noDiscover, boolean gradle, String tool, String version) {
+        String named = tool == null || tool.isBlank()
+                ? ""
+                : ",\"tool\":" + Jsonl.quote(tool) + ",\"version\":" + Jsonl.quote(version == null ? "" : version);
+        return "{\"type\":\"" + EngineProtocol.PROVISION_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"toolsRoot\":"
+                + Jsonl.quote(toolsRoot) + ",\"noDiscover\":" + noDiscover + ",\"gradle\":" + gradle + named + "}";
     }
 
     /**

@@ -37,8 +37,14 @@ public final class MavenResolver {
     }
 
     public static ToolDistribution defaultDistribution() {
-        URI uri = URI.create(DEFAULT_BASE + DEFAULT_VERSION + "/apache-maven-" + DEFAULT_VERSION + "-bin.zip");
-        return new ToolDistribution(BuildTool.MAVEN, DEFAULT_VERSION, uri, "zip");
+        return distributionFor(DEFAULT_VERSION);
+    }
+
+    /** The distribution for an explicit Maven version; blank means {@link #DEFAULT_VERSION}. */
+    public static ToolDistribution distributionFor(String version) {
+        String v = version == null || version.isBlank() ? DEFAULT_VERSION : version.trim();
+        URI uri = URI.create(DEFAULT_BASE + v + "/apache-maven-" + v + "-bin.zip");
+        return new ToolDistribution(BuildTool.MAVEN, v, uri, "zip");
     }
 
     static ToolDistribution fromWrapperProperties(Path file) throws IOException {

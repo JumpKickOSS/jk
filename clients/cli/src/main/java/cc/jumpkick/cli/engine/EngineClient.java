@@ -864,6 +864,13 @@ public final class EngineClient {
         return EngineHosted.provision(paths, projectDir, toolsRoot, noDiscover, gradle);
     }
 
+    /** Provision a named build tool at a named version, rather than the one a project asks for. */
+    public static HostedEvents.Provision provisionTool(
+            EnginePaths.Paths paths, String tool, String version, Path toolsRoot, boolean noDiscover)
+            throws IOException {
+        return EngineHosted.provisionTool(paths, tool, version, toolsRoot, noDiscover);
+    }
+
     public static BuildPlanResult runCompile(
             EnginePaths.Paths paths,
             EngineRequests.CompileRequest req,

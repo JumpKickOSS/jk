@@ -44,11 +44,18 @@ public final class ProvisionVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                var outcome = CompatPlans.provision(
-                        Path.of(Jsonl.str(requestLine, "dir")),
-                        Path.of(Jsonl.str(requestLine, "toolsRoot")),
-                        Jsonl.bool(requestLine, "noDiscover", false),
-                        Jsonl.bool(requestLine, "gradle", false));
+                // `tool` present means an explicit `jk tool install <tool>[:<version>]`; absent
+                // means the historical "read this project's wrapper" form.
+                String tool = Jsonl.str(requestLine, "tool");
+                Path toolsRoot = Path.of(Jsonl.str(requestLine, "toolsRoot"));
+                boolean noDiscover = Jsonl.bool(requestLine, "noDiscover", false);
+                var outcome = tool != null && !tool.isBlank()
+                        ? CompatPlans.provisionTool(tool, Jsonl.str(requestLine, "version"), toolsRoot, noDiscover)
+                        : CompatPlans.provision(
+                                Path.of(Jsonl.str(requestLine, "dir")),
+                                toolsRoot,
+                                noDiscover,
+                                Jsonl.bool(requestLine, "gradle", false));
                 host.sendQuiet(
                         writer,
                         ProtoEvents.provisionResult(

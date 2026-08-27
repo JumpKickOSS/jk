@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.compat.BuildToolDistributions;
 import cc.jumpkick.compat.ProjectImport;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolProvisioning;
@@ -94,6 +96,35 @@ public final class CompatPlans {
                     dist, new ToolRegistry(toolsRoot.toAbsolutePath()), new Http(), noDiscover);
             return new Provision(
                     result.tool().binary().toString(),
+                    dist.version(),
+                    result.source().name(),
+                    null,
+                    Exit.SUCCESS);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            return new Provision(null, dist == null ? null : dist.version(), null, message(e), Exit.FAILURE);
+        }
+    }
+
+    /**
+     * Provision a named build tool at a named version — {@code jk tool install kotlin:latest} —
+     * rather than the one a project's wrapper asks for.
+     *
+     * <p>Through the same {@link ToolProvisioning} door {@link #provision} and {@code
+     * CompileToolchain.resolveKotlinHome} use, so an ahead-of-time install is a cache hit for the
+     * build that later needs it rather than a second copy under a second layout.
+     */
+    public static Provision provisionTool(String toolSlug, String version, Path toolsRoot, boolean noDiscover) {
+        ToolDistribution dist = null;
+        try {
+            BuildTool tool = BuildTool.bySlug(toolSlug)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "unknown build tool '" + toolSlug + "' — known: " + BuildTool.slugs()));
+            dist = BuildToolDistributions.of(tool, version);
+            ToolProvisioning.Result result = ToolProvisioning.provision(
+                    dist, new ToolRegistry(toolsRoot.toAbsolutePath()), new Http(), noDiscover);
+            return new Provision(
+                    result.tool().home().toString(),
                     dist.version(),
                     result.source().name(),
                     null,
