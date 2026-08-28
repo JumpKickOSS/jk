@@ -382,6 +382,7 @@ root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
 
 Pre-1.0 alpha. **Self-host phase 2:** root workspace covers library/client modules plus thin
 workers (`plugins/test-runner`, `plugins/java-compiler`); `jk lock` + `jk build --skip-tests`
-dogfoods after a Gradle `dist`/`installLocal` or thin `:cli:installDist` + `:engine:shadowJar`
-bootstrap. Full `dist`, remaining plugins, and nested engine integration tests remain
+dogfoods after a Gradle `dist`/`installLocal` bootstrap — the native client is the only endorsed
+one, and once a release is published the bootstrap is
+`curl -fsSL https://jumpkick.build/install.sh | bash` (JK-1070). Full `dist`, remaining plugins, and nested engine integration tests remain
 Gradle-heavy. Breaking changes remain acceptable until 1.0.

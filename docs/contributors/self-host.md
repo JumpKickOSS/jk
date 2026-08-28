@@ -25,9 +25,14 @@ export PATH="$HOME/.local/bin:$PATH"
 jk engine status
 ```
 
-Thin JVM alternative (no Graal, PATH only): [CONTRIBUTING.md](../../CONTRIBUTING.md) path B
-(`:cli:installDist` + `:engine:shadowJar`). Engine materialize (`:engine:installLocal`)
-always uses the native client from `./gradlew dist`.
+There is no supported alternative to the native client. The JVM-mode client behind
+`:cli:installDist` exists for the test harness; it cannot self-heal a missing engine, so
+bootstrapping on it leaves a tree only Gradle can revive (JK-1070). Install a GraalVM-capable JDK
+instead — `sdk install java 25-graalce` is the least ceremony. Engine materialize
+(`:engine:installLocal`) always uses the native client from `./gradlew dist`.
+
+Once a release is published this section shrinks to one line: install with
+`curl -fsSL https://jumpkick.build/install.sh | bash` and let the binary bootstrap its own engine.
 
 Helper: `./scripts/bootstrap-from-gradle.sh`.
 
