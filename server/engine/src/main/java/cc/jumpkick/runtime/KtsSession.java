@@ -106,8 +106,8 @@ final class KtsSession {
         if (reply == null) throw new SessionDied(drain());
         if (reply.startsWith("OK ")) return decode(reply.substring(3));
         if (reply.startsWith("FAIL ")) {
-            throw new IllegalStateException(
-                    "[build] logic: " + script.getFileName() + " failed:\n" + decode(reply.substring(5)).strip());
+            throw new IllegalStateException("[build] logic: " + script.getFileName() + " failed:\n"
+                    + decode(reply.substring(5)).strip());
         }
         throw new SessionDied("unrecognised reply from the .kts host: " + reply);
     }

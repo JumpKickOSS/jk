@@ -43,7 +43,8 @@ class EffortWeightsStepEtaTest {
         prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         prevBuildsDir = System.getProperty("jk.env.JK_BUILDS_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", hostStateDir.toString());
-        System.setProperty("jk.env.JK_BUILDS_DIR", hostStateDir.resolve("builds").toString());
+        System.setProperty(
+                "jk.env.JK_BUILDS_DIR", hostStateDir.resolve("builds").toString());
         Calibration.invalidateMemo();
         BuildMetrics.clearSessionAggregatesMemo();
     }

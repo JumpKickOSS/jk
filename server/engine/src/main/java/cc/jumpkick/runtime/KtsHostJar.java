@@ -73,7 +73,10 @@ final class KtsHostJar {
      */
     static Path jarPath(String kotlinVersion) throws IOException {
         String hash = Hashing.sha256Hex(source()).substring(0, 16);
-        return JkDirs.tools().resolve("kts-host").resolve(kotlinVersion + "-" + hash).resolve(JAR_NAME);
+        return JkDirs.tools()
+                .resolve("kts-host")
+                .resolve(kotlinVersion + "-" + hash)
+                .resolve(JAR_NAME);
     }
 
     /**

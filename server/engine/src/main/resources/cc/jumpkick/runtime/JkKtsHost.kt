@@ -53,39 +53,39 @@ import org.jetbrains.kotlin.mainKts.MainKtsConfigurator
 /**
  * The build-logic script definition.
  *
- * `projectDir` and `outDir` are declared here by name and type, and their values are supplied at
- * evaluation time. That is what lets one compiled jar serve every module: the script's own text
- * never mentions a path, so its content hash does not vary by project. The forked-kotlinc host it
- * replaces injected `val projectDir = Path.of("/abs/path")` as text, which gave every module a
- * different script and its own compilation.
+ * `projectDir` and `outDir` are declared here by name and type, and their values are supplied at evaluation time. That
+ * is what lets one compiled jar serve every module: the script's own text never mentions a path, so its content hash
+ * does not vary by project. The forked-kotlinc host it replaces injected `val projectDir = Path.of("/abs/path")` as
+ * text, which gave every module a different script and its own compilation.
  *
- * `MainKtsConfigurator` is reused rather than reimplemented, so `@file:DependsOn`, `@file:Repository`,
- * `@file:Import` and `@file:CompilerOptions` behave exactly as they do in Kotlin's own `main.kts`.
+ * `MainKtsConfigurator` is reused rather than reimplemented, so `@file:DependsOn`, `@file:Repository`, `@file:Import`
+ * and `@file:CompilerOptions` behave exactly as they do in Kotlin's own `main.kts`.
  */
-@KotlinScript(fileExtension = "kts", compilationConfiguration = JkScriptConfig::class)
-abstract class JkScript
+@KotlinScript(fileExtension = "kts", compilationConfiguration = JkScriptConfig::class) abstract class JkScript
 
-object JkScriptConfig : ScriptCompilationConfiguration({
-    defaultImports(DependsOn::class, Repository::class, Import::class, CompilerOptions::class)
-    defaultImports("java.nio.file.Path", "java.nio.file.Files")
-    // The whole child classpath: the compiled script extends JkScript, which lives in this jar, so
-    // a narrower selection would have to name it and the stdlib by hand and drift when either moves.
-    jvm { dependenciesFromCurrentContext(wholeClasspath = true) }
-    providedProperties("projectDir" to KotlinType(Path::class), "outDir" to KotlinType(Path::class))
-    refineConfiguration {
-        onAnnotations(
-            DependsOn::class,
-            Repository::class,
-            Import::class,
-            CompilerOptions::class,
-            handler = MainKtsConfigurator())
-    }
-})
+object JkScriptConfig :
+    ScriptCompilationConfiguration({
+        defaultImports(DependsOn::class, Repository::class, Import::class, CompilerOptions::class)
+        defaultImports("java.nio.file.Path", "java.nio.file.Files")
+        // The whole child classpath: the compiled script extends JkScript, which lives in this jar, so
+        // a narrower selection would have to name it and the stdlib by hand and drift when either moves.
+        jvm { dependenciesFromCurrentContext(wholeClasspath = true) }
+        providedProperties("projectDir" to KotlinType(Path::class), "outDir" to KotlinType(Path::class))
+        refineConfiguration {
+            onAnnotations(
+                DependsOn::class,
+                Repository::class,
+                Import::class,
+                CompilerOptions::class,
+                handler = MainKtsConfigurator(),
+            )
+        }
+    })
 
 /**
- * Bumped when a change here would make an already-cached jar wrong -- a new binding, a changed
- * default import, a different script base class. The script's own bytes are the rest of the key,
- * so an edit to a script invalidates only that script.
+ * Bumped when a change here would make an already-cached jar wrong -- a new binding, a changed default import, a
+ * different script base class. The script's own bytes are the rest of the key, so an edit to a script invalidates only
+ * that script.
  */
 private const val CACHE_VERSION = 1
 
@@ -105,19 +105,19 @@ fun main() {
     val control = System.out
     val realErr = System.err
 
-    val cacheDir = File(
-        System.getenv("JK_KTS_CACHE")
-            ?: (System.getProperty("java.io.tmpdir") + File.separator + "jk-kts-cache"))
+    val cacheDir =
+        File(System.getenv("JK_KTS_CACHE") ?: (System.getProperty("java.io.tmpdir") + File.separator + "jk-kts-cache"))
     cacheDir.mkdirs()
 
-    val hostConfig = ScriptingHostConfiguration(defaultJvmScriptingHostConfiguration) {
-        jvm {
-            baseClassLoader(JkScript::class.java.classLoader)
-            compilationCache(CompiledScriptJarsCache { source, cfg ->
-                File(cacheDir, cacheKey(source, cfg) + ".jar")
-            })
+    val hostConfig =
+        ScriptingHostConfiguration(defaultJvmScriptingHostConfiguration) {
+            jvm {
+                baseClassLoader(JkScript::class.java.classLoader)
+                compilationCache(
+                    CompiledScriptJarsCache { source, cfg -> File(cacheDir, cacheKey(source, cfg) + ".jar") }
+                )
+            }
         }
-    }
     val host = BasicJvmScriptingHost(hostConfig)
 
     control.println("READY")
@@ -141,21 +141,23 @@ fun main() {
 
         val captured = ByteArrayOutputStream()
         val sink = PrintStream(captured, true, Charsets.UTF_8)
-        val reply = try {
-            System.setOut(sink)
-            System.setErr(sink)
-            evaluate(host, File(parts[0]), Path.of(parts[1]), Path.of(parts[2]))
-        } catch (e: Throwable) {
-            describe(e)
-        } finally {
-            System.setOut(control)
-            System.setErr(realErr)
-            sink.flush()
-        }
+        val reply =
+            try {
+                System.setOut(sink)
+                System.setErr(sink)
+                evaluate(host, File(parts[0]), Path.of(parts[1]), Path.of(parts[2]))
+            } catch (e: Throwable) {
+                describe(e)
+            } finally {
+                System.setOut(control)
+                System.setErr(realErr)
+                sink.flush()
+            }
         val output = captured.toString(Charsets.UTF_8)
         control.println(
             if (reply == null) "OK " + encode(output)
-            else "FAIL " + encode(if (output.isEmpty()) reply else output + "\n" + reply))
+            else "FAIL " + encode(if (output.isEmpty()) reply else output + "\n" + reply)
+        )
         control.flush()
     }
 }
@@ -174,7 +176,9 @@ private fun evaluate(host: BasicJvmScriptingHost, script: File, projectDir: Path
         is ResultWithDiagnostics.Failure ->
             res.reports
                 .filter { it.severity >= ScriptDiagnostic.Severity.ERROR }
-                .joinToString("\n") { r -> r.location?.start?.let { "${script.name}:${it.line}: ${r.message}" } ?: r.message }
+                .joinToString("\n") { r ->
+                    r.location?.start?.let { "${script.name}:${it.line}: ${r.message}" } ?: r.message
+                }
                 .ifEmpty { "compilation of ${script.name} failed" }
     }
 }

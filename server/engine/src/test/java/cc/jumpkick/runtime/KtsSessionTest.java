@@ -106,7 +106,8 @@ class KtsSessionTest {
         Path out = Files.createDirectories(dir.resolve("o"));
 
         BuildLogicKtsHost.evaluate(script, project, out);
-        assertEquals("hello, world", Files.readString(out.resolve("greeting.txt")).trim());
+        assertEquals(
+                "hello, world", Files.readString(out.resolve("greeting.txt")).trim());
     }
 
     /** A compile error names the script and reaches the caller, rather than a bare non-zero exit. */
@@ -117,8 +118,8 @@ class KtsSessionTest {
         Path project = Files.createDirectories(dir.resolve("p"));
         Path out = Files.createDirectories(dir.resolve("o"));
 
-        IllegalStateException ex = assertThrows(
-                IllegalStateException.class, () -> BuildLogicKtsHost.evaluate(script, project, out));
+        IllegalStateException ex =
+                assertThrows(IllegalStateException.class, () -> BuildLogicKtsHost.evaluate(script, project, out));
         assertTrue(ex.getMessage().contains("broken.kts"), ex.getMessage());
     }
 
