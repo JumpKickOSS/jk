@@ -52,7 +52,6 @@ class TaskForecasterNativeTargetTest {
                 version = "0.1.0"
                 jdk = 25
                 java = 25
-                main = "t.App"
                 """;
         if (nativeTable) manifest += "\n[native]\nenabled = true\n";
         Files.writeString(app.resolve("jk.toml"), manifest);

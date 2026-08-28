@@ -402,6 +402,7 @@ public final class ManifestTables {
      * table is absent.
      */
     static Optional<JkBuild.Application> parseApplication(TomlTable root) {
+        rejectFlattenedApplicationKeys(root);
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
         String main = application.getString("main");
@@ -413,6 +414,35 @@ public final class ManifestTables {
             throw new JkBuildParseException("[application].main is required");
         }
         return Optional.of(new JkBuild.Application(main, assembly, minified, nativeImage, config));
+    }
+
+    /**
+     * Every key that belongs to {@code [application]}. Written down so a misplacement is caught as
+     * a class rather than one key at a time.
+     */
+    private static final List<String> APPLICATION_KEYS = List.of("main", "assembly", "minified", "native", "config");
+
+    /**
+     * Reject an {@code [application]} key written at the top level.
+     *
+     * <p>Silence here is expensive and invisible. A top-level {@code assembly = true} used to parse
+     * clean and do nothing: the project built a thin jar, and {@code jk install}'s artifact ladder
+     * — native, then minified, then fat, then thin — then honestly installed a thin-jar launcher
+     * because no fat jar existed. Nothing in that chain is wrong except the key nobody read
+     * (JK-1073). {@code minified} did stop the build, but by accident, reporting a type problem
+     * for what is a wrong-table problem.
+     *
+     * <p>Scalars only. {@code [native]}, {@code [config]} and plugin tables like {@code [assembly]}
+     * are legitimate top-level <em>tables</em> with their own meanings; it is the bare
+     * {@code key = value} form that can only be a misplacement. Same shape as the {@code [m2]}
+     * guard, which rejects the flattened {@code m2integration} / {@code m2install} by name.
+     */
+    private static void rejectFlattenedApplicationKeys(TomlTable root) {
+        for (String key : APPLICATION_KEYS) {
+            if (!root.contains(key) || root.isTable(key)) continue;
+            throw new JkBuildParseException("`" + key + "` belongs in [application] — write it as"
+                    + " `[application]` with `" + key + " = …`, not at the top level");
+        }
     }
 
     /**
