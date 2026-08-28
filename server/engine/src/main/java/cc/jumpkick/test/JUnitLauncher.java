@@ -19,11 +19,9 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -35,7 +33,6 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.jar.JarFile;
 
 /**
  * Forks {@code TestRunner} child JVM(s): one-shot when {@code workers=1}, else discovery + N
@@ -163,32 +160,6 @@ public final class JUnitLauncher {
      * default strategy, so the soft-fail delete the flag exists to install is not installed.
      */
     private boolean cliTempDirSupport;
-
-    /** The resource path of the {@code @TempDir} factory jk-cli registers for its own suites. */
-    private static final String CLI_TEMPDIR_FACTORY_RESOURCE = "cc/jumpkick/cli/engine/JkTempDirFactory.class";
-
-    /**
-     * Whether {@code classpath} can load jk-cli's {@code @TempDir} support — a classes directory
-     * holding the factory, or a jar with that entry. Asked of the composed classpath rather than
-     * of the module's name: the module that owns those classes is free to move, and a name check
-     * would keep answering the old one.
-     */
-    static boolean carriesCliTempDirSupport(Collection<Path> classpath) {
-        for (Path entry : classpath) {
-            if (entry == null) continue;
-            if (Files.isDirectory(entry)) {
-                if (Files.isRegularFile(entry.resolve(CLI_TEMPDIR_FACTORY_RESOURCE))) return true;
-                continue;
-            }
-            if (!Files.isRegularFile(entry)) continue;
-            try (JarFile jar = new JarFile(entry.toFile())) {
-                if (jar.getEntry(CLI_TEMPDIR_FACTORY_RESOURCE) != null) return true;
-            } catch (IOException notAJar) {
-                // A classpath entry that is not a readable jar simply does not carry them.
-            }
-        }
-        return false;
-    }
 
     /**
      * {@code.../target/classes/test} → module root ({@code.../}). Null when layout is nonstandard.
@@ -358,7 +329,7 @@ public final class JUnitLauncher {
         // already contain PluginMain; extra entries are harmless.
         classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
         String classpath = Classpaths.join(classpathBase);
-        this.cliTempDirSupport = carriesCliTempDirSupport(classpathBase);
+        this.cliTempDirSupport = CliTempDirSupport.onClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
         int resolvedWorkers = workers;
@@ -655,7 +626,13 @@ public final class JUnitLauncher {
         env.put("TMPDIR", tmp.toString());
         env.put("TMP", tmp.toString());
         env.put("TEMP", tmp.toString());
-        env.computeIfPresent("JK_STATE_DIR", (k, dir) -> dir + "-w" + workerId);
+        // A CHILD of the run's state dir, not a sibling of it. The sibling spelling
+        // (`<base>-w0`) put every worker's state outside the one directory the run cleans, so
+        // deleting `<base>` recursively never reached them and they accumulated under /tmp
+        // forever. TestTmpDir.forWorker already splits the temp root this way; one idea deserves
+        // one spelling, and this is the one that cannot leak.
+        env.computeIfPresent(
+                "JK_STATE_DIR", (k, dir) -> Path.of(dir).resolve("w" + workerId).toString());
         return env;
     }
 

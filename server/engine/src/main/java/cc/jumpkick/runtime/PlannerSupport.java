@@ -593,7 +593,18 @@ public final class PlannerSupport {
         Files.createDirectories(jkHome);
         String runId = Long.toString(System.currentTimeMillis(), 36) + "-"
                 + Integer.toHexString(System.identityHashCode(moduleDir) & 0xffff);
-        Path stateDir = Path.of("/tmp", "jk-cli-" + runId);
+        // Under the module's own target/, not /tmp. This used to be a fresh /tmp/jk-cli-<runId>
+        // with no counterpart anywhere — no finalizer, no shutdown hook — so every `jk test` of a
+        // nested-engine module left one behind permanently. Here it is inside the build output
+        // `jk clean` already owns, it cannot be shared with another checkout, and the name no
+        // longer collides with Gradle's own sandbox (which used the same `jk-cli-` prefix under
+        // the same root, making a leaked directory unattributable).
+        //
+        // It is not a Unix-socket path budget any more: the only module that takes this path is
+        // jk-cli (see needsNestedEngineIsolation), and it declares JK_ENGINE_TRANSPORT=tcp in
+        // both builds (JK-1065), so the depth of target/ costs nothing. A module that wanted
+        // nested engines on the Unix transport would need a short root again.
+        Path stateDir = jkHome.resolve("engine-state").resolve(runId);
         Files.createDirectories(stateDir);
         Map<String, String> env = new LinkedHashMap<>();
         env.put("JK_HOME", jkHome.toAbsolutePath().toString());

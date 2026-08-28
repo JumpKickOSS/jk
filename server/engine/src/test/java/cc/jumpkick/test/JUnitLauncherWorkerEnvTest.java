@@ -15,14 +15,21 @@ import org.junit.jupiter.api.Test;
 class JUnitLauncherWorkerEnvTest {
 
     @Test
-    void each_worker_gets_its_own_state_dir_suffix() {
+    void each_worker_gets_its_own_state_dir_under_the_run_s_own() {
         Map<String, String> base = Map.of("JK_STATE_DIR", "/tmp/jk-cli-abc", "JK_HOME", "/x/test-jk-home");
 
         Map<String, String> w0 = JUnitLauncher.workerEnv(base, 0, Path.of("/tmp/t0"));
         Map<String, String> w1 = JUnitLauncher.workerEnv(base, 1, Path.of("/tmp/t1"));
 
-        assertThat(w0.get("JK_STATE_DIR")).isEqualTo("/tmp/jk-cli-abc-w0");
-        assertThat(w1.get("JK_STATE_DIR")).isEqualTo("/tmp/jk-cli-abc-w1");
+        // Children, not siblings. `<base>-w0` sat outside the directory the run deletes, so every
+        // worker's state survived cleanup and piled up under /tmp (JK-1067).
+        assertThat(w0.get("JK_STATE_DIR"))
+                .isEqualTo(Path.of("/tmp/jk-cli-abc/w0").toString());
+        assertThat(w1.get("JK_STATE_DIR"))
+                .isEqualTo(Path.of("/tmp/jk-cli-abc/w1").toString());
+        assertThat(Path.of(w0.get("JK_STATE_DIR")))
+                .as("deleting the run's state dir must reach every worker's")
+                .startsWithRaw(Path.of(base.get("JK_STATE_DIR")));
         // Shared store/home stays shared — only engine identity splits.
         assertThat(w0.get("JK_HOME")).isEqualTo("/x/test-jk-home");
         // TMPDIR is a real OS path — compare via Path so Windows separators match.

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>The gate used to be "this module declares a {@code [test] env}", which server/engine also
  * does — one run of its suite logged roughly five hundred {@code ClassNotFoundException}s.
  */
-class JUnitLauncherCliTempDirSupportTest {
+class CliTempDirSupportTest {
 
     private static final String FACTORY = "cc/jumpkick/cli/engine/JkTempDirFactory.class";
 
@@ -34,7 +34,7 @@ class JUnitLauncherCliTempDirSupportTest {
         Files.createDirectories(classes.resolve(FACTORY).getParent());
         Files.writeString(classes.resolve(FACTORY), "");
 
-        assertThat(JUnitLauncher.carriesCliTempDirSupport(List.of(classes))).isTrue();
+        assertThat(CliTempDirSupport.onClasspath(List.of(classes))).isTrue();
     }
 
     @Test
@@ -46,7 +46,7 @@ class JUnitLauncherCliTempDirSupportTest {
             jos.closeEntry();
         }
 
-        assertThat(JUnitLauncher.carriesCliTempDirSupport(List.of(jar))).isTrue();
+        assertThat(CliTempDirSupport.onClasspath(List.of(jar))).isTrue();
     }
 
     @Test
@@ -56,7 +56,7 @@ class JUnitLauncherCliTempDirSupportTest {
         Path notAJar = Files.writeString(tmp.resolve("notes.txt"), "not a jar");
         Path missing = tmp.resolve("gone");
 
-        assertThat(JUnitLauncher.carriesCliTempDirSupport(List.of(classes, notAJar, missing)))
+        assertThat(CliTempDirSupport.onClasspath(List.of(classes, notAJar, missing)))
                 .as("an unreadable or absent entry simply does not carry the classes")
                 .isFalse();
     }
