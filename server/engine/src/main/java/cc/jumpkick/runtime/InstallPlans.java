@@ -41,6 +41,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -296,8 +297,20 @@ public final class InstallPlans {
     }
 
     /**
-     * Drop MAIN / RUNTIME / EXPORT edges to workspace siblings from a worker's POM view. Libraries
+     * Replace MAIN / RUNTIME / EXPORT edges to workspace siblings, in a worker's POM view, with
+     * what those siblings need from <em>outside</em> the workspace. Libraries are untouched — they
      * keep sibling deps so consumers can resolve them.
+     *
+     * <p>A worker jar vendors its workspace siblings' classes the way Gradle's {@code bundledCodec}
+     * does, so naming the sibling in the POM would send a consumer looking for a coordinate that is
+     * already inside the jar (and at the workspace version, which is not always the version the
+     * sibling publishes under). Dropping the edge outright is not the answer either: the vendored
+     * classes still have third-party dependencies of their own, and nothing else declares them.
+     * That is how {@code jk-auditor} came to ship {@code LockfileReader} — vendored from
+     * {@code jk-core} — with no mention of tomlj anywhere, and die on the first lockfile it read.
+     *
+     * <p>So each sibling edge is replaced by that sibling's own non-sibling edges, transitively:
+     * what the jar carries is elided, what it still needs is declared.
      */
     static JkBuild omitVendoredWorkerSiblings(JkBuild project, Path moduleRoot) {
         if (project == null || moduleRoot == null || !PluginModule.isWorker(moduleRoot)) {
@@ -305,6 +318,7 @@ public final class InstallPlans {
         }
         Set<String> siblings = WorkspaceResolve.siblingCoordinates(moduleRoot);
         if (siblings.isEmpty()) return project;
+        Map<String, JkBuild> manifests = WorkspaceResolve.siblingManifests(moduleRoot);
         Map<Scope, List<Dependency>> by = new LinkedHashMap<>();
         boolean changed = false;
         for (Scope scope : Scope.values()) {
@@ -315,18 +329,57 @@ public final class InstallPlans {
                 by.put(scope, deps);
                 continue;
             }
-            List<Dependency> kept = new ArrayList<>(deps.size());
+            Map<String, Dependency> kept = new LinkedHashMap<>();
             for (Dependency d : deps) {
-                if (siblings.contains(d.module())) {
+                JkBuild vendored = siblingOf(d, siblings, manifests);
+                if (vendored != null || isSibling(d, siblings)) {
                     changed = true;
+                    hoistVendored(vendored, siblings, manifests, new LinkedHashSet<>(), kept);
                     continue;
                 }
-                kept.add(d);
+                kept.putIfAbsent(d.module(), d);
             }
-            if (!kept.isEmpty()) by.put(scope, kept);
-            else if (!deps.isEmpty()) changed = true;
+            if (!kept.isEmpty()) by.put(scope, List.copyOf(kept.values()));
+            else changed = true;
         }
         return changed ? project.withDependencies(new JkBuild.Dependencies(by)) : project;
+    }
+
+    /**
+     * Collect {@code coord}'s non-sibling MAIN / RUNTIME / EXPORT edges into {@code out}, following
+     * sibling edges through. {@code seen} makes a workspace cycle terminate rather than recurse;
+     * a sibling whose manifest could not be loaded contributes nothing, which is the same
+     * best-effort posture {@link WorkspaceResolve#siblingCoordinates} takes.
+     */
+    private static void hoistVendored(
+            JkBuild sibling,
+            Set<String> siblings,
+            Map<String, JkBuild> manifests,
+            Set<String> seen,
+            Map<String, Dependency> out) {
+        if (sibling == null) return;
+        if (!seen.add(sibling.project().group() + ":" + sibling.project().name())) return;
+        for (Scope scope : List.of(Scope.MAIN, Scope.RUNTIME, Scope.EXPORT)) {
+            for (Dependency d : sibling.dependencies().of(scope)) {
+                JkBuild next = siblingOf(d, siblings, manifests);
+                if (next != null) hoistVendored(next, siblings, manifests, seen, out);
+                // A sibling edge whose manifest would not load contributes nothing — never the
+                // raw `workspace:<name>` placeholder, which no consumer could resolve.
+                else if (!isSibling(d, siblings)) out.putIfAbsent(d.module(), d);
+            }
+        }
+    }
+
+    /** True when {@code d} names a workspace member, in either spelling. */
+    private static boolean isSibling(Dependency d, Set<String> siblings) {
+        return d.isWorkspace() || siblings.contains(d.module());
+    }
+
+    /** The member {@code d} names, resolved through either spelling; {@code null} when it names none. */
+    private static JkBuild siblingOf(Dependency d, Set<String> siblings, Map<String, JkBuild> manifests) {
+        if (!isSibling(d, siblings)) return null;
+        JkBuild byCoord = manifests.get(d.module());
+        return byCoord != null ? byCoord : manifests.get(d.library());
     }
 
     /** Exact versions from the module's lock, keyed by {@code group:artifact}. Empty when unlocked. */

@@ -82,6 +82,14 @@ public final class WorkspaceExecute {
             candidates.add(layout.nativeBinary());
             candidates.add(layout.nativeLibrary());
             candidates.add(layout.ociImageTar());
+            // Each jar's sidecar POM travels with it. package-jar writes one beside the module's
+            // own jar precisely so a workspace-built worker can be forked with its runtime closure
+            // (PlannerPackage.writeSidecarPom), but the fork is handed the copy surfaced HERE — and
+            // a jar surfaced without its POM has no closure at all. That is how a first-party
+            // worker came to be launched with only its own classes on the classpath, dying on the
+            // first third-party type it touched.
+            candidates.add(sidecarPom(layout.mainJar()));
+            candidates.add(sidecarPom(layout.assemblyJar()));
             moduleArtifacts.put(normalDir, candidates);
             moduleGroup.put(normalDir, build.project().group());
         }
@@ -103,6 +111,18 @@ public final class WorkspaceExecute {
             }
         }
         return links;
+    }
+
+    /**
+     * The {@code .pom} that sits beside {@code jar} — the spelling {@link
+     * cc.jumpkick.runtime.PlannerPackage#writeSidecarPom} writes and {@code
+     * PomRuntimeClasspath.siblingPom} reads. Collision renaming applies the same group prefix to
+     * both names, so a renamed jar keeps a correctly-named POM beside it.
+     */
+    private static Path sidecarPom(Path jar) {
+        String name = jar.getFileName().toString();
+        return jar.resolveSibling(
+                name.endsWith(".jar") ? name.substring(0, name.length() - 4) + ".pom" : name + ".pom");
     }
 
     // =========================================================================
