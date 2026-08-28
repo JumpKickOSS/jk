@@ -33,7 +33,13 @@ public record JkBuild(
         Map<String, PluginConfig> pluginConfigs,
         Build build,
         FormatConfig format,
-        Variants variants) {
+        Variants variants,
+        /**
+         * {@code [install]}: what installing this module produces beyond the jar and POM. Absent
+         * for every ordinary target — a library, an executable, a native binary, a script, an
+         * external jar — which is the point: those five shapes are complete as they are.
+         */
+        Optional<Install> install) {
 
     public JkBuild {
         Objects.requireNonNull(project, "project");
@@ -57,6 +63,7 @@ public record JkBuild(
         build = build == null ? Build.EMPTY : build;
         format = format == null ? FormatConfig.EMPTY : format;
         variants = variants == null ? Variants.EMPTY : variants;
+        install = install == null ? Optional.empty() : install;
     }
 
     /** Project + deps only; anything richer uses {@link #builder(Project)}. */
@@ -70,6 +77,7 @@ public record JkBuild(
                 null,
                 null,
                 List.of(),
+                null,
                 null,
                 null,
                 null,
@@ -89,6 +97,7 @@ public record JkBuild(
                 null,
                 null,
                 List.of(),
+                null,
                 null,
                 null,
                 null,
@@ -135,7 +144,8 @@ public record JkBuild(
                 next,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /** This build without the plugin config {@code id} (no-op when absent). */
@@ -157,7 +167,8 @@ public record JkBuild(
                 next,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /**
@@ -183,7 +194,8 @@ public record JkBuild(
                 pluginConfigs,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /** This build with its {@code [plugins]} list replaced (user-config merge / tests). */
@@ -202,7 +214,8 @@ public record JkBuild(
                 pluginConfigs,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
@@ -221,7 +234,8 @@ public record JkBuild(
                 pluginConfigs,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /** This build with its dependencies replaced — the variant dependency-overlay fold point. */
@@ -240,7 +254,8 @@ public record JkBuild(
                 pluginConfigs,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /** True when the {@code [spring-boot]} plugin table is declared. */
@@ -330,7 +345,8 @@ public record JkBuild(
                 .nativeConfig(nativeConfig.orElse(null))
                 .build(build)
                 .format(format)
-                .variants(variants);
+                .variants(variants)
+                .install(install);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -353,6 +369,7 @@ public record JkBuild(
         private Build build;
         private FormatConfig format;
         private Variants variants;
+        private Optional<Install> install = Optional.empty();
 
         private Builder(Project project) {
             this.project = project;
@@ -423,6 +440,11 @@ public record JkBuild(
             return this;
         }
 
+        public Builder install(Optional<Install> install) {
+            this.install = install == null ? Optional.empty() : install;
+            return this;
+        }
+
         public JkBuild build() {
             return new JkBuild(
                     project,
@@ -438,7 +460,8 @@ public record JkBuild(
                     pluginConfigs,
                     build,
                     format,
-                    variants);
+                    variants,
+                    install);
         }
     }
 
@@ -458,7 +481,8 @@ public record JkBuild(
                 pluginConfigs,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /** True iff this is a workspace root (has a non-empty {@code workspace} block). */
@@ -598,6 +622,26 @@ public record JkBuild(
      * KSP options, extra source roots, and per-module test worker pin — never on a classpath or
      * lockfile.
      */
+    /**
+     * {@code [install]} — what installing this module produces besides its jar and POM.
+     *
+     * <p>{@code productLib} names a directory under jk's own product library
+     * ({@code ~/.local/share/jk/lib/<name>/}) that the packaged artifact is materialized into, with
+     * that directory's {@code <name>.toml} stamped to name it by sha and a downgrade refused. It
+     * exists because jk installs itself: the engine's real install output is a jar in jk's product
+     * layout, not the coordinate in {@code repos/jk-local}, and until this was declared the only
+     * record of that fact was a path-pattern match in the CLI — which meant the engine's freshness
+     * check asked about the wrong artifact and a missing engine install read as "already done".
+     *
+     * <p>Nothing else in the tree sets it, and nothing else should need to: a project that installs
+     * into a user's product layout is jk installing jk.
+     */
+    public record Install(String productLib) {
+        public Install {
+            if (productLib != null && productLib.isBlank()) productLib = null;
+        }
+    }
+
     public record Build(
             List<String> orderAfter,
             List<String> testPluginJars,

@@ -27,6 +27,14 @@ lombok = "latest"
 [processor-dependencies]
 lombok = "latest"
 
+# Installing the engine is not publishing a coordinate. Its real output is a jar materialized into
+# jk's own product library, with jk-engine.toml stamped to name it by sha and a downgrade refused —
+# the one place jk installs jk. Declared so both the CLI (which owns that destination) and the
+# freshness check agree; before this the only record of the fact was a path-pattern match, and a
+# missing engine install read as "already done" (JK-1069).
+[install]
+product-lib = "jk-engine"
+
 [test-dependencies]
 # `kind = "tests"` reaches jk-host's test classes — where its `[test] extra-src`
 # fixtures compile. Direct edge only, and never in a main jar.

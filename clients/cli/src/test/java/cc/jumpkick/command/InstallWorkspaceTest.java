@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,8 +28,11 @@ class InstallWorkspaceTest {
 
         var streams = Capture.both(() -> assertThat(install(tmp, cache)).isEqualTo(0));
 
-        assertThat(streams.out()).contains("Installed ex:lib");
-        assertThat(streams.out())
+        // Stripped: the coordinate is styled per segment, so a raw substring would neither match
+        // the member nor — worse — ever match the root, making the negative assertion vacuous.
+        String out = TestAnsi.strip(streams.out());
+        assertThat(out).contains("Installed ex:lib:1.0");
+        assertThat(out)
                 .as("the root packages nothing, so claiming it installed is a lie")
                 .doesNotContain("Installed ex:ws");
         assertThat(JkStores.resolve(cache, "repos").resolve("jk-local/ex/lib/1.0/lib-1.0.jar"))

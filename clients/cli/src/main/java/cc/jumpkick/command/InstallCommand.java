@@ -19,6 +19,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
@@ -48,6 +49,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -411,23 +413,44 @@ public final class InstallCommand {
             return result.exitCode() == 0 ? Exit.FAILURE : result.exitCode();
         }
         run.finishEvent(true, elapsed);
+        // Modules the engine built, plus any whose declared product-lib destination this process
+        // owns and finds stale. The second half is the point: a module the forecast skipped as
+        // clean has correct BUILD outputs, which says nothing about whether the artifact reached
+        // jk's product layout — and that destination is the client's to answer for, because the
+        // engine daemon's product layout is not necessarily the caller's.
+        Set<Path> installed = new LinkedHashSet<>();
         for (var m : result.modules()) {
             if (!m.success()) continue;
-            Path mod = m.dir();
+            installed.add(m.dir());
+        }
+        for (Path mod : moduleDirs) {
+            if (installed.contains(mod)) continue;
+            if (productLibStale(projectInfo(mod))) installed.add(mod);
+        }
+        if (installed.isEmpty() && !json) {
+            // A no-op and a success used to render identically — nothing printed either way. The
+            // whole reason this verb was wrong for so long is that "already installed" and "did
+            // not look" are indistinguishable outputs (JK-1069).
+            CommandWedge.printOk("Install", "everything already installed");
+        }
+        for (Path mod : installed) {
             var info = projectInfo(mod);
             // A coordinator root builds as a unit but publishes nothing — announcing it would
             // claim an install the plan never carried a `cache-install` step for.
             if (info.coordinatorOnly()) continue;
             Path launcher = null;
-            if (!isPluginWorker(info, mod) && info.application()) {
+            boolean productLib = !info.productLib().isBlank();
+            if (productLib || (!isPluginWorker(info, mod) && info.application())) {
                 try {
-                    launcher = applyInstallPlan(mod, cacheDir);
+                    launcher = applyInstallPlan(mod, cacheDir, info.productLib());
                 } catch (IOException e) {
                     CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                     return 1;
                 }
             }
-            announceProjectInstall(m.coord(), launcher, binDir);
+            String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
+            if (productLib) announceProductLibInstall(coord, info.productLib());
+            else announceProjectInstall(coord, launcher, binDir);
         }
         return 0;
     }
@@ -451,6 +474,39 @@ public final class InstallCommand {
         return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
+    /**
+     * The artifact a product-lib install materializes: the jar the exec plan links, which for an
+     * assembly module is the {@code -all.jar}. {@code null} when the plan links nothing, which is
+     * a plan with no packaged output to install.
+     */
+    private static Path productLibSource(ExecPlan plan) {
+        for (String src : plan.linkSrcs()) {
+            if (src.endsWith(".jar")) return Path.of(src);
+        }
+        return plan.linkSrcs().isEmpty() ? null : Path.of(plan.linkSrcs().get(0));
+    }
+
+    /**
+     * Whether {@code info}'s declared product-lib destination is missing or holds other bytes than
+     * the artifact this tree built. False for every module that declares none.
+     */
+    static boolean productLibStale(ProjectInfo info) {
+        if (info.error() != null || info.productLib().isBlank()) return false;
+        String builtPath = info.assembly() ? info.assemblyJarPath() : info.mainJarPath();
+        if (builtPath == null || builtPath.isBlank()) return false;
+        Path built = Path.of(builtPath);
+        if (!Files.isRegularFile(built)) return false; // nothing built to install
+        try {
+            String builtSha = Hashing.sha256Hex(built);
+            return new EngineInstall(JkDirs.productLib())
+                    .engineSha(info.version())
+                    .filter(sha -> sha.equalsIgnoreCase(builtSha))
+                    .isEmpty();
+        } catch (IOException | RuntimeException unreadable) {
+            return true; // cannot prove it current — install
+        }
+    }
+
     private static boolean isPluginWorker(ProjectInfo proj, Path projectDir) {
         return PluginModule.isWorker(projectDir) || "cc.jumpkick.plugin.process.PluginMain".equals(proj.mainClass());
     }
@@ -466,6 +522,15 @@ public final class InstallCommand {
      * hard-link/copy each pair, write the launcher, mark executables. Returns the launcher path.
      */
     private Path applyInstallPlan(Path projectDir, Path cacheDir) throws IOException {
+        return applyInstallPlan(projectDir, cacheDir, "");
+    }
+
+    /**
+     * As {@link #applyInstallPlan(Path, Path)} for a module that declares {@code [install]
+     * product-lib}: its packaged artifact is materialized into jk's own product library rather
+     * than linked into {@code ~/.local/bin}.
+     */
+    private Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib) throws IOException {
         ExecPlan plan = EngineClient.execPlan(
                 EnginePaths.current(),
                 projectDir,
@@ -483,21 +548,20 @@ public final class InstallCommand {
                 && plan.binPath().isEmpty()) {
             return null;
         }
-        // Self-host engine install: route through EngineInstall so a new jar is published beside
-        // any mapped predecessor, a downgrade is refused, and jk-engine.toml is written coherently
-        // — none of which the generic copy + AppInstallConfig.write below provides.
-        Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
-        for (int i = 0; i < plan.linkDests().size(); i++) {
-            Path dest = Path.of(plan.linkDests().get(i)).toAbsolutePath().normalize();
-            Path parent = dest.getParent();
-            if (parent != null
-                    && EngineInstall.BIN_NAME.equals(parent.getFileName().toString())
-                    && productLib.equals(parent.getParent())) {
-                Path src = Path.of(plan.linkSrcs().get(i));
-                String version = engineInstallVersion(projectDir, src);
-                new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.cas(cacheDir), src);
-                return null; // the engine is a jar the client launches — no launcher/bin to link
-            }
+        // Declared product-lib install: route through EngineInstall so a new jar is published
+        // beside any mapped predecessor, a downgrade is refused, and the pointer toml is written
+        // coherently — none of which the generic copy + AppInstallConfig.write below provides.
+        //
+        // Asked of the manifest, not of the destination path. This used to match
+        // `<productLib>/jk-engine/` on the link dest and `return null` mid-loop, which meant the
+        // one module whose install is not a coordinate was recognised nowhere a freshness check
+        // could see it — so a missing engine read as "already installed" (JK-1069).
+        if (!productLib.isBlank()) {
+            Path src = productLibSource(plan);
+            if (src == null) return null;
+            String version = engineInstallVersion(projectDir, src);
+            new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.cas(cacheDir), src);
+            return null; // a jar the client launches — no launcher/bin to link
         }
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
             Path src = Path.of(plan.linkSrcs().get(i));
@@ -635,6 +699,16 @@ public final class InstallCommand {
     }
 
     /** Announce a project install: launcher path for an app, cache-only for a library. */
+    /**
+     * A product-lib install went into jk's own product layout, not the local cache. Saying "to the
+     * local cache" here would name the one place this artifact did not go.
+     */
+    private void announceProductLibInstall(String coord, String productLib) {
+        if (global.outputIsJson()) return;
+        CliOutput.out("Installed " + coord + " → "
+                + PathDisplay.styledRaw(JkDirs.productLib().resolve(productLib)));
+    }
+
     private void announceProjectInstall(String coord, Path launcher, Path binDir) {
         if (global.outputIsJson()) return;
         if (launcher == null) {

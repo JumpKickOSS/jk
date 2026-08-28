@@ -145,6 +145,28 @@ public final class ManifestTables {
                 optionalBool(format, "remove-unused-imports"));
     }
 
+    /**
+     * {@code [install]} — what installing this module produces besides its jar and POM.
+     *
+     * <p>Absent for every ordinary target, which is the point: a library, an executable, a native
+     * binary, a script and an external jar are complete shapes already and declare nothing. The one
+     * key today is {@code product-lib}, which is jk installing jk — see {@link JkBuild.Install}.
+     */
+    static Optional<JkBuild.Install> parseInstall(TomlTable root) {
+        if (root.contains("install") && !root.isTable("install")) {
+            throw new JkBuildParseException("`install` must be a table — use [install] with a product-lib key");
+        }
+        TomlTable install = root.getTable("install");
+        if (install == null) return Optional.empty();
+        for (String key : install.keySet()) {
+            if (!"product-lib".equals(key)) {
+                throw new JkBuildParseException("[install] unknown key `" + key + "` — expected product-lib");
+            }
+        }
+        String productLib = stringOrThrow(install, "product-lib", "install.product-lib");
+        return productLib == null ? Optional.empty() : Optional.of(new JkBuild.Install(productLib));
+    }
+
     /** Present boolean key → its value; absent → null (caller applies the default). */
     static Boolean optionalBool(TomlTable table, String key) {
         return table.contains(key) ? table.getBoolean(key) : null;

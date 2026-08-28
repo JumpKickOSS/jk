@@ -98,7 +98,8 @@ public final class WorkspaceMerge {
                 .nativeConfig(module.nativeConfig().orElse(null))
                 .build(module.build())
                 .format(module.format())
-                .variants(module.variants());
+                .variants(module.variants())
+                .install(module.install());
         for (PluginConfig config : module.pluginConfigs().values()) {
             out.pluginConfig(config);
         }
@@ -161,7 +162,8 @@ public final class WorkspaceMerge {
                 .nativeConfig(module.nativeConfig().orElse(null))
                 .build(module.build())
                 .format(module.format())
-                .variants(module.variants());
+                .variants(module.variants())
+                .install(module.install());
         for (PluginConfig config : module.pluginConfigs().values()) {
             out.pluginConfig(config);
         }

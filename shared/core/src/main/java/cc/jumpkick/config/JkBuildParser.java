@@ -385,6 +385,7 @@ public final class JkBuildParser {
                     testEnv);
         }
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
+        Optional<JkBuild.Install> install = ManifestTables.parseInstall(result);
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
         // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
@@ -405,7 +406,8 @@ public final class JkBuildParser {
                 pluginConfigs,
                 build,
                 format,
-                variants);
+                variants,
+                install);
     }
 
     /** The {@link Scope} whose toml section is {@code name}, or null. */

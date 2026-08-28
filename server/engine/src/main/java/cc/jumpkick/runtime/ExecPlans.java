@@ -161,8 +161,7 @@ public final class ExecPlans {
                 moduleNames = filteredNames;
             }
 
-            int sourceCount = 0;
-            int testCount = 0;
+            int sourceCount = 0, testCount = 0;
             if (counts) {
                 List<Path> countDirs = moduleDirs.isEmpty()
                         ? List.of(dir)
@@ -250,7 +249,8 @@ public final class ExecPlans {
                     build.project().scala() == null
                             ? ""
                             : build.project().scala().raw(),
-                    CompileSupport.coordinatorOnly(build, dir));
+                    CompileSupport.coordinatorOnly(build, dir),
+                    build.install().map(JkBuild.Install::productLib).orElse(""));
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(Errors.text(e));
         }
