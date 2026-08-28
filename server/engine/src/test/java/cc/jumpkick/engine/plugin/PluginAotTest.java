@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,6 +24,21 @@ class PluginAotTest {
 
     @TempDir
     Path tmp;
+
+    /**
+     * Let every background trainer finish before JUnit deletes {@link #tmp}.
+     *
+     * <p>These tests await an <em>observable</em> signal — a marker appearing, a claim's mtime
+     * moving — and that signal fires while {@link PluginAot#runTrainer} is still cleaning up
+     * underneath the fixture. The teardown then loses a race with it and the tier goes red on a
+     * {@code DirectoryNotEmptyException} rather than on anything the test asserts. Waiting here
+     * fixes the fixture's lifetime; it deliberately does not make production join its trainers,
+     * which are fire-and-forget by design (JK-1072).
+     */
+    @AfterEach
+    void awaitTrainersQuiescent() throws InterruptedException {
+        Await.until(Duration.ofSeconds(30), () -> !PluginAot.trainingInFlight());
+    }
 
     // ---- keying -----------------------------------------------------------------------------
 

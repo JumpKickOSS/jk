@@ -332,6 +332,19 @@ public final class PluginAot {
      * ever see a complete file. Trainer output is discarded — success is the cache appearing, and
      * both outcomes get an engine-log line.
      */
+    /**
+     * Whether any background trainer is still running.
+     *
+     * <p>{@link #trainAsync} is fire-and-forget on purpose — AOT is an accelerator and must never
+     * block or fail a build — so nothing in production waits for a trainer. A test fixture does
+     * have to: {@link #runTrainer} cleans its scratch, claim and temp files in a {@code finally}
+     * and only then leaves this set, so a {@code @TempDir} torn down while training is in flight
+     * races the trainer and fails the delete, not the assertion (JK-1072).
+     */
+    static boolean trainingInFlight() {
+        return !TRAINING.isEmpty();
+    }
+
     static void trainAsync(String what, Path cache, TrainerCommand trainer) {
         trainAsync(what, cache, trainer, null);
     }
