@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -85,6 +86,11 @@ class JsonOutTest {
     @Test
     void an_unmodelled_value_stringifies_rather_than_throwing() {
         assertEquals("\"PT5S\"", JsonOut.string(Duration.ofSeconds(5)));
-        assertEquals("\"" + Path.of("/tmp/report.xml") + "\"", JsonOut.string(Path.of("/tmp/report.xml")));
+        // /tmp on POSIX; %USERPROFILE%\Temp on Windows (not C:\tmp). Compare via string form so
+        // JSON backslash escaping matches Path.toString() on Windows.
+        Path report = Os.isWindows()
+                ? Path.of(System.getProperty("user.home"), "Temp", "report.xml")
+                : Path.of("/tmp/report.xml");
+        assertEquals(JsonOut.string(report.toString()), JsonOut.string(report));
     }
 }

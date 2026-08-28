@@ -99,6 +99,37 @@ public final class CliOutput {
         return SCRIPT_MODE.get();
     }
 
+    /**
+     * Per-command flags {@link #beginCommand} owns. Captured/restored by the test boundary so a
+     * script-mode leaf (or {@code --output json}) cannot leave {@link #scriptMode()} true for the
+     * next class in the same worker — Spinner and JdkDownloadBar treat that flag as silence.
+     */
+    record State(
+            boolean scriptMode,
+            boolean envelopeStarted,
+            boolean envelopeClosed,
+            boolean lastWriteOnErr,
+            boolean trailingBlankSkipped) {}
+
+    /** Snapshot for {@code CliOutputGlobal}; package-private so only the same-package boundary sees it. */
+    static State captureState() {
+        return new State(
+                SCRIPT_MODE.get(),
+                ENVELOPE_STARTED.get(),
+                ENVELOPE_CLOSED.get(),
+                LAST_WRITE_ON_ERR.get(),
+                TRAILING_BLANK_SKIPPED.get());
+    }
+
+    /** Put back whatever {@link #captureState()} returned. */
+    static void restoreState(State state) {
+        SCRIPT_MODE.set(state.scriptMode());
+        ENVELOPE_STARTED.set(state.envelopeStarted());
+        ENVELOPE_CLOSED.set(state.envelopeClosed());
+        LAST_WRITE_ON_ERR.set(state.lastWriteOnErr());
+        TRAILING_BLANK_SKIPPED.set(state.trailingBlankSkipped());
+    }
+
     /** True after the leading blank has been printed for this command. */
     public static boolean envelopeStarted() {
         return ENVELOPE_STARTED.get();

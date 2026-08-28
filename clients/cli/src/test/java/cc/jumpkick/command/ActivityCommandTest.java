@@ -14,13 +14,13 @@ class ActivityCommandTest {
 
     private static final String ENTRY =
             "{\"type\":\"history-entry\",\"id\":\"20260101T000000000-aaaa\",\"buildNumber\":31,"
-                    + "\"kind\":\"build\",\"dir\":\"/proj\",\"coord\":\"com.example:app\","
+                    + "\"kind\":\"build\",\"dir\":\"/home/u/src/proj\",\"coord\":\"com.example:app\","
                     + "\"startedAt\":1000,\"finishedAt\":3300,\"millis\":2300,"
                     + "\"success\":true,\"cancelled\":false,\"running\":false,"
                     + "\"moduleCount\":8,\"failedModules\":0}";
 
     private static final String FAIL = "{\"type\":\"history-entry\",\"id\":\"x\",\"buildNumber\":12,"
-            + "\"kind\":\"test\",\"dir\":\"/p\",\"coord\":\"g:n\","
+            + "\"kind\":\"test\",\"dir\":\"/home/u/src/p\",\"coord\":\"g:n\","
             + "\"startedAt\":1,\"finishedAt\":2,\"millis\":500,"
             + "\"success\":false,\"cancelled\":false,\"running\":false,"
             + "\"moduleCount\":1,\"failedModules\":1}";
@@ -48,7 +48,7 @@ class ActivityCommandTest {
     @Test
     void formats_cancelled() {
         String cancelled = "{\"type\":\"history-entry\",\"id\":\"c\",\"buildNumber\":104,"
-                + "\"kind\":\"build\",\"dir\":\"/p\",\"coord\":\"cc.jumpkick:jk\","
+                + "\"kind\":\"build\",\"dir\":\"/home/u/src/p\",\"coord\":\"cc.jumpkick:jk\","
                 + "\"startedAt\":1,\"finishedAt\":2,\"millis\":6500,"
                 + "\"success\":false,\"cancelled\":true,\"running\":false,"
                 + "\"moduleCount\":12}";
@@ -135,7 +135,7 @@ class ActivityCommandTest {
                 .isEqualTo(3);
         String n9 = strip(formatLine(
                 "{\"type\":\"history-entry\",\"id\":\"x\",\"buildNumber\":9,"
-                        + "\"kind\":\"build\",\"dir\":\"/p\",\"coord\":\"g:n\","
+                        + "\"kind\":\"build\",\"dir\":\"/home/u/src/p\",\"coord\":\"g:n\","
                         + "\"startedAt\":1,\"finishedAt\":2,\"millis\":500,"
                         + "\"success\":true,\"cancelled\":false,\"running\":false,"
                         + "\"moduleCount\":1}",

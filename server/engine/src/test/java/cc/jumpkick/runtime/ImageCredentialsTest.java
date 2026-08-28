@@ -133,15 +133,19 @@ class ImageCredentialsTest {
      * The spec file holds the secret in the clear, so it may not be world-readable — and the plan
      * has to be the thing that gets it that way. Asserting the helper alone would stay green with
      * the plan back on a default-permission {@code createTempFile}, which is the state this fixed.
+     * POSIX mode bits are asserted only where the filesystem supports them; Windows falls through
+     * to default ACLs in {@link ImageCredentials#newSpecFile}.
      */
     @Test
     void the_worker_spec_file_is_owner_only() throws Exception {
         Path spec = ImageCredentials.newSpecFile();
         try {
-            Set<PosixFilePermission> mode = Files.getPosixFilePermissions(spec);
-            assertThat(PosixFilePermissions.toString(mode))
-                    .as("a default temp file is 0644 — every local account could read the registry password")
-                    .isEqualTo("rw-------");
+            if (spec.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+                Set<PosixFilePermission> mode = Files.getPosixFilePermissions(spec);
+                assertThat(PosixFilePermissions.toString(mode))
+                        .as("a default temp file is 0644 — every local account could read the registry password")
+                        .isEqualTo("rw-------");
+            }
         } finally {
             Files.deleteIfExists(spec);
         }

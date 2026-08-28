@@ -3,13 +3,17 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
@@ -80,8 +84,18 @@ class EngineElectionTest {
             Files.createDirectories(gen.dir());
             this.lockChannel = FileChannel.open(gen.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             this.lock = lockChannel.tryLock();
-            this.listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
-            this.listener.bind(UnixDomainSocketAddress.of(gen.socket()));
+            // Mirror EngineElection.win's transport choice so helloProbe can reach us on Windows
+            // (loopback TCP + token) as well as on the Unix-domain path.
+            if (EngineTransport.useLoopbackTcp()) {
+                this.listener = ServerSocketChannel.open();
+                this.listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+                int port = ((InetSocketAddress) this.listener.getLocalAddress()).getPort();
+                OwnerOnlyFiles.write(gen.token().getParent(), gen.token(), EngineTransport.newToken());
+                Files.writeString(gen.socket(), Integer.toString(port));
+            } else {
+                this.listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+                this.listener.bind(UnixDomainSocketAddress.of(gen.socket()));
+            }
             Files.writeString(gen.pid(), "424242\n1\n", StandardCharsets.UTF_8);
             EnginePaths.writeEndpoint(paths, gen.socket());
             this.thread = new Thread(
@@ -92,7 +106,12 @@ class EngineElectionTest {
                                         new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
                                 BufferedWriter w = new BufferedWriter(
                                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-                                if (r.readLine() == null) continue;
+                                String first = r.readLine();
+                                if (first == null) continue;
+                                // TCP clients send the auth envelope before hello; UDS clients do not.
+                                if (EngineProtocol.AUTH.equals(EngineProtocol.typeOf(first)) && r.readLine() == null) {
+                                    continue;
+                                }
                                 w.write(ProtoLifecycle.helloAck(version, 424242L, 1L, false, buildId));
                                 w.write('\n');
                                 w.flush();

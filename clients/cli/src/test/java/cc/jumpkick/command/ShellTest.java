@@ -42,21 +42,24 @@ class ShellTest {
     @Test
     void zsh_set_unset_env() {
         var sh = new ZshShell();
-        assertThat(sh.setEnv("JAVA_HOME", "/opt/jdk")).isEqualTo("export JAVA_HOME=/opt/jdk\n");
+        assertThat(sh.setEnv("JAVA_HOME", "/home/u/.local/share/jk/jdks/temurin-25"))
+                .isEqualTo("export JAVA_HOME=/home/u/.local/share/jk/jdks/temurin-25\n");
         assertThat(sh.unsetEnv("JAVA_HOME")).isEqualTo("unset JAVA_HOME\n");
     }
 
     @Test
     void fish_set_unset_env() {
         var sh = new FishShell();
-        assertThat(sh.setEnv("JAVA_HOME", "/opt/jdk")).isEqualTo("set -gx JAVA_HOME /opt/jdk\n");
+        assertThat(sh.setEnv("JAVA_HOME", "/home/u/.local/share/jk/jdks/temurin-25"))
+                .isEqualTo("set -gx JAVA_HOME /home/u/.local/share/jk/jdks/temurin-25\n");
         assertThat(sh.unsetEnv("FOO")).isEqualTo("set -e FOO\n");
     }
 
     @Test
     void pwsh_set_unset_env() {
         var sh = new PwshShell();
-        assertThat(sh.setEnv("JAVA_HOME", "/opt/jdk")).isEqualTo("$Env:JAVA_HOME = '/opt/jdk'\n");
+        assertThat(sh.setEnv("JAVA_HOME", "/home/u/.local/share/jk/jdks/temurin-25"))
+                .isEqualTo("$Env:JAVA_HOME = '/home/u/.local/share/jk/jdks/temurin-25'\n");
         assertThat(sh.unsetEnv("FOO")).isEqualTo("Remove-Item -ErrorAction SilentlyContinue -Path Env:/FOO\n");
     }
 
@@ -67,8 +70,8 @@ class ShellTest {
 
     @Test
     void activation_script_includes_exe_path() {
-        var out = new ZshShell().activateScript("/opt/jk/bin/jk");
-        assertThat(out).contains("__JK_EXE=/opt/jk/bin/jk");
+        var out = new ZshShell().activateScript("/home/u/.local/bin/jk");
+        assertThat(out).contains("__JK_EXE=/home/u/.local/bin/jk");
         // precmd + chpwd hooks are essential to the contract.
         assertThat(out).contains("add-zsh-hook precmd");
         assertThat(out).contains("add-zsh-hook chpwd");
@@ -76,14 +79,14 @@ class ShellTest {
 
     @Test
     void bash_activation_uses_prompt_command() {
-        var out = new BashShell().activateScript("/opt/jk/bin/jk");
+        var out = new BashShell().activateScript("/home/u/.local/bin/jk");
         assertThat(out).contains("PROMPT_COMMAND");
         assertThat(out).contains("hook-env -s bash");
     }
 
     @Test
     void fish_activation_uses_pwd_hook() {
-        var out = new FishShell().activateScript("/opt/jk/bin/jk");
+        var out = new FishShell().activateScript("/home/u/.local/bin/jk");
         assertThat(out).contains("--on-variable PWD");
         assertThat(out).contains("--on-event fish_prompt");
         assertThat(out).contains("hook-env -s fish");
@@ -91,7 +94,7 @@ class ShellTest {
 
     @Test
     void pwsh_activation_uses_chpwd_and_prompt() {
-        var out = new PwshShell().activateScript("/opt/jk/bin/jk");
+        var out = new PwshShell().activateScript("/home/u/.local/bin/jk");
         assertThat(out).contains("LocationChangedAction");
         assertThat(out).contains("global:prompt");
         assertThat(out).contains("hook-env -s pwsh");
@@ -101,7 +104,7 @@ class ShellTest {
     void activate_scripts_do_not_define_jk_or_jkx_wrappers() {
         // Real binaries live on PATH; hooks call __JK_EXE, not a shell function.
         for (Shell sh : List.of(new BashShell(), new ZshShell(), new FishShell(), new PwshShell())) {
-            String out = sh.activateScript("/opt/jk/bin/jk");
+            String out = sh.activateScript("/home/u/.local/bin/jk");
             assertThat(out).doesNotContain("jkx()");
             assertThat(out).doesNotContain("function jkx");
             assertThat(out).doesNotContain("function global:jkx");
@@ -163,7 +166,8 @@ class ShellTest {
     @Test
     void activation_lines_use_absolute_command_outside_home() {
         Path home = Path.of("/home/u");
-        Path jk = Path.of("/opt/jk/bin/jk");
+        // /tmp is an allowed non-home root on POSIX; still must stay absolute, not $HOME-relative.
+        Path jk = Path.of("/tmp/jk/bin/jk");
         String jkSlash = jk.toAbsolutePath().normalize().toString().replace('\\', '/');
         assertThat(new ZshShell().activationLine(new ZshShell().commandExpr(jk, home)))
                 .isEqualTo("eval \"$(\"" + jkSlash + "\" activate zsh)\"");
@@ -183,7 +187,7 @@ class ShellTest {
 
     @Test
     void installer_block_upsert_is_idempotent() {
-        String block = ShellInstallerBlock.render(new BashShell(), Path.of("/b"), Path.of("/home/u"));
+        String block = ShellInstallerBlock.render(new BashShell(), Path.of("/home/u/.local/bin"), Path.of("/home/u"));
         String once = ShellInstallerBlock.upsert("", block);
         String twice = ShellInstallerBlock.upsert(once, block);
         assertThat(twice.split(ShellInstallerBlock.BEGIN, -1)).hasSize(2);
@@ -193,19 +197,22 @@ class ShellTest {
     void shell_path_expr_prefers_home() {
         Path home = Path.of("/home/u");
         assertThat(ShellPathExpr.posix(home.resolve(".local/bin"), home)).isEqualTo("$HOME/.local/bin");
-        String optSlash =
-                Path.of("/opt/bin").toAbsolutePath().normalize().toString().replace('\\', '/');
-        assertThat(ShellPathExpr.posix(Path.of("/opt/bin"), home)).isEqualTo(optSlash);
+        String outsideSlash = Path.of("/tmp/elsewhere/bin")
+                .toAbsolutePath()
+                .normalize()
+                .toString()
+                .replace('\\', '/');
+        assertThat(ShellPathExpr.posix(Path.of("/tmp/elsewhere/bin"), home)).isEqualTo(outsideSlash);
         assertThat(ShellPathExpr.posixCommand(home.resolve(".local/bin/jk"), home))
                 .isEqualTo("\"$HOME/.local/bin/jk\"");
     }
 
     @Test
     void detect_resolves_shell_from_path_basename() {
-        assertThat(Shell.detect("/bin/zsh")).get().isInstanceOf(ZshShell.class);
-        assertThat(Shell.detect("/usr/local/bin/fish")).get().isInstanceOf(FishShell.class);
+        assertThat(Shell.detect("/home/u/.local/bin/zsh")).get().isInstanceOf(ZshShell.class);
+        assertThat(Shell.detect("/home/u/.local/bin/fish")).get().isInstanceOf(FishShell.class);
         assertThat(Shell.detect("bash")).get().isInstanceOf(BashShell.class);
-        assertThat(Shell.detect("/usr/bin/dash")).isEmpty();
+        assertThat(Shell.detect("/home/u/.local/bin/dash")).isEmpty();
         assertThat(Shell.detect(null)).isEmpty();
         assertThat(Shell.detect("")).isEmpty();
     }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -11,8 +12,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDirFactory;
 
 /**
- * Prefer short {@code /tmp} paths for UDS-friendly state. Cleanup is owned by {@link
- * JkTempDirDeletionStrategy}. If {@code /tmp} has no inodes left (tmpfs), sweep stale
+ * Prefer short paths for UDS-friendly state ({@link ShortTempDirs#root()}). Cleanup is owned by
+ * {@link JkTempDirDeletionStrategy}. If the root has no inodes left (tmpfs), sweep stale
  * {@code jk-junit-*} / {@code junit-*} dirs we own and retry once.
  */
 public final class JkTempDirFactory implements TempDirFactory {
@@ -35,8 +36,8 @@ public final class JkTempDirFactory implements TempDirFactory {
     /**
      * Honor {@code java.io.tmpdir} when it is short enough for UDS paths — JUnitLauncher gives
      * each worker JVM a private tmpdir precisely so parallel workers don't share temp state, and
-     * hard-coding {@code /tmp} silently defeated that isolation (JK-2183). Fall back to
-     * {@code /tmp} only when the configured tmpdir would overflow {@code sun_path}.
+     * hard-coding a shared short root silently defeated that isolation. Fall back to
+     * {@link ShortTempDirs#root()} only when the configured tmpdir would overflow {@code sun_path}.
      */
     static Path root(String configuredTmpdir) {
         if (configuredTmpdir != null && !configuredTmpdir.isBlank()) {
@@ -45,7 +46,11 @@ public final class JkTempDirFactory implements TempDirFactory {
                 return configured;
             }
         }
-        return Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(configuredTmpdir);
+        try {
+            return ShortTempDirs.root();
+        } catch (IOException e) {
+            return Path.of(configuredTmpdir);
+        }
     }
 
     /** Best-effort: drop leftover JUnit trees so a tmpfs inode exhaustion can recover. */

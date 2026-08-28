@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -45,11 +46,9 @@ abstract class EngineServerHarness {
     private final List<Path> tempDirs = new ArrayList<>();
 
     Path shortTempDir() throws IOException {
-        // Prefer /tmp: macOS default TMPDIR is under /var/folders/... and with Java's long
-        // createTempDirectory suffix the UDS path (…/engine/<key>.genN.sock) exceeds sun_path (~104).
-        Path root =
-                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
-        Path dir = Files.createTempDirectory(root, "jkd-");
+        // ShortTempDirs.root(): /tmp on POSIX (macOS TMPDIR is too deep for UDS sun_path),
+        // %USERPROFILE%\Temp on Windows (created if missing — never C:\tmp).
+        Path dir = Files.createTempDirectory(ShortTempDirs.root(), "jkd-");
         tempDirs.add(dir);
         return dir;
     }
