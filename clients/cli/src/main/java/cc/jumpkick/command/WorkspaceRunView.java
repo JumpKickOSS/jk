@@ -326,6 +326,11 @@ final class WorkspaceRunView {
                 settleErrors.add(d);
             }
             ConsoleSpec.appendErrors(failAbove, settleErrors);
+            // --continue: the wedge names a count, so the roll-call has to name the modules.
+            List<String> failed = failedCoords(result);
+            if (failed.size() > 1) {
+                for (String coord : failed) failAbove.add(ConsoleSpec.errorLine("failed", coord));
+            }
             String failTail = tails.failure().of(result);
             view.finishBuildPlanFailure(failTail, failAbove);
             if (session != null) session.wedge(failTail);
@@ -361,12 +366,31 @@ final class WorkspaceRunView {
 
     /** First failing module's coordinate, or {@code fallback} when the engine named none. */
     static String failedCoord(WorkspaceResult result, String fallback) {
-        if (result.modules() == null) return fallback;
+        List<String> failed = failedCoords(result);
+        return failed.isEmpty() ? fallback : failed.get(0);
+    }
+
+    /**
+     * Every failing module's coordinate, in the order the engine finished them.
+     *
+     * <p>Under {@code --continue} the run keeps going, so "which module failed" has more than one
+     * answer and reporting the first would hide the rest — which is the whole reason the flag
+     * exists. Fail-fast runs have exactly one and read as before.
+     */
+    static List<String> failedCoords(WorkspaceResult result) {
+        if (result.modules() == null) return List.of();
         return result.modules().stream()
                 .filter(m -> !m.success())
                 .map(ModuleOutcome::coord)
-                .findFirst()
-                .orElse(fallback);
+                .toList();
+    }
+
+    /** The failure wedge's subject: one coordinate, or {@code "N modules"} when several failed. */
+    static String failedSubject(WorkspaceResult result, String fallback) {
+        List<String> failed = failedCoords(result);
+        if (failed.isEmpty()) return fallback;
+        if (failed.size() == 1) return failed.get(0);
+        return failed.size() + " modules";
     }
 
     private String completionLineFor(ModuleOutcome o) {

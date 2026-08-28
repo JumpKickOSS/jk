@@ -150,6 +150,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             boolean freshenLock = Jsonl.bool(requestLine, "freshenLock", false);
             boolean ephemeralActions = Jsonl.bool(requestLine, "ephemeralActions", false);
             boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
+            // Absent = fail-fast. The client resolves --continue / [engine] continue / CI and
+            // sends the answer; the engine does not re-derive it from its own environment, which
+            // is the daemon's and not the caller's.
+            boolean keepGoing = Jsonl.bool(requestLine, "keepGoing", false);
             List<String> dirtyHintDirs = ProtoJobs.dirtyHintOf(requestLine);
 
             Path entryDir = Path.of(entryDirStr);
@@ -187,6 +191,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             false,
                             freshenLock)
                     .withModules(moduleTokens)
+                    .withKeepGoing(keepGoing)
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));

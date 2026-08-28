@@ -30,7 +30,7 @@ class JobsTest {
 
     @Test
     void resolve_cli_wins_over_env_and_file() {
-        JkEngineConfig file = new JkEngineConfig(256, 2);
+        JkEngineConfig file = new JkEngineConfig(256, 2, false);
         Map<String, String> env = Map.of("JK_JOBS", "4");
         assertThat(Jobs.resolve(Optional.of(1), file, env::get)).isEqualTo(1);
         assertThat(Jobs.resolve(Optional.empty(), file, env::get)).isEqualTo(4);

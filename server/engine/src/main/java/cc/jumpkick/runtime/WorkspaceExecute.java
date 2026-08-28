@@ -430,7 +430,13 @@ public final class WorkspaceExecute {
                         for (int i = 0; i < results.size(); i++) {
                             ModuleOutcome o = results.get(i);
                             outcomes.add(o);
-                            if (!o.success()) return o; // fail-fast
+                            // Fail-fast unless the caller asked for the whole graph. Keeping going
+                            // is safe because admission keys on artifacts-ready, not completion: a
+                            // module whose tests failed has already published what its dependents
+                            // compile against, and one that failed before packaging publishes
+                            // nothing, so its dependents fail on their own accurate account
+                            // rather than on this one's behalf.
+                            if (!o.success() && !req.keepGoing()) return o;
                             linkModuleArtifacts(ready.get(i).dir(), wsLinks);
                             ModulePlan p = plans.get(ready.get(i).dir());
                             // Skip fully-cached modules — their near-zero time isn't representative of work.
@@ -448,7 +454,18 @@ public final class WorkspaceExecute {
         // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
         // cancelled rather than a generic failure.
         boolean cancelled = SessionCancel.cancelled();
-        boolean ok = failure == null && !cancelled;
+        // Under keep-going the sink never returns, so the verdict comes from the outcomes: the
+        // run still fails, and the exit code is the first failure's, exactly as fail-fast reports.
+        ModuleOutcome firstFailure = failure;
+        if (firstFailure == null) {
+            for (ModuleOutcome o : outcomes) {
+                if (!o.success()) {
+                    firstFailure = o;
+                    break;
+                }
+            }
+        }
+        boolean ok = firstFailure == null && !cancelled;
         if (ok) {
             // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
             BuildEta.logSeedQuality(etaMs, executeWallMs, dirtyUnits.size());
@@ -480,7 +497,7 @@ public final class WorkspaceExecute {
                 }
             }
         }
-        int exit = ok ? 0 : (cancelled ? 1 : failure.exitCode());
+        int exit = ok ? 0 : (cancelled ? 1 : firstFailure.exitCode());
         WorkspaceResult result = new WorkspaceResult(ok, exit, List.copyOf(outcomes), List.of(), cancelled);
         listener.onWorkspaceFinish(result);
         return result;

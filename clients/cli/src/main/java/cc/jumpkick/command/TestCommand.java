@@ -77,6 +77,7 @@ public final class TestCommand implements CliCommand {
         opts.addAll(ParallelTestsOpts.options());
         opts.add(CommonOpts.cacheDir());
         opts.add(CommonOpts.jdksDir());
+        opts.add(CommonOpts.keepGoing());
         opts.addAll(CommonOpts.moduleSelection());
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
@@ -92,6 +93,10 @@ public final class TestCommand implements CliCommand {
     String profileName;
     Integer workers;
     boolean parallelTests;
+
+    /** {@code --continue} / {@code [engine] continue}: finish the graph, report every failure. */
+    boolean keepGoing;
+
     Path cacheDir;
     Path jdksDir;
     GlobalOptions global;
@@ -113,6 +118,7 @@ public final class TestCommand implements CliCommand {
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
         this.parallelTests = ParallelTestsOpts.enabled(in);
+        this.keepGoing = CommonOpts.keepGoingValue(in);
         try {
             this.testSelection = resolveTestSelection(in);
         } catch (IllegalArgumentException e) {
@@ -386,6 +392,7 @@ public final class TestCommand implements CliCommand {
                         true,
                         true)
                 .withTestOnly(true)
+                .withKeepGoing(keepGoing)
                 .withVariant(variant, clientEnv)
                 .withModules(modules);
     }
@@ -403,7 +410,7 @@ public final class TestCommand implements CliCommand {
     }
 
     private static String workspaceTestFailureTail(WorkspaceResult result, long elapsedMs) {
-        return WorkspaceRunView.failedCoord(result, "tests") + " — failed "
+        return WorkspaceRunView.failedSubject(result, "tests") + " — failed "
                 + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
     }
 

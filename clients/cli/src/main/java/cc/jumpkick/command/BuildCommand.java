@@ -69,6 +69,7 @@ public final class BuildCommand implements CliCommand {
         opts.add(CommonOpts.cacheDir());
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.skipTests());
+        opts.add(CommonOpts.keepGoing());
         // Suite/tag widening, same vocabulary as `jk test` (JK-2182): --all = every suite
         // AND no config tag excludes — the "build + run everything" gate.
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
@@ -96,6 +97,9 @@ public final class BuildCommand implements CliCommand {
     /** Resolved concurrent module budget (from global -j / JK_JOBS / [engine] jobs). */
     int jobs;
 
+    /** {@code --continue} / {@code [engine] continue}: finish the graph, report every failure. */
+    boolean keepGoing;
+
     boolean parallelTests;
     boolean aotCache;
     String variant;
@@ -115,6 +119,7 @@ public final class BuildCommand implements CliCommand {
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
+        this.keepGoing = CommonOpts.keepGoingValue(in);
         this.aotCache = in.isSet("aot-cache");
         this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
@@ -344,6 +349,7 @@ public final class BuildCommand implements CliCommand {
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side
                 .withVariant(variant, clientEnv)
+                .withKeepGoing(keepGoing)
                 .withModules(modules);
     }
 
@@ -397,11 +403,14 @@ public final class BuildCommand implements CliCommand {
         if (!result.success()) {
             run.finishEvent(false, elapsed);
             if (!json) {
-                result.modules().stream().filter(m -> !m.success()).findFirst().ifPresent(f -> {
+                // Every failure, not the first: under --continue there is more than one, and the
+                // point of finishing the graph is lost if the report does not.
+                for (var f : result.modules()) {
+                    if (f.success()) continue;
                     String msg = f.coord() + " failed (exit " + f.exitCode() + ")";
                     CommandWedge.printFail("Build", msg);
                     if (session != null) session.error(msg).wedge(msg);
-                });
+                }
             }
             notifyBuild(BuildNotify.Outcome.FAILED, entryDir, 0, elapsed);
             return result.exitCode();
@@ -459,7 +468,7 @@ public final class BuildCommand implements CliCommand {
         long estimateMs = view.etaEstimateMs();
         var tails = new WorkspaceRunView.Tails(
                 (r, planned) -> BuildTails.successTail(r.modules(), planned, start),
-                r -> BuildTails.failureTail(WorkspaceRunView.failedCoord(r, "build"), start));
+                r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "build"), start));
         return run.settleLive(
                 view,
                 agg,

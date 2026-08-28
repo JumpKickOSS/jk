@@ -82,37 +82,39 @@ final class EngineJobs {
      * widened tier is silently served from the unit-tier stamp (JK-2181).
      */
     static String encodeWorkspaceRequest(WorkspaceRequest req, Session session) {
-        return withWorkspaceSpec(
-                ProtoJobs.buildRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                        req.workers(),
-                        req.profile(),
-                        req.skipTests(),
-                        req.verbose(),
-                        req.maxModuleConcurrency(),
-                        session.parallelTests(),
-                        session.offline(),
-                        session.force(),
-                        // jk build asks the engine to auto-freshen a stale workspace lock; verify's
-                        // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
-                        req.freshenLock(),
-                        // verify's scratch rebuild: never persist action records under
-                        // scratch-salted keys that can never recur.
-                        req.ephemeralActions(),
-                        // workspace jk test: every module plan stops at run-tests.
-                        req.testOnly(),
-                        // -m / --affected-since module selection — the engine schedules
-                        // exactly these dirs instead of forecasting dirtiness itself.
-                        req.dirtyHint() == null
-                                ? null
-                                : req.dirtyHint().stream()
-                                        .map(Object::toString)
-                                        .sorted()
-                                        .toList(),
-                        session.testSelection(),
-                        req.modules()),
+        return withKeepGoing(
+                withWorkspaceSpec(
+                        ProtoJobs.buildRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                req.workers(),
+                                req.profile(),
+                                req.skipTests(),
+                                req.verbose(),
+                                req.maxModuleConcurrency(),
+                                session.parallelTests(),
+                                session.offline(),
+                                session.force(),
+                                // jk build asks the engine to auto-freshen a stale workspace lock; verify's
+                                // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
+                                req.freshenLock(),
+                                // verify's scratch rebuild: never persist action records under
+                                // scratch-salted keys that can never recur.
+                                req.ephemeralActions(),
+                                // workspace jk test: every module plan stops at run-tests.
+                                req.testOnly(),
+                                // -m / --affected-since module selection — the engine schedules
+                                // exactly these dirs instead of forecasting dirtiness itself.
+                                req.dirtyHint() == null
+                                        ? null
+                                        : req.dirtyHint().stream()
+                                                .map(Object::toString)
+                                                .sorted()
+                                                .toList(),
+                                session.testSelection(),
+                                req.modules()),
+                        req),
                 req);
     }
 
@@ -120,6 +122,15 @@ final class EngineJobs {
      * Additive {@code workspaceTarget} / {@code graalHomes} on a build-request. Omitted when the
      * spec is the default package basket so older engines see an unchanged body.
      */
+    /**
+     * Additive {@code keepGoing} on a build-request — omitted when false so a default run's body is
+     * unchanged. See {@link WorkspaceRequest#keepGoing()}.
+     */
+    static String withKeepGoing(String json, WorkspaceRequest req) {
+        if (!req.keepGoing()) return json;
+        return json.substring(0, json.length() - 1) + ",\"keepGoing\":true}";
+    }
+
     static String withWorkspaceSpec(String json, WorkspaceRequest req) {
         WorkspaceSpec spec = req.spec();
         if (spec == null || spec == WorkspaceSpec.DEFAULT) return json;

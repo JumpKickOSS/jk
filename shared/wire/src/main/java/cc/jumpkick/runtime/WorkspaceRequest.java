@@ -52,7 +52,15 @@ public record WorkspaceRequest(
          * {@code -m}/{@code --affected-since} tokens ({@code affected:<ref>} prefix). Empty: no
          * client filter. The engine resolves these via {@code ModuleSelection} / {@code JobSelect}.
          */
-        List<String> modules) {
+        List<String> modules,
+        /**
+         * Finish every module that can run instead of stopping at the first failure. The run still
+         * fails; what changes is how much it tells you before it does. Admission already keys on a
+         * unit's artifacts being ready rather than on its completion, so a module whose TESTS
+         * failed has already published what its dependents compile against and they can proceed —
+         * one whose packaging failed publishes nothing and they fail on their own account.
+         */
+        boolean keepGoing) {
 
     public WorkspaceRequest {
         if (spec == null) spec = WorkspaceSpec.DEFAULT;
@@ -92,7 +100,8 @@ public record WorkspaceRequest(
                 Map.of(),
                 false,
                 WorkspaceSpec.DEFAULT,
-                List.of());
+                List.of(),
+                false);
     }
 
     /** Pre-ephemeralActions canonical shape (defaults false — persistent caches). */
@@ -128,7 +137,8 @@ public record WorkspaceRequest(
                 clientEnv,
                 false,
                 WorkspaceSpec.DEFAULT,
-                List.of());
+                List.of(),
+                false);
     }
 
     /** This request with a variant selection + client-resolved env attached. */
@@ -150,7 +160,8 @@ public record WorkspaceRequest(
                 clientEnv == null ? Map.of() : clientEnv,
                 ephemeralActions,
                 spec,
-                modules);
+                modules,
+                keepGoing);
     }
 
     /** Copy with {@link #testOnly()} set (HTTP/MCP {@code jk_test} true test-only path). */
@@ -172,7 +183,8 @@ public record WorkspaceRequest(
                 clientEnv,
                 ephemeralActions,
                 spec,
-                modules);
+                modules,
+                keepGoing);
     }
 
     /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
@@ -194,7 +206,8 @@ public record WorkspaceRequest(
                 clientEnv,
                 ephemeralActions,
                 spec,
-                modules);
+                modules,
+                keepGoing);
     }
 
     /** Copy with target / selection (native, image, compile, …). */
@@ -216,7 +229,8 @@ public record WorkspaceRequest(
                 clientEnv,
                 ephemeralActions,
                 spec == null ? WorkspaceSpec.DEFAULT : spec,
-                modules);
+                modules,
+                keepGoing);
     }
 
     /** Copy with {@code -m}/{@code --affected-since} selector tokens. */
@@ -238,7 +252,31 @@ public record WorkspaceRequest(
                 clientEnv,
                 ephemeralActions,
                 spec,
-                modules == null ? List.of() : modules);
+                modules == null ? List.of() : modules,
+                keepGoing);
+    }
+
+    /** Finish every module that can run; report all failures instead of stopping at the first. */
+    public WorkspaceRequest withKeepGoing(boolean keepGoing) {
+        return new WorkspaceRequest(
+                entryDir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                dirtyHint,
+                applyMemoryPlan,
+                freshenLock,
+                testOnly,
+                variant,
+                clientEnv,
+                ephemeralActions,
+                spec,
+                modules,
+                keepGoing);
     }
 
     /** Effective target: explicit spec, else TEST when {@link #testOnly}. */

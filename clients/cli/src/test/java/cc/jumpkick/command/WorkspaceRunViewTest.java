@@ -130,4 +130,32 @@ class WorkspaceRunViewTest {
         var clean = new WorkspaceResult(true, 0, List.of(), List.of());
         assertThat(WorkspaceRunView.failedCoord(clean, "build")).isEqualTo("build");
     }
+
+    @Test
+    void a_keep_going_run_reports_every_failure_not_only_the_first() {
+        // --continue finishes the graph, so "which module failed" has more than one answer and a
+        // report that names the first hides exactly what the flag was typed to reveal.
+        var twoFailed = new WorkspaceResult(
+                false,
+                1,
+                List.of(
+                        new ModuleOutcome("g:a", Path.of("/ws/a"), false, 1, 1, true),
+                        new ModuleOutcome("g:ok", Path.of("/ws/ok"), true, 0, 1, true),
+                        new ModuleOutcome("g:c", Path.of("/ws/c"), false, 4, 1, true)),
+                List.of());
+
+        assertThat(WorkspaceRunView.failedCoords(twoFailed)).containsExactly("g:a", "g:c");
+        assertThat(WorkspaceRunView.failedSubject(twoFailed, "build"))
+                .as("the wedge counts them; the roll-call under it names them")
+                .isEqualTo("2 modules");
+    }
+
+    @Test
+    void a_fail_fast_run_still_reads_as_one_named_module() {
+        var one = new WorkspaceResult(
+                false, 1, List.of(new ModuleOutcome("g:b", Path.of("/ws/b"), false, 1, 1, true)), List.of());
+        assertThat(WorkspaceRunView.failedSubject(one, "build")).isEqualTo("g:b");
+        var clean = new WorkspaceResult(true, 0, List.of(), List.of());
+        assertThat(WorkspaceRunView.failedSubject(clean, "build")).isEqualTo("build");
+    }
 }
