@@ -488,6 +488,15 @@ tasks.named<Test>("integrationTest") {
     environment("TERM", "xterm-256color")
     environment("CI", "false")
     environment("NO_COLOR", "")
+    // Loopback TCP, on every platform, for the one tier that spawns real engines. Two reasons,
+    // and the second is the bigger one:
+    //   * a TCP port has no `sun_path` budget, so the sandbox root's length stops being load-
+    //     bearing — a macOS per-user $TMPDIR composed a 103-byte socket path against the JDK's
+    //     102-byte limit and every engine-spawning test in this tier failed to bind (JK-1065);
+    //   * Windows is otherwise the only user of this lane, so it was carried by two forced-property
+    //     tests. Now the whole tier exercises it, everywhere.
+    // Environment, not -D: EngineSpawn's child inherits the environment, not our properties.
+    environment("JK_ENGINE_TRANSPORT", "tcp")
     // Fail fast if the engine stops streaming (default is 60 minutes — freezes the full suite).
     environment("JK_STREAM_IDLE_MS", "45000")
     systemProperty(

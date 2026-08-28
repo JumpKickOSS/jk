@@ -80,4 +80,8 @@ env = [
   # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible
   # files for its own explicit prune request. Explicit `jk cache prune` is unaffected.
   { JK_AUTO_PRUNE = "false" },
+  # Loopback TCP for the tier that spawns real engines — the same switch Gradle's integrationTest
+  # sets, for the same two reasons: a TCP port has no `sun_path` budget, so no sandbox path can be
+  # too long to bind; and Windows stops being the only platform that exercises this lane.
+  { JK_ENGINE_TRANSPORT = "tcp" },
 ]

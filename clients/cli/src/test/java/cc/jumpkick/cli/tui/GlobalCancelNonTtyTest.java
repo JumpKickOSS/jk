@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.EngineTransport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
@@ -197,6 +198,10 @@ class GlobalCancelNonTtyTest {
         pb.environment().put("JK_JDKS_DIR", home.resolve("jdks").toString());
         pb.environment().put("JK_HTTP_ENABLED", "false");
         pb.environment().put("JK_AUTO_PRUNE", "false");
+        // The stub below binds a Unix domain socket by hand, so this child must speak that lane
+        // whatever the tier defaults to. The tier sets JK_ENGINE_TRANSPORT=tcp and the child
+        // inherits it; without this pin the client reads the socket file expecting a port number.
+        pb.environment().put(EngineTransport.TRANSPORT_ENV, "unix");
         pb.redirectErrorStream(true);
         pb.redirectOutput(out.toFile());
         pb.redirectInput(new File("/dev/null"));
