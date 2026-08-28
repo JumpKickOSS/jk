@@ -52,21 +52,52 @@ captures. Bindings include `projectDir` and `outDir` (Groovy also gets `properti
 `ant` when Ant jars resolve). Groovy `@Grab` and Kotlin `@file:` annotations are the
 script languages' own dependency hooks — not a nested Java/Kotlin project.
 
-**A script that writes nothing runs every build.** An empty `outDir` is never a cache
-hit, so a task that produces no artifact is re-executed instead of replayed. That is the
+**A script that writes nothing still caches.** It records a *verdict*: the script ran on
+these exact inputs and produced no artifact, so an unchanged tree skips it. That is the
 shape a *check* wants — scan, throw to fail the build, produce nothing — and it is why a
 check does not need to declare inputs the way a Gradle task does. A task that generates
-files gets the opposite: write to `outDir` and the cache replays it while the module's
-sources, `jk.toml` and `jk-lock.toml` are unchanged.
+files gets the same treatment with its output attached: write to `outDir` and the cache
+replays it while the module's sources, `jk.toml` and `jk-lock.toml` are unchanged. Only a
+success is recorded, so a failing script re-runs rather than replaying its own red.
 
 **A module with no sources still runs its build logic.** A workspace member needs a
 `jk.toml` and an entry in `[workspace] modules`, not a `src/` tree.
 
-Scripts run **out of process**. A Groovy `System.exit` or OOM cannot take the engine
-down.
+Scripts run **out of process**, so a script cannot take the engine down. The two languages
+differ in how much else they share — see below.
 
 Compiled `.java` / `.kt` under `jk/` / `.jk/` is rejected. Put reusable tools in a
 [plugin](plugins.md).
+
+## How `.kts` scripts run
+
+Every `.kts` of a build shares **one** child JVM, and each script is **compiled once**.
+The compiled form is cached under `$JK_CACHE_DIR/kts/`, keyed by the script's own bytes
+and the host's script definition, so:
+
+- An unchanged script is not recompiled — not on the next build either.
+- Editing one script recompiles only that script.
+- The same script run against several modules compiles **once**. Bindings arrive as
+  declared properties at evaluation time, so a script's text never contains a module path.
+
+This matters because compiling a `.kts` is expensive and starting a JVM to do it is more
+so — together about 5 s for a large script, previously paid on every run of every script.
+A second script in an already-running session costs milliseconds.
+
+Two consequences worth knowing:
+
+- **A `.kts` that calls `System.exit` (or exhausts the heap) takes the shared host with
+  it.** The build fails against that script, and the next script gets a fresh host. Groovy
+  scripts still fork per script, so they keep per-script isolation.
+- **A `.kts` has no per-script working directory.** Resolve paths from `projectDir`.
+
+Supported `@file:` annotations are Kotlin's own: `@file:DependsOn`, `@file:Repository`,
+`@file:CompilerOptions` and `@file:Import`. `@file:Import` compiles the imported files into
+the *same* unit — one cached jar — which is how a large script splits across files without
+paying to compile several.
+
+> `@file:Import` needs Kotlin **2.4.10 or newer**, which is jk's floor. On 2.4.0 the K2
+> frontend fails to compile any script that uses it.
 
 ## Workspace build logic
 
