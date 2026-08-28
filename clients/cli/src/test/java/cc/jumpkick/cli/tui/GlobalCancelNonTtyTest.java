@@ -65,9 +65,10 @@ class GlobalCancelNonTtyTest {
     private static final int EXIT_WAIT_SECONDS = 45;
 
     /**
-     * Under {@code /tmp}, not {@code @TempDir}: the engine socket lives inside this home and a
-     * Unix-domain path longer than {@code sun_path} (~104 bytes) cannot be bound at all — the
-     * module's {@code build/tmp} JUnit root is close enough to that ceiling to matter.
+     * Under {@code /tmp}, not {@code @TempDir}: the stub engine below binds a real Unix domain
+     * socket inside this home, and the JDK refuses to bind one past
+     * {@code UnixSocketPaths.MAX_PATH_LENGTH} characters — the module's {@code build/tmp} JUnit
+     * root is well past that once the socket name is appended.
      */
     private Path home;
 

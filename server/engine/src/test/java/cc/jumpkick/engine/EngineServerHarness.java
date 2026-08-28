@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.testing.UnixSocketPaths;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -38,18 +39,13 @@ import org.junit.jupiter.api.AfterEach;
  */
 abstract class EngineServerHarness {
 
-    // Unix domain socket paths are capped at ~104 bytes (macOS/BSD) / ~108 (Linux) — JUnit's
-    // @TempDir nests deep enough under Gradle's build dir to blow past that. Use a short-path temp
-    // dir under the system temp root instead, mirroring the short paths ~/.local/state/jk/engine/ has in
-    // real use.
+    // @TempDir nests deep enough under Gradle's build dir to overrun what the JDK will bind as a
+    // Unix domain socket. UnixSocketPaths owns the budget and the root that fits it; these dirs
+    // mirror the short paths ~/.local/state/jk/engine/ has in real use.
     private final List<Path> tempDirs = new ArrayList<>();
 
     Path shortTempDir() throws IOException {
-        // Prefer /tmp: macOS default TMPDIR is under /var/folders/... and with Java's long
-        // createTempDirectory suffix the UDS path (…/engine/<key>.genN.sock) exceeds sun_path (~104).
-        Path root =
-                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
-        Path dir = Files.createTempDirectory(root, "jkd-");
+        Path dir = Files.createTempDirectory(UnixSocketPaths.shortRoot(), "jkd-");
         tempDirs.add(dir);
         return dir;
     }

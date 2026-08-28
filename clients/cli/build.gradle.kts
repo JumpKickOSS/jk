@@ -399,21 +399,25 @@ dependencies {
     javaCompilerWorkerJar(project(":java-compiler"))
 }
 
-// Unique short UDS state dir for this test task run. UDS sun_path is ~108 bytes;
-// deep worktree paths under build/ overflow, so pin under /tmp with a per-run id.
+// Load-bearing by side effect, not by name: nothing reads `cliTestStateDir`, but removing it —
+// and with it this `mkdirs()` — reliably failed SelfNukeCommandTest's three nuke arms (exit 1),
+// twice, and restoring it made them pass. Whatever wants `build/cli-test-state` wants the
+// directory, not this val, and does not say so anywhere the repo can be grepped. Left in place
+// rather than deleted on a guess; the mechanism is worth its own look (JK-1065).
 val cliTestStateDir =
         layout.buildDirectory
                 .dir("cli-test-state")
                 .get()
                 .asFile
                 .also { it.mkdirs() }
-// Prefer a short path when build dir is a deep worktree (UDS sun_path ~108 bytes). Derived from
-// the platform tmpdir — the literal "/tmp" resolves to <drive>:\tmp on Windows — falling back to
-// /tmp only when the platform tmpdir itself is too long to keep socket paths under sun_path.
-val shortTmpRoot: File = run {
-    val sys = File(System.getProperty("java.io.tmpdir", "/tmp"))
-    if (sys.absolutePath.length <= 60) sys else File("/tmp")
-}
+// Root for this task's sandboxes. It must be OUTSIDE the checkout (see cliTestTmpDirShort below);
+// its length is no longer a constraint, because the tier binds no Unix domain socket — it speaks
+// loopback TCP (JK-1065). The old `length <= 60` gate here was a budget against `sun_path` that
+// was never derived from the suffix it had to leave room for: on macOS it admitted the 48-char
+// per-user $TMPDIR, which composed a 103-byte socket path against the 102 the JDK will bind, and
+// every engine-spawning test in this tier failed. The platform tmpdir is the right answer now, and
+// the literal "/tmp" is wrong on Windows (<drive>:\tmp).
+val shortTmpRoot: File = File(System.getProperty("java.io.tmpdir", "/tmp"))
 val cliTestStateDirShort =
         shortTmpRoot.resolve(
                 "jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
@@ -421,7 +425,7 @@ val cliTestStateDirShort =
 // @TempDir root for the integration tier. It MUST live outside the repo checkout: the shared
 // convention points java.io.tmpdir at build/tmp (inside clients/cli, which has its own jk.toml),
 // so @TempDir project dirs would find — and the "promote to workspace" tests would MUTATE — the
-// real repo's jk.toml (JK-2329). A short /tmp path also keeps UDS socket paths under sun_path.
+// real repo's jk.toml (JK-2329). That is the whole requirement now; path length is not part of it.
 val cliTestTmpDirShort =
         shortTmpRoot.resolve(
                 "jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")

@@ -646,8 +646,9 @@ public final class JUnitLauncher {
      * Per-worker env when {@code W > 1}: private temp root, and for nested-engine suites a
      * per-worker {@code JK_STATE_DIR}. Engine identity is keyed on (state, store), so a shared
      * state dir means one socket for every worker — and one worker's engine force-stop aborts
-     * its siblings mid-request. The suffix stays short: the state dir holds UDS sockets and
-     * {@code sun_path} is ~108 bytes (JK-2183).
+     * its siblings mid-request. The suffix stays short: the state dir holds Unix domain sockets,
+     * and the JDK stops binding past 102 characters (JK-2183; the budget is
+     * {@code UnixSocketPaths.MAX_PATH_LENGTH}, proven there by binding).
      */
     static Map<String, String> workerEnv(Map<String, String> base, int workerId, Path tmp) {
         Map<String, String> env = new LinkedHashMap<>(base);
