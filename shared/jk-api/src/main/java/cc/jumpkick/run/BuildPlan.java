@@ -637,6 +637,16 @@ public final class BuildPlan {
             return this;
         }
 
+        /**
+         * The terminal set so far, or {@code null} while none is. A tail that re-roots the plan has
+         * to require what it displaces: {@link #build()} keeps only the terminal's <em>upstream</em>
+         * closure, so a new terminal that does not require the old one silently prunes it and
+         * everything it re-rooted.
+         */
+        public String currentTerminal() {
+            return terminal;
+        }
+
         public BuildPlan build() {
             List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal);
             return new BuildPlan(name, interactive, selected, listeners);

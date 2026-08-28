@@ -102,9 +102,18 @@ public final class InstallPlans {
      * repo — only the thin jar is.
      */
     public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
-        boolean isNative = proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
+        // Require whatever the plan already ends on, not just package-jar. appendDeclaredTails
+        // re-roots the terminal onto its own join so the assembly / minified / sources tails are
+        // not pruned; taking the terminal for cache-install without requiring that join pruned
+        // them right back. The visible symptom was `jk install` on a project declaring
+        // `assembly = true` installing a THIN-jar launcher — the fat jar was never built, so the
+        // install plan's artifact ladder (native > minified > fat > thin) found nothing better
+        // than the thin jar and honestly picked it (JK-1071).
+        String displaced = builder.currentTerminal();
         List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
-        if (isNative) requires.add(TaskNames.NATIVE_IMAGE);
+        if (displaced != null && !TaskNames.PACKAGE_JAR.equals(displaced)) requires.add(displaced);
+        boolean isNative = proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
+        if (isNative && !requires.contains(TaskNames.NATIVE_IMAGE)) requires.add(TaskNames.NATIVE_IMAGE);
         Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
                 .stage(BuildStage.PUBLISH)
                 .requires(requires.toArray(new String[0]))
