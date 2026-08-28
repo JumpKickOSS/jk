@@ -43,7 +43,7 @@ class KspGeneratedSourcesTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 25
-                kotlin  = "^2.4.0"
+                kotlin  = "^2.4.10"
 
                 [dependencies]
                 moshi = { group = "com.squareup.moshi", name = "moshi", version = "=1.15.2" }

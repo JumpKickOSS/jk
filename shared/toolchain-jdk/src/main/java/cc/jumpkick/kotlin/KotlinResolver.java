@@ -18,10 +18,28 @@ import java.net.URI;
 public final class KotlinResolver {
 
     /**
-     * jk's bundled default Kotlin version. Floor is 2.4.0: the Kotlin compile path runs the Build
-     * Tools API via its {@code KotlinToolchains} entry point, which only exists in 2.4.0+.
+     * jk's lowest supported Kotlin. Two reasons stack:
+     *
+     * <ul>
+     *   <li>The Kotlin compile path runs the Build Tools API via its {@code KotlinToolchains} entry
+     *       point, which only exists in 2.4.0+.
+     *   <li>2.4.0 itself is unusable for jk: its K2 frontend cannot compile a script using {@code
+     *       @file:Import} ({@code Expected FirResolvedTypeRef with ConeKotlinType but was
+     *       FirUserTypeRefImpl}), which build logic needs in order to split a large script without
+     *       compiling several. Reproduced against Kotlin's own {@code main.kts} definition, so it is
+     *       the compiler and not jk's wiring. 2.4.10 fixes it.
+     * </ul>
+     *
+     * <p>The floor is therefore a patch version. {@link #FLOOR_PATCH} exists so the version guard
+     * compares against this constant rather than spelling {@code 10} again somewhere else.
      */
-    public static final String DEFAULT_VERSION = "2.4.0";
+    public static final String FLOOR_VERSION = "2.4.10";
+
+    /** Patch component of {@link #FLOOR_VERSION}, for the {@code 2.4.x} arm of a version guard. */
+    public static final int FLOOR_PATCH = 10;
+
+    /** jk's bundled default Kotlin version. Never below {@link #FLOOR_VERSION}. */
+    public static final String DEFAULT_VERSION = FLOOR_VERSION;
 
     private static final String DEFAULT_BASE = "https://github.com/JetBrains/kotlin/releases/download/";
 

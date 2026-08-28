@@ -253,7 +253,7 @@ class LockfileRoundTripTest {
                                 "lib",
                                 "1.2.3",
                                 25,
-                                "2.4.0",
+                                "2.4.10",
                                 null,
                                 null,
                                 "publish",
@@ -268,7 +268,7 @@ class LockfileRoundTripTest {
                 .contains("version = \"1.2.3\"")
                 .doesNotContain("jdk     =")
                 .contains("java    = 25")
-                .contains("kotlin  = \"2.4.0\"")
+                .contains("kotlin  = \"2.4.10\"")
                 .contains("sources = \"publish\"")
                 .contains("m2.integration = false")
                 .contains("m2.install = false");

@@ -24,10 +24,10 @@ The same verb installs the **build-tool distributions** jk provisions for itself
 
 ```bash
 jk install kotlin:latest        # the version jk would provision on demand
-jk tool install kotlin:2.4.0    # a specific one
+jk tool install kotlin:2.4.10   # a specific one
 jk tool install maven:3.9.9
 jk tool list                    # build tools, then CLI tools
-jk tool uninstall kotlin:2.4.0  # version required — several may be installed
+jk tool uninstall kotlin:2.4.10 # version required — several may be installed
 jk tool dir                     # $JK_STORE_DIR/tools
 ```
 
