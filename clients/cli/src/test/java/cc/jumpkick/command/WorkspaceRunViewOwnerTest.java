@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
  * there is nowhere else to say it, which is the only thing that makes "change the owner and every
  * caller moves" true rather than true-today.
  *
- * <p>Measured against <b>139</b> files in {@code cc.jumpkick.command}, of which <b>4</b> construct a
+ * <p>Measured against <b>139</b> files in {@code cc.jumpkick.command}, of which <b>3</b> construct a
  * {@code WorkspaceBuildListener} at all and <b>1</b> is the shared renderer. Before JK-2437 ten
  * hand-written listener graphs across eight verbs rendered the same events four different ways; the
  * scan below asserts the surviving count file by file, so an eleventh fails here rather than
@@ -43,22 +43,16 @@ class WorkspaceRunViewOwnerTest {
      *       instead of buffered blocks; its single-project path is a cascade of one and attaches
      *       {@code BuildPlanConsole.chooseConsoleListener} to the only module there is. Neither
      *       renders an aggregate.
-     *   <li>{@code InstallCommand} — attaches {@code BuildPlanConsole.chooseConsoleListener} per
-     *       module and renders no aggregate, no completion lines and no settle at all; its "settle"
-     *       is a second pass that installs each module's launcher.
      *   <li>{@code VerifyBuildCommand} — collects diagnostic strings into a list and renders
      *       nothing. Not a view.
      * </ul>
      *
-     * <p>Judged by spec, not by body: the three exceptions above answer a different question than
+     * <p>Judged by spec, not by body: the two exceptions above answer a different question than
      * "what does a workspace build look like while it runs", which is the only question
      * {@link WorkspaceRunView} answers.
      */
-    private static final Map<String, Integer> ALLOWED = Map.of(
-            "WorkspaceRunView.java", 2,
-            "NativeCommand.java", 2,
-            "InstallCommand.java", 1,
-            "VerifyBuildCommand.java", 1);
+    private static final Map<String, Integer> ALLOWED =
+            Map.of("WorkspaceRunView.java", 2, "NativeCommand.java", 2, "VerifyBuildCommand.java", 1);
 
     @Test
     void only_the_owner_and_the_two_stated_exceptions_build_a_workspace_listener() throws Exception {

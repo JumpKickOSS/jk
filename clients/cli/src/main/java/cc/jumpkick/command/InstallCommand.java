@@ -10,7 +10,9 @@ import cc.jumpkick.cli.GraalResolver;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
@@ -24,11 +26,8 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
@@ -45,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -380,25 +380,44 @@ public final class InstallCommand {
                         true)
                 .withModules(tokens)
                 .withSpec(WorkspaceSpec.install(selected, graalByDir));
-        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        // The shared workspace renderer, exactly as build/test/native drive it: the errors list,
+        // the failing module's coordinate, and the JSONL workspace vocabulary all come from one
+        // place. A hand-rolled listener here is what made a failed workspace install print
+        // nothing at all on either stream.
+        boolean json = global.outputIsJson();
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(planName, true, true), wsRoot, null, json);
+        long start = System.nanoTime();
         WorkspaceResult result;
         try {
-            result = EngineClient.buildWorkspace(EnginePaths.current(), req, new WorkspaceBuildListener() {
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan m) {
-                    return BuildPlanConsole.chooseConsoleListener(
-                            planName, m.plan().steps(), mode);
-                }
-            });
+            result = EngineClient.buildWorkspace(EnginePaths.current(), req, run.headless());
+        } catch (JobCancelledException e) {
+            return cancelled(run, start, json);
         } catch (IOException e) {
+            run.finishEvent(false, elapsedMs(start));
             CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
-        if (!result.success()) return result.exitCode() == 0 ? 1 : result.exitCode();
+        long elapsed = elapsedMs(start);
+        // A cancel is not a failure: it names no module and deserves no error list.
+        if (result.cancelled()) return cancelled(run, start, json);
+        if (!result.success()) {
+            run.finishEvent(false, elapsed);
+            if (!json) {
+                // Graph/lock errors never reach a module listener, so they have no module to blame
+                // and nothing else prints them.
+                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+                CommandWedge.printFail("Install", installFailureTail(result, elapsed));
+            }
+            return result.exitCode() == 0 ? Exit.FAILURE : result.exitCode();
+        }
+        run.finishEvent(true, elapsed);
         for (var m : result.modules()) {
             if (!m.success()) continue;
             Path mod = m.dir();
             var info = projectInfo(mod);
+            // A coordinator root builds as a unit but publishes nothing — announcing it would
+            // claim an install the plan never carried a `cache-install` step for.
+            if (info.coordinatorOnly()) continue;
             Path launcher = null;
             if (!isPluginWorker(info, mod) && info.application()) {
                 try {
@@ -411,6 +430,25 @@ public final class InstallCommand {
             announceProjectInstall(m.coord(), launcher, binDir);
         }
         return 0;
+    }
+
+    private static int cancelled(WorkspaceRunView run, long startNanos, boolean json) {
+        run.finishEvent(false, elapsedMs(startNanos));
+        if (!json) CommandWedge.printFail("Install", "job was cancelled");
+        return Exit.FAILURE;
+    }
+
+    /**
+     * The failure wedge for a workspace install: the first module the engine failed, or the
+     * generic verb when the run died before any module started (a graph, lock, or plan error).
+     */
+    private static String installFailureTail(WorkspaceResult result, long elapsedMs) {
+        return WorkspaceRunView.failedCoord(result, "install") + " — failed "
+                + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
     private static boolean isPluginWorker(ProjectInfo proj, Path projectDir) {

@@ -663,10 +663,15 @@ public final class WorkspaceExecute {
         WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
         // INSTALL publishes every module in the (already cone-filtered) graph — selected
         // terminals and production prereqs — so a worker POM can resolve sibling jars from
-        // repos/jk-local. NATIVE/IMAGE keep selection-only terminals.
+        // repos/jk-local. A coordinator root is the exception: it packages nothing, so
+        // assemblePlan gives it no cache-install and the forecast must not expect one.
+        // NATIVE/IMAGE keep selection-only terminals.
         if (target == WorkspaceTarget.INSTALL) {
             Set<Path> all = new LinkedHashSet<>();
-            for (BuildGraph.BuildUnit u : units) all.add(u.dir());
+            for (BuildGraph.BuildUnit u : units) {
+                if (CompileSupport.coordinatorOnly(u.manifest(), u.dir())) continue;
+                all.add(u.dir());
+            }
             return all;
         }
         if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
@@ -741,8 +746,14 @@ public final class WorkspaceExecute {
             BuildPlanner.Inputs inputs = moduleInputs(dir, req, moduleDirs, false);
             BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
             PlannerTails.appendDeclaredTails(b, inputs, graal, true);
-            Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
-            InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
+            // A coordinator root publishes nothing of its own: its plan stops at the workspace's
+            // build logic and has no package-jar for cache-install to require. Appending the
+            // terminal anyway fails plan validation before any module starts — the same reason
+            // appendDeclaredTails returns early for it.
+            if (!CompileSupport.coordinatorOnly(u.manifest(), dir)) {
+                Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
+                InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
+            }
             return b.build();
         }
         // A consumed prereq must package even on the test path: dependents compile against

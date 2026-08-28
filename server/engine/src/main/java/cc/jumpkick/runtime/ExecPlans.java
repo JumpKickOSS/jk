@@ -164,12 +164,9 @@ public final class ExecPlans {
             int sourceCount = 0;
             int testCount = 0;
             if (counts) {
-                List<Path> countDirs = new ArrayList<>();
-                if (!moduleDirs.isEmpty()) {
-                    for (String d : moduleDirs) countDirs.add(Path.of(d));
-                } else {
-                    countDirs.add(dir);
-                }
+                List<Path> countDirs = moduleDirs.isEmpty()
+                        ? List.of(dir)
+                        : moduleDirs.stream().map(Path::of).toList();
                 for (Path mod : countDirs) {
                     sourceCount += countSources(mod, true);
                     testCount += countSources(mod, false);
@@ -252,7 +249,8 @@ public final class ExecPlans {
                     build.project().isScala(),
                     build.project().scala() == null
                             ? ""
-                            : build.project().scala().raw());
+                            : build.project().scala().raw(),
+                    CompileSupport.coordinatorOnly(build, dir));
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(Errors.text(e));
         }

@@ -33,10 +33,10 @@ import java.util.function.Consumer;
 
 /**
  * The one workspace renderer. Every verb that drives an engine {@code buildWorkspace}-shaped RPC —
- * {@code build}, {@code test}, {@code run}, {@code compile}, {@code image}, {@code native} — attaches
- * its {@link WorkspaceBuildListener} from here and settles through here, so the module completion
- * line, the buffered-output flush, the JSONL workspace vocabulary and the four-arm
- * cancel/errors/failure/success ladder exist once.
+ * {@code build}, {@code test}, {@code run}, {@code compile}, {@code image}, {@code native},
+ * {@code install} — attaches its {@link WorkspaceBuildListener} from here and settles through here,
+ * so the module completion line, the buffered-output flush, the JSONL workspace vocabulary and the
+ * four-arm cancel/errors/failure/success ladder exist once.
  *
  * <p><b>Two renderers, not one.</b> {@link #live} paints into a {@link JkManager} region;
  * {@link #headless} appends blocks under a print mutex and never opens a region. They are siblings on
