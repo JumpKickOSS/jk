@@ -19,9 +19,11 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -33,6 +35,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.jar.JarFile;
 
 /**
  * Forks {@code TestRunner} child JVM(s): one-shot when {@code workers=1}, else discovery + N
@@ -114,9 +117,16 @@ public final class JUnitLauncher {
             // hardlink into @TempDir caches; macOS can fail Standard delete. The strategy
             // reports success anyway. Cleanup stays ALWAYS: NEVER left tens of thousands of
             // dirs on tmpfs /tmp until the next @TempDir could not allocate an inode.
-            flags.add(
-                    "-Djunit.jupiter.tempdir.deletion.strategy.default=cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
-            flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
+            //
+            // Only where the classes exist. These two live in jk-cli's TEST tree, and a
+            // non-empty [test] env is not a test for "this is jk-cli" — server/engine sets one
+            // too, and named a factory it cannot load JUnit logs a stack trace per @TempDir and
+            // silently falls back, which costs the soft-fail delete this exists to provide.
+            if (cliTempDirSupport) {
+                flags.add("-Djunit.jupiter.tempdir.deletion.strategy.default="
+                        + "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
+                flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
+            }
             flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=always");
             String jkHome = testEnv.get("JK_HOME");
             if (jkHome != null && !jkHome.isBlank()) {
@@ -145,6 +155,40 @@ public final class JUnitLauncher {
 
     /** Set when {@link #run} starts — the sandboxed temp root; see {@link TestTmpDir}. */
     private Path testTmpDir;
+
+    /**
+     * Set when {@link #run} starts — whether jk-cli's {@code @TempDir} factory and deletion
+     * strategy are on this module's test classpath. Naming them for a module that cannot load
+     * them is not a no-op: JUnit logs a stack trace per {@code @TempDir} and falls back to the
+     * default strategy, so the soft-fail delete the flag exists to install is not installed.
+     */
+    private boolean cliTempDirSupport;
+
+    /** The resource path of the {@code @TempDir} factory jk-cli registers for its own suites. */
+    private static final String CLI_TEMPDIR_FACTORY_RESOURCE = "cc/jumpkick/cli/engine/JkTempDirFactory.class";
+
+    /**
+     * Whether {@code classpath} can load jk-cli's {@code @TempDir} support — a classes directory
+     * holding the factory, or a jar with that entry. Asked of the composed classpath rather than
+     * of the module's name: the module that owns those classes is free to move, and a name check
+     * would keep answering the old one.
+     */
+    static boolean carriesCliTempDirSupport(Collection<Path> classpath) {
+        for (Path entry : classpath) {
+            if (entry == null) continue;
+            if (Files.isDirectory(entry)) {
+                if (Files.isRegularFile(entry.resolve(CLI_TEMPDIR_FACTORY_RESOURCE))) return true;
+                continue;
+            }
+            if (!Files.isRegularFile(entry)) continue;
+            try (JarFile jar = new JarFile(entry.toFile())) {
+                if (jar.getEntry(CLI_TEMPDIR_FACTORY_RESOURCE) != null) return true;
+            } catch (IOException notAJar) {
+                // A classpath entry that is not a readable jar simply does not carry them.
+            }
+        }
+        return false;
+    }
 
     /**
      * {@code.../target/classes/test} → module root ({@code.../}). Null when layout is nonstandard.
@@ -314,6 +358,7 @@ public final class JUnitLauncher {
         // already contain PluginMain; extra entries are harmless.
         classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
         String classpath = Classpaths.join(classpathBase);
+        this.cliTempDirSupport = carriesCliTempDirSupport(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
         int resolvedWorkers = workers;
