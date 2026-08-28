@@ -76,12 +76,18 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 
 The guards in [code-as-art.md](code-as-art.md#the-guard-registry) run under
 **both** builds. Gradle runs them as `tasks.registering` blocks wired to `check`
-and `jar`; jk runs them from `.jk/after-build.kts` at the workspace root, a
-single script over the whole tree.
+and `jar`; jk runs the tree-wide ones from `.jk/after-build.kts` at the workspace
+root, and the rest are ordinary tests in the module they govern.
 
 ```bash
 jk build                 # the gate runs last, after every module
+jk test                  # the single-module rules, with everything else
 ```
+
+A rule that reads more than one module belongs in the gate; a rule whose whole
+corpus is one module belongs beside that module's code, as a test
+(`ForecastKeyParityTest`, `SpikeCacheTempDirTest`, `CliSourceRulesTest`,
+`IdeClientWiringTest`). Both builds cover both homes.
 
 `after-build` is the root's own anchor: the script runs once per build, after
 every member, with the whole tree on disk. Its action key covers every file in
