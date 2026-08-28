@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Os;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
@@ -52,14 +55,66 @@ public final class BuildEnv {
      *       reads go through {@link #ambient}, which prefers the request and falls back to this
      *       process; carrying it as a typed field is JK-1039.
      *   <li>{@code JAVA_HOME} — banned, never forwarded. It names the machine's default JVM and
-     *       feeds a late fallback tier, and forwarding it through {@code ClientEnvForward} would
-     *       also inject it into every spawned test JVM through a channel no action key can see —
-     *       the hole {@code ClientEnvForwardTest} exists to keep shut.
+     *       feeds a late fallback tier, and forwarding it through {@link #MACHINE} would also inject
+     *       it into every spawned test JVM through a channel no action key can see — the hole
+     *       {@code ClientEnvForwardTest} exists to keep shut.
      * </ul>
      */
     public static final List<String> TOOLCHAIN = List.of("JK_JDK", "JAVA_HOME", "GRAALVM_HOME");
 
+    /**
+     * Where the machine is and how it talks — shipped from the caller's shell into every forked
+     * test JVM without a manifest asking, and deliberately <em>not</em> hashed into any action key.
+     *
+     * <p>A module cannot name the {@code PATH} it wants; that is the user's toolchain and differs
+     * per developer and CI runner. Keying on it would mean a laptop and a CI runner never share a
+     * cached result. The cost of leaving it out of the key is bounded: a suite whose outcome depends
+     * on a tool being on {@code PATH} must fail loudly when the tool is missing rather than skip.
+     * A suite that genuinely needs the value keyed declares the name in {@code [test] env}.
+     *
+     * <p>Owned here so the client forward list and the test-JVM seed cannot disagree. Platform
+     * spellings differ; both lists stay short on purpose — every entry reaches a test JVM through a
+     * channel no action key can see.
+     */
+    public static final List<String> MACHINE = Os.isWindows()
+            ? List.of(
+                    "PATH",
+                    "USERPROFILE",
+                    "SystemRoot",
+                    "SystemDrive",
+                    "windir",
+                    "PATHEXT",
+                    "COMSPEC",
+                    "NUMBER_OF_PROCESSORS")
+            : List.of("PATH", "HOME", "LANG", "LC_ALL");
+
     private BuildEnv() {}
+
+    /**
+     * {@link #MACHINE} values from {@link #ambient()} — the request's shell first, falling back to
+     * this process's environment for names the request did not carry (a caller that unset a machine
+     * variable therefore sees the daemon's value seeded, not an absence). Seed of every forked test
+     * JVM's environment — overlays the daemon's inherited {@code PATH} with the shell that ran
+     * {@code jk}.
+     */
+    public static Map<String, String> machine() {
+        return machine(ambient());
+    }
+
+    /**
+     * {@link #MACHINE} values resolved through {@code env}, in listed order, omitting names it does
+     * not have. The one resolution loop behind both the client forward set ({@code
+     * ClientEnvForward.resolve()}, which passes {@code System::getenv}) and the engine's test-JVM
+     * seed ({@link #machine()}), so the two cannot drift.
+     */
+    public static Map<String, String> machine(UnaryOperator<String> env) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String name : MACHINE) {
+            String value = env.apply(name);
+            if (value != null) out.put(name, value);
+        }
+        return Collections.unmodifiableMap(out);
+    }
 
     /**
      * The environment for work rooted at {@code moduleDir}.

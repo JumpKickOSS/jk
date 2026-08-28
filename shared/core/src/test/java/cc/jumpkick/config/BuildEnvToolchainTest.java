@@ -27,9 +27,26 @@ class BuildEnvToolchainTest {
 
     @Test
     void toolchain_names_are_owned_in_one_place() {
-        // ClientEnvForward composes its forward lists from this constant rather than re-typing the
-        // names, so the client and the build path cannot disagree about what rides the request.
+        // The ban list lives here so G38 and every build-path reader agree on what must not be a
+        // raw System.getenv. ClientEnvForward deliberately does not forward these.
         assertThat(BuildEnv.TOOLCHAIN).containsExactly("JK_JDK", "JAVA_HOME", "GRAALVM_HOME");
+    }
+
+    @Test
+    void machine_names_are_owned_in_one_place() {
+        // ClientEnvForward and TestEnv both read this list — the client ships them on the request,
+        // the engine seeds them into every forked test JVM. They must not drift.
+        assertThat(BuildEnv.MACHINE).contains("PATH");
+        assertThat(BuildEnv.MACHINE).doesNotContainAnyElementsOf(BuildEnv.TOOLCHAIN);
+        assertThat(BuildEnv.MACHINE).hasSizeLessThanOrEqualTo(10);
+    }
+
+    @Test
+    void machine_resolves_from_the_request() {
+        String path = "/from-the-request/bin:/usr/bin";
+        SessionContext.runWhere(sessionWith(Map.of("PATH", path)), () -> {
+            assertThat(BuildEnv.machine()).containsEntry("PATH", path);
+        });
     }
 
     @Test

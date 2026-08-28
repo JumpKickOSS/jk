@@ -13,6 +13,7 @@ junit-jupiter = "latest"
 # The JS tier's opt-out, forwarded from the shell that ran `jk`. A bare name means "if the caller
 # has it, the test JVM gets it" — unset stays unset, which is what makes it usable as an escape
 # hatch rather than something every build has to set. Declaring it is also what carries it across
-# the client -> engine -> worker hop at all: the engine is a daemon with its own environment, and
-# only declared names ride the request.
+# the client -> engine -> worker hop at all for names outside BuildEnv.MACHINE (PATH/HOME/… already
+# seed every test JVM from the request). The engine is a daemon with its own environment, and only
+# declared names beyond that machine seed ride the request into the action key.
 env = ["JK_WEB_JS_SKIP"]
