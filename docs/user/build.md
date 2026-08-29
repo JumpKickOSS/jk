@@ -2,7 +2,7 @@
 
 ```bash
 jk compile              # type-check
-jk build                # compile + package (thin jar always; more if configured)
+jk build                # compile + package + default (unit) tests
 jk build --skip-tests
 jk build --redo         # ignore action cache (full rebuild)
 jk clean                # delete target/; unchanged inputs restore from cache
@@ -10,7 +10,8 @@ jk clean --force        # also invalidate this project's action-cache entries
 ```
 
 `jk build` uses [`jk-lock.toml`](lockfile.md) and does **not** re-resolve. Packaging
-shapes: [Packaging](packaging.md). Tests that run as part of build: [Test](test.md).
+shapes: [Packaging](packaging.md). Tests that run as part of build are the **default
+(unit) suite** unless you pass `--suite` / `--all` — [Test](test.md).
 
 When something fails, run `jk results` — [Troubleshooting](troubleshooting.md).
 

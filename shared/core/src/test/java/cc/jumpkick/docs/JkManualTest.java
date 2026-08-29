@@ -28,6 +28,8 @@ class JkManualTest {
         assertThat(md).contains("jkx");
         assertThat(md).contains("java = N");
         assertThat(md).contains("Do not invent `pom.xml`");
+        assertThat(md).contains("unit suite only");
+        assertThat(md).contains("do **not** run `--all` as a habit");
         assertThat(md).contains("raw.githubusercontent.com/JumpKickOSS/jk");
         assertThat(md).contains("jumpkick.build/documentation");
     }
@@ -41,6 +43,8 @@ class JkManualTest {
         assertThat(body).isEqualTo(JkManual.AGENTS_MD);
         assertThat(body).contains("jk manual");
         assertThat(body).contains("target/jk-results.md");
+        assertThat(body).contains("unit");
+        assertThat(body).contains("--all");
 
         Files.writeString(file, "# custom\n");
         assertThat(JkManual.ensureAgentsGuide(dir)).isFalse();

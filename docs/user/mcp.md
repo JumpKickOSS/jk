@@ -40,7 +40,7 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 | **`jk_bind`** | Set default workspace; returns a project card |
 | **`jk_status`** | Engine vitals (pid, version, heap, active jobs) |
 | **`jk_project`** | Project card (coord, java, members, last run) |
-| **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. **`wait` defaults true**. Publish is **always a dry-run**. Optional modules/tags/suites/`skip_tests`/`timeout_s` |
+| **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. **`wait` defaults true**. Publish is **always a dry-run**. Optional modules/tags/suites/`skip_tests`/`timeout_s`. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid` immediately) |
 | **`jk_job`** | `get` \| `wait` \| `cancel`; omit `jid` → latest live job for bound dir |
 | **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |

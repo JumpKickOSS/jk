@@ -80,7 +80,7 @@ Each line is a capability. Follow the link for the full topic (flags, config, li
 - **Lock, update, and inspect the graph** (`jk lock`, `outdated`, `update`, `tree`, `why`) — [Lockfile](lockfile.md)
 - **Use platform BOMs** (Spring, Quarkus, …) as enforced pins — [Platforms](platforms.md)
 - **Compile and package** (`jk compile`, `jk build`) — [Build](build.md)
-- **Run tests** (suites, JUnit tags, `-j` / `-w`) — [Test](test.md)
+- **Run tests** (unit inner loop, `--suite integration` / `e2e`, tags, `-j` / `-w`) — [Test](test.md). Do not `--all` as a habit.
 - **Format source** (`jk format`, Spotless + import hygiene) — [Format](format.md)
 - **Run the app** (`jk run`, `jk watch`, `jk dev`, `jk jshell`) — [Run](run.md)
 - **See why a rebuild will happen** (`jk explain`) — [Explain](explain.md)

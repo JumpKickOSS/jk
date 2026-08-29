@@ -52,6 +52,23 @@ jk outdated     # what moved under your ranges? (read-only)
 jk update       # rewrite the lock on purpose, then commit it
 ```
 
+## Test rungs — cheapest first
+
+Default `jk test` is the **unit** suite (`src/test/…` or `test/src/`). That is the
+inner loop: agents and humans run it constantly.
+
+Climb on purpose:
+
+- **Integration** (`src/integration/…` or `integration/src/`) — one module plus
+  real collaborators. One Testcontainer is fine. Run before you share a commit.
+- **E2E** (`src/e2e/…` or `e2e/src/`) — Playwright, compose, full fixtures.
+  CI / nightly. A local judgment call, not a habit.
+- **`--all`** — every discovered suite. Nightly / release, not every turn.
+
+Cost that does not change *scope* is a JUnit tag (`slow`, `network`, `bench`), not
+a fourth directory. The named share-the-commit bar is `--gate` (alias `--pre-merge`).
+[Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
+
 ## Cache, don’t recompute
 
 JumpKick hashes inputs (sources, classpath, options) and restores outputs from a

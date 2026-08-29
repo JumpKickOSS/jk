@@ -93,7 +93,9 @@ Bind once on MCP (`jk_bind` with the project directory), then omit `dir`.
 | Re-resolve on purpose | `jk update` | `jk_run kind=update` |
 | Compile | `jk compile` | `jk_run kind=compile` |
 | Package | `jk build` | `jk_run kind=build` (`wait` defaults true) |
-| Test | `jk test` · `jk test --suite integration` · `jk test --all` | `jk_run kind=test` (optional `suites` / tags) |
+| Test (unit / inner loop) | `jk test` | `jk_run kind=test` |
+| Climb one rung | `jk test --suite integration` | `jk_run kind=test` + `suites=["integration"]` |
+| E2E / nightly | `jk test --suite e2e` · `jk test --all` | optional `suites` / do **not** pass every suite as a habit |
 | Format | `jk format` · `jk format --check` | `jk_run kind=format` |
 | Run the app | `jk run -- args…` · `jk dev` | (CLI; watch/dev is a TTY loop) |
 | Why this rebuild? | `jk explain` | `jk_explain` |
@@ -211,10 +213,26 @@ is not.
 
 ## Source layout, tests, parallelism
 
+Default **`jk test` is the unit suite only.** That is the inner loop. Climb on
+purpose; do **not** run `--all` as a habit.
+
+| When | Command |
+|------|---------|
+| Editing a class / fixing a unit bug | `jk test` |
+| About to push, or the change crossed DB/HTTP/FS | `jk test --suite integration` (if that directory exists) |
+| UI / compose / contract, or reproducing CI | `jk test --suite e2e` |
+| Never as a habit | `jk test --all` |
+
+Put new tests in the lowest suite that can fail for the reason you care about:
+`src/test` (unit), `src/integration`, `src/e2e` (or `test/src/`, `integration/src/`,
+`e2e/src/` on the simple layout). Tag cost (`slow`, `network`, `bench`). One
+Testcontainer is integration. Playwright and compose are e2e. After a failure,
+replay the same selection — do not escalate to `--all` until this rung is green.
+
 ```bash
-jk test                      # default suite only
+jk test                      # default suite only (unit / inner loop)
 jk test --suite integration  # -s
-jk test --all
+jk test --all                # nightly / release, not every turn
 jk test --exclude-tags slow,bench
 jk build -m api,worker
 jk build --affected-since=origin/main

@@ -1,14 +1,32 @@
 # Test
 
+JumpKick is opinionated about **when** to run tests, not only how. Write a pyramid
+(many unit, fewer integration, few e2e). Run a ladder: climb only as high as this
+turn requires. Product bet: [Why JumpKick](why.md#test-rungs-the-execute-moat).
+
 ```bash
-jk test                              # default suite only
-jk test --suite integration          # -s is the short form
-jk test -s test -s integration
-jk test --all                        # every suite; config tag excludes cleared
+jk test                              # unit rung — default suite only. Inner loop.
+jk test --suite integration          # -s is the short form. Climb one rung.
+jk test -s test -s integration       # today’s share-the-commit selection
+jk test --suite e2e                  # UI / compose / contract; not a habit
+jk test --all                        # every suite; tag excludes cleared. Nightly / release.
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
 jk build --all                       # package with the full suite green
 ```
+
+`--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
+run `jk test`, not `--all`. Before you share a commit, also run `integration` if
+that suite exists. The named composition of that bar is `--gate` (silent alias
+`--pre-merge`): unit + integration + optional house-rule scripts, still excluding
+`slow` / `network` / `bench`. Command pages will list those flags when the binary
+accepts them; until then the `-s test -s integration` line is the same test
+selection.
+
+Canonical extra suite **names** are `integration` and `e2e`. Any other suite
+directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
+crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
+directory.
 
 `--all` and `--suite` cannot be combined. Unknown suite names error with the available
 list. `--all` means “everything”: every suite directory **and** cleared `[test]` / profile
@@ -25,10 +43,13 @@ When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 ```toml
 [test]
 workers = 1
-exclude-tags = ["slow", "bench"]
+exclude-tags = ["slow", "network", "bench"]
 
 [profiles.ci]
-exclude-tags = []          # key present: clear excludes on CI
+# Auto-selected when CI is set. Keep the inner/gate excludes — do not clear them
+# just because it is CI. Nightly is `jk test --all` (or a dedicated nightly profile),
+# not the PR job.
+exclude-tags = ["slow", "network", "bench"]
 ```
 
 **Precedence** (later layer replaces an earlier list only when it *speaks* for that list):

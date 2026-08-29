@@ -33,7 +33,8 @@ target/jk-results.md
 
 The two markdown files are the same report. JUnit XML stays at `target/reports/test-results/`.
 There is no separate `test-results.md`. MCP: **`jk_results`** and resource
-`jk://runs/latest/results`.
+`jk://runs/latest/results`. After a test run, prefer this file over `--all` guesswork:
+default `jk test` is the unit suite; climb with `--suite`. [Test](test.md).
 
 ## Live JSONL
 

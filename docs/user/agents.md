@@ -18,7 +18,7 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 2. What happened?            target/jk-results.md  (read/grep) or jk results or MCP jk_results
 3. Structured failures       MCP jk_diagnostics    (compiler / test)
 4. Raw step log (optional)   jk results --details  or MCP jk_details
-5. Rebuild                   jk build / jk test    or MCP jk_run wait=true
+5. Rebuild                   same selection as the failure (jk test, not --all)
 6. Graph / ETA               jk why / jk explain   or MCP jk_why / jk_explain
 7. Stalled                   jk jobs / jk cancel   or MCP jk_status + jk_job cancel
 ```
@@ -26,6 +26,27 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 Read **`target/jk-results.md` first** (same markdown as `jk results`). File tools beat
 shelling out `jk results` when MCP is not connected. The report is token-cheap and covers
 compile, test, and package outcomes for the whole invocation.
+
+## Tests — cheapest rung that can catch the bug
+
+Default **`jk test` is the unit suite only.** That is the inner loop. Do not pass
+`--all` as a habit.
+
+| When | Command |
+|------|---------|
+| Editing a class / fixing a unit assertion | `jk test` |
+| About to push, or the change crossed DB / HTTP / FS | `jk test --suite integration` (if that directory exists) |
+| UI / compose / contract change, or reproducing CI | `jk test --suite e2e` |
+| Never as a habit | `jk test --all` |
+
+Write new tests in the lowest suite that can fail for the reason you care about
+(`src/test`, `src/integration`, `src/e2e` — or the simple-layout columns). Tag cost
+(`slow`, `network`, `bench`); do not hide Playwright in `src/test`. After a failure,
+replay the **same** selection; do not escalate to `--all` until this rung is green.
+
+The named share-the-commit bar (`--gate`, alias `--pre-merge`) is the product name
+for “unit + integration + optional house-rule scripts.” [Why](why.md#test-rungs-the-execute-moat) ·
+[Test](test.md).
 
 ## Channels
 
