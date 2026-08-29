@@ -19,6 +19,21 @@ import org.junit.jupiter.api.io.TempDir;
 class FqcnShortenerBenchTest {
 
     @Test
+    void sixteen_files_all_shorten(@TempDir Path tmp) throws Exception {
+        // Correctness only — the wall-clock budget lives behind @Tag("bench") below, because a
+        // load-dependent clock assertion in the default tier fails whenever the machine is busy
+        // (observed under a concurrent integration run) and proves nothing when it passes.
+        Fixture fx = fixture(tmp, 16);
+        int changed = 0;
+        for (Path f : fx.files) {
+            FqcnShortener.Result r = FqcnShortener.shorten(Files.readString(f), fx.index);
+            if (r.changed()) changed++;
+        }
+        assertThat(changed).isEqualTo(16);
+    }
+
+    @Test
+    @Tag("bench")
     void sixteen_files_shorten_in_well_under_a_second(@TempDir Path tmp) throws Exception {
         Fixture fx = fixture(tmp, 16);
         long t0 = System.nanoTime();
