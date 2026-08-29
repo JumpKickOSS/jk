@@ -405,6 +405,15 @@ public final class ManifestTables {
         rejectFlattenedApplicationKeys(root);
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
+        // Same stance as the [m2]/[install] guards: a typo inside the right table must not parse
+        // clean and do nothing — `asembly = true` silently building a thin jar is the identical
+        // symptom the misplacement guard below exists for.
+        for (String key : application.keySet()) {
+            if (!APPLICATION_KEYS.contains(key)) {
+                throw new JkBuildParseException("[application] unknown key `" + key + "` — expected one of: "
+                        + String.join(", ", APPLICATION_KEYS));
+            }
+        }
         String main = application.getString("main");
         boolean assembly = artifactFlag(application, "assembly");
         boolean minified = artifactFlag(application, "minified");
@@ -440,8 +449,14 @@ public final class ManifestTables {
     private static void rejectFlattenedApplicationKeys(TomlTable root) {
         for (String key : APPLICATION_KEYS) {
             if (!root.contains(key) || root.isTable(key)) continue;
+            // `native` and `config` are also real top-level TABLES with their own semantics
+            // ([application] native = true declares the artifact; [native] enabled = true tunes
+            // the build) — a bare scalar could be aiming at either, so the error names both.
+            String alsoATable = key.equals("native") || key.equals("config")
+                    ? ", or as the `[" + key + "]` table if its settings were the intent"
+                    : "";
             throw new JkBuildParseException("`" + key + "` belongs in [application] — write it as"
-                    + " `[application]` with `" + key + " = …`, not at the top level");
+                    + " `[application]` with `" + key + " = …`" + alsoATable + ", not at the top level");
         }
     }
 
