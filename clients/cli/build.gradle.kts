@@ -399,17 +399,6 @@ dependencies {
     javaCompilerWorkerJar(project(":java-compiler"))
 }
 
-// Load-bearing by side effect, not by name: nothing reads `cliTestStateDir`, but removing it —
-// and with it this `mkdirs()` — reliably failed SelfNukeCommandTest's three nuke arms (exit 1),
-// twice, and restoring it made them pass. Whatever wants `build/cli-test-state` wants the
-// directory, not this val, and does not say so anywhere the repo can be grepped. Left in place
-// rather than deleted on a guess; the mechanism is worth its own look (JK-1065).
-val cliTestStateDir =
-        layout.buildDirectory
-                .dir("cli-test-state")
-                .get()
-                .asFile
-                .also { it.mkdirs() }
 // Root for this task's sandboxes. It must be OUTSIDE the checkout (see cliTestTmpDirShort below);
 // its length is no longer a constraint, because the tier binds no Unix domain socket — it speaks
 // loopback TCP (JK-1065). The old `length <= 60` gate here was a budget against `sun_path` that
