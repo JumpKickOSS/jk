@@ -8,6 +8,7 @@ import cc.jumpkick.repo.LibraryRegistryClient;
 import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -96,15 +97,20 @@ public final class StoreFeedRefresh implements AutoCloseable {
      */
     public void refreshFeedsQuietly() {
         if (closed.get()) return;
-        try {
-            refreshLibraries();
-        } catch (Throwable t) {
-            // Quiet: never fail the engine for a hygiene refresh. No retries.
-        }
-        try {
-            refreshJdks();
-        } catch (Throwable t) {
-            // Quiet — leave on-disk copy.
+        // Feed files live in the store — a store wipe must not overlap the writes, and once one
+        // happened this hygiene pass stands down for the process's remaining life (StoreWriteGate).
+        try (var held = StoreWriteGate.write()) {
+            if (StoreWriteGate.wipedSinceStart()) return;
+            try {
+                refreshLibraries();
+            } catch (Throwable t) {
+                // Quiet: never fail the engine for a hygiene refresh. No retries.
+            }
+            try {
+                refreshJdks();
+            } catch (Throwable t) {
+                // Quiet — leave on-disk copy.
+            }
         }
     }
 

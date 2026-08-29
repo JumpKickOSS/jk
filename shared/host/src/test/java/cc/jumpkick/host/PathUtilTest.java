@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.DosFileAttributeView;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -48,6 +49,22 @@ class PathUtilTest {
                 .hasMessageContaining("empty");
         assertThatThrownBy(() -> PathUtil.resolveUserPath("   ")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> PathUtil.resolveUserPath(null)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void deleteRecursivelyOrThrow_clears_the_dos_read_only_bit_and_deletes(@TempDir Path tmp) throws Exception {
+        // git marks every pack file read-only, and Windows refuses to delete a read-only file —
+        // so any tree holding a clone (the store's templates catalog) was undeletable and
+        // `jk self nuke --data` died on the first .idx. On POSIX the bit does not gate deletion,
+        // so this passes trivially there; the retry is what it pins on Windows.
+        Path repo = Files.createDirectories(tmp.resolve("clone/.git/objects/pack"));
+        Path pack = Files.writeString(repo.resolve("pack-abc.idx"), "idx");
+        var dos = Files.getFileAttributeView(pack, DosFileAttributeView.class);
+        if (dos != null) dos.setReadOnly(true);
+
+        PathUtil.deleteRecursivelyOrThrow(tmp.resolve("clone"));
+
+        assertThat(tmp.resolve("clone")).doesNotExist();
     }
 
     // ---- deleteRecursively: a link is removed, never entered -------------------------------

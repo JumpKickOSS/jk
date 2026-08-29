@@ -12,6 +12,7 @@ import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -324,37 +325,42 @@ public final class MavenRepo {
         // granted — a task that queued behind slow downloads must not start a fetch for a lock
         // that failed while it waited. Never checked mid-download (legs finish cleanly).
         checkAbort(abort, coord);
-        Downloaded stored;
-        try {
-            stored = rateLimited(primary, () -> {
+        // Download + placement write .put- temps into repos/<name>/ and promote them in place — a
+        // store wipe must not overlap either leg, or the wiped directory holds an open temp
+        // (undeletable on Windows) and the promote writes the store right back (StoreWriteGate).
+        try (var held = StoreWriteGate.write()) {
+            Downloaded stored;
+            try {
+                stored = rateLimited(primary, () -> {
+                    checkAbort(abort, coord);
+                    return downloadAndVerify(coord, primary, relativePath, mirror);
+                });
+            } catch (FetchAbortedException e) {
+                throw e;
+            } catch (IOException e) {
+                // The mirror can lag or simply not carry something Central has. Falling back keeps a
+                // preference from becoming a dependency.
+                if (primary.equals(uri)) throw e;
                 checkAbort(abort, coord);
-                return downloadAndVerify(coord, primary, relativePath, mirror);
-            });
-        } catch (FetchAbortedException e) {
-            throw e;
-        } catch (IOException e) {
-            // The mirror can lag or simply not carry something Central has. Falling back keeps a
-            // preference from becoming a dependency.
-            if (primary.equals(uri)) throw e;
-            checkAbort(abort, coord);
-            stored = rateLimited(uri, () -> {
-                checkAbort(abort, coord);
-                return downloadAndVerify(coord, uri, relativePath, mirror);
-            });
-        }
-        SessionContext.current().io().remoteDown(stored.size());
-        Path placed = stored.path();
-        if (mirror) {
-            placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
-            if (!placed.equals(stored.path())) {
-                try {
-                    Files.deleteIfExists(stored.path());
-                } catch (IOException ignored) {
-                    // temp
+                stored = rateLimited(uri, () -> {
+                    checkAbort(abort, coord);
+                    return downloadAndVerify(coord, uri, relativePath, mirror);
+                });
+            }
+            SessionContext.current().io().remoteDown(stored.size());
+            Path placed = stored.path();
+            if (mirror) {
+                placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
+                if (!placed.equals(stored.path())) {
+                    try {
+                        Files.deleteIfExists(stored.path());
+                    } catch (IOException ignored) {
+                        // temp
+                    }
                 }
             }
+            return new Fetched(uri, placed, stored.sha256(), stored.size());
         }
-        return new Fetched(uri, placed, stored.sha256(), stored.size());
     }
 
     /**
