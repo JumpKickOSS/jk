@@ -18,6 +18,7 @@ import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.SessionContext;
@@ -25,6 +26,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.command.CliCommand;
@@ -82,6 +84,7 @@ public final class TestCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
+        opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
@@ -125,6 +128,7 @@ public final class TestCommand implements CliCommand {
             CommandWedge.printFail("Test", e.getMessage());
             return Exit.CONFIG;
         }
+        warnGateOverride(in, global);
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path dir = global.workingDir();
@@ -432,9 +436,22 @@ public final class TestCommand implements CliCommand {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
     }
 
+    /** {@code --gate} and its silent alias {@code --pre-merge} share one option identity. */
+    static boolean gateRequested(Invocation in) {
+        return in.isSet("gate") || in.isSet("pre-merge");
+    }
+
+    static final String GATE_SUITE_OVERRIDE_WARNING = "--gate ignored because --suite was set";
+
+    static void warnGateOverride(Invocation in, GlobalOptions global) {
+        if (!gateRequested(in) || in.values("suite").isEmpty()) return;
+        if (global != null && global.outputIsJson()) return;
+        CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + GATE_SUITE_OVERRIDE_WARNING);
+    }
+
     /**
      * CLI + {@code [test]} / profile tags → {@link cc.jumpkick.config.TestSelection}. Throws if
-     * {@code --all} and {@code --suite} are both set.
+     * {@code --all} and {@code --suite} / {@code --gate} are combined.
      *
      * <p>Precedence (each layer replaces the previous for a given list when it speaks):
      *
@@ -445,15 +462,20 @@ public final class TestCommand implements CliCommand {
      * </ol>
      *
      * Auto profile defers when CLI set any tag option so explicit CLI selection is not overridden
-     * by profile filters.
+     * by profile filters. {@code --gate} / {@code --pre-merge} select {@code test} +
+     * {@code integration} (or {@code [test] gate-suites}); {@code --suite} wins over {@code --gate}.
      */
     static TestSelection resolveTestSelection(Invocation in) {
         boolean all = in.isSet("all");
+        boolean gate = gateRequested(in);
         List<String> suites = new ArrayList<>(in.values("suite"));
         boolean cliInclude = in.has("include-tags");
         boolean cliExclude = in.has("exclude-tags");
         if (all && !suites.isEmpty()) {
             throw new IllegalArgumentException("--all and --suite cannot be combined");
+        }
+        if (all && gate) {
+            throw new IllegalArgumentException("--all and --gate cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
         Path toml = wd.resolve(ManifestPaths.MANIFEST);
@@ -463,6 +485,7 @@ public final class TestCommand implements CliCommand {
         List<String> scanKeys = new ArrayList<>();
         scanKeys.add("test.include-tags");
         scanKeys.add("test.exclude-tags");
+        scanKeys.add("test.gate-suites");
         if (profileName != null && !profileName.isBlank()) {
             scanKeys.add("profiles." + profileName + ".include-tags");
             scanKeys.add("profiles." + profileName + ".exclude-tags");
@@ -512,6 +535,21 @@ public final class TestCommand implements CliCommand {
             if (!cliExclude) exclude = new ArrayList<>();
             spoke = true;
         }
-        return TestSelection.of(suites, all, include, exclude, spoke);
+        boolean applyGate = gate && suites.isEmpty();
+        if (applyGate) {
+            if (scan.hasKey("test.gate-suites")) {
+                suites = new ArrayList<>(scan.stringArray("test.gate-suites"));
+                if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
+                for (String name : suites) {
+                    if (!TestSuites.isSuiteName(name)) {
+                        throw new IllegalArgumentException(
+                                "unknown test suite '" + name + "' in [test] gate-suites");
+                    }
+                }
+            } else {
+                suites = new ArrayList<>(TestSuites.GATE);
+            }
+        }
+        return TestSelection.of(suites, all, include, exclude, spoke, applyGate);
     }
 }

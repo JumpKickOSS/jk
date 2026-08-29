@@ -30,6 +30,7 @@ class JkManualTest {
         assertThat(md).contains("Do not invent `pom.xml`");
         assertThat(md).contains("unit suite only");
         assertThat(md).contains("do **not** run `--all` as a habit");
+        assertThat(md).contains("jk test --gate");
         assertThat(md).contains("raw.githubusercontent.com/JumpKickOSS/jk");
         assertThat(md).contains("jumpkick.build/documentation");
     }
