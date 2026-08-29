@@ -527,6 +527,55 @@ class SelfNukeCommandTest {
     }
 
     @Test
+    void guard_refuses_a_store_root_that_contains_the_product_lib() throws Exception {
+        Path root = Files.createTempDirectory("jk-purge-store");
+        Path home = root.resolve("home");
+        Files.createDirectories(home.resolve("data/lib"));
+        // JK_STORE_DIR mis-pointed at the umbrella root: the store row is delegated whole-tree to
+        // the engine-side wipe, which deletes whatever root it is named — so the guards have to
+        // refuse the row client-side.
+        JkDirs dirs = JkDirs.of(
+                env("JK_HOME", home.toString(), "JK_STORE_DIR", home.toString()),
+                root.resolve("userhome").toString());
+
+        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
+        Path homeAbs = home.toAbsolutePath().normalize();
+        assertThat(roots).noneMatch(p -> p.equals(homeAbs));
+        assertThat(roots).noneMatch(p -> homeAbs.resolve("data/lib").startsWith(p));
+    }
+
+    @Test
+    void a_refused_store_row_never_reaches_the_delegated_storage_nuke() throws Exception {
+        String prev = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", isolatedHome.toString());
+        try {
+            Files.createDirectories(JkDirs.current().dataDir().resolve("versions"));
+            var hosted = new SelfNukeCommand.Hosted() {
+                boolean storageAsked;
+
+                @Override
+                public int storage(boolean dryRun) {
+                    storageAsked = true;
+                    return 0;
+                }
+
+                @Override
+                public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) {
+                    return 0;
+                }
+            };
+            String err = captureText(() -> runNuke(hosted, true));
+            assertThat(hosted.storageAsked)
+                    .as("a store row the guards refused must not be handed to jk storage nuke")
+                    .isFalse();
+            assertThat(TestAnsi.strip(err)).contains("refusing to nuke the artifact store");
+        } finally {
+            if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
+            else System.setProperty("jk.env.JK_STORE_DIR", prev);
+        }
+    }
+
+    @Test
     void data_wipe_roots_is_store_plus_data_children_for_injected_dirs() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-seam");
         Path home = root.resolve("home");
