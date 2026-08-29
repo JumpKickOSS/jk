@@ -73,7 +73,9 @@ public final class InstallCommand {
     Path cacheDirOverride;
     Path stateDirOverride;
     Path binDirOverride;
+    /** From {@code jk install --lib-dir} (hidden, via ToolInstallCommand); engine default is the product lib. */
     Path libDirOverride;
+
     Path m2DirOverride;
     URI repoUrl;
     BuildOptions buildOpts;

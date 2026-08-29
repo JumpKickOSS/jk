@@ -296,7 +296,7 @@ class SelfNukeCommandTest {
     @Test
     void the_store_row_is_an_ancestor_of_store_lib_so_it_goes_with_the_store() throws Exception {
         JkDirs dirs = JkDirs.current();
-        Path storeLib = dirs.libDir().toAbsolutePath().normalize();
+        Path storeLib = dirs.storeDir().resolve("lib").toAbsolutePath().normalize();
         Files.createDirectories(storeLib.resolve("jk-java-compiler"));
         Files.createDirectories(dirs.dataDir());
 
@@ -311,7 +311,7 @@ class SelfNukeCommandTest {
         Path store = dirs.storeDir().toAbsolutePath().normalize();
         Path data = dirs.dataDir().toAbsolutePath().normalize();
         Files.createDirectories(store.resolve("sha256"));
-        Files.createDirectories(dirs.libDir());
+        Files.createDirectories(dirs.storeDir().resolve("lib"));
         Files.createDirectories(data.resolve("android-sdk"));
         Files.createDirectories(data.resolve("completions"));
 
@@ -327,7 +327,7 @@ class SelfNukeCommandTest {
         // nuke needs it to run, and its survival is exactly what this test asserts.
         Path engineHome = dirs.productLibDir().resolve("jk-engine");
         Path cas = dirs.storeDir().resolve("sha256");
-        Path lib = dirs.libDir().resolve("jk-java-compiler");
+        Path lib = dirs.storeDir().resolve("lib").resolve("jk-java-compiler");
         Path bin = dirs.binDirectory();
         Path creds = dirs.dataDir().resolve("credentials");
         Path repoCreds = dirs.dataDir().resolve("repo-credentials");
@@ -377,7 +377,7 @@ class SelfNukeCommandTest {
         Path cas = dirs.storeDir().resolve("sha256/ab");
         Files.createDirectories(cas);
         Files.writeString(cas.resolve("blob"), "cas");
-        Path tools = dirs.libDir().resolve("jk-java-compiler"); // <store>/lib — a child of the store
+        Path tools = dirs.storeDir().resolve("lib").resolve("jk-java-compiler"); // <store>/lib — a child of the store
         Files.createDirectories(tools);
         Files.writeString(tools.resolve("plugin.jar"), "plugin");
         Files.createDirectories(dirs.dataDir().resolve("completions"));
