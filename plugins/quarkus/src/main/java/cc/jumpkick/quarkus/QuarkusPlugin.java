@@ -2,6 +2,7 @@
 package cc.jumpkick.quarkus;
 
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.build.BuildContext;
@@ -121,6 +122,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
         TaskExec.ToolRun.Result run = exec.java()
                 .classpath(cp)
+                .arg(PreferIpv4.JVM_FLAG)
                 .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
                 .arg("-Djk.quarkus.package.type=" + packageType)
                 .arg("-Djk.quarkus.native.sources=" + exec.project().nativeDeclared())

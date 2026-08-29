@@ -6,7 +6,6 @@ import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JkVersion;
@@ -35,8 +34,9 @@ public final class EngineMain {
      * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
-        // Before any socket: WSL localhost forwarding needs real IPv4 loopback listeners.
-        PreferIpv4.install();
+        // IPv4-only sockets (WSL localhost forwarding) ride the spawn line as
+        // EngineJvmFlags.AOT_SENSITIVE — never a runtime setProperty, which leaves the JDK's
+        // loopback selection incoherent (PreferIpv4). A JK_ENGINE_EXE wrapper passes it itself.
         // --aot-training: the sidecar trainer (docs/architecture.md) — an isolated, self-terminating
         // engine run whose only purpose is recording an AOT cache. Spawned BY the main engine,
         // never by hand; binds only throwaway paths under a private temp dir.
