@@ -1,32 +1,29 @@
 <img width="1760" height="576" alt="jumpkick-banner" src="https://github.com/user-attachments/assets/10226663-2e29-420e-b604-654eee16ffa9" />
 
-# JumpKick — the best damn build tool for the JVM
+# JumpKick — the JVM build tool coding agents can drive
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/user/README.md)
 
-**JumpKick** (CLI: **`jk`**) is an elegant, powerful build system for the JVM — Java, Kotlin,
-Groovy, and Scala. A fast native binary. One simple TOML build definition. A real version lockfile. Dependency
-conflicts you can read. And best of all: builds that _skip work they can prove is already done_.
+**JumpKick** (CLI: **`jk`**) shortens the edit → build → diagnose → fix loop for **AI coding
+agents** and for the humans who supervise them. Java, Kotlin, Groovy, and Scala. One TOML
+manifest. A real lockfile. Structured results agents can read without scraping a TTY. A warm
+engine that stays small. Maven Central — not a new package universe.
 
-JumpKick is _batteries included_ — a superior replacement for many tools you already juggle:
+Wall-clock parity with a tuned Gradle 9.x build is table stakes. The conversion claim is
+**fewer failed cycles and less agent thrash** — so Grok, Claude, Codex, and friends finish
+green in fewer turns.
 
-- Maven
-- Gradle
-- SDKMAN!
-- JBang
-- and more…
-
-> When you're ready to upgrade your JVM development experience, import your Maven or Gradle
-> projects and see what you've been missing.
+> Import your Maven or Gradle project when you are ready. Keep shipping with `jk mvn` /
+> `jk gradle` until the JumpKick path owns the loop.
 
 ```bash
-jk new my-app
-cd my-app
-jk add jackson3-databind   # catalog short name (or group:artifact[:version], path, …)
+jk new my-app && cd my-app
+jk add jackson3-databind
 jk build
+# agents: read target/jk-results.md  (or MCP jk_results) — do not scrape the TTY
 ```
 
 ```toml
@@ -43,33 +40,75 @@ jackson3-databind = "latest"   # SemVer ranges, exact pins, or "latest"
 spring-boot-dependencies = "4.1.0"
 ```
 
-That's it. No `build.gradle.kts` that is itself a software project. No 200-line POM.
-`jk add` / `jk remove` edit this file for you.
+That is it. No `build.gradle.kts` that is itself a software project. No 200-line POM.
+`jk add` / `jk remove` edit this file for you — and so can MCP.
 
 ---
 
-## The pitch
+## The loop (the product)
+
+```text
+  intent ──► mutate ──► build/test ──► observe ──► repair ──► repeat
+     │          │            │             │          │
+  jk manual  TOML +       cache +       jk-results  structured
+  / MCP      jk add       warm engine   + diagnostics edits +
+  templates  format       lockfile law  (not log scrape)  format
+```
+
+| Step | What JumpKick optimizes |
+|------|-------------------------|
+| **Intent** | `jk manual` / MCP `jk_manual` — the system prompt for a tool models were not trained on |
+| **Mutate** | Declarative `jk.toml`; surgical `jk add` / `remove`; MCP preview-before-apply |
+| **Execute** | Lockfile is law; action cache + CAS; slim resident engine (~256 MiB) |
+| **Observe** | `target/jk-results.md`, MCP diagnostics, JSONL — same facts as the human CLI |
+| **Repair** | Readable PubGrub conflicts, `jk why` / `jk explain`, format after edits |
+
+Full product bet and feature ranking: **[Why JumpKick](docs/user/why.md)**.  
+Agent playbook: **[Agents](docs/user/agents.md)** · **[MCP](docs/user/mcp.md)**.
+
+### Thirty-second proof
+
+```bash
+jk new payments-api && cd payments-api
+jk add org.springframework.boot:spring-boot-starter-web
+jk test
+# open target/jk-results.md  — token-cheap, whole-invocation report
+jk engine status   # MCP URL + token when the engine HTTP listener is up
+```
+
+Humans get a terse visual CLI with honest ETA. Agents get files and tools. **One build model,
+three skins** (TTY / browser / MCP) — never scrape wedges.
+
+---
+
+## Why leave Maven or Gradle
 
 | You want… | JumpKick gives you… |
 |---|---|
+| **An agent-closed loop** | `jk-results.md`, MCP tools, `jk manual` — diagnose without log archaeology |
 | **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary, sub-50 ms cold start |
-| **Always current by design** | Newest stable JDK + libraries in scaffolds; `jk update` re-locks within your ranges |
-| **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs, GPG/Sigstore, `~/.m2`-friendly cache |
-| **Reproducible builds by default** | `jk-lock.toml` is law; CI doesn't re-resolve unless you say so |
-| **Correct resolution** | PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present |
-| **Speed without a bloated daemon** | Content-addressed action cache; slim engine hard-capped at ~256 MiB |
+| **Data, not a second app** | TOML manifest; plugins extend a finite model; no Kotlin/Groovy DSL as the build |
+| **Reproducible by default** | `jk-lock.toml` is law; `jk build` does not re-resolve |
+| **Correct resolution you can read** | PubGrub; highest-wins without a BOM; enforced platform when a BOM is present |
+| **Warm speed without a fat daemon** | Content-addressed action cache; engine hard-capped (~256 MiB; 512 MiB when `CI=1`) |
+| **Always current by design** | Newest stable in scaffolds; `jk update` re-locks within declared ranges |
+| **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs; `~/.m2`-friendly cache |
 | **Adoption without a rewrite** | `jk mvn` / `jk gradle` run your *real* build; `import` / `export` when ready |
-| **Supply chain built in** | `audit` (OSV), `deny`, signing, Sigstore, SLSA, CycloneDX/SPDX SBOM |
-| **JDK management included** | `jk jdk install/pin` + shell activation — SDKMAN/jenv/toolchains in one place |
+| **Batteries included** | JDK + shell activate, format, audit/SBOM, OCI images, `jkx`, web UI, git deps |
 
-Coming from **Maven**: think “Cargo-shaped UX on top of Central.”
-Coming from **Gradle**: think “declarative TOML + real lockfile, without the configuration graph.”
+**Coming from Maven:** Cargo-shaped UX on Central — same declarative philosophy, modern
+surface, real lockfile, agent-readable outcomes.
 
-### Stay on the newest versions (core value)
+**Coming from Gradle:** keep warm/incremental ambition without “your build is a second
+program.” Agents should not write Kotlin DSL to add Jackson.
+
+**Speed (honest):** competitive with modern Gradle on warm builds. Lead with *repeated*
+local and agent cycles (RSS + cache + structured retries), not a one-shot CI bake-off.
+
+### Stay on the newest versions
 
 JumpKick is **biased toward the latest stable** of libraries, language features, and
-tooling. `jk` itself **requires JDK 25+** (it will install one if needed), so a modern
-runtime is already on the machine — let JumpKick manage it.
+tooling. `jk` itself **requires JDK 25+** (it will install one if needed).
 
 | You write | What happens |
 |-----------|----------------|
@@ -79,8 +118,7 @@ runtime is already on the machine — let JumpKick manage it.
 | `jdk = "…"` | Only if you **must** pin a specific install (rare) |
 
 Do **not** habitually set `jdk = 17` / `jdk = 21` — that forces obsolete runtime installs.
-Prefer `java = N` for language level. Ship apps in containers with a matching JRE when
-you care about the runtime image.
+Prefer `java = N` for language level.
 
 ```bash
 jk outdated     # what moved under your ranges?
@@ -90,52 +128,48 @@ jk build        # still fully reproducible from that lock
 
 ---
 
-## Feature set
+## Feature set (by what converts)
 
-### Dependencies & lockfile
-- PubGrub solver with **English conflict diagnostics**
-- **Highest-version-wins** for bare edges when no platform BOM; **enforced platform** when one is present (opt-in **floor** via `[resolve] platform = "floor"`)
-- Canonical **`jk-lock.toml`** (commit it); `jk build` never re-resolves
-- Caret / tilde / exact / range selectors; platform BOMs as dependencyManagement pins
-- **`jk export bom`** — freeze a lock scope as a publishable Maven BOM POM
-- Separate **main / test / processor** resolution so annotation processors don't force main versions
-- Git and path dependencies, SHA-pinned in the lock
-- Built-in remotes: JumpKick (exclusive for `cc`/`build.jumpkick`) · Central · Google
-- `jk tree` · `jk why` · offline-friendly after `jk sync`
+### Lead — agent loop + declarative core
 
-### Build & monorepos
-- Java + Kotlin (K2, KSP) + Groovy + Scala 3, workspaces with **one root lockfile**
+- **`target/jk-results.md`** · MCP `jk_results` / `jk_diagnostics` · `jk manual`
+- **`jk.toml`** + `jk add` / `remove` · MCP preview/apply for deps and manifest keys
+- Canonical **`jk-lock.toml`** (commit it); PubGrub with **English conflict diagnostics**
+- `jk why` · `jk explain` · `jk tree` · `jk outdated` / `jk update`
+
+### Prove in ten minutes — cycle-time physics
+
 - Content-addressed store + **action cache** (restore, don't recompute)
-- `jk explain` — forecast what will run before it does
-- Variants, profiles, features (product / how / optional deps — deliberately separate)
-- First-party: Spring Boot, **Quarkus**, **Grails**, Android, protobuf, R8 shrink, tests, format, native-image, OCI images
-- `jk new -t` Giter8 templates (`cli`, `spring-boot/hello`, `ktor-3`) + local `.g8` paths
+- Slim resident engine + native CLI; accurate **ETA** / progress as first-class facts
+- **`jk format`** after agent edits; **`jk new -t`** templates (Giter8 + local `.g8`)
+- Java + Kotlin (K2, KSP) + Groovy + Scala 3; workspaces with **one root lockfile**
 
-### Toolchain & tools
-- **JDK install / pin / discover** (Temurin, GraalVM, and neighbors: IntelliJ, SDKMAN, mise, …)
-- Directory-aware shell hooks: `eval "$("$HOME/.local/bin/jk" activate bash)"`
-- Ephemeral tools: `jk tool run` / `jkx` (uvx for the JVM); JBang-compatible scripts
+### Switch without a rewrite — adoption
 
-### Ship & supply chain
-- `jk publish` with GPG, Sigstore, SLSA, dual SBOMs
-- `jk image` (Jib-core, daemonless) · `jk native` (GraalVM)
-- `jk audit` · `jk deny` (source-host denylist); lock rows pin a source repo (namespace binding planned)
-- `jk verify` — rebuild in a scratch dir and diff artifact hashes
+- `jk import` Maven (primary) / Gradle (best-effort) · `jk export` · IDE files
+- `jk mvn …` / `jk gradle …` — real tools, wrapper-aware
+- **`~/.m2`-friendly** cache · Central / Google / JumpKick remotes
+- **JDK install / pin / discover** + `jk activate` shell hooks (SDKMAN/jenv-shaped)
+- Ephemeral tools: **`jkx`** / `jk tool run` (uvx for the JVM; JBang-compatible scripts)
 
-### Migration
-- `jk mvn …` / `jk gradle …` — real Maven/Gradle, wrapper-aware
-- `jk import pom.xml` / `build.gradle.kts` · `jk export maven` / IDE files
+### Batteries — retain power users
 
-More detail: **[User docs](docs/user/README.md)** · **[Manual](docs/user/manual.md)** · **[Architecture](docs/contributors/architecture.md)**
+- Web dashboard (same facts as MCP/CLI)
+- `jk audit` · `jk deny` · Sigstore / SLSA · CycloneDX/SPDX SBOM · `jk verify`
+- `jk image` (Jib-core) · `jk native` (GraalVM) · Spring Boot / Quarkus / Grails / Android / protobuf
+- Git and path dependencies (SHA-pinned in the lock)
+
+More detail: **[User docs](docs/user/README.md)** · **[Manual](docs/user/manual.md)** ·
+**[Architecture](docs/contributors/architecture.md)**
 
 ---
 
 ## Concepts if you're coming from Maven or Gradle
 
-These ideas are normal in Cargo/uv/Bazel. On the JVM they often feel new. They're the
-reason JumpKick can be both **fast** and **trustworthy**.
+These ideas are normal in Cargo/uv/Bazel. On the JVM they often feel new. They're why
+JumpKick can be both **fast** and **trustworthy** — for humans *and* agents.
 
-### What is a lockfile (and why you want one)
+### Lockfile is law
 
 Declaring `jackson-databind:2.18.2` in Maven or Gradle does **not** freeze your build.
 Transitives can publish overnight; the next CI run can pick different jars without you
@@ -151,44 +185,30 @@ jk update        # re-resolve on purpose, within your declared ranges
 jk sync --offline-prepare   # download everything for offline/CI
 ```
 
-If it builds on your laptop with that lock, it builds the same on CI — and can build
-entirely offline. That is not a nice-to-have; it is how modern package managers work.
-
 ### PubGrub: resolution you can understand
 
 Maven's **nearest-wins** silently picks different versions depending on tree shape.
 Gradle often dumps a huge tree when things conflict. JumpKick uses **PubGrub** (same family
 as Dart's `pub` and `uv`): highest-version-wins when no platform BOM is present; **enforced
-platform** pins under a BOM (Maven depMgmt contract); and failures explain *why* in prose —
-which constraint blocked which package — so you can fix the declaration instead of guessing.
+platform** pins under a BOM; failures explain *why* in prose.
 
 ```bash
 jk why com.google.guava:guava
-jk tree          # declared deps (whole workspace)
-jk tree :foo     # one module
-jk tree -t       # + transitives
+jk tree -t
 ```
 
 ### Action cache + CAS: skip work you can prove is done
 
-Every compile/test/package step is keyed by a hash of its **inputs** (sources, classpath,
-flags, toolchain, plugin code, …). Outputs live in a **content-addressed store** (CAS).
-
-| Situation | What happens |
-|---|---|
-| Inputs unchanged | Outputs **restored** from cache — not recomputed |
-| One file changed | Only affected steps re-run |
-| Same output produced twice | Stored once, shared |
-
-Gradle's build cache is opt-in and easy to mistrust. JumpKick makes “cache by input hash”
-the default execution model. `jk explain` shows what would run before you spend the time.
+Every compile/test/package step is keyed by a hash of its **inputs**. Outputs live in a
+**content-addressed store**. Unchanged inputs restore; one file change re-runs only what
+must. `jk explain` forecasts the work before you spend the time.
 
 ### A small engine, not a multi-gigabyte daemon
 
-Build work runs in a **resident engine** (plain JVM, default **256 MiB** heap, **512 MiB** when `CI=1`/`true`) so concurrent
-`jk build`s share one memory plan. Compilers and tests are **forked workers** that exit with
-the build. The CLI you type is still a **native** `jk` binary — TUI, shell, JDK prompts —
-with a cold start measured in milliseconds.
+Build work runs in a **resident engine** (plain JVM, default **256 MiB** heap) so concurrent
+`jk` commands share one memory plan. Compilers and tests are **forked workers**. The CLI is
+a **native** `jk` binary — TUI, shell, JDK prompts — with a cold start measured in
+milliseconds. The same engine hosts the **web UI** and **MCP** server.
 
 ```bash
 jk engine status
@@ -214,7 +234,7 @@ jk test
 jk run
 ```
 
-Or declare a BOM and versionless deps (managed by the platform):
+Or declare a BOM and versionless deps:
 
 ```toml
 group = "com.acme"
@@ -226,12 +246,7 @@ java = 25
 boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "3.4.0" }
 
 [dependencies]
-# version supplied by the BOM
 web = { group = "org.springframework.boot", name = "spring-boot-starter-web" }
-```
-
-```bash
-jk lock && jk build
 ```
 
 ### Workspace (monorepo)
@@ -250,8 +265,8 @@ jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-datab
 name = "api"
 
 [dependencies]
-jackson-databind.workspace = true   # shared external
-core.workspace = true               # sibling module
+jackson-databind.workspace = true
+core.workspace = true
 ```
 
 ```bash
@@ -259,14 +274,14 @@ jk new libs/core
 jk build          # one lock at the root; whole workspace
 ```
 
-### Git dependency
+### Agent triage (no TTY scraping)
 
-```toml
-[dependencies]
-widgets = { git = "https://github.com/acme/widgets", tag = "v1.4.0" }
+```bash
+jk test
+jk results                    # same markdown as target/jk-results.md
+jk results --details          # details.jsonl when you need the raw event stream
+# or: MCP jk_bind → jk_diagnostics → jk_run wait=true
 ```
-
-The lock pins the commit SHA. Force-moved tags fail loudly until `jk update`.
 
 ### Keep shipping with Maven while you try JumpKick
 
@@ -276,21 +291,16 @@ jk import pom.xml           # generate jk.toml + fidelity report
 jk export maven             # round-trip POM for Central
 ```
 
-### Tools and scripts
+### Tools, JDK, ship
 
 ```bash
-jkx com.diffplug.spotless:spotless-cli:2.45.0 -- check   # ephemeral tool
-jk tool run script.java                                  # JBang-compatible
+jkx com.diffplug.spotless:spotless-cli:2.45.0 -- check
 jk jdk install temurin-25 && jk jdk pin temurin-25
-eval "$("$HOME/.local/bin/jk" activate bash)"            # JAVA_HOME follows cd
-```
+eval "$("$HOME/.local/bin/jk" activate bash)"
 
-### Publish with supply chain
-
-```bash
 jk publish --sign --sigstore --slsa --sbom
 jk audit
-jk verify    # clean rebuild; compare hashes
+jk verify
 ```
 
 ---
@@ -320,13 +330,15 @@ jk build
 |---|---|---|---|---|
 | Config | TOML data | XML | Kotlin/Groovy DSL | TOML |
 | Lockfile | Required | None | Optional verification | Required |
+| Agent I/O | Results + MCP first-class | Log scrape | Log scrape | Varies |
 | Conflict policy | Highest-wins + prose | Nearest-wins | Highest-wins + trees | Highest-wins + prose |
 | Default speed model | Action cache + CAS | Always recompute phases | Optional build cache | Incremental / cache |
 | CLI ergonomics | `add` / `lock` / `why` | Plugins + XML edits | Plugins + DSL edits | Native verbs |
 | Migration | `jk mvn` / `import` | — | — | — |
 
-JumpKick is intentionally **Cargo + uv shaped**, on **Maven Central**, with **Gradle-grade**
-multi-module and variant power — without making your build a second programming language.
+JumpKick is intentionally **Cargo + uv shaped**, on **Maven Central**, with **agent-closed
+loops** and Gradle-grade multi-module power — without making your build a second programming
+language.
 
 ---
 
@@ -336,8 +348,10 @@ Product docs (will be published at [jumpkick.build/documentation](https://jumpki
 
 | Doc | For |
 |---|---|
+| [**Why JumpKick**](docs/user/why.md) | Product bet, feature ranking, agentic north star |
 | [**User documentation**](docs/user/README.md) | People and coding agents *using* JumpKick |
 | [**Manual**](docs/user/manual.md) | `jk manual` playbook + website map into every topic |
+| [**Agents**](docs/user/agents.md) / [**MCP**](docs/user/mcp.md) | How agents should talk to `jk` |
 | [**Contributor documentation**](docs/contributors/README.md) | People changing JumpKick |
 | [**Contributing**](CONTRIBUTING.md) | Building this repository |
 
@@ -347,7 +361,8 @@ Product docs (will be published at [jumpkick.build/documentation](https://jumpki
 
 **Alpha (pre-1.0).** Core resolve/build/test is real and dogfooded; the shippable
 layout is still assembled with Gradle (`./gradlew dist`) while self-hosting finishes.
-APIs and lock schema may still change until 1.0.
+APIs and lock schema may still change until 1.0. Protocol/schema version numbers stay
+at **1** until 1.0.
 
 Supported project JDKs: **17+** (no Java 8 or 11).
 

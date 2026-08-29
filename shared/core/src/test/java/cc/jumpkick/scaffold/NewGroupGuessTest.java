@@ -3,6 +3,7 @@ package cc.jumpkick.scaffold;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -145,7 +146,7 @@ class NewGroupGuessTest {
 
     /** A temp dir whose ancestor chain carries no git config (unlike a @TempDir under the checkout). */
     private static Path walkCleanDir() throws IOException {
-        return Files.createTempDirectory(Path.of("/tmp"), "jk-grp-test-");
+        return Files.createTempDirectory(ShortTempDirs.root(), "jk-grp-test-");
     }
 
     @Test

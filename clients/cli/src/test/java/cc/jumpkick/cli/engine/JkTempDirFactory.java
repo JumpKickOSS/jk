@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -11,8 +12,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDirFactory;
 
 /**
- * Roots {@code @TempDir} at {@code /tmp} rather than under the build directory. Cleanup is owned by
- * {@link JkTempDirDeletionStrategy}. If {@code /tmp} has no inodes left (tmpfs), sweep stale
+ * Prefer short paths for UDS-friendly state ({@link ShortTempDirs#root()}). Cleanup is owned by
+ * {@link JkTempDirDeletionStrategy}. If the root has no inodes left (tmpfs), sweep stale
  * {@code jk-junit-*} / {@code junit-*} dirs we own and retry once.
  *
  * <p>This used to gate on the configured temp dir being longer than 60 characters, and the number
@@ -39,7 +40,8 @@ public final class JkTempDirFactory implements TempDirFactory {
     }
 
     /**
-     * {@code /tmp}, falling back to the configured temp dir when there is no {@code /tmp}.
+     * {@link ShortTempDirs#root()} — {@code /tmp} on POSIX, {@code %USERPROFILE%\Temp} on Windows
+     * — falling back to the configured temp dir only when that root cannot be had.
      *
      * <p>Worker isolation is not lost by ignoring the configured value: {@code JUnitLauncher} gives
      * each worker JVM a private tmpdir so parallel workers don't share temp state (JK-2183), and
@@ -47,9 +49,12 @@ public final class JkTempDirFactory implements TempDirFactory {
      * request under whichever root this returns.
      */
     static Path root(String configuredTmpdir) {
-        if (Files.isDirectory(Path.of("/tmp"))) return Path.of("/tmp");
-        if (configuredTmpdir != null && !configuredTmpdir.isBlank()) return Path.of(configuredTmpdir);
-        return Path.of(System.getProperty("java.io.tmpdir"));
+        try {
+            return ShortTempDirs.root();
+        } catch (IOException e) {
+            if (configuredTmpdir != null && !configuredTmpdir.isBlank()) return Path.of(configuredTmpdir);
+            return Path.of(System.getProperty("java.io.tmpdir"));
+        }
     }
 
     /** Best-effort: drop leftover JUnit trees so a tmpfs inode exhaustion can recover. */

@@ -29,7 +29,7 @@ class JdkUninstallWizardTest {
 
     @Test
     void rich_label_omits_trailer_when_vendor_unknown() {
-        JdkHit hit = new JdkHit(Path.of("/opt/custom-jdk-x"), "21", JdkVendor.UNKNOWN, "system");
+        JdkHit hit = new JdkHit(Path.of("/home/u/sdks/custom-jdk-x"), "21", JdkVendor.UNKNOWN, "system");
 
         var rich = JdkUninstallWizard.richLabel(hit, "custom-jdk-x", true);
         assertThat(rich.toString()).isEqualTo("system/custom-jdk-x");

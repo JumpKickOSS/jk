@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -61,8 +62,11 @@ class CachePruneSchedulerTest {
 
     @Test
     void jvm_install_layout_empty_when_no_lib_sibling() {
-        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout("/tmp/classes:/tmp/other.jar"))
-                .isEmpty();
+        // Paths under ShortTempDirs.path() — never /tmp:… (colon is illegal in a Windows path).
+        Path root = ShortTempDirs.path();
+        String sep = System.getProperty("path.separator");
+        String cp = root.resolve("classes") + sep + root.resolve("other.jar");
+        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout(cp)).isEmpty();
         assertThat(CachePruneScheduler.resolveFromJvmInstallLayout("")).isEmpty();
     }
 

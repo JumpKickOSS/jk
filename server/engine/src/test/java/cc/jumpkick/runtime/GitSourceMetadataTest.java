@@ -45,10 +45,13 @@ class GitSourceMetadataTest {
 
     @Test
     void a_tag_with_an_xml_metacharacter_installs_metadata_the_resolver_can_read(@TempDir Path tmp) throws Exception {
-        String version = GitVersion.fromTag("v1.2.3-fix&<patch");
+        // `&` is an XML metacharacter that is also a legal path segment on every host filesystem
+        // (Windows rejects `< > : " | ? *` in names). MavenMetadataTest covers `<` escaping; this
+        // test owns the install-to-disk + resolver round-trip.
+        String version = GitVersion.fromTag("v1.2.3-fix&patch");
         assertThat(version)
                 .as("the tag's suffix reaches the version string verbatim — that is why escaping matters")
-                .isEqualTo("1.2.3-fix&<patch");
+                .isEqualTo("1.2.3-fix&patch");
 
         assertThat(installThenEnumerate(tmp, version)).containsExactly(version);
     }

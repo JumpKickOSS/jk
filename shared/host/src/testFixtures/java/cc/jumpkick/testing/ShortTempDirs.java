@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testing;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,8 +18,9 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * {@code <root>/engine/<key>.genN.sock}, and on macOS the default {@code TMPDIR} is already
  * {@code /var/folders/xx/yy…/T/}; JUnit's own random suffix pushes the total past what the JDK
  * will bind, so {@code bind} fails with a message about the *path* rather than about the test.
- * The budget and the root that fits it are {@link UnixSocketPaths} — one number, proven by
- * binding, instead of the four different caps this comment used to be one of.
+ * The budget is {@link UnixSocketPaths#MAX_PATH_LENGTH} — one number, proven by binding, instead
+ * of the four different caps this comment used to be one of. {@link #root()} is the root that fits
+ * it: {@code /tmp} on POSIX, {@code %USERPROFILE%\Temp} on Windows.
  *
  * <p>Register it and ask for as many roots as the test needs; every one is deleted after the test:
  *
@@ -48,9 +50,36 @@ public final class ShortTempDirs implements AfterEachCallback {
         this.prefix = prefix;
     }
 
+    /**
+     * Short throwaway parent for tests that mkdir outside the checkout.
+     *
+     * <p>POSIX: {@code /tmp} when present, else {@code java.io.tmpdir}. Windows:
+     * {@code %USERPROFILE%\Temp} (created if missing) — never {@code C:\tmp}.
+     */
+    public static Path root() throws IOException {
+        if (Os.isWindows()) {
+            Path homeTemp = Path.of(System.getProperty("user.home"), "Temp");
+            Files.createDirectories(homeTemp);
+            return homeTemp;
+        }
+        Path tmp = Path.of("/tmp");
+        if (Files.isDirectory(tmp)) {
+            return tmp;
+        }
+        return Path.of(System.getProperty("java.io.tmpdir"));
+    }
+
+    /**
+     * Synthetic absolute path root (no mkdir). Same locations as {@link #root()}: {@code /tmp} on
+     * POSIX, {@code %USERPROFILE%\Temp} on Windows.
+     */
+    public static Path path() {
+        return Os.isWindows() ? Path.of(System.getProperty("user.home"), "Temp") : Path.of("/tmp");
+    }
+
     /** A fresh directory under the shortest usable root, deleted after the current test. */
     public Path create() throws IOException {
-        Path dir = Files.createTempDirectory(UnixSocketPaths.shortRoot(), prefix);
+        Path dir = Files.createTempDirectory(root(), prefix);
         created.add(dir);
         return dir;
     }

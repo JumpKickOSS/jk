@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -47,12 +48,16 @@ class CommandExecToolTest {
         int exit = BuildPluginHarness.run(FIXTURE, List.of(spec(dir, pinned).toString()), out.writer);
 
         assertThat(exit).isZero();
-        assertThat(out.lines()).anyMatch(l -> l.contains("javaHome=" + pinned));
-        assertThat(out.lines()).anyMatch(l -> l.contains("keytool=" + JdkFingerprint.tool(pinned, "keytool")));
-        assertThat(out.lines()).anyMatch(l -> l.contains("java=" + JdkFingerprint.tool(pinned, "java")));
+        // Assert on decoded payloads: wire lines JSON-escape '\\', so Path.toString() never
+        // substring-matches the raw protocol text on Windows.
+        List<String> payloads = commandOuts(out);
+        assertThat(payloads).contains(
+                "javaHome=" + pinned,
+                "keytool=" + JdkFingerprint.tool(pinned, "keytool"),
+                "java=" + JdkFingerprint.tool(pinned, "java"));
         // The half that a silent fallback would pass: nothing resolved against the JVM we run on.
         Path running = Path.of(System.getProperty("java.home"));
-        assertThat(out.lines()).noneMatch(l -> l.contains(running.toString()));
+        assertThat(payloads).noneMatch(l -> l.contains(running.toString()));
     }
 
     /**
@@ -95,6 +100,14 @@ class CommandExecToolTest {
     private static Captured capture() {
         var buffer = new ByteArrayOutputStream();
         return new Captured(buffer, new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##T:"));
+    }
+
+    /** Decoded {@code line} values from prefixed {@code command-out} replies. */
+    private static List<String> commandOuts(Captured out) {
+        return out.lines().stream()
+                .filter(l -> l.contains("\"t\":\"command-out\""))
+                .map(l -> Jsonl.str(l.substring(l.indexOf('{')), "line"))
+                .toList();
     }
 
     private record Captured(ByteArrayOutputStream buffer, ProtocolWriter writer) {

@@ -10,6 +10,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -87,7 +88,7 @@ class GlobalCancelNonTtyTest {
     }
 
     private Path newHome() throws IOException {
-        home = Files.createTempDirectory(Path.of("/tmp"), "jk-sigint-");
+        home = Files.createTempDirectory(ShortTempDirs.root(), "jk-sigint-");
         return home;
     }
 
