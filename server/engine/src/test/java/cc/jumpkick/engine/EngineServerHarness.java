@@ -40,8 +40,8 @@ import org.junit.jupiter.api.AfterEach;
 abstract class EngineServerHarness {
 
     // @TempDir nests deep enough under Gradle's build dir to overrun what the JDK will bind as a
-    // Unix domain socket. UnixSocketPaths owns the budget and the root that fits it; these dirs
-    // mirror the short paths ~/.local/state/jk/engine/ has in real use.
+    // Unix domain socket. UnixSocketPaths owns the budget, ShortTempDirs.root() the root that fits
+    // it; these dirs mirror the short paths ~/.local/state/jk/engine/ has in real use.
     private final List<Path> tempDirs = new ArrayList<>();
 
     Path shortTempDir() throws IOException {

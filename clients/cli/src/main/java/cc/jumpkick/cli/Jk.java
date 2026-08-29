@@ -7,7 +7,6 @@ import cc.jumpkick.command.*;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Terminals;
@@ -51,8 +50,6 @@ public final class Jk {
             Map.entry("check", List.of("compile"))); // pre-v1.0 name of the compile-only verb
 
     public static void main(String[] args) {
-        // Before any socket (thin JVM client). Native image is unaffected in practice.
-        PreferIpv4.install();
         // Windows: CP_UTF8 + UTF-8 System.out/err before any chrome. OEM CP437 otherwise
         // turns ● into ΓùÅ. Must run before the first println.
         Terminals.bootstrap();

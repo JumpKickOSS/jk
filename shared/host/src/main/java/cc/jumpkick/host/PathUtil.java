@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.DosFileAttributeView;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -422,8 +424,30 @@ public final class PathUtil {
                 tally.add(attrs.size());
             }
             return null;
+        } catch (AccessDeniedException denied) {
+            // Windows refuses to delete a file whose DOS read-only bit is set — git marks every
+            // pack file that way, so any tree holding a clone (the store's templates catalog) was
+            // undeletable. Clear the bit and retry once; on POSIX (no DOS view) the denial stands.
+            return clearReadOnlyAndRetry(p, attrs, tally, denied);
         } catch (IOException e) {
             return e;
+        }
+    }
+
+    private static IOException clearReadOnlyAndRetry(
+            Path p, BasicFileAttributes attrs, Removed tally, AccessDeniedException denied) {
+        DosFileAttributeView dos = Files.getFileAttributeView(p, DosFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+        if (dos == null) return denied;
+        try {
+            dos.setReadOnly(false);
+            boolean gone = Files.deleteIfExists(p);
+            if (gone && tally != null && attrs != null && attrs.isRegularFile()) {
+                tally.add(attrs.size());
+            }
+            return null;
+        } catch (IOException still) {
+            denied.addSuppressed(still);
+            return denied;
         }
     }
 

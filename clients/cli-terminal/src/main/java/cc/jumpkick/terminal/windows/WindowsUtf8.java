@@ -18,7 +18,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Windows console UTF-8 bootstrap: CP 65001, VTP on {@code STD_OUTPUT_HANDLE}, UTF-8 streams.
- * Flush policy follows {@link Terminals#stdoutIsTty()}, not {@code System.console()}.
+ * The rewired streams always autoflush — console and pipe alike; see {@link #utf8Stream}.
  */
 public final class WindowsUtf8 {
     public static final int CP_UTF8 = 65_001;
@@ -79,7 +79,7 @@ public final class WindowsUtf8 {
     }
 
     /**
-     * A UTF-8 {@link PrintStream} over {@code fd}, buffered at 8&nbsp;KB either way.
+     * A UTF-8 {@link PrintStream} over {@code fd}, buffered at 8&nbsp;KB, autoflush always.
      *
      * <p>The TTY arm used to buffer at <strong>128 bytes</strong> against a measured 220-byte mean
      * line, so every line wrote through twice and a truecolor tree row could split mid-SGR-sequence.
@@ -87,11 +87,15 @@ public final class WindowsUtf8 {
      * flushes on every {@code println} regardless of buffer size, so the size only decides how many
      * {@code WriteFile} calls one line takes — and each of those is a round trip through conhost
      * (JK-1029).
+     *
+     * <p>Autoflush holds for pipes too, not just consoles. Nothing flushes these streams at JVM
+     * exit, so a piped caller — every agent harness, every {@code jk … | tail} — lost whatever sat
+     * in the buffer: a usage error could print <em>nothing</em>. And a consumer tailing the pipe
+     * mid-run saw lines stall until 8&nbsp;KB accumulated. The buffer still coalesces one line's
+     * many small writes into one {@code write}; autoflush only pins the flush to the line boundary.
      */
     static PrintStream utf8Stream(FileDescriptor fd) {
-        boolean autoflush = Terminals.stdoutIsTty();
-        return new PrintStream(
-                new BufferedOutputStream(new FileOutputStream(fd), 8192), autoflush, StandardCharsets.UTF_8);
+        return new PrintStream(new BufferedOutputStream(new FileOutputStream(fd), 8192), true, StandardCharsets.UTF_8);
     }
 
     private static void saveAndSetUtf8CodePages() throws Throwable {

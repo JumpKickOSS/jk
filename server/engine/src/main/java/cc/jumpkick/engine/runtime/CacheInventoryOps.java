@@ -18,6 +18,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -299,7 +300,15 @@ public final class CacheInventoryOps {
         // Unique-inode bytes (POSIX ino/dev or Windows fileKey) so leftover hard links under
         // sha256/ and repos/ are not counted twice.
         DiskUsage.Stats stats = DiskUsage.of(storeRoot);
-        if (!dryRun) PathUtil.deleteRecursivelyOrThrow(storeRoot);
+        if (!dryRun) {
+            // Exclusive against store writers: the boot-time warmup clones templates and fetches
+            // plugin jars into this very store — on Windows a concurrent writer's open .put- temp
+            // turns the delete into a sharing violation, and a write landing after the delete
+            // recreates the store the nuke just reported gone.
+            try (var held = StoreWriteGate.wipe()) {
+                PathUtil.deleteRecursivelyOrThrow(storeRoot);
+            }
+        }
         return CacheInventoryAck.wipe(stats.files(), stats.bytes());
     }
 

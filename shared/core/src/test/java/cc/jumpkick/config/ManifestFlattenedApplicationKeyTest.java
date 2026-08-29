@@ -44,6 +44,30 @@ class ManifestFlattenedApplicationKeyTest {
     }
 
     @Test
+    void an_unknown_key_inside_application_is_an_error_not_a_no_op() throws Exception {
+        // The misplacement guard catches a right key in the wrong table; this catches a wrong key
+        // in the right table — `asembly = true` parsing clean produces the exact same silently
+        // thin-jar outcome.
+        Path f = manifest("[application]\nmain = \"ex.Main\"\nasembly = true\n");
+        assertThatThrownBy(() -> JkBuildParser.parse(f))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("asembly")
+                .hasMessageContaining("assembly, minified");
+    }
+
+    @Test
+    void the_native_misplacement_error_names_the_table_form_too() throws Exception {
+        // A top-level `native = true` could be aiming at [application] native (declare the
+        // artifact) or [native] enabled (tune the build) — the two have different semantics, so
+        // the error offers both destinations.
+        Path f = manifest("native = true\n\n[application]\nmain = \"ex.Main\"\n");
+        assertThatThrownBy(() -> JkBuildParser.parse(f))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application]")
+                .hasMessageContaining("[native]");
+    }
+
+    @Test
     void the_correct_spelling_still_works() throws Exception {
         Path f = manifest("[application]\nmain = \"ex.Main\"\nassembly = true\nminified = true\n");
         var build = JkBuildParser.parse(f);

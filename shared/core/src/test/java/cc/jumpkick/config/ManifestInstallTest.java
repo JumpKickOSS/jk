@@ -46,6 +46,15 @@ class ManifestInstallTest {
     }
 
     @Test
+    void product_lib_accepts_only_the_engine_home_name() throws Exception {
+        // EngineInstall hardcodes the jk-engine home, pointer and jar naming — any other value
+        // would install under jk-engine/ while announcing a directory nothing wrote to.
+        assertThatThrownBy(() -> parse("[install]\nproduct-lib = \"foo\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jk-engine");
+    }
+
+    @Test
     void install_must_be_a_table() throws Exception {
         assertThatThrownBy(() -> parse("install = \"jk-engine\"\n"))
                 .isInstanceOf(JkBuildParseException.class)

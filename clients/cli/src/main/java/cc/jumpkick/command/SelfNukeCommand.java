@@ -128,14 +128,16 @@ public final class SelfNukeCommand implements CliCommand {
      * asserts nothing on a box that finds a working one anyway (JK-2015).
      */
     interface Hosted {
-        int storage(boolean dryRun) throws IOException;
+        /** Never called on a dry run — even the preview would spawn a daemon. */
+        int storage() throws IOException;
 
+        /** Called on dry runs too: the shared nuke's dry-run leg is a purely local walk. */
         int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) throws IOException;
 
         Hosted DEFAULT = new Hosted() {
             @Override
-            public int storage(boolean dryRun) throws IOException {
-                return StorageCommand.runNuke(dryRun, true);
+            public int storage() throws IOException {
+                return StorageCommand.runNuke(false, true);
             }
 
             @Override
@@ -159,8 +161,14 @@ public final class SelfNukeCommand implements CliCommand {
 
         // Single-target cache: identical code path + UX as `jk cache nuke`. There is no such
         // shortcut for --data — the store is only one child of the data root, so the plan table and
-        // this command's own confirm have to cover the rest.
+        // this command's own confirm have to cover the rest. The shortcut still answers to the
+        // guards: a refused cache row means the plan is empty, and the shared nuke deletes whatever
+        // root it is handed.
         if (selected.equals(EnumSet.of(Target.CACHE))) {
+            if (plan(dirs, selected).isEmpty()) {
+                refuse("cache tier", dirs.cacheDir());
+                return Exit.SOFTWARE;
+            }
             return CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, false);
         }
 
@@ -169,17 +177,25 @@ public final class SelfNukeCommand implements CliCommand {
         List<PurgeRow> pathRows = rows.stream().filter(r -> !r.delegated()).toList();
         boolean wantCache = selected.contains(Target.CACHE);
         boolean wantData = selected.contains(Target.DATA);
+        // The delegated wipes delete whatever root the request names — the store engine-side, the
+        // cache via the shared nuke — with no guard of their own. Each runs only when its row
+        // cleared the addRow guards: a JK_STORE_DIR / JK_CACHE_DIR mis-pointed at a protected tree
+        // (the data root, $HOME) is refused here rather than handed over whole-tree.
+        boolean wantStore = wantData && hasDelegated(rows, Target.DATA);
+        boolean wantCacheWipe = wantCache && hasDelegated(rows, Target.CACHE);
+        if (wantData && !wantStore) refuse("artifact store", dirs.storeDir());
+        if (wantCache && !wantCacheWipe) refuse("cache tier", dirs.cacheDir());
         List<PurgeRow> existing = pathRows.stream()
                 .filter(r -> Files.exists(r.path(), LinkOption.NOFOLLOW_LINKS))
                 .toList();
-        boolean cacheExists = wantCache && Files.isDirectory(dirs.cacheDir());
-        boolean storeExists = wantData && Files.isDirectory(dirs.storeDir());
+        boolean cacheExists = wantCacheWipe && Files.isDirectory(dirs.cacheDir());
+        boolean storeExists = wantStore && Files.isDirectory(dirs.storeDir());
         if (existing.isEmpty() && !cacheExists && !storeExists) {
             CommandWedge.printOk("Self", "Nothing to nuke — selected JumpKick data not found.");
             return Exit.SUCCESS;
         }
 
-        printPlan(existing, dirs, selected, wantCache, wantData);
+        printPlan(existing, dirs, wantCacheWipe, wantStore, wantData);
         if (!dryRun && !confirmPrompt()) {
             CommandWedge.printFail("Self", "Nuke aborted.");
             return 1;
@@ -196,26 +212,25 @@ public final class SelfNukeCommand implements CliCommand {
         // engine and five surviving paths, plus the files the spawn attempt had just written
         // (JK-2015).
         List<String> delegatedFailures = new ArrayList<>();
-        // A dry run does not call them at all. Both perform their walk engine-side, so even the
-        // preview spawns a daemon — which writes engine logs, an AOT index and a JDK registry into
-        // the very state directory it is pretending to delete. "Touch nothing" is the one promise
-        // this mode makes, and previewing counts is not worth breaking it; the plan table above
-        // already names the store and cache rows.
-        if (dryRun && (wantData || wantCache)) {
-            CliOutput.out("  (store/cache contents not itemised — a dry run does not start an engine)");
+        // A dry run never previews the store: its walk runs engine-side, and even the preview
+        // spawns a daemon — which writes engine logs, an AOT index and a JDK registry into the
+        // very state directory it is pretending to delete. The cache preview is a purely local
+        // walk (the shared nuke's dry-run leg returns before any engine contact), so it stays;
+        // only the store row goes un-itemised.
+        if (dryRun && wantStore) {
+            CliOutput.out("  (store contents not itemised — a dry run does not start an engine)");
         }
         // Settle order: Storage → Cache → Self, with a blank between back-to-back wedges so
         // adjacent chip backgrounds do not visually merge.
-        if (wantData && !dryRun) {
+        if (wantStore && !dryRun) {
             settleGap();
             try {
-                int s = hosted.storage(dryRun);
+                int s = hosted.storage();
                 if (s != 0) {
-                    exit = s;
                     delegatedFailures.add("artifact store (jk storage nuke) exited " + s);
                 }
             } catch (IOException | RuntimeException e) {
-                delegatedFailures.add("artifact store (jk storage nuke): " + e.getMessage());
+                delegatedFailures.add("artifact store (jk storage nuke): " + reason(e));
             }
         }
         // `jk storage nuke` performs its delete engine-side: the wipe-store request calls
@@ -223,19 +238,18 @@ public final class SelfNukeCommand implements CliCommand {
         // this line assumes a stopped fleet — the cache wipe skips the hosted purge on that
         // assumption, and the STATE rows are about to delete the sockets and AOT cache that
         // engine holds open, which it would then write straight back. Take it down again.
-        if (enginesStopped && wantData) stopFleet();
-        if (wantCache && !dryRun) {
+        if (enginesStopped && wantStore) stopFleet();
+        if (wantCacheWipe) {
             // Engines were stopped above for STATE/STORE — the hosted purge would boot a fresh
             // one only for the STATE rows below to delete its state dir out from under it.
             settleGap();
             try {
                 int c = hosted.cache(dirs.cacheDir(), dryRun, global, enginesStopped);
                 if (c != 0) {
-                    exit = c;
                     delegatedFailures.add("cache tier (jk cache nuke) exited " + c);
                 }
             } catch (IOException | RuntimeException e) {
-                delegatedFailures.add("cache tier (jk cache nuke): " + e.getMessage());
+                delegatedFailures.add("cache tier (jk cache nuke): " + reason(e));
             }
         }
 
@@ -279,7 +293,7 @@ public final class SelfNukeCommand implements CliCommand {
                             + removed
                             + " path"
                             + (removed == 1 ? "" : "s")
-                            + (wantCache || wantData ? " plus cache/store targets" : "")
+                            + (wantStore ? " plus the store target" : "")
                             + ".");
         } else if (!delegatedFailures.isEmpty()) {
             // Partial by construction: the local rows went, the delegated ones did not. Naming the
@@ -289,7 +303,7 @@ public final class SelfNukeCommand implements CliCommand {
                     "Self",
                     "Nuked " + removed + " path" + (removed == 1 ? "" : "s") + "; " + delegatedFailures.size()
                             + " target" + (delegatedFailures.size() == 1 ? "" : "s") + " left in place.");
-        } else if (removed > 0 || wantCache || wantData) {
+        } else if (removed > 0 || wantCacheWipe || wantData) {
             settleGap();
             CommandWedge.printOk(
                     "Self",
@@ -389,18 +403,18 @@ public final class SelfNukeCommand implements CliCommand {
      * Data-root nuke: the artifact store plus every <em>other</em> child of {@code <data>}
      * ({@code JK_DATA_DIR}; default {@code ~/.local/share/jk}, or {@code $JK_HOME/data}). The store
      * is normally a child of that root, but is scheduled explicitly because {@code JK_STORE_DIR}
-     * can relocate it out of the data root, and because it is removed whole-tree — the root
-     * itself, {@code store/lib} included — by the engine-hosted {@code jk storage nuke} path,
-     * which the {@link #addRow} guards would otherwise refuse.
+     * can relocate it out of the data root. It is removed whole-tree — the root itself,
+     * {@code store/lib} included — by the engine-hosted {@code jk storage nuke} path, and its row
+     * clears the same {@link #addRow} guards as every other: a store root mis-pointed at a
+     * protected tree (the data root, {@code $HOME}) is refused here, and {@link #run} skips the
+     * delegated wipe for a row the guards refused.
      *
-     * <p>The remaining children do go through those guards, so the live engine jar
+     * <p>The remaining children go through those guards too, so the live engine jar
      * ({@code <data>/lib}) and the forge/repo credential stores survive.
      */
     private static void planData(JkDirs dirs, Map<Path, PurgeRow> byPath, Guards guards) {
         Path store = abs(dirs.storeDir());
-        if (store != null) {
-            byPath.putIfAbsent(store, new PurgeRow(store, "Artifact store", Target.DATA, true));
-        }
+        addRow(byPath, store, "Artifact store", Target.DATA, guards, true);
         Path data = abs(dirs.dataDir());
         if (data == null) return;
         List<Path> children;
@@ -471,8 +485,23 @@ public final class SelfNukeCommand implements CliCommand {
         return true;
     }
 
+    private static boolean hasDelegated(List<PurgeRow> rows, Target target) {
+        return rows.stream().anyMatch(r -> r.delegated() && r.target() == target);
+    }
+
+    private static void refuse(String what, Path root) {
+        CliOutput.err("jk: refusing to nuke the " + what + " at " + root
+                + " — it overlaps a protected path (bin, JDKs, the live engine lib, or credentials)");
+    }
+
+    /** Failure-row reason: the message when there is one, else the exception itself. */
+    private static String reason(Throwable e) {
+        return e.getMessage() != null ? e.getMessage() : e.toString();
+    }
+
+    /** {@code wantStore} — the store row cleared the guards; {@code wantData} — {@code --data} ran at all. */
     private static void printPlan(
-            List<PurgeRow> rows, JkDirs dirs, Set<Target> selected, boolean wantCache, boolean wantData) {
+            List<PurgeRow> rows, JkDirs dirs, boolean wantCache, boolean wantStore, boolean wantData) {
         List<String> headers = List.of("Path to Delete", "What");
         List<List<String>> tableRows = new ArrayList<>();
         for (PurgeRow r : rows) {
@@ -481,7 +510,7 @@ public final class SelfNukeCommand implements CliCommand {
         if (wantCache) {
             tableRows.add(List.of(pathStyled(dirs.cacheDir()), "Cache tier (jk cache nuke)"));
         }
-        if (wantData) {
+        if (wantStore) {
             tableRows.add(List.of(pathStyled(dirs.storeDir()), "Artifact store (jk storage nuke)"));
         }
         CommandWedge.envelopeStart();

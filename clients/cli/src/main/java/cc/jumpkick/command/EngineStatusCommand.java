@@ -54,20 +54,29 @@ public final class EngineStatusCommand implements CliCommand {
         Optional<EngineClient.Status> status = EngineClient.status(EnginePaths.activeSocket(paths));
         if (status.isEmpty()) {
             // "not running" is only true of THIS directory's engine. Saying it flatly while others are
-            // alive is how eighteen engines once went unnoticed, so name them.
+            // alive is how eighteen engines once went unnoticed, so name them. And a silent probe is
+            // not proof of absence either: a wedged process can hold this directory's election state
+            // without ever answering — every fresh spawn then loses to it, so the one thing status
+            // must not do is call that "not running".
+            long stray = EngineClient.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
             List<EngineFleet.Member> others = EngineFleet.list();
             if (global.outputIsJson()) {
-                CliOutput.out("{\"running\":false,\"engines\":" + enginesJson(others) + "}");
+                CliOutput.out("{\"running\":false"
+                        + (stray > 0 ? ",\"unresponsivePid\":" + stray : "")
+                        + ",\"engines\":" + enginesJson(others) + "}");
             } else {
                 CommandWedge.envelopeStart();
-                CliOutput.out(JkWedge.chipLine(
-                        Glyphs.STOP,
-                        "Engine",
-                        GlobalConfig.nerdFont(),
-                        others.isEmpty()
-                                ? "Engine is not running"
-                                : "No engine for this directory (" + others.size()
-                                        + (others.size() == 1 ? " other is" : " others are") + " running)"));
+                String headline;
+                if (stray > 0) {
+                    headline = "Engine pid " + stray + " holds this directory's engine state but does not"
+                            + " answer — `jk engine stop --now` clears it";
+                } else if (others.isEmpty()) {
+                    headline = "Engine is not running";
+                } else {
+                    headline = "No engine for this directory (" + others.size()
+                            + (others.size() == 1 ? " other is" : " others are") + " running)";
+                }
+                CliOutput.out(JkWedge.chipLine(Glyphs.STOP, "Engine", GlobalConfig.nerdFont(), headline));
                 printFleet(others);
             }
             return Exit.FAILURE;

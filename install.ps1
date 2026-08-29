@@ -206,8 +206,9 @@ function Invoke-Jk {
     param([Parameter(Mandatory = $true)][string[]] $JkArgs)
     # irm|iex already has the script in memory (unlike curl|bash), but still avoid
     # interactive prompts hanging on a non-console stdin.
+    # No `return`: callers read the global $LASTEXITCODE, and a returned integer would ride the
+    # pipeline — a call site that shows jk's output would print a stray exit code after it.
     & $script:JkBin @JkArgs
-    return $LASTEXITCODE
 }
 
 function Clear-NativeExitCode {

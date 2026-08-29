@@ -158,11 +158,51 @@ class EngineFleetTest {
     }
 
     @Test
-    void list_includes_a_live_generation_pid_that_the_endpoint_does_not_name(@TempDir Path state) throws Exception {
-        // $0 is the engine main class so the dummy matches the resident-engine command-line
-        // predicate; GNU sleep rejects extra operands and would have exited immediately.
-        Process dummy = new ProcessBuilder("sh", "-c", "sleep 30; :", "cc.jumpkick.engine.EngineMain").start();
+    void a_process_that_merely_mentions_the_engine_is_not_one() throws Exception {
+        // The command-line predicate is a substring match, so a shell that ran `jk`, a grep over
+        // this tree, or an editor with EngineMain.java open all say yes to it. They are not
+        // engines, and `stop --all` hard-kills whatever the fleet claims — this is the guard
+        // between the fleet and the user's own terminal. (It is also the shape this file's
+        // `list_includes_a_live_generation_pid…` fixture used to have.)
+        Process shell = new ProcessBuilder("sh", "-c", "sleep 30; :", "cc.jumpkick.engine.EngineMain").start();
         try {
+            WindowsCommandLines.resetForTests();
+            ProcessHandle handle = ProcessHandle.of(shell.pid()).orElseThrow();
+            String cmd = EngineFleet.commandLineOf(handle);
+
+            assertThat(EngineFleet.isResidentEngine(cmd))
+                    .as("the command line alone does name the engine — which is the trap")
+                    .isTrue();
+            assertThat(EngineFleet.isResidentEngineProcess(handle, cmd))
+                    .as("but a shell cannot host an engine")
+                    .isFalse();
+        } finally {
+            shell.destroyForcibly();
+            shell.waitFor();
+        }
+    }
+
+    @Test
+    void a_jvm_whose_command_line_names_the_engine_is_one() throws Exception {
+        assertThat(EngineFleet.isResidentEngineProcess(
+                        ProcessHandle.current(), "java -cp x cc.jumpkick.engine.EngineMain"))
+                .as("this test JVM is a JVM; the command line decides the rest")
+                .isTrue();
+        assertThat(EngineFleet.isResidentEngineProcess(ProcessHandle.current(), "java -cp x SomethingElse"))
+                .isFalse();
+    }
+
+    @Test
+    void list_includes_a_live_generation_pid_that_the_endpoint_does_not_name(@TempDir Path state) throws Exception {
+        // A JVM carrying the engine main class as a trailing (ignored) argument, so the dummy
+        // matches the resident-engine command-line predicate on every platform. This used to be
+        // `sh -c 'sleep 30' cc.jumpkick.engine.EngineMain` — the $0 trick, which only reads back
+        // out of /proc: on Windows the predicate saw `sh.exe` and the pid was never listed.
+        Process dummy = SleepMain.spawn(30_000, "cc.jumpkick.engine.EngineMain");
+        try {
+            // The Windows command-line snapshot is taken at most once per TTL; this process table
+            // is one process older than any snapshot a sibling test left behind.
+            WindowsCommandLines.resetForTests();
             Path engineDir = Files.createDirectories(state.resolve("engine"));
             Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen2.sock\n");
             Files.writeString(engineDir.resolve("abcd1234.gen1.pid"), dummy.pid() + "\n");

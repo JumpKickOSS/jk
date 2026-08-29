@@ -12,9 +12,9 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -508,13 +508,7 @@ public final class EngineSpawn {
                     .key(hash)
                     .jkVersion(version)
                     .status(status)
-                    .jvmFlags(List.of(
-                            "-XX:+UseSerialGC",
-                            "-XX:MinHeapFreeRatio=10",
-                            "-XX:MaxHeapFreeRatio=25",
-                            "-XX:-ShrinkHeapInSteps",
-                            PreferIpv4.JVM_FLAG,
-                            "--enable-native-access=ALL-UNNAMED"));
+                    .jvmFlags(EngineJvmFlags.AOT_SENSITIVE);
             if (ready) {
                 b.sizeBytes(Files.size(cache)).lastUsed(AotManifest.nowIso());
             }
@@ -566,19 +560,14 @@ public final class EngineSpawn {
                 // PosixDetach's setsid(2) FFM downcall without the JDK's restricted-method
                 // warning.
                 command.add(JdkFingerprint.java(target.javaHome()).toString());
-                command.add("-XX:+UseSerialGC");
-                // Heap-return ergonomics: SerialGC's defaults (MaxHeapFreeRatio=70,
-                // ShrinkHeapInSteps) keep committed ≈ 3.3× live and shrink one slice per full GC —
-                // an idle coordinator that GCs once at the build boundary never gives memory back.
-                // Tight free ratios + whole-step shrink make that single idle GC snap committed to
-                // ~live. Metaspace/stack mirror what workers already get from JvmOptions.
-                command.add("-XX:MinHeapFreeRatio=10");
-                command.add("-XX:MaxHeapFreeRatio=25");
-                command.add("-XX:-ShrinkHeapInSteps");
+                // The shared serving/trainer flag list (EngineJvmFlags.AOT_SENSITIVE): SerialGC
+                // with tight heap-return ergonomics, IPv4 sockets, native access — one list with
+                // EngineMain.aotTrainerCommand, because JEP 514 refuses to map an AOT cache whose
+                // dump-time and runtime property sets differ.
+                command.addAll(EngineJvmFlags.AOT_SENSITIVE);
+                // Metaspace/stack mirror what workers already get from JvmOptions.
                 command.add("-XX:MaxMetaspaceSize=256m");
                 command.add("-Xss512k");
-                // Real IPv4 sockets so WSL localhost forwarding can relay the HTTP dashboard.
-                command.add(PreferIpv4.JVM_FLAG);
                 // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata and AOT-compiled code.
                 // USE maps an existing cache. TRAIN boots cold and spawns a sidecar trainer
                 // (`EngineMain --aot-training`, isolated temp state, throwaway socket). NONE
@@ -615,7 +604,6 @@ public final class EngineSpawn {
                     if (val == null || val.isBlank()) continue;
                     command.add("-D" + key + "=" + val);
                 }
-                command.add("--enable-native-access=ALL-UNNAMED");
                 command.add("-cp");
                 command.add(engine.path());
                 command.add("cc.jumpkick.engine.EngineMain");

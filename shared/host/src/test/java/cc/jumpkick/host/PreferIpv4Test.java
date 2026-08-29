@@ -12,19 +12,4 @@ class PreferIpv4Test {
         assertThat(PreferIpv4.JVM_FLAG).isEqualTo("-Djava.net.preferIPv4Stack=true");
         assertThat(PreferIpv4.PROPERTY).isEqualTo("java.net.preferIPv4Stack");
     }
-
-    @Test
-    void install_sets_the_property() {
-        String prev = System.getProperty(PreferIpv4.PROPERTY);
-        try {
-            System.clearProperty(PreferIpv4.PROPERTY);
-            PreferIpv4.install();
-            assertThat(System.getProperty(PreferIpv4.PROPERTY)).isEqualTo("true");
-            PreferIpv4.install(); // idempotent
-            assertThat(System.getProperty(PreferIpv4.PROPERTY)).isEqualTo("true");
-        } finally {
-            if (prev == null) System.clearProperty(PreferIpv4.PROPERTY);
-            else System.setProperty(PreferIpv4.PROPERTY, prev);
-        }
-    }
 }

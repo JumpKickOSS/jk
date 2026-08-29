@@ -51,6 +51,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -830,9 +831,12 @@ public final class ExecPlans {
     }
 
     /**
-     * {@code jk install}'s application half. Preference by what exists after the build: native
-     * binary → {@code ~/.local/bin}; else minified/fat → {@code <data>/lib/&lt;bin&gt;/} + {@code
-     * java -jar}; else thin jar stays in the local repo and the script uses {@code java -cp}.
+     * {@code jk install}'s application half. Preference among the artifacts the manifest
+     * <em>declares</em>, by what exists after the build: native binary (ALWAYS mode) → {@code
+     * ~/.local/bin}; else minified/fat → {@code <data>/lib/&lt;bin&gt;/} + {@code java -jar}; else
+     * thin jar stays in the local repo and the script uses {@code java -cp}. Declared-only on
+     * purpose: {@code target/} can hold leftovers from before a declaration was removed, and a
+     * bare exists-check would install those stale bytes with every step looking honest.
      */
     private static ExecPlan installPlan(
             Path dir,
@@ -859,8 +863,8 @@ public final class ExecPlans {
         String nativeName =
                 project.nativeConfig().map(JkBuild.NativeConfig::name).orElse(null);
 
-        Path nativeBin = layout.nativeBinary();
-        if (Files.isRegularFile(nativeBin)) {
+        if (InstallPlans.installsNativeBinary(project, layout)) {
+            Path nativeBin = layout.nativeBinary();
             String bin = firstNonBlank(binName, nativeName, p.name());
             Path dest = binDir.resolve(BuildLayout.nativeExecutableFileName(bin));
             return installAck(
@@ -871,13 +875,9 @@ public final class ExecPlans {
         Path libDir = libRoot.resolve(bin);
         Path launcherPath = binDir.resolve(AppLauncher.launcherFileName(bin));
 
-        Path minified = layout.minifiedJar();
-        if (Files.isRegularFile(minified)) {
-            return fatJarPlan(minified, libDir, launcherPath, javaHome);
-        }
-        Path assembly = layout.assemblyJar();
-        if (Files.isRegularFile(assembly)) {
-            return fatJarPlan(assembly, libDir, launcherPath, javaHome);
+        Optional<Path> fatJar = InstallPlans.declaredFatJar(project, layout);
+        if (fatJar.isPresent()) {
+            return fatJarPlan(fatJar.get(), libDir, launcherPath, javaHome);
         }
         var shape = PluginBuild.shape(project, dir);
         boolean selfContainedJar = shape.map(sh -> sh.selfContained() && "jar".equals(sh.execMode()))

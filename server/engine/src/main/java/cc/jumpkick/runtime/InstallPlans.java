@@ -44,6 +44,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -98,8 +99,38 @@ public final class InstallPlans {
     }
 
     /**
+     * ALWAYS mode ships the binary — native is part of the standard build. SUPPORTED deploys the
+     * jar even when an explicit {@code jk native} (or a mode change) left a binary in
+     * {@code target/}: that binary is not this install's output.
+     */
+    static boolean installsNativeBinary(JkBuild project, BuildLayout layout) {
+        return project.nativeMode() == JkBuild.NativeMode.ALWAYS && Files.isRegularFile(layout.nativeBinary());
+    }
+
+    /**
+     * The fat-jar rung for an install: the minified jar when declared, else the assembly jar when
+     * declared ({@code minified} implies the fat jar, so a declared-minified module whose R8 jar
+     * is absent still gets its next-best declared rung), else empty. Declared-only: a
+     * {@code target/} leftover from an undeclared artifact never outranks the thin jar.
+     */
+    static Optional<Path> declaredFatJar(JkBuild project, BuildLayout layout) {
+        Path minified = layout.minifiedJar();
+        if (project.minified() && Files.isRegularFile(minified)) return Optional.of(minified);
+        Path assembly = layout.assemblyJar();
+        if ((project.assembly() || project.minified()) && Files.isRegularFile(assembly)) {
+            return Optional.of(assembly);
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Thin-jar {@code cache-install} tail. Fat and minified jars are not written to the local
      * repo — only the thin jar is.
+     *
+     * <p>Requiring the displaced terminal also keeps {@code run-tests} in the install plan when
+     * the request does not skip tests — the deliver join carries the suite, exactly as
+     * {@code jk build} runs it. Deliberate: install publishes, and a publish without the suite
+     * would be the one build verb that skips it silently; {@code --skip-tests} stays the opt-out.
      */
     public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
         // Require whatever the plan already ends on, not just package-jar. appendDeclaredTails

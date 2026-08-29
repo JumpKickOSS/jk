@@ -90,6 +90,9 @@ public final class Terminals {
         if (s != null) {
             s.shutdown();
         }
+        // The rewired streams autoflush per line; this catches an unterminated print() tail.
+        System.out.flush();
+        System.err.flush();
         WindowsUtf8.restoreCodePages();
     }
 

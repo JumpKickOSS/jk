@@ -203,7 +203,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     homes.forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
                 }
                 Set<Path> selected = dirty == null ? Set.of() : dirty;
-                req = req.withSpec(WorkspaceSpec.install(selected, graalByDir));
+                req = req.withSpec(WorkspaceSpec.install(selected, graalByDir, null));
             }
             WorkspaceRequest workspaceReq = req;
 

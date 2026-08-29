@@ -3,6 +3,7 @@ package cc.jumpkick.templates;
 
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +45,9 @@ public final class OfficialTemplatesFreshen {
      */
     public static void refreshQuiet(Consumer<String> log) {
         if (log == null) log = s -> {};
+        // Hygiene freshens stand down once the store was wiped — a clone landing after the wipe
+        // recreates the store the nuke reported gone. refreshNow (a real user action) still runs.
+        if (StoreWriteGate.wipedSinceStart()) return;
         try {
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
             if (!markAttempt(parse(officialRef(cfg)).cacheKey(), System.nanoTime())) return;
@@ -104,23 +108,26 @@ public final class OfficialTemplatesFreshen {
      * the first failure is rethrown only after every ref got its attempt.
      */
     static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
-        JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
-        Path cacheRoot = JkDirs.templates();
-        Files.createDirectories(cacheRoot);
-        List<String> refs = new ArrayList<>();
-        refs.add(officialRef(cfg));
-        for (JkTemplatesConfig.Source source : cfg.sources()) {
-            refs.add(source.gitRef());
-        }
-        IOException first = null;
-        for (String ref : refs) {
-            try {
-                refreshRef(ref, cacheRoot, log);
-            } catch (IOException e) {
-                if (first == null) first = e;
+        // Clones land inside the store — a wipe must not overlap the git subprocess.
+        try (var held = StoreWriteGate.write()) {
+            JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
+            Path cacheRoot = JkDirs.templates();
+            Files.createDirectories(cacheRoot);
+            List<String> refs = new ArrayList<>();
+            refs.add(officialRef(cfg));
+            for (JkTemplatesConfig.Source source : cfg.sources()) {
+                refs.add(source.gitRef());
             }
+            IOException first = null;
+            for (String ref : refs) {
+                try {
+                    refreshRef(ref, cacheRoot, log);
+                } catch (IOException e) {
+                    if (first == null) first = e;
+                }
+            }
+            if (first != null) throw first;
         }
-        if (first != null) throw first;
     }
 
     static void refreshRef(String ref, Path cacheRoot, Consumer<String> log) throws IOException {

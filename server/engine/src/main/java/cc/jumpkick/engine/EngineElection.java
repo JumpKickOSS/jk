@@ -115,7 +115,10 @@ final class EngineElection {
         if (lock == null) {
             lockChannel.close();
             lockChannel = null;
-            return null; // another engine is mid-startup — it wins this race
+            // Losing is success-by-proxy, but a silent exit-0 reads as a crash in the engine log —
+            // an unreachable winner then blocks every spawn with nothing anywhere saying why.
+            log.accept("jk engine: another engine is mid-startup (" + paths.lock() + " is held) — yielding");
+            return null;
         }
 
         // Where clients currently connect — the engine this one displaces (drained later).
@@ -134,6 +137,8 @@ final class EngineElection {
                 && version.equals(incumbent.version())
                 && (buildId.isEmpty() || incumbent.buildId().isEmpty() || buildId.equals(incumbent.buildId()))) {
             releaseStartupLock();
+            log.accept("jk engine: an identical engine already serves (pid " + incumbent.pid() + ", version "
+                    + incumbent.version() + ") — yielding");
             return null;
         }
 

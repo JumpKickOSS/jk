@@ -128,8 +128,8 @@ Then verify on PATH (or the install dir):
 
 ```bash
 jk engine status          # engine starts / answers; no version-skew crash
-# simple smoke project (any temp dir):
-jk init smoke-app && cd smoke-app && jk build
+# simple smoke project (any temp dir; `jk init` takes no directory — it initializes the cwd):
+jk new smoke-app --lang java && cd smoke-app && jk build
 ```
 
 Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) / `.sdkmanrc`). If only unit tests matter mid-ticket, `./gradlew test` (or module filters) is fine; the reinstall smoke is required **before moving a code-changing ticket to done**.

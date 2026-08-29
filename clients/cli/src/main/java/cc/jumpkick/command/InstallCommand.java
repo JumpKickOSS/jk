@@ -73,7 +73,9 @@ public final class InstallCommand {
     Path cacheDirOverride;
     Path stateDirOverride;
     Path binDirOverride;
+    /** From {@code jk install --lib-dir} (hidden, via ToolInstallCommand); engine default is the product lib. */
     Path libDirOverride;
+
     Path m2DirOverride;
     URI repoUrl;
     BuildOptions buildOpts;
@@ -332,15 +334,20 @@ public final class InstallCommand {
 
         Coordinate coord = Coordinate.of(proj.group(), proj.name(), proj.version());
         Path launcher = null;
-        if (!isPluginWorker(proj, projectDir) && proj.application()) {
+        // Same gate as the workspace path: a declared product-lib module routes through
+        // EngineInstall (downgrade refusal, pointer stamping) no matter which entry point ran the
+        // install — the generic copy below provides none of that.
+        boolean productLib = !proj.productLib().isBlank();
+        if (productLib || (!isPluginWorker(proj, projectDir) && proj.application())) {
             try {
-                launcher = applyInstallPlan(projectDir, cacheDir);
+                launcher = applyInstallPlan(projectDir, cacheDir, proj.productLib());
             } catch (IOException e) {
                 CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                 return 1;
             }
         }
-        announceProjectInstall(Coords.gav(coord), launcher, binDir);
+        if (productLib) announceProductLibInstall(Coords.gav(coord), proj.productLib());
+        else announceProjectInstall(Coords.gav(coord), launcher, binDir);
         return 0;
     }
 
@@ -357,9 +364,14 @@ public final class InstallCommand {
             Path d = Path.of(rel).isAbsolute() ? Path.of(rel) : wsRoot.resolve(rel);
             moduleDirs.add(d.toAbsolutePath().normalize());
         }
+        // One projectInfo request per module: the Graal scan, the product-lib stale check and the
+        // announce loop below all read the same parsed-manifest summary, and every call is a full
+        // engine round-trip — three sweeps over a 30-module workspace is ~90 requests for nothing.
+        Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
+        for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
         Map<Path, Path> graalByDir = new LinkedHashMap<>();
         for (Path mod : moduleDirs) {
-            var info = projectInfo(mod);
+            var info = infoByDir.get(mod);
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
             Optional<Path> graal = new GraalResolver(null, false).resolve(mod, info.graal());
             if (graal.isEmpty()) return 1;
@@ -380,7 +392,7 @@ public final class InstallCommand {
                         true,
                         true)
                 .withModules(tokens)
-                .withSpec(WorkspaceSpec.install(selected, graalByDir));
+                .withSpec(WorkspaceSpec.install(selected, graalByDir, m2Dir()));
         // The shared workspace renderer, exactly as build/test/native drive it: the errors list,
         // the failing module's coordinate, and the JSONL workspace vocabulary all come from one
         // place. A hand-rolled listener here is what made a failed workspace install print
@@ -424,7 +436,7 @@ public final class InstallCommand {
         }
         for (Path mod : moduleDirs) {
             if (installed.contains(mod)) continue;
-            if (productLibStale(projectInfo(mod))) installed.add(mod);
+            if (productLibStale(infoByDir.get(mod))) installed.add(mod);
         }
         if (installed.isEmpty() && !json) {
             // A no-op and a success used to render identically — nothing printed either way. The
@@ -433,7 +445,9 @@ public final class InstallCommand {
             CommandWedge.printOk("Install", "everything already installed");
         }
         for (Path mod : installed) {
-            var info = projectInfo(mod);
+            // Engine-reported module dirs are normalized the same way moduleDirs was; fall back to
+            // a fresh request only for a dir the sweep above never saw.
+            ProjectInfo info = infoByDir.containsKey(mod) ? infoByDir.get(mod) : projectInfo(mod);
             // A coordinator root builds as a unit but publishes nothing — announcing it would
             // claim an install the plan never carried a `cache-install` step for.
             if (info.coordinatorOnly()) continue;
@@ -518,16 +532,9 @@ public final class InstallCommand {
     /**
      * The {@code make install} step for applications, thin-client style: the engine computes the
      * plan (link set + launcher script or a direct native-binary link); this process applies it —
-     * hard-link/copy each pair, write the launcher, mark executables. Returns the launcher path.
-     */
-    private Path applyInstallPlan(Path projectDir, Path cacheDir) throws IOException {
-        return applyInstallPlan(projectDir, cacheDir, "");
-    }
-
-    /**
-     * As {@link #applyInstallPlan(Path, Path)} for a module that declares {@code [install]
-     * product-lib}: its packaged artifact is materialized into jk's own product library rather
-     * than linked into {@code ~/.local/bin}.
+     * copy each pair, write the launcher, mark executables. Returns the launcher path. A module
+     * that declares {@code [install] product-lib} is materialized into jk's own product library
+     * instead of linked into {@code ~/.local/bin}.
      */
     private Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib) throws IOException {
         ExecPlan plan = EngineClient.execPlan(
@@ -693,7 +700,6 @@ public final class InstallCommand {
         CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
     }
 
-    /** Announce a project install: launcher path for an app, cache-only for a library. */
     /**
      * A product-lib install went into jk's own product layout, not the local cache. Saying "to the
      * local cache" here would name the one place this artifact did not go.
@@ -704,6 +710,7 @@ public final class InstallCommand {
                 + PathDisplay.styledRaw(JkDirs.productLib().resolve(productLib)));
     }
 
+    /** Announce a project install: launcher path for an app, cache-only for a library. */
     private void announceProjectInstall(String coord, Path launcher, Path binDir) {
         if (global.outputIsJson()) return;
         if (launcher == null) {

@@ -3,7 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.host.PreferIpv4;
+import cc.jumpkick.host.EngineJvmFlags;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,7 +33,9 @@ class EngineMainAotTrainerTest {
         List<String> cmd = EngineMain.aotTrainerCommand("/opt/jdk/bin/java", "engine.jar", tmpOut);
         assertThat(cmd).contains("-XX:AOTCacheOutput=" + tmpOut);
         assertThat(cmd).doesNotContain("-XX:AOTCacheOutput=" + finalPath);
-        assertThat(cmd).contains(PreferIpv4.JVM_FLAG);
+        // Derived from the shared constant, not a spot-check flag: JEP 514 refuses to map when
+        // the trainer's and serving line's property sets differ, so the whole list must ride.
+        assertThat(cmd).containsAll(EngineJvmFlags.AOT_SENSITIVE);
         assertThat(cmd).containsSubsequence("-cp", "engine.jar");
         assertThat(cmd.getLast()).isEqualTo("--aot-training");
     }

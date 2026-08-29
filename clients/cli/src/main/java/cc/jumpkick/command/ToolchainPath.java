@@ -47,8 +47,9 @@ public final class ToolchainPath {
 
     /**
      * Drop every {@code PATH} entry that names {@code home/bin}, matching by {@link Path} equality
-     * so a live entry that still uses foreign separators (e.g. bash-on-Windows) still matches the
-     * host-normalized bin from {@link #binOf}.
+     * so an entry spelled with the other slash direction still matches the host-normalized bin
+     * from {@link #binOf}. MSYS-style spellings ({@code /c/Users/...}) parse driveless and do
+     * <em>not</em> match — those entries survive the swap.
      */
     private static String removeHomeBin(String home, String path) {
         String bin = binOf(home);

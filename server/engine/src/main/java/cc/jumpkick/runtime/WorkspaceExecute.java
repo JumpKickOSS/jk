@@ -788,7 +788,9 @@ public final class WorkspaceExecute {
             // terminal anyway fails plan validation before any module starts — the same reason
             // appendDeclaredTails returns early for it.
             if (!CompileSupport.coordinatorOnly(u.manifest(), dir)) {
-                Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
+                // Client-resolved --m2-dir rides the spec; the engine daemon's own user.home is
+                // the fallback, not the answer — its home is not necessarily the caller's.
+                Path m2 = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
                 InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
             }
             return b.build();
