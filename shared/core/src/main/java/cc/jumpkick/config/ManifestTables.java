@@ -164,6 +164,14 @@ public final class ManifestTables {
             }
         }
         String productLib = stringOrThrow(install, "product-lib", "install.product-lib");
+        // The destination is not configurable: EngineInstall hardcodes the jk-engine home, the
+        // pointer name and the jar naming, so any other value would be freshness-checked and
+        // installed under jk-engine/ while announcing a directory nothing wrote to. (A client-io
+        // test pins this literal to EngineInstall.BIN_NAME.)
+        if (productLib != null && !productLib.equals("jk-engine")) {
+            throw new JkBuildParseException("[install] product-lib must be \"jk-engine\" — installing into jk's own"
+                    + " product layout is jk installing jk, and the engine home is not configurable");
+        }
         return productLib == null ? Optional.empty() : Optional.of(new JkBuild.Install(productLib));
     }
 

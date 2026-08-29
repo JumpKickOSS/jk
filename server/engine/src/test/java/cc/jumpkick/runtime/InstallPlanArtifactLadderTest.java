@@ -68,6 +68,35 @@ class InstallPlanArtifactLadderTest {
     }
 
     @Test
+    void install_without_skip_tests_keeps_the_suite_in_the_plan() {
+        // appendDeclaredTails folds run-tests into the deliver join it re-roots the plan onto, and
+        // cache-install requires that join — so `jk install` without --skip-tests runs the suite
+        // before publishing, the same way `jk build` does. The request's skipTests flag is the one
+        // opt-out; this pins the semantics so a prune change cannot drop the suite silently.
+        BuildPlan.Builder b = BuildPlan.builder("install");
+        b.addTask(Task.builder(TaskNames.PACKAGE_JAR)
+                .stage(BuildStage.PACKAGE)
+                .ticks(1)
+                .execute(ctx -> {})
+                .build());
+        b.addTask(Task.builder(TaskNames.RUN_TESTS)
+                .stage(BuildStage.TEST)
+                .ticks(1)
+                .execute(ctx -> {})
+                .build());
+        b.addTask(Task.builder("deliver-join")
+                .stage(BuildStage.PACKAGE)
+                .requires(TaskNames.PACKAGE_JAR, TaskNames.RUN_TESTS)
+                .ticks(0)
+                .execute(ctx -> {})
+                .build());
+        b.terminal("deliver-join");
+        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), null);
+
+        assertThat(stepNames(b.build())).contains(TaskNames.RUN_TESTS, TaskNames.PACKAGE_JAR, TaskNames.CACHE_INSTALL);
+    }
+
+    @Test
     void a_plan_with_no_tail_is_unchanged() {
         BuildPlan.Builder b = BuildPlan.builder("install");
         b.addTask(Task.builder(TaskNames.PACKAGE_JAR)

@@ -134,9 +134,9 @@ class TaskForecasterImageTargetTest {
         assertThat(WorkspaceExecute.terminalTargetDirs(units, natWithHome)).containsExactly(app);
 
         // INSTALL: every cone module is a cache-install terminal (prereqs included).
-        WorkspaceRequest inst = base.withSpec(WorkspaceSpec.install(Set.of(), Map.of()));
+        WorkspaceRequest inst = base.withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
         assertThat(WorkspaceExecute.terminalTargetDirs(units, inst)).containsExactly(app);
-        WorkspaceRequest instSelected = base.withSpec(WorkspaceSpec.install(Set.of(app), Map.of()));
+        WorkspaceRequest instSelected = base.withSpec(WorkspaceSpec.install(Set.of(app), Map.of(), null));
         assertThat(WorkspaceExecute.terminalTargetDirs(units, instSelected)).containsExactly(app);
     }
 }
