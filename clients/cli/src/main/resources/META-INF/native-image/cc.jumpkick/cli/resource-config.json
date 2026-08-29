@@ -18,6 +18,9 @@
       },
       {
         "pattern": "cc/jumpkick/docs/.*"
+      },
+      {
+        "pattern": "cc/jumpkick/runtime/JkKtsHost\\.kt"
       }
     ]
   }

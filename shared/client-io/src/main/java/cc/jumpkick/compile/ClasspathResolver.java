@@ -51,7 +51,7 @@ public final class ClasspathResolver {
     public static final Set<Scope> TEST =
             EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.TEST, Scope.TEST_DEV);
 
-    /** Scopes bundled into a runnable app (assembly jar / installed $JK_LIB_DIR/<bin>/). */
+    /** Scopes bundled into a runnable app (assembly jar / installed {@code <data>/lib/<bin>/}). */
     public static final Set<Scope> RUNTIME = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
 
     /**

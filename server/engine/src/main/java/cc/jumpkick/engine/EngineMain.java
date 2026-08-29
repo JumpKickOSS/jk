@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -32,6 +34,9 @@ public final class EngineMain {
      * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
+        // IPv4-only sockets (WSL localhost forwarding) ride the spawn line as
+        // EngineJvmFlags.AOT_SENSITIVE — never a runtime setProperty, which leaves the JDK's
+        // loopback selection incoherent (PreferIpv4). A JK_ENGINE_EXE wrapper passes it itself.
         // --aot-training: the sidecar trainer (docs/architecture.md) — an isolated, self-terminating
         // engine run whose only purpose is recording an AOT cache. Spawned BY the main engine,
         // never by hand; binds only throwaway paths under a private temp dir.
@@ -147,20 +152,17 @@ public final class EngineMain {
 
     /** The sidecar command line; {@code tmpOut} — never the final cache path — receives the cache. */
     static List<String> aotTrainerCommand(String javaExe, String classpath, Path tmpOut) {
-        // --enable-native-access must match the serving spawn line (EngineClient.spawn): JEP 514
-        // rejects mapping when dump-time and runtime property sets differ.
-        return List.of(
-                javaExe,
-                "-XX:+UseSerialGC",
-                "-XX:MinHeapFreeRatio=10",
-                "-XX:MaxHeapFreeRatio=25",
-                "-XX:-ShrinkHeapInSteps",
-                "-XX:AOTCacheOutput=" + tmpOut,
-                "--enable-native-access=ALL-UNNAMED",
-                "-cp",
-                classpath,
-                EngineMain.class.getName(),
-                "--aot-training");
+        List<String> cmd = new ArrayList<>();
+        cmd.add(javaExe);
+        // One flag list with the serving spawn line (EngineSpawn): JEP 514 rejects mapping when
+        // dump-time and runtime property sets differ.
+        cmd.addAll(EngineJvmFlags.AOT_SENSITIVE);
+        cmd.add("-XX:AOTCacheOutput=" + tmpOut);
+        cmd.add("-cp");
+        cmd.add(classpath);
+        cmd.add(EngineMain.class.getName());
+        cmd.add("--aot-training");
+        return List.copyOf(cmd);
     }
 
     /**

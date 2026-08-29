@@ -406,7 +406,7 @@ class NewScaffolderTest {
         String body = Files.readString(gitignore);
         assertThat(body).contains("target/");
 
-        assertThat(body).contains(".jk/");
+        assertThat(body).contains(".jk/selective-plan.json");
         Path agents = tempDir.resolve("AGENTS.md");
         assertThat(agents).exists();
         assertThat(Files.readString(agents)).contains("jk manual");

@@ -25,9 +25,14 @@ export PATH="$HOME/.local/bin:$PATH"
 jk engine status
 ```
 
-Thin JVM alternative (no Graal, PATH only): [CONTRIBUTING.md](../../CONTRIBUTING.md) path B
-(`:cli:installDist` + `:engine:shadowJar`). Engine materialize (`:engine:installLocal`)
-always uses the native client from `./gradlew dist`.
+There is no supported alternative to the native client. The JVM-mode client behind
+`:cli:installDist` exists for the test harness; it cannot self-heal a missing engine, so
+bootstrapping on it leaves a tree only Gradle can revive (JK-1070). Install a GraalVM-capable JDK
+instead — `sdk install java 25-graalce` is the least ceremony. Engine materialize
+(`:engine:installLocal`) always uses the native client from `./gradlew dist`.
+
+Once a release is published this section shrinks to one line: install with
+`curl -fsSL https://jumpkick.build/install.sh | bash` and let the binary bootstrap its own engine.
 
 Helper: `./scripts/bootstrap-from-gradle.sh`.
 
@@ -72,6 +77,56 @@ see [AGENTS.md](../../AGENTS.md) and [test-suite-tiers.md](test-suite-tiers.md))
 With no `[repositories]` table, remotes are **Maven Central then Google Maven** (local CAS /
 `repos/*` / `~/.m2` still win first). R8 and Android coords do not need an extra google stanza.
 
+## House-rule gate
+
+The guards in [code-as-art.md](code-as-art.md#the-guard-registry) run under
+**both** builds. Gradle runs them as `tasks.registering` blocks wired to `check`
+and `jar`; jk runs the tree-wide ones from `.jk/after-build.kts` at the workspace
+root, and the rest are ordinary tests in the module they govern.
+
+```bash
+jk build                 # the gate runs last, after every module
+jk test                  # the single-module rules, with everything else
+```
+
+A rule that reads more than one module belongs in the gate; a rule whose whole
+corpus is one module belongs beside that module's code, as a test
+(`ForecastKeyParityTest`, `SpikeCacheTempDirTest`, `CliSourceRulesTest`,
+`IdeClientWiringTest`). Both builds cover both homes.
+
+`after-build` is the root's own anchor: the script runs once per build, after
+every member, with the whole tree on disk. Its action key covers every file in
+the checkout except build output and VCS metadata, so an unchanged tree skips it
+(~60 ms) and any edit re-runs it (~9 s). It writes nothing to `outDir`; the cache
+records that as a verdict rather than an artifact, and records only successes, so
+a red gate goes red again instead of replaying itself. It reports every broken
+rule in one message rather than the first to fire.
+
+Two arms stay Gradle-only because they read files `maven-publish` generates and
+jk does not produce until `jk publish`: `checkPublishedPomCoordinates` and the
+publication arm of `checkTestFixturesStayOutOfProduction`. Everything else is
+enforced by whichever build you run.
+
+## Test tiers
+
+Gradle's `test` / `integrationTest` / `slowTest` / `networkTest` / `benchTest`
+tasks are, on the jk side, the root manifest's `[test]` baseline plus one
+`[profiles.*]` per slow tag:
+
+```bash
+jk test                          # fast tier, untagged only
+jk test --profile integration    # the pre-merge bar
+jk test --profile slow           # framework / language e2e (nightly)
+jk test --profile network        # talks to a real remote (nightly)
+jk test --profile bench          # microbenchmarks (on demand)
+jk test --all                    # everything, no tag filter
+```
+
+That table is the only copy: the gate re-derives the partition from it and
+proves, over every subset of the tag vocabulary, that each is run by exactly one
+tier. A tag excluded from the fast tier and included by no profile fails the
+build rather than silently never running.
+
 ## Still Gradle (by design)
 
 | Task | Why |
@@ -79,6 +134,7 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 | Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
 | `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
 | `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk install` after pure-jk build |
+| Two publication-reading guard arms | See [House-rule gate](#house-rule-gate) |
 
 ### Future cut-over (backlog)
 

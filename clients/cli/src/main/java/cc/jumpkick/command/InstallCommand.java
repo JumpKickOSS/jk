@@ -10,13 +10,16 @@ import cc.jumpkick.cli.GraalResolver;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
@@ -24,11 +27,8 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
@@ -45,9 +45,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -71,7 +73,9 @@ public final class InstallCommand {
     Path cacheDirOverride;
     Path stateDirOverride;
     Path binDirOverride;
+    /** From {@code jk install --lib-dir} (hidden, via ToolInstallCommand); engine default is the product lib. */
     Path libDirOverride;
+
     Path m2DirOverride;
     URI repoUrl;
     BuildOptions buildOpts;
@@ -254,7 +258,6 @@ public final class InstallCommand {
     int runProjectInstallBuildPlan(Path projectDir, String planName) throws IOException {
         Path cacheDir = cacheDir();
         Path binDir = binDir();
-        Path libDir = libDir();
 
         // Validate up front: a non-native application needs a main class for its
         // launcher. (Done here, not in a step, so we fail before building.) Spring Boot
@@ -331,15 +334,20 @@ public final class InstallCommand {
 
         Coordinate coord = Coordinate.of(proj.group(), proj.name(), proj.version());
         Path launcher = null;
-        if (!isPluginWorker(proj, projectDir) && proj.application()) {
+        // Same gate as the workspace path: a declared product-lib module routes through
+        // EngineInstall (downgrade refusal, pointer stamping) no matter which entry point ran the
+        // install — the generic copy below provides none of that.
+        boolean productLib = !proj.productLib().isBlank();
+        if (productLib || (!isPluginWorker(proj, projectDir) && proj.application())) {
             try {
-                launcher = applyInstallPlan(projectDir, cacheDir);
+                launcher = applyInstallPlan(projectDir, cacheDir, proj.productLib());
             } catch (IOException e) {
                 CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                 return 1;
             }
         }
-        announceProjectInstall(Coords.gav(coord), launcher, binDir);
+        if (productLib) announceProductLibInstall(Coords.gav(coord), proj.productLib());
+        else announceProjectInstall(Coords.gav(coord), launcher, binDir);
         return 0;
     }
 
@@ -356,9 +364,14 @@ public final class InstallCommand {
             Path d = Path.of(rel).isAbsolute() ? Path.of(rel) : wsRoot.resolve(rel);
             moduleDirs.add(d.toAbsolutePath().normalize());
         }
+        // One projectInfo request per module: the Graal scan, the product-lib stale check and the
+        // announce loop below all read the same parsed-manifest summary, and every call is a full
+        // engine round-trip — three sweeps over a 30-module workspace is ~90 requests for nothing.
+        Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
+        for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
         Map<Path, Path> graalByDir = new LinkedHashMap<>();
         for (Path mod : moduleDirs) {
-            var info = projectInfo(mod);
+            var info = infoByDir.get(mod);
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
             Optional<Path> graal = new GraalResolver(null, false).resolve(mod, info.graal());
             if (graal.isEmpty()) return 1;
@@ -379,38 +392,132 @@ public final class InstallCommand {
                         true,
                         true)
                 .withModules(tokens)
-                .withSpec(WorkspaceSpec.install(selected, graalByDir));
-        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+                .withSpec(WorkspaceSpec.install(selected, graalByDir, m2Dir()));
+        // The shared workspace renderer, exactly as build/test/native drive it: the errors list,
+        // the failing module's coordinate, and the JSONL workspace vocabulary all come from one
+        // place. A hand-rolled listener here is what made a failed workspace install print
+        // nothing at all on either stream.
+        boolean json = global.outputIsJson();
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(planName, true, true), wsRoot, null, json);
+        long start = System.nanoTime();
         WorkspaceResult result;
         try {
-            result = EngineClient.buildWorkspace(EnginePaths.current(), req, new WorkspaceBuildListener() {
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan m) {
-                    return BuildPlanConsole.chooseConsoleListener(
-                            planName, m.plan().steps(), mode);
-                }
-            });
+            result = EngineClient.buildWorkspace(EnginePaths.current(), req, run.headless());
+        } catch (JobCancelledException e) {
+            return cancelled(run, start, json);
         } catch (IOException e) {
+            run.finishEvent(false, elapsedMs(start));
             CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
-        if (!result.success()) return result.exitCode() == 0 ? 1 : result.exitCode();
+        long elapsed = elapsedMs(start);
+        // A cancel is not a failure: it names no module and deserves no error list.
+        if (result.cancelled()) return cancelled(run, start, json);
+        if (!result.success()) {
+            run.finishEvent(false, elapsed);
+            if (!json) {
+                // Graph/lock errors never reach a module listener, so they have no module to blame
+                // and nothing else prints them.
+                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+                CommandWedge.printFail("Install", installFailureTail(result, elapsed));
+            }
+            return result.exitCode() == 0 ? Exit.FAILURE : result.exitCode();
+        }
+        run.finishEvent(true, elapsed);
+        // Modules the engine built, plus any whose declared product-lib destination this process
+        // owns and finds stale. The second half is the point: a module the forecast skipped as
+        // clean has correct BUILD outputs, which says nothing about whether the artifact reached
+        // jk's product layout — and that destination is the client's to answer for, because the
+        // engine daemon's product layout is not necessarily the caller's.
+        Set<Path> installed = new LinkedHashSet<>();
         for (var m : result.modules()) {
             if (!m.success()) continue;
-            Path mod = m.dir();
-            var info = projectInfo(mod);
+            installed.add(m.dir());
+        }
+        for (Path mod : moduleDirs) {
+            if (installed.contains(mod)) continue;
+            if (productLibStale(infoByDir.get(mod))) installed.add(mod);
+        }
+        if (installed.isEmpty() && !json) {
+            // A no-op and a success used to render identically — nothing printed either way. The
+            // whole reason this verb was wrong for so long is that "already installed" and "did
+            // not look" are indistinguishable outputs (JK-1069).
+            CommandWedge.printOk("Install", "everything already installed");
+        }
+        for (Path mod : installed) {
+            // Engine-reported module dirs are normalized the same way moduleDirs was; fall back to
+            // a fresh request only for a dir the sweep above never saw.
+            ProjectInfo info = infoByDir.containsKey(mod) ? infoByDir.get(mod) : projectInfo(mod);
+            // A coordinator root builds as a unit but publishes nothing — announcing it would
+            // claim an install the plan never carried a `cache-install` step for.
+            if (info.coordinatorOnly()) continue;
             Path launcher = null;
-            if (!isPluginWorker(info, mod) && info.application()) {
+            boolean productLib = !info.productLib().isBlank();
+            if (productLib || (!isPluginWorker(info, mod) && info.application())) {
                 try {
-                    launcher = applyInstallPlan(mod, cacheDir);
+                    launcher = applyInstallPlan(mod, cacheDir, info.productLib());
                 } catch (IOException e) {
                     CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                     return 1;
                 }
             }
-            announceProjectInstall(m.coord(), launcher, binDir);
+            String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
+            if (productLib) announceProductLibInstall(coord, info.productLib());
+            else announceProjectInstall(coord, launcher, binDir);
         }
         return 0;
+    }
+
+    private static int cancelled(WorkspaceRunView run, long startNanos, boolean json) {
+        run.finishEvent(false, elapsedMs(startNanos));
+        if (!json) CommandWedge.printFail("Install", "job was cancelled");
+        return Exit.FAILURE;
+    }
+
+    /**
+     * The failure wedge for a workspace install: the first module the engine failed, or the
+     * generic verb when the run died before any module started (a graph, lock, or plan error).
+     */
+    private static String installFailureTail(WorkspaceResult result, long elapsedMs) {
+        return WorkspaceRunView.failedCoord(result, "install") + " — failed "
+                + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
+    }
+
+    /**
+     * The artifact a product-lib install materializes: the jar the exec plan links, which for an
+     * assembly module is the {@code -all.jar}. {@code null} when the plan links nothing, which is
+     * a plan with no packaged output to install.
+     */
+    private static Path productLibSource(ExecPlan plan) {
+        for (String src : plan.linkSrcs()) {
+            if (src.endsWith(".jar")) return Path.of(src);
+        }
+        return plan.linkSrcs().isEmpty() ? null : Path.of(plan.linkSrcs().get(0));
+    }
+
+    /**
+     * Whether {@code info}'s declared product-lib destination is missing or holds other bytes than
+     * the artifact this tree built. False for every module that declares none.
+     */
+    static boolean productLibStale(ProjectInfo info) {
+        if (info.error() != null || info.productLib().isBlank()) return false;
+        String builtPath = info.assembly() ? info.assemblyJarPath() : info.mainJarPath();
+        if (builtPath == null || builtPath.isBlank()) return false;
+        Path built = Path.of(builtPath);
+        if (!Files.isRegularFile(built)) return false; // nothing built to install
+        try {
+            String builtSha = Hashing.sha256Hex(built);
+            return new EngineInstall(JkDirs.productLib())
+                    .engineSha(info.version())
+                    .filter(sha -> sha.equalsIgnoreCase(builtSha))
+                    .isEmpty();
+        } catch (IOException | RuntimeException unreadable) {
+            return true; // cannot prove it current — install
+        }
     }
 
     private static boolean isPluginWorker(ProjectInfo proj, Path projectDir) {
@@ -425,9 +532,11 @@ public final class InstallCommand {
     /**
      * The {@code make install} step for applications, thin-client style: the engine computes the
      * plan (link set + launcher script or a direct native-binary link); this process applies it —
-     * hard-link/copy each pair, write the launcher, mark executables. Returns the launcher path.
+     * copy each pair, write the launcher, mark executables. Returns the launcher path. A module
+     * that declares {@code [install] product-lib} is materialized into jk's own product library
+     * instead of linked into {@code ~/.local/bin}.
      */
-    private Path applyInstallPlan(Path projectDir, Path cacheDir) throws IOException {
+    private Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib) throws IOException {
         ExecPlan plan = EngineClient.execPlan(
                 EnginePaths.current(),
                 projectDir,
@@ -445,21 +554,20 @@ public final class InstallCommand {
                 && plan.binPath().isEmpty()) {
             return null;
         }
-        // Self-host engine install: route through EngineInstall so a new jar is published beside
-        // any mapped predecessor, a downgrade is refused, and jk-engine.toml is written coherently
-        // — none of which the generic copy + AppInstallConfig.write below provides.
-        Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
-        for (int i = 0; i < plan.linkDests().size(); i++) {
-            Path dest = Path.of(plan.linkDests().get(i)).toAbsolutePath().normalize();
-            Path parent = dest.getParent();
-            if (parent != null
-                    && EngineInstall.BIN_NAME.equals(parent.getFileName().toString())
-                    && productLib.equals(parent.getParent())) {
-                Path src = Path.of(plan.linkSrcs().get(i));
-                String version = engineInstallVersion(projectDir, src);
-                new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.cas(cacheDir), src);
-                return null; // the engine is a jar the client launches — no launcher/bin to link
-            }
+        // Declared product-lib install: route through EngineInstall so a new jar is published
+        // beside any mapped predecessor, a downgrade is refused, and the pointer toml is written
+        // coherently — none of which the generic copy + AppInstallConfig.write below provides.
+        //
+        // Asked of the manifest, not of the destination path. This used to match
+        // `<productLib>/jk-engine/` on the link dest and `return null` mid-loop, which meant the
+        // one module whose install is not a coordinate was recognised nowhere a freshness check
+        // could see it — so a missing engine read as "already installed" (JK-1069).
+        if (!productLib.isBlank()) {
+            Path src = productLibSource(plan);
+            if (src == null) return null;
+            String version = engineInstallVersion(projectDir, src);
+            new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.cas(cacheDir), src);
+            return null; // a jar the client launches — no launcher/bin to link
         }
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
             Path src = Path.of(plan.linkSrcs().get(i));
@@ -580,10 +688,6 @@ public final class InstallCommand {
         return binDirOverride != null ? binDirOverride : JkDirs.binDir();
     }
 
-    private Path libDir() {
-        return libDirOverride != null ? libDirOverride : JkDirs.lib();
-    }
-
     private Path m2Dir() {
         if (m2DirOverride != null) return m2DirOverride;
         return Path.of(System.getProperty("user.home", "."), ".m2");
@@ -594,6 +698,16 @@ public final class InstallCommand {
         CliOutput.out("Installed " + coord + " → " + launcher);
         CliOutput.out("Add to PATH if needed:");
         CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
+    }
+
+    /**
+     * A product-lib install went into jk's own product layout, not the local cache. Saying "to the
+     * local cache" here would name the one place this artifact did not go.
+     */
+    private void announceProductLibInstall(String coord, String productLib) {
+        if (global.outputIsJson()) return;
+        CliOutput.out("Installed " + coord + " → "
+                + PathDisplay.styledRaw(JkDirs.productLib().resolve(productLib)));
     }
 
     /** Announce a project install: launcher path for an app, cache-only for a library. */

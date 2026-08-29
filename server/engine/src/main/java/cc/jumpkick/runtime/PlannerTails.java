@@ -72,6 +72,10 @@ public final class PlannerTails {
         if (in.testOnly() || in.compileOnly()) return;
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
+            // A coordinator root is the third plan with no package-jar to hang a tail off. Its
+            // unit exists to run the workspace's own build logic (JK-1058); re-rooting the
+            // terminal here would require a step its plan never had.
+            if (CompileSupport.coordinatorOnly(project, in.dir())) return;
             List<String> leaves = new ArrayList<>();
             // The join sits at the latest stage it joins. Hard-coding PACKAGE made a plan with
             // both an assembly tail and a native tail fail validation — the join would be

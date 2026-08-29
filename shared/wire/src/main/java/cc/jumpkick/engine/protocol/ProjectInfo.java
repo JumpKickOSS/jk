@@ -13,6 +13,16 @@ import java.util.Map;
  * <p>Format hygiene flags ({@code formatOptimizeImports}, {@code formatImportOrder}, {@code
  * formatRemoveUnusedImports}) are tri-state: {@code null} means the {@code [format]} key was
  * absent (client applies the built-in default); non-null is the explicit toml value.
+ *
+ * <p>{@code productLib} is {@code [install] product-lib} — the directory under jk's own product
+ * library that this module's packaged artifact is materialized into. Empty for every ordinary
+ * target. It is on the wire because the CLI owns that destination and must decide whether it needs
+ * refreshing, and a thin client cannot read a manifest to find out.
+ *
+ * <p>{@code coordinatorOnly} is a workspace root that carries no sources of its own. It builds as
+ * a unit (it runs the workspace's build logic) but compiles, packages and publishes nothing, so
+ * {@code jk install} must neither plan a {@code cache-install} for it nor claim it installed one.
+ * A workspace root <em>with</em> sources is an ordinary publishing module and reports {@code false}.
  */
 public record ProjectInfo(
         String error,
@@ -66,7 +76,9 @@ public record ProjectInfo(
         List<String> testExcludeTags,
         boolean lockStale,
         boolean scala,
-        String scalaVersion) {
+        String scalaVersion,
+        boolean coordinatorOnly,
+        String productLib) {
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -126,6 +138,8 @@ public record ProjectInfo(
                 List.of(),
                 false,
                 false,
+                "",
+                false,
                 "");
     }
 
@@ -182,6 +196,8 @@ public record ProjectInfo(
                 + ",\"lockStale\":" + lockStale
                 + ",\"scala\":" + scala
                 + ",\"scalaVersion\":" + Jsonl.quote(scalaVersion)
+                + ",\"coordinatorOnly\":" + coordinatorOnly
+                + ",\"productLib\":" + Jsonl.quote(productLib)
                 + "}";
     }
 
@@ -239,7 +255,9 @@ public record ProjectInfo(
                 Jsonl.strArray(line, "testExcludeTags"),
                 Jsonl.bool(line, "lockStale", false),
                 Jsonl.bool(line, "scala", false),
-                orEmpty(Jsonl.str(line, "scalaVersion")));
+                orEmpty(Jsonl.str(line, "scalaVersion")),
+                Jsonl.bool(line, "coordinatorOnly", false),
+                orEmpty(Jsonl.str(line, "productLib")));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

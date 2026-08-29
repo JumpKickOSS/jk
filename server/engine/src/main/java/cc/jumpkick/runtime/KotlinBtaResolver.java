@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
@@ -11,8 +12,9 @@ import java.util.List;
 
 /**
  * What is Kotlin-specific about resolving the Kotlin Build Tools API impl closure: the root
- * coordinate, the 2.4.0 floor, and the version-matched stdlib. The resolve, fetch and CAS closure
- * cache themselves are {@link ToolClosure}, shared with {@link GroovyToolResolver}.
+ * coordinate, the {@value KotlinResolver#FLOOR_VERSION} floor, and the version-matched stdlib. The
+ * resolve, fetch and CAS closure cache themselves are {@link ToolClosure}, shared with {@link
+ * GroovyToolResolver}.
  */
 public final class KotlinBtaResolver {
 
@@ -29,7 +31,7 @@ public final class KotlinBtaResolver {
      * @param repos the repositories to resolve against (build via {@link RepoGroupBuilder#buildFor},
      *     so project mirrors / credentials apply)
      * @param cas the content-addressed store the jars land in
-     * @param kotlinVersion the exact Kotlin version to match (e.g. {@code 2.4.0})
+     * @param kotlinVersion the exact Kotlin version to match (e.g. {@code 2.4.10})
      */
     public static List<Path> resolveClasspath(RepoGroup repos, Cas cas, String kotlinVersion)
             throws IOException, InterruptedException {
@@ -49,17 +51,35 @@ public final class KotlinBtaResolver {
     }
 
     /**
-     * Guard the 2.4.0 floor: the plugin drives the Build Tools API through its {@code
-     * KotlinToolchains} entry point, which does not exist before 2.4.0.
+     * Guard the {@value KotlinResolver#FLOOR_VERSION} floor. Two reasons stack, which is why the
+     * floor is a patch version and not just {@code 2.4}:
+     *
+     * <ul>
+     *   <li>The plugin drives the Build Tools API through its {@code KotlinToolchains} entry point,
+     *       which does not exist before 2.4.0.
+     *   <li>2.4.0 itself is a bad release for jk: its K2 frontend cannot compile a script using
+     *       {@code @file:Import}, failing with {@code Expected FirResolvedTypeRef with
+     *       ConeKotlinType but was FirUserTypeRefImpl}. Build logic depends on that annotation to
+     *       split a large script without paying to compile several. 2.4.10 fixes it.
+     * </ul>
+     *
+     * <p>Pre-releases of the floor itself ({@code 2.4.0-RC2}) sort below it and are rejected: the
+     * bug is in that line, not after it.
      */
     static void requireSupportedVersion(String version) {
         int major = ToolClosure.versionPart(version, 0);
         int minor = ToolClosure.versionPart(version, 1);
-        if (major < 2 || (major == 2 && minor < 4)) {
-            throw new IllegalArgumentException("jk requires Kotlin 2.4.0 or newer (Build Tools API), but the project "
-                    + "targets "
+        int patch = ToolClosure.versionPart(version, 2);
+        boolean tooOld = major < 2
+                || (major == 2 && minor < 4)
+                || (major == 2 && minor == 4 && patch < KotlinResolver.FLOOR_PATCH);
+        if (tooOld) {
+            throw new IllegalArgumentException("jk requires Kotlin "
+                    + KotlinResolver.FLOOR_VERSION
+                    + " or newer, but the project targets "
                     + version
-                    + ". Pin a newer version in jk.toml (project.kotlin).");
+                    + ". 2.4.0 cannot compile build logic that uses @file:Import. "
+                    + "Pin a newer version in jk.toml (project.kotlin).");
         }
     }
 }

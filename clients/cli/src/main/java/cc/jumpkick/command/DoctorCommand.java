@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.engine.EnginePaths;
@@ -24,7 +25,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
@@ -45,7 +45,7 @@ public final class DoctorCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the tools install root. Default: $JK_CACHE_DIR/tools.", "--tools-dir")
+                Opt.value("<dir>", "Override the tools install root. Default: $JK_STORE_DIR/tools.", "--tools-dir")
                         .hide(),
                 // Kept under HelpWidthTest's 78-column budget: 20 columns go to the indent and the
                 // flag itself, so this string has 58 to spend.
@@ -57,7 +57,7 @@ public final class DoctorCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         boolean verifyLinked = in.isSet("verify-linked");
-        Path root = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
+        Path root = toolsDir != null ? toolsDir : JkDirs.tools();
 
         // Collect checks first so JSON and human share the same facts. Tools are scanned (and
         // repaired — broken links unlinked, fingerprints written) exactly once, here, so
@@ -370,17 +370,7 @@ public final class DoctorCommand implements CliCommand {
     }
 
     private static List<InstalledTool> listIncludingBrokenLinks(Path root, BuildTool tool) throws IOException {
-        Path slugDir = root.resolve(tool.slug());
-        if (!Files.exists(slugDir)) return List.of();
-        List<InstalledTool> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(slugDir)) {
-            stream.forEach(path -> {
-                if (Files.isDirectory(path) || Files.isSymbolicLink(path)) {
-                    result.add(new InstalledTool(tool, path.getFileName().toString(), path));
-                }
-            });
-        }
-        return result;
+        return new ToolRegistry(root).list(tool, /* includeBrokenLinks */ true);
     }
 
     private static String readlinkSafe(Path link) {

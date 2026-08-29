@@ -3,6 +3,8 @@ package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.ToolchainSpec;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -34,10 +36,32 @@ class LockPinMatchTest {
     }
 
     @Test
-    void older_patch_on_the_same_major_is_not_better() {
+    void an_older_patch_on_the_same_major_still_clears_the_floor() {
+        // The floor is the major and only the major: a suggestion records what built the lock, it
+        // does not hold a later build to that patch. Requiring 25.0.4 exactly is what = is for.
         JdkHit older = hit("25.0.3", JdkVendor.TEMURIN);
-        assertThat(LockPinMatch.meetsFloor("25.0.3", "25.0.4")).isFalse();
-        assertThat(LockPinMatch.choose(List.of(older), "temurin", "25.0.4")).isEmpty();
+        assertThat(LockPinMatch.meetsFloor("25.0.3", "25.0.4")).isTrue();
+        assertThat(LockPinMatch.choose(List.of(older), "temurin", "25.0.4")).contains(older);
+        assertThat(LockPinMatch.meetsFloor("21.0.9", "25.0.4")).isFalse();
+    }
+
+    @Test
+    void a_required_version_admits_nothing_else() {
+        JdkHit older = hit("25.0.3", JdkVendor.TEMURIN);
+        JdkHit exact = hit("25.0.4", JdkVendor.TEMURIN);
+        JdkHit newer = hit("25.1.0", JdkVendor.TEMURIN);
+        Lockfile.JdkPin pin = new Lockfile.JdkPin("", "", "", "25.0.4");
+        assertThat(LockPinMatch.choose(List.of(older, newer), pin)).isEmpty();
+        assertThat(LockPinMatch.choose(List.of(older, exact, newer), pin)).contains(exact);
+    }
+
+    @Test
+    void a_required_vendor_admits_no_other_vendor() {
+        JdkHit corretto = hit("25.0.9", JdkVendor.CORRETTO);
+        JdkHit temurin = hit("25.0.4", JdkVendor.TEMURIN);
+        Lockfile.JdkPin pin = new Lockfile.JdkPin("", "25", "temurin", "");
+        assertThat(LockPinMatch.choose(List.of(corretto), pin)).isEmpty();
+        assertThat(LockPinMatch.choose(List.of(corretto, temurin), pin)).contains(temurin);
     }
 
     @Test
@@ -65,6 +89,30 @@ class LockPinMatchTest {
     void install_spec_is_vendor_and_major() {
         assertThat(LockPinMatch.installSpec("temurin", "25.0.4.1")).isEqualTo("temurin-25");
         assertThat(LockPinMatch.installSpec("", "25.0.4")).isEqualTo("25");
+    }
+
+    @Test
+    void unknown_vendor_suggestion_is_not_an_install_spec() {
+        Lockfile.JdkPin poison = Lockfile.JdkPin.suggested("nosuchvendor", "99");
+        assertThat(LockPinMatch.knownVendorId("nosuchvendor")).isFalse();
+        assertThat(LockPinMatch.knownVendorId("temurin")).isTrue();
+        assertThat(LockPinMatch.suggestionIsInstallable(poison)).isFalse();
+        assertThat(LockPinMatch.suggestionIsInstallable(Lockfile.JdkPin.suggested("temurin", "26.0.1")))
+                .isTrue();
+        assertThat(LockPinMatch.suggestionIsInstallable(Lockfile.JdkPin.suggested("", "25")))
+                .isTrue();
+        assertThat(LockPinMatch.suggestionIsInstallable(new Lockfile.JdkPin("", "", "temurin", "25.0.4")))
+                .isFalse();
+    }
+
+    @Test
+    void dropped_manifest_pin_does_not_copy_an_unknown_vendor_suggestion() {
+        JdkHit temurin = hit("25.0.4", JdkVendor.TEMURIN);
+        Lockfile.JdkPin poison = Lockfile.JdkPin.suggested("nosuchvendor", "99");
+        assertThat(LockPinMatch.jdkPin(ToolchainSpec.NONE, temurin, poison))
+                .isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+        Lockfile.JdkPin colleague = Lockfile.JdkPin.suggested("corretto", "25.0.1");
+        assertThat(LockPinMatch.jdkPin(ToolchainSpec.NONE, temurin, colleague)).isEqualTo(colleague);
     }
 
     @Test

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
@@ -79,5 +80,21 @@ public final class CommonOpts {
     /** Skip compiling and running tests — shared by build / native / install-style verbs. */
     public static Opt skipTests() {
         return Opt.flag("Skip compiling and running tests.", "--skip-tests");
+    }
+
+    /** {@code --continue}: finish the graph and report every failure, not just the first. */
+    public static Opt keepGoing() {
+        return Opt.flag("Keep going; report all failures", "--continue");
+    }
+
+    /**
+     * Whether this run keeps going: the flag when given, else {@code [engine] continue} /
+     * {@code JK_CONTINUE}, whose own default is on under {@code CI} and off at a prompt.
+     *
+     * <p>Resolved client-side and sent, never re-derived in the engine: a resident daemon's
+     * environment is the one that started it, not the one that asked.
+     */
+    public static boolean keepGoingValue(Invocation in) {
+        return in.isSet("continue") || JkEngineConfig.resolve().keepGoing();
     }
 }

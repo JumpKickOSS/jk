@@ -33,22 +33,35 @@ class BuildLogicTomlTest {
     }
 
     @Test
+    void visible_jk_dir_when_the_key_is_absent() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectory(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+        assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+    }
+
+    @Test
+    void visible_jk_wins_when_both_convention_dirs_exist() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectory(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+        Files.createDirectory(dir.resolve(BuildLogicToml.DEFAULT_DIR));
+        assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.VISIBLE_DIR));
+    }
+
+    @Test
     void empty_when_the_default_directory_does_not_exist() throws IOException {
         manifest("name = \"demo\"\n");
         assertThat(BuildLogicToml.resolve(dir)).isEmpty();
     }
 
     @Test
-    void declared_directory_and_main() throws IOException {
+    void declared_directory() throws IOException {
         manifest("""
                 [build]
                 logic = "buildsrc"
-                logic-main = "com.example.Build"
                 """);
         Files.createDirectory(dir.resolve("buildsrc"));
         var logic = BuildLogicToml.resolve(dir).orElseThrow();
         assertThat(logic.dir()).isEqualTo(dir.resolve("buildsrc"));
-        assertThat(logic.main()).isEqualTo("com.example.Build");
     }
 
     /**
@@ -89,5 +102,35 @@ class BuildLogicTomlTest {
         Files.createDirectory(dir.resolve("buildsrc"));
         Files.createDirectory(dir.resolve(BuildLogicToml.DEFAULT_DIR));
         assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.DEFAULT_DIR));
+    }
+
+    @Test
+    void leftover_jk_build_dir_is_refused() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectory(dir.resolve(".jk-build"));
+        assertThatThrownBy(() -> BuildLogicToml.resolve(dir))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".jk/")
+                .hasMessageContaining(".jk-build");
+    }
+
+    @Test
+    void leftover_jk_build_without_dot_is_refused() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectory(dir.resolve("jk-build"));
+        assertThatThrownBy(() -> BuildLogicToml.resolve(dir))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jk-build");
+    }
+
+    @Test
+    void declared_retired_name_is_refused_even_if_the_dir_is_missing() throws IOException {
+        manifest("""
+                [build]
+                logic = ".jk-build"
+                """);
+        assertThatThrownBy(() -> BuildLogicToml.resolve(dir))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no compatibility path");
     }
 }

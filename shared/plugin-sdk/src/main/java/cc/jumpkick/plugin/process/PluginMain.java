@@ -28,6 +28,7 @@ public final class PluginMain {
     private PluginMain() {}
 
     public static void main(String[] args) {
+
         List<Plugin> plugins = new ArrayList<>();
         for (Plugin p : ServiceLoader.load(Plugin.class)) {
             plugins.add(p);

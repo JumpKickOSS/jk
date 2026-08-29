@@ -427,7 +427,7 @@ class PluginContributionsTest {
         Project resolved = Project.builder("g", "m", "1.0")
                 .jdkMajor(25)
                 .java(21)
-                .kotlin(VersionSelector.parse("=2.4.0"))
+                .kotlin(VersionSelector.parse("=2.4.10"))
                 .build();
         assertThat(PluginContributions.platformDependencies(resolved, false, configs, List.of(manifest)))
                 .extracting(PluginContributions.PlatformDep::module)

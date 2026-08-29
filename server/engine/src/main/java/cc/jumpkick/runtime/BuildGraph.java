@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
@@ -183,7 +184,14 @@ public final class BuildGraph {
             // collision set). A pure coordinator root (no src/) is not built; its merged
             // deps are still validated up front by the whole-workspace lock check.
             Path rootDir = canonical(wsRoot);
-            boolean rootBuildable = CompileSupport.hasSources(rootDir);
+            boolean rootHasSources = CompileSupport.hasSources(rootDir);
+            // A sourceless root with `jk/` or `.jk/` is a unit too. Its plan compiles and packages
+            // nothing, but it has an `after-build` script to run, and the only way to run that
+            // once — after every member, with the scheduler and the report it already has — is to
+            // be in the graph. Without this the directory is silently ignored (JK-1058).
+            boolean rootHasBuildLogic =
+                    !rootHasSources && BuildLogicToml.resolve(rootDir).isPresent();
+            boolean rootBuildable = rootHasSources || rootHasBuildLogic;
             if (rootBuildable) {
                 addUnit(rootDir, root, Origin.ROOT);
                 dirByCoord.put(root.project().group() + ":" + root.project().name(), rootDir);
@@ -209,6 +217,14 @@ public final class BuildGraph {
             // so member->root deps resolve to an edge here too.
             if (rootBuildable) {
                 addModuleEdges(rootDir, root, dirByCoord, dirByName);
+            }
+            // `after-build` means after every member, so the sourceless root depends on all of
+            // them. A root that builds nothing publishes nothing, so no member can depend back on
+            // it and these edges cannot close a cycle.
+            if (rootHasBuildLogic) {
+                for (Path moduleDir : modules.keySet()) {
+                    addEdge(rootDir, canonical(moduleDir));
+                }
             }
         }
 

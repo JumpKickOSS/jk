@@ -89,17 +89,17 @@ final class EnginePluginAdapter {
             send(
                     writer,
                     ProtoSession.withToolchain(
-                        ProtoSession.withSession(
-                                requestLine,
-                                session.variant(),
-                                session.clientEnv(),
-                                session.jvm(),
-                                session.config().rebuildOr(false)),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()));
+                            ProtoSession.withSession(
+                                    requestLine,
+                                    session.variant(),
+                                    session.clientEnv(),
+                                    session.jvm(),
+                                    session.config().rebuildOr(false)),
+                            SessionContext.current().jdkSpec(),
+                            SessionContext.current().graalSpec(),
+                            SessionContext.current().graalHome() == null
+                                    ? null
+                                    : SessionContext.current().graalHome().toString()));
 
             return WireStream.pumpJob(reader, ch, new WireStream.Decoder<HostedFinish>() {
                 private final List<Task> steps = new ArrayList<>();
@@ -162,17 +162,17 @@ final class EnginePluginAdapter {
             send(
                     writer,
                     ProtoSession.withToolchain(
-                        ProtoSession.withSession(
-                                requestLine,
-                                session.variant(),
-                                session.clientEnv(),
-                                session.jvm(),
-                                session.config().rebuildOr(false)),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()));
+                            ProtoSession.withSession(
+                                    requestLine,
+                                    session.variant(),
+                                    session.clientEnv(),
+                                    session.jvm(),
+                                    session.config().rebuildOr(false)),
+                            SessionContext.current().jdkSpec(),
+                            SessionContext.current().graalSpec(),
+                            SessionContext.current().graalHome() == null
+                                    ? null
+                                    : SessionContext.current().graalHome().toString()));
 
             return WireStream.pumpJob(reader, ch, (type, line) -> switch (type) {
                 case EngineProtocol.PROVISION_RESULT ->

@@ -53,7 +53,8 @@ class TaskForecasterImageTargetTest {
                 jdk = 25
                 java = 25
                 """);
-        Lockfile lf = new Lockfile(1, "test", "pubgrub-v1", null, null, List.of(), List.of(), List.of());
+        Lockfile lf = new Lockfile(
+                Lockfile.CURRENT_VERSION, "test", "pubgrub-v1", null, null, List.of(), List.of(), List.of());
         LockfileWriter.write(lf, tmp.resolve("jk-lock.toml"), LockManifestDigest.compute(tmp));
         // Package output present ⇒ clean under PACKAGE (SourcelessModuleForecastTest semantics).
         var build = JkBuildParser.parse(app.resolve("jk.toml"));
@@ -133,9 +134,9 @@ class TaskForecasterImageTargetTest {
         assertThat(WorkspaceExecute.terminalTargetDirs(units, natWithHome)).containsExactly(app);
 
         // INSTALL: every cone module is a cache-install terminal (prereqs included).
-        WorkspaceRequest inst = base.withSpec(WorkspaceSpec.install(Set.of(), Map.of()));
+        WorkspaceRequest inst = base.withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
         assertThat(WorkspaceExecute.terminalTargetDirs(units, inst)).containsExactly(app);
-        WorkspaceRequest instSelected = base.withSpec(WorkspaceSpec.install(Set.of(app), Map.of()));
+        WorkspaceRequest instSelected = base.withSpec(WorkspaceSpec.install(Set.of(app), Map.of(), null));
         assertThat(WorkspaceExecute.terminalTargetDirs(units, instSelected)).containsExactly(app);
     }
 }

@@ -74,9 +74,7 @@ class SourceScanBudgetTest {
             for (int i = 0; i < 20; i++) {
                 collect(() -> CompileSupport.collectJavaSources(src));
             }
-            assertThat(RequestScope.current().size())
-                    .as("21 asks, one scan")
-                    .isEqualTo(afterFirst);
+            assertThat(RequestScope.current().size()).as("21 asks, one scan").isEqualTo(afterFirst);
         });
     }
 

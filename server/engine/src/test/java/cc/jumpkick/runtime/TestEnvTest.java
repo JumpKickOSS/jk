@@ -8,6 +8,8 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ActionCache;
@@ -101,6 +103,34 @@ class TestEnvTest {
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         // The default the module didn't mention survives.
         assertThat(env.get("JK_M2_LOCAL")).endsWith("test-m2");
+    }
+
+    @Test
+    void machine_env_reaches_the_test_jvm_without_being_declared(@TempDir Path tmp) throws Exception {
+        // ClientEnvForward ships PATH on the request; TestEnv must seed it into the child or a
+        // suite that execs `node` searches the daemon's PATH — often without nvm — and fails.
+        String callerPath = "/caller/nvm/bin:/usr/bin";
+        JkBuild project = project(tmp, "");
+        SessionContext.where(Session.defaults().withVariant(null, Map.of("PATH", callerPath)), () -> {
+            var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+            assertThat(env.get("PATH")).isEqualTo(callerPath);
+            // Still not keyed, even while the session carrying PATH is bound — the stamp
+            // must be computed inside the scope or this guard proves nothing: machine env
+            // is the shape of the world, not a build input.
+            assertThat(PlannerSupport.testStampExtras(tmp, project)).noneMatch(s -> s.contains("PATH="));
+            return null;
+        });
+    }
+
+    @Test
+    void a_declared_path_overrides_the_machine_seed(@TempDir Path tmp) throws Exception {
+        // Declared [test] env still wins — the machine seed is a default, like the sandbox.
+        JkBuild project = project(tmp, "[test]\nenv = [{ PATH = \"/only/what/i/named\" }]\n");
+        SessionContext.runWhere(
+                Session.defaults().withVariant(null, Map.of("PATH", "/caller/nvm/bin:/usr/bin")), () -> {
+                    var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+                    assertThat(env.get("PATH")).isEqualTo("/only/what/i/named");
+                });
     }
 
     @Test

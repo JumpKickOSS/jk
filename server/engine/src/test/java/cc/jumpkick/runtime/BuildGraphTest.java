@@ -157,6 +157,50 @@ class BuildGraphTest {
         assertThat(coords(r)).containsExactly("com.example:core");
     }
 
+    /**
+     * A coordinator root with `.jk/` is a unit even though it compiles nothing: it has an
+     * `after-build` script, and the graph is the only thing that can run it once, after everything
+     * else. Before JK-1058 the directory was silently ignored.
+     */
+    @Test
+    void coordinator_root_with_build_logic_is_a_unit_ordered_last(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+
+                [workspace]
+                modules = ["core", "app"]
+                """);
+        for (String m : List.of("core", "app")) {
+            Files.createDirectories(tmp.resolve(m + "/src"));
+            Files.writeString(tmp.resolve(m + "/src/Main.java"), "class Main {}");
+            Files.writeString(tmp.resolve(m + "/jk.toml"), """
+                    group = "com.example"
+                    name  = "%s"
+                    version = "1.0.0"
+                    jdk = 25
+                    java = 25
+                    """.formatted(m));
+        }
+        Files.createDirectories(tmp.resolve(".jk"));
+        Files.writeString(tmp.resolve(".jk/after-build.groovy"), "// workspace check\n");
+
+        BuildGraph.Result r = resolve(tmp);
+
+        assertThat(r.errors()).isEmpty();
+        List<String> order = coords(r);
+        assertThat(order).containsExactlyInAnyOrder("com.example:core", "com.example:app", "com.example:root");
+        assertThat(order.indexOf("com.example:root"))
+                .as("after-build means after every member")
+                .isEqualTo(order.size() - 1);
+        assertThat(order.stream().filter("com.example:root"::equals))
+                .as("once per workspace, not once per member")
+                .hasSize(1);
+    }
+
     @Test
     void self_buildable_workspace_root_is_also_a_unit(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """

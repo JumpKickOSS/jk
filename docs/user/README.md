@@ -15,7 +15,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 |------|-----------------|
 | **[Manual](manual.md)** | First stop. Live text is `jk manual` (MCP `jk_manual`). This page maps into every topic. |
 | **[Getting started](getting-started.md)** | Install, first project, first build. |
-| **[Why JumpKick](why.md)** | Maven vs Gradle vs JumpKick — the product bet. |
+| **[Why JumpKick](why.md)** | Agentic north star, feature ranking, Maven vs Gradle vs JumpKick. |
 | **[Concepts](concepts.md)** | Lockfile is law, `jk.toml` is data, `java =` vs `jdk =`. |
 
 ## Accomplish a goal
@@ -87,7 +87,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [Aliases](aliases.md)
 - [Migration](migration.md)
 - [Wrapper](wrapper.md)
-- [Build logic](build-logic.md) — `.jk-build/`
+- [Build logic](build-logic.md) — `jk/` or `.jk/`
 - [Examples](examples/)
 
 JumpKick is **pre-1.0 (alpha)**. Commands and `jk.toml` keys in these pages describe current

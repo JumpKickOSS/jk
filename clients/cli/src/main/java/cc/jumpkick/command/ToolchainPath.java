@@ -2,7 +2,9 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.host.SearchPath;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 
 /**
  * Surgical {@code PATH} edits for {@code jk hook-env}: swap {@code JAVA_HOME/bin} and {@code
@@ -43,8 +45,30 @@ public final class ToolchainPath {
         return Path.of(home).resolve("bin").toString();
     }
 
+    /**
+     * Drop every {@code PATH} entry that names {@code home/bin}, matching by {@link Path} equality
+     * so an entry spelled with the other slash direction still matches the host-normalized bin
+     * from {@link #binOf}. MSYS-style spellings ({@code /c/Users/...}) parse driveless and do
+     * <em>not</em> match — those entries survive the swap.
+     */
     private static String removeHomeBin(String home, String path) {
         String bin = binOf(home);
-        return bin == null ? path : SearchPath.remove(bin, path);
+        if (bin == null) return path;
+        Path binPath = Path.of(bin);
+        var kept = new ArrayList<String>();
+        for (String entry : SearchPath.entries(path)) {
+            if (!samePath(entry, binPath)) kept.add(entry);
+        }
+        if (kept.isEmpty()) return "";
+        return String.join(SearchPath.SEPARATOR, kept);
+    }
+
+    private static boolean samePath(String entry, Path target) {
+        if (entry == null || entry.isEmpty()) return false;
+        try {
+            return Path.of(entry).equals(target);
+        } catch (InvalidPathException e) {
+            return entry.equals(target.toString());
+        }
     }
 }

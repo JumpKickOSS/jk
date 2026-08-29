@@ -59,7 +59,7 @@ final class TaskCatalog {
             def(TaskNames.PARSE_BUILD, "Parse jk.toml / workspace modules", null),
             def(TaskNames.RESOLVE_DEPS, "Resolve dependencies / lock materialize", null),
             def(TaskNames.ENSURE_JDK, "Ensure configured JDK is available", null),
-            def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic SPI (BEFORE_COMPILE)", null),
+            def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic (BEFORE_COMPILE)", null),
             def(
                     TaskNames.COMPILE_JAVA,
                     "Compile main Java sources",
@@ -69,10 +69,7 @@ final class TaskCatalog {
             def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
             def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),
             def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into classes/main", BuildLayout::classesDir),
-            def(
-                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                    "Project build-logic SPI (AFTER_COMPILE)",
-                    BuildLayout::classesDir),
+            def(TaskNames.BUILD_LOGIC_AFTER_COMPILE, "Project build-logic (AFTER_COMPILE)", BuildLayout::classesDir),
             def(
                     TaskNames.COPY_RESOURCES,
                     "Copy main resources + AFTER_RESOURCES build-logic",
@@ -80,10 +77,7 @@ final class TaskCatalog {
                     "resources"),
             def(TaskNames.COMPILE_TEST, "Compile test sources", BuildLayout::testClassesDir),
             def(TaskNames.RUN_TESTS, "Run tests", BuildLayout::testResultsDir, "test"),
-            def(
-                    TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
-                    "Project build-logic SPI (BEFORE_PACKAGE)",
-                    BuildLayout::classesDir),
+            def(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE, "Project build-logic (BEFORE_PACKAGE)", BuildLayout::classesDir),
             def(TaskNames.PACKAGE_JAR, "Package main jar", BuildLayout::mainJar, "package", "jar"),
             def(TaskNames.PACKAGE_ASSEMBLY, "Package assembly (fat) jar", BuildLayout::assemblyJar, "assembly"),
             def(TaskNames.WRITE_STAMP, "Write Java compile freshness stamp", null),

@@ -153,12 +153,9 @@ public final class TasksCommand implements CliCommand {
             for (TaskCatalog.TaskDef t : TaskCatalog.buildTasks()) {
                 rows.add(List.of(t.name(), t.stage(), t.description()));
             }
-            // Project build logic (.jk-build SPI / *Build — offline scan) rides the same table.
+            // Project build logic (.jk/ stem scripts — offline scan) rides the same table.
             for (String name : BuildLogicTaskScan.discoverNames(e.getKey())) {
-                rows.add(List.of(
-                        "build-logic:" + name,
-                        "logic",
-                        "Project build-logic task (anchor via SPI or AFTER_RESOURCES for *Build)"));
+                rows.add(List.of("build-logic:" + name, "logic", "Project build-logic stem script"));
             }
             CommandWedge.envelopeStart();
             for (String line : Table.render(title, List.of("Name", "Stage", "Description"), rows)) {

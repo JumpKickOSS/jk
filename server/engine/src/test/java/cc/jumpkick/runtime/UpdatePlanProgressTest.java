@@ -41,7 +41,15 @@ class UpdatePlanProgressTest {
                     List.of()));
         }
         LockfileWriter.write(
-                new Lockfile(1, "jk test", Lockfile.RESOLUTION_ALGORITHM, null, null, arts, List.of(), List.of()),
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "jk test",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        null,
+                        null,
+                        arts,
+                        List.of(),
+                        List.of()),
                 dir.resolve("jk-lock.toml"));
 
         JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));

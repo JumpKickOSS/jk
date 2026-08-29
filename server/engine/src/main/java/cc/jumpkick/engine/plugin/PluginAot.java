@@ -325,6 +325,19 @@ public final class PluginAot {
     }
 
     /**
+     * Whether any background trainer is still running.
+     *
+     * <p>{@link #trainAsync} is fire-and-forget on purpose — AOT is an accelerator and must never
+     * block or fail a build — so nothing in production waits for a trainer. A test fixture does
+     * have to: {@link #runTrainer} cleans its scratch, claim and temp files in a {@code finally}
+     * and only then leaves this set, so a {@code @TempDir} torn down while training is in flight
+     * races the trainer and fails the delete, not the assertion.
+     */
+    static boolean trainingInFlight() {
+        return !TRAINING.isEmpty();
+    }
+
+    /**
      * Kick off one background training run for {@code cache}, claim-guarded twice over: an in-JVM
      * set (this engine) and a sibling {@code .training} claim file (other processes; stale claims
      * from a crashed trainer are reclaimed after {@link #CLAIM_STALE_MILLIS}). The trainer records
@@ -419,7 +432,6 @@ public final class PluginAot {
                     .start();
             System.err.println("jk engine: AOT-training " + what + " in the background (pid " + p.pid() + ")");
             if (!p.waitFor(trainingTimeoutMillis, TimeUnit.MILLISECONDS)) {
-                p.destroyForcibly();
                 // NO sticky marker: an overrun is usually transient (first Kotlin compile on a
                 // loaded machine), and a sticky .noaot here would disable AOT for the key
                 // permanently. Refresh and KEEP the claim file instead — fresh claims
@@ -427,6 +439,10 @@ public final class PluginAot {
                 touch(claim);
                 keepClaim = true;
                 System.err.println("jk engine: AOT training for " + what + " overran; killed (will retry later)");
+                // Reap before the finally cleanup: destroyForcibly is asynchronous, and leaving
+                // TRAINING is the fixture-quiescence signal — a still-dying trainer must not hold
+                // (or re-create) files under paths the cleanup is about to delete.
+                p.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
                 return;
             }
             if (p.exitValue() == 0 && Files.exists(tmp)) {

@@ -47,6 +47,7 @@ import java.util.Set;
 public final class QuarkusAugmentMain {
 
     public static void main(String[] args) throws Exception {
+
         if (args.length != 11) {
             System.err.println(
                     "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version"
@@ -315,8 +316,10 @@ public final class QuarkusAugmentMain {
 
     private static void copyTree(Path from, Path to) throws IOException {
         // `.jk-*` is the plugin-scratch convention; it must not ride into a staged layout.
-        PathUtil.copyTree(from, to, dir -> dir.getFileName() != null
-                && dir.getFileName().toString().startsWith(".jk-"));
+        PathUtil.copyTree(
+                from,
+                to,
+                dir -> dir.getFileName() != null && dir.getFileName().toString().startsWith(".jk-"));
     }
 
     private static void deleteTree(Path root) throws IOException {

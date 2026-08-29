@@ -39,6 +39,10 @@ class FormatPlansNotExcludedTest {
         assertThat(FormatSources.notExcluded(Path.of("proj/.git/Gen.java"))).isFalse();
         assertThat(FormatSources.notExcluded(Path.of("proj/node_modules/Gen.java")))
                 .isFalse();
+        assertThat(FormatSources.notExcluded(Path.of("proj/.jk/after-resources.groovy")))
+                .isFalse();
+        assertThat(FormatSources.notExcluded(Path.of("proj/jk/after-resources.groovy")))
+                .isFalse();
     }
 
     @Test

@@ -33,10 +33,10 @@ import java.util.function.Consumer;
 
 /**
  * The one workspace renderer. Every verb that drives an engine {@code buildWorkspace}-shaped RPC —
- * {@code build}, {@code test}, {@code run}, {@code compile}, {@code image}, {@code native} — attaches
- * its {@link WorkspaceBuildListener} from here and settles through here, so the module completion
- * line, the buffered-output flush, the JSONL workspace vocabulary and the four-arm
- * cancel/errors/failure/success ladder exist once.
+ * {@code build}, {@code test}, {@code run}, {@code compile}, {@code image}, {@code native},
+ * {@code install} — attaches its {@link WorkspaceBuildListener} from here and settles through here,
+ * so the module completion line, the buffered-output flush, the JSONL workspace vocabulary and the
+ * four-arm cancel/errors/failure/success ladder exist once.
  *
  * <p><b>Two renderers, not one.</b> {@link #live} paints into a {@link JkManager} region;
  * {@link #headless} appends blocks under a print mutex and never opens a region. They are siblings on
@@ -326,6 +326,11 @@ final class WorkspaceRunView {
                 settleErrors.add(d);
             }
             ConsoleSpec.appendErrors(failAbove, settleErrors);
+            // --continue: the wedge names a count, so the roll-call has to name the modules.
+            List<String> failed = failedCoords(result);
+            if (failed.size() > 1) {
+                for (String coord : failed) failAbove.add(ConsoleSpec.errorLine("failed", coord));
+            }
             String failTail = tails.failure().of(result);
             view.finishBuildPlanFailure(failTail, failAbove);
             if (session != null) session.wedge(failTail);
@@ -361,12 +366,31 @@ final class WorkspaceRunView {
 
     /** First failing module's coordinate, or {@code fallback} when the engine named none. */
     static String failedCoord(WorkspaceResult result, String fallback) {
-        if (result.modules() == null) return fallback;
+        List<String> failed = failedCoords(result);
+        return failed.isEmpty() ? fallback : failed.get(0);
+    }
+
+    /**
+     * Every failing module's coordinate, in the order the engine finished them.
+     *
+     * <p>Under {@code --continue} the run keeps going, so "which module failed" has more than one
+     * answer and reporting the first would hide the rest — which is the whole reason the flag
+     * exists. Fail-fast runs have exactly one and read as before.
+     */
+    static List<String> failedCoords(WorkspaceResult result) {
+        if (result.modules() == null) return List.of();
         return result.modules().stream()
                 .filter(m -> !m.success())
                 .map(ModuleOutcome::coord)
-                .findFirst()
-                .orElse(fallback);
+                .toList();
+    }
+
+    /** The failure wedge's subject: one coordinate, or {@code "N modules"} when several failed. */
+    static String failedSubject(WorkspaceResult result, String fallback) {
+        List<String> failed = failedCoords(result);
+        if (failed.isEmpty()) return fallback;
+        if (failed.size() == 1) return failed.get(0);
+        return failed.size() + " modules";
     }
 
     private String completionLineFor(ModuleOutcome o) {

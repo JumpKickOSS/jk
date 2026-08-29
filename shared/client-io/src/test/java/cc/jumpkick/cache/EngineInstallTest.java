@@ -4,6 +4,7 @@ package cc.jumpkick.cache;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.AotManifest;
@@ -25,6 +26,19 @@ class EngineInstallTest {
 
     private static EngineInstall install(Path home, AtomicLong clock) {
         return new EngineInstall(home.resolve("lib"), clock::get);
+    }
+
+    @Test
+    void the_manifest_parser_accepts_exactly_this_bin_name(@TempDir Path tmp) throws Exception {
+        // ManifestTables.parseInstall pins [install] product-lib to a literal it cannot reference
+        // (core does not see client-io); this is the other end of that contract. If BIN_NAME ever
+        // changes, this fails and points at the parser's literal.
+        Path f = Files.writeString(
+                tmp.resolve("jk.toml"),
+                "name = \"m\"\ngroup = \"g\"\nversion = \"1.0\"\n[install]\nproduct-lib = \"" + EngineInstall.BIN_NAME
+                        + "\"\n");
+        assertThat(JkBuildParser.parse(f).install())
+                .hasValueSatisfying(i -> assertThat(i.productLib()).isEqualTo(EngineInstall.BIN_NAME));
     }
 
     @Test

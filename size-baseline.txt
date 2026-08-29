@@ -107,7 +107,7 @@
 # only it meant a member's `[test] env` never reached the client and `FOO=x jk build` did nothing.
 # The module builds were already loaded here for their names — collecting them costs a list and one
 # add. Two statements, no new logic.
-884  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
+881  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
 
 # T59 + JK-2419: the three scope solves (main / test / processor) must stay independent of each
 # other and produce one lockfile — a shared mutable universe between them is how a test-only
@@ -136,4 +136,4 @@
 # whole SIGINT design in `TerminalSignals` names it. That is a live receiver with no in-tree
 # sender, which is a question about the cancel protocol and not a line to reclaim, so it was left
 # alone deliberately.
-810  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
+808  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java

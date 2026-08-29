@@ -7,9 +7,15 @@ client code without being recorded anywhere.
 
 ## On by default
 
-`[http]` is **enabled by default** — loopback bind, **token-gated `/api/*`** (static shell open). It is not opt-in. Turn it
-off with `[http] enabled = false` in `~/.config/jk/config.toml` or `JK_HTTP_ENABLED=false`; a malformed
-config yields empty and fails closed (no server).
+`[http]` is **enabled by default** — loopback bind (`127.0.0.1`), **token-gated `/api/*`** (static shell
+open). It is not opt-in. Turn it off with `[http] enabled = false` in `~/.config/jk/config.toml` or
+`JK_HTTP_ENABLED=false`; a malformed config yields empty and fails closed (no server).
+
+JumpKick-owned listener JVMs carry `-Djava.net.preferIPv4Stack=true` on their spawn lines (engine,
+workers, AOT trainer). Without that, Linux HotSpot often publishes loopback as
+`[::ffff:127.0.0.1]`, which WSL2 localhost forwarding does not relay to Windows
+`http://127.0.0.1:…`. Launch-flag only — a runtime `System.setProperty` leaves the JDK's loopback
+selection incoherent (see `PreferIpv4`), which is how the thin client once refused its own engine.
 
 `[mcp] enabled = false` disables only the MCP surface, never the server. Machine-scoped, not
 project-overridable, read once at engine start.

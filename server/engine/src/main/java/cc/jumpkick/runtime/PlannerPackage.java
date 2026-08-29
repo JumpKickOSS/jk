@@ -168,7 +168,7 @@ public final class PlannerPackage {
     }
 
     /**
-     * package-jar's requires: SPI BEFORE_PACKAGE (which itself waits on resources/tests), plus
+     * package-jar's requires: BEFORE_PACKAGE build-logic (which itself waits on resources), plus
      * every before-PACKAGE plugin step.
      */
     static String[] packageRequires(

@@ -21,7 +21,7 @@ class JkEnvTest {
 
     @Test
     void empty_when_no_jk_toml_anywhere(@TempDir Path tempDir) throws IOException {
-        var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
+        var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/home/u/.local/bin", noGlobalDefault(tempDir));
         var target = env.resolve(tempDir);
         assertThat(target.isActive()).isFalse();
         assertThat(target.projectRoot()).isEmpty();
@@ -35,7 +35,7 @@ class JkEnvTest {
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
+        var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/home/u/.local/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).isActive()).isFalse();
     }
 
@@ -51,9 +51,10 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin:/bin", noGlobalDefault(tempDir));
+        String livePath = "/home/u/.local/bin" + File.pathSeparator + "/home/u/bin";
+        var env = new JkEnv(new JdkRegistry(jdksRoot), livePath, noGlobalDefault(tempDir));
         var target = env.resolve(project);
 
         // ProbeSupport canonicalises JDK homes via toRealPath() — on macOS
@@ -64,8 +65,7 @@ class JkEnvTest {
         assertThat(target.isActive()).isTrue();
         assertThat(target.projectRoot()).contains(project.toAbsolutePath().normalize());
         assertThat(target.vars().get("JAVA_HOME")).isEqualTo(realJdkHome.toString());
-        assertThat(target.vars().get("PATH"))
-                .isEqualTo(realJdkHome.resolve("bin") + File.pathSeparator + "/usr/bin:/bin");
+        assertThat(target.vars().get("PATH")).isEqualTo(realJdkHome.resolve("bin") + File.pathSeparator + livePath);
     }
 
     @Test
@@ -84,9 +84,9 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("graalvm-jdk", "25")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("graalvm-jdk", "25")), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", noGlobalDefault(tempDir));
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", noGlobalDefault(tempDir));
         var target = env.resolve(project);
 
         // Canonicalise: see resolves_jdk_home_from_registry for the macOS
@@ -114,9 +114,10 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("nonexistent-jdk", "999")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("nonexistent-jdk", "999")),
+                project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
+        var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/home/u/.local/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).isActive()).isFalse();
     }
 
@@ -131,14 +132,15 @@ class JkEnvTest {
         // the build's java.io.tmpdir is build/tmp (inside the checkout), so a @TempDir has the
         // repo's own jk.toml as an ancestor and resolve() would find that project (JK-2314).
         var noProject = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-env-test-");
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", defaults);
         var target = env.resolve(noProject);
 
         var realHome = jdkHome.toRealPath();
         assertThat(target.isActive()).isTrue();
         assertThat(target.projectRoot()).isEmpty();
         assertThat(target.vars().get("JAVA_HOME")).isEqualTo(realHome.toString());
-        assertThat(target.vars().get("PATH")).isEqualTo(realHome.resolve("bin") + File.pathSeparator + "/usr/bin");
+        assertThat(target.vars().get("PATH"))
+                .isEqualTo(realHome.resolve("bin") + File.pathSeparator + "/home/u/.local/bin");
         Files.deleteIfExists(noProject);
     }
 
@@ -150,14 +152,19 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
-        String livePath = "/old-jdk/bin"
+        String livePath = "/home/u/.local/share/jk/jdks/old/bin"
                 + File.pathSeparator
                 + "/home/u/.nvm/versions/node/v24/bin"
                 + File.pathSeparator
-                + "/usr/bin";
-        var env = new JkEnv(new JdkRegistry(jdksRoot), livePath, noGlobalDefault(tempDir), "/old-jdk", null);
+                + "/home/u/.local/bin";
+        var env = new JkEnv(
+                new JdkRegistry(jdksRoot),
+                livePath,
+                noGlobalDefault(tempDir),
+                "/home/u/.local/share/jk/jdks/old",
+                null);
         var target = env.resolve(project);
 
         var realBin = jdkHome.toRealPath().resolve("bin").toString();
@@ -166,7 +173,7 @@ class JkEnvTest {
                         + File.pathSeparator
                         + "/home/u/.nvm/versions/node/v24/bin"
                         + File.pathSeparator
-                        + "/usr/bin");
+                        + "/home/u/.local/bin");
     }
 
     @Test
@@ -180,7 +187,7 @@ class JkEnvTest {
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", defaults);
         var target = env.resolve(project);
 
         assertThat(target.isActive()).isTrue(); // no pin → default fills in
@@ -199,9 +206,9 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", defaults);
         var target = env.resolve(project);
         assertThat(target.vars().get("JAVA_HOME")).isEqualTo(j25.toRealPath().toString());
     }
@@ -214,9 +221,9 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", noGlobalDefault(tempDir));
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).vars().get("JAVA_HOME"))
                 .isEqualTo(newer.toRealPath().toString());
     }
@@ -231,9 +238,9 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.4")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.4")), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", defaults);
         assertThat(env.resolve(project).isActive()).isFalse();
     }
 
@@ -249,11 +256,11 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", new Lockfile.JdkPin("temurin", "25.0.3"))
-                        .withGraal(new Lockfile.GraalPin("graalvm-ce", "25.0.3")),
+                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3"))
+                        .withGraal(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.3")),
                 project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", defaults);
         var target = env.resolve(project);
         assertThat(target.vars().get("JAVA_HOME"))
                 .isEqualTo(javaHome.toRealPath().toString());
@@ -273,7 +280,7 @@ class JkEnvTest {
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
 
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
+        var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.local/bin", defaults);
         var target = env.resolve(project);
 
         assertThat(target.vars().get("JAVA_HOME"))

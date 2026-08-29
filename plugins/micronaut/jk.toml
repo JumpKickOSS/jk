@@ -1,0 +1,9 @@
+name = "jk-micronaut"
+description = "JumpKick's Micronaut AOT plugin"
+
+[dependencies]
+jk-plugin-sdk.workspace = true
+
+[test-dependencies]
+assertj-core = "latest"
+junit-jupiter = "latest"

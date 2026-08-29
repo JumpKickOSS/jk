@@ -274,6 +274,28 @@ public final class EngineClient {
         return readPidFile(EnginePaths.pidFor(socket));
     }
 
+    /**
+     * The live process named by {@code socket}'s pid file when the socket itself does not answer —
+     * a wedged engine still holding this directory's election, which every fresh spawn will lose
+     * to. {@code 0} when nothing holds the state (the pid file is absent, stale, or its pid was
+     * recycled by something visibly not a JVM), i.e. genuinely not running.
+     */
+    public static long unresponsiveHolderPid(Path socket) {
+        long pid = readPidForSocket(socket);
+        if (pid <= 0 || pid == ProcessHandle.current().pid()) return 0;
+        return ProcessHandle.of(pid)
+                .filter(ProcessHandle::isAlive)
+                // A recycled pid must not get an engine's hard kill. An unreadable command
+                // (privilege) stays a candidate — the pid file is jk-owned state, so a live pid
+                // named there is overwhelmingly ours.
+                .filter(h -> h.info()
+                        .command()
+                        .map(c -> c.contains("java") || c.contains("jk"))
+                        .orElse(true))
+                .map(ProcessHandle::pid)
+                .orElse(0L);
+    }
+
     /** First line of a pid file as a long, or {@code -1}. */
     static long readPidFile(Path pidFile) {
         try {
@@ -862,6 +884,13 @@ public final class EngineClient {
             EnginePaths.Paths paths, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
             throws IOException {
         return EngineHosted.provision(paths, projectDir, toolsRoot, noDiscover, gradle);
+    }
+
+    /** Provision a named build tool at a named version, rather than the one a project asks for. */
+    public static HostedEvents.Provision provisionTool(
+            EnginePaths.Paths paths, String tool, String version, Path toolsRoot, boolean noDiscover)
+            throws IOException {
+        return EngineHosted.provisionTool(paths, tool, version, toolsRoot, noDiscover);
     }
 
     public static BuildPlanResult runCompile(

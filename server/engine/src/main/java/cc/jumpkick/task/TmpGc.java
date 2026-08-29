@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Aggressively GC jk's scratch dir ({@code state/tmp/}): delete <em>any</em> file older than {@link

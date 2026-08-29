@@ -17,6 +17,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.function.Consumer;
 
 /**
  * {@code jk audit} plan: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
@@ -64,7 +67,7 @@ public final class AuditPlans {
                 .execute(ctx -> {
                     ctx.label("query OSV via audit worker");
                     try {
-                        runWorker(workerJar, lockPath, osvBatchUrl, osvVulnsUrl, observer);
+                        runWorker(workerJar, lockPath, osvBatchUrl, osvVulnsUrl, observer, ctx::output);
                     } catch (RuntimeException e) {
                         ctx.error("osv", e.getMessage());
                         throw e;
@@ -89,13 +92,30 @@ public final class AuditPlans {
                 .build();
     }
 
-    /** Fork the {@code jk-auditor} plugin and stream its JSONL findings to {@code observer}. */
+    /**
+     * Fork the {@code jk-auditor} plugin and stream its JSONL findings to {@code observer}.
+     *
+     * <p>{@code onOutput} receives the worker's non-protocol lines. {@link PluginProcess} merges the
+     * child's stderr into its stdout, so those lines are the worker's own diagnostics — a stack
+     * trace, a missing class, anything it printed on its way to producing nothing. Dropping them
+     * (the default) is what made a worker that ran and found nothing indistinguishable from a
+     * worker that died: the plan reported a step failure with no cause attached, and three verbose
+     * runs produced no worker output at all.
+     */
     private static void runWorker(
-            Path workerJar, Path lockPath, URI osvBatchUrl, URI osvVulnsUrl, FindingObserver observer) {
+            Path workerJar,
+            Path lockPath,
+            URI osvBatchUrl,
+            URI osvVulnsUrl,
+            FindingObserver observer,
+            Consumer<String> onOutput) {
         try {
             Path spec = writeSpec(lockPath, osvBatchUrl, osvVulnsUrl);
             try {
                 String[] error = {null};
+                // Bounded: a worker that fails by printing megabytes must not be the reason the
+                // engine runs out of heap reporting it.
+                Deque<String> tail = new ArrayDeque<>();
                 int exit = new PluginClient("##JKAU:")
                         .on(
                                 PluginProtocol.FINDING,
@@ -106,12 +126,17 @@ public final class AuditPlans {
                                         Jsonl.str(json, "severity"),
                                         Jsonl.str(json, "summary")))
                         .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
+                        .passthrough(line -> {
+                            onOutput.accept(line);
+                            tail.addLast(line);
+                            if (tail.size() > OUTPUT_TAIL_LINES) tail.removeFirst();
+                        })
                         .run(PluginLaunch.javaCommand(workerJar, spec));
                 if (error[0] != null) {
-                    throw new RuntimeException("audit worker: " + error[0]);
+                    throw new RuntimeException("audit worker: " + error[0] + withTail(tail));
                 }
                 if (exit != 0) {
-                    throw new RuntimeException("audit worker exited with code " + exit);
+                    throw new RuntimeException("audit worker exited with code " + exit + withTail(tail));
                 }
             } finally {
                 Files.deleteIfExists(spec);
@@ -122,6 +147,15 @@ public final class AuditPlans {
             Thread.currentThread().interrupt();
             throw new RuntimeException("audit worker interrupted", e);
         }
+    }
+
+    /** How much of a failed worker's own output rides its exception. */
+    private static final int OUTPUT_TAIL_LINES = 20;
+
+    /** The worker's last words, appended to the failure that reports it — empty when it said nothing. */
+    private static String withTail(Deque<String> tail) {
+        if (tail.isEmpty()) return "";
+        return System.lineSeparator() + String.join(System.lineSeparator(), tail);
     }
 
     private static Path writeSpec(Path lockPath, URI osvBatchUrl, URI osvVulnsUrl) throws IOException {

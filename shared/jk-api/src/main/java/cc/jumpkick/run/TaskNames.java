@@ -39,12 +39,14 @@ public final class TaskNames {
     public static final String RESTORE_OUTPUTS = "restore-outputs";
     /** Project build-logic, as the action-cache input label for one logic task. */
     public static final String BUILD_LOGIC = "build-logic";
-    /** SPI BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
+    /** BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
     public static final String BUILD_LOGIC_BEFORE_COMPILE = "build-logic-before-compile";
-    /** SPI AFTER_COMPILE anchor. */
+    /** AFTER_COMPILE anchor. */
     public static final String BUILD_LOGIC_AFTER_COMPILE = "build-logic-after-compile";
-    /** SPI BEFORE_PACKAGE anchor. */
+    /** BEFORE_PACKAGE anchor. */
     public static final String BUILD_LOGIC_BEFORE_PACKAGE = "build-logic-before-package";
+    /** AFTER_BUILD anchor — the workspace root's, after every member module has built. */
+    public static final String BUILD_LOGIC_AFTER_BUILD = "build-logic-after-build";
 
     public static final String ENSURE_JDK = "ensure-jdk";
     public static final String FETCH_CATALOG = "fetch-catalog";

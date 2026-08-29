@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.DosFileAttributeView;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -87,8 +89,30 @@ public final class PathUtil {
      * non-regular file and is skipped, for the reason G37 gives about deletes.
      */
     public static void forEachRegularFile(Path root, FileVisit visit) throws IOException {
+        forEachRegularFile(root, dir -> false, visit);
+    }
+
+    /**
+     * As {@link #forEachRegularFile(Path, FileVisit)}, skipping any directory {@code skipDirectory}
+     * accepts — subtree and all.
+     *
+     * <p>Pruning belongs here rather than in the caller for the reason the unpruned overload exists
+     * at all: the alternative is a hand-rolled {@code walkFileTree} at every site that needs to
+     * miss {@code .git} or a build output tree, and each of those decides afresh whether it also
+     * discards the attributes the walk already read. The predicate sees the directory itself, so it
+     * can match on name or on position.
+     */
+    public static void forEachRegularFile(Path root, Predicate<Path> skipDirectory, FileVisit visit)
+            throws IOException {
         if (!Files.isDirectory(root)) return;
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return !dir.equals(root) && skipDirectory.test(dir)
+                        ? FileVisitResult.SKIP_SUBTREE
+                        : FileVisitResult.CONTINUE;
+            }
+
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (attrs.isRegularFile()) visit.accept(file, attrs);
@@ -159,8 +183,7 @@ public final class PathUtil {
      * staged layout. A predicate rather than a baked-in rule: {@code :host} has no business knowing
      * what a plugin's scratch directory is called.
      */
-    public static void copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options)
-            throws IOException {
+    public static void copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options) throws IOException {
         if (!Files.isDirectory(from)) return;
         Set<Copy> opts = options.length == 0 ? Set.of() : EnumSet.copyOf(Arrays.asList(options));
         if (opts.contains(Copy.CLEAN_TARGET)) deleteRecursivelyOrThrow(to);
@@ -181,8 +204,7 @@ public final class PathUtil {
                 Path target = to.resolve(from.relativize(file).toString());
                 if (!always && identical(target, attrs)) return FileVisitResult.CONTINUE;
                 if (preserve) {
-                    Files.copy(
-                            file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
                 } else {
                     Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
                 }
@@ -402,8 +424,30 @@ public final class PathUtil {
                 tally.add(attrs.size());
             }
             return null;
+        } catch (AccessDeniedException denied) {
+            // Windows refuses to delete a file whose DOS read-only bit is set — git marks every
+            // pack file that way, so any tree holding a clone (the store's templates catalog) was
+            // undeletable. Clear the bit and retry once; on POSIX (no DOS view) the denial stands.
+            return clearReadOnlyAndRetry(p, attrs, tally, denied);
         } catch (IOException e) {
             return e;
+        }
+    }
+
+    private static IOException clearReadOnlyAndRetry(
+            Path p, BasicFileAttributes attrs, Removed tally, AccessDeniedException denied) {
+        DosFileAttributeView dos = Files.getFileAttributeView(p, DosFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+        if (dos == null) return denied;
+        try {
+            dos.setReadOnly(false);
+            boolean gone = Files.deleteIfExists(p);
+            if (gone && tally != null && attrs != null && attrs.isRegularFile()) {
+                tally.add(attrs.size());
+            }
+            return null;
+        } catch (IOException still) {
+            denied.addSuppressed(still);
+            return denied;
         }
     }
 

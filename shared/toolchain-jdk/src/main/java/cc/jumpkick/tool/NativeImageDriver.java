@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.GraalLauncher;
@@ -19,13 +20,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import cc.jumpkick.config.BuildEnv;
-import java.util.function.UnaryOperator;
 
 /**
  * Driver for GraalVM {@code native-image}: verify binary, assemble classpath, exec. Stdout/stderr

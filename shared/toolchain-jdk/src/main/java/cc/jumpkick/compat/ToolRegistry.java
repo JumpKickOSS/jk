@@ -12,10 +12,16 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * Catalog of Maven and Gradle distributions installed under {@code $JK_CACHE_DIR/tools/}. Layout:
- * {@code $JK_CACHE_DIR/tools/<slug>/<version>/}, where {@code <slug>} is {@code maven} or {@code
- * gradle} and {@code <version>} is the upstream distribution version (e.g. {@code 3.9.9}, {@code
- * 9.5.1}).
+ * Catalog of the build-tool distributions installed under {@code $JK_STORE_DIR/tools/}. Layout:
+ * {@code <toolsRoot>/<slug>/<version>/}, where {@code <slug>} comes from {@link BuildTool} and
+ * {@code <version>} is the upstream distribution version ({@code 3.9.9}, {@code 9.5.1}, {@code
+ * 2.4.0}).
+ *
+ * <p>On the <strong>client-safe</strong> leaf rather than in the engine, because both sides ask:
+ * the engine provisions into this layout and {@code jk tool list} / {@code jk tool uninstall} /
+ * {@code jk doctor} read it. While it was engine-only the client could not reach it and
+ * {@code jk doctor} grew its own copy of the {@code <slug>/<version>} walk — one layout, two
+ * spellings, which is exactly the drift a rename half-lands in.
  */
 public final class ToolRegistry {
 
@@ -39,12 +45,26 @@ public final class ToolRegistry {
         return Files.isDirectory(dir) ? Optional.of(new InstalledTool(tool, version, dir)) : Optional.empty();
     }
 
+    /** Usable installs of {@code tool}: a broken link is not one, so it is not listed. */
     public List<InstalledTool> list(BuildTool tool) throws IOException {
+        return list(tool, false);
+    }
+
+    /**
+     * As {@link #list}, but {@code includeBrokenLinks} also returns entries whose symlink target is
+     * gone.
+     *
+     * <p>Both answers live here because both are questions about this layout. {@code jk doctor}
+     * wants the broken ones — it exists to prune them — and had its own copy of the
+     * {@code <slug>/<version>} walk to get them, which is one layout with two readers and one
+     * rename away from disagreeing.
+     */
+    public List<InstalledTool> list(BuildTool tool, boolean includeBrokenLinks) throws IOException {
         Path slugDir = toolsRoot.resolve(tool.slug());
         if (!Files.exists(slugDir)) return List.of();
         List<InstalledTool> result = new ArrayList<>();
         try (Stream<Path> stream = Files.list(slugDir)) {
-            stream.filter(Files::isDirectory)
+            stream.filter(p -> Files.isDirectory(p) || (includeBrokenLinks && Files.isSymbolicLink(p)))
                     .sorted(Comparator.comparing(Path::getFileName))
                     .forEach(p ->
                             result.add(new InstalledTool(tool, p.getFileName().toString(), p)));

@@ -259,7 +259,7 @@ public final class IdeOps {
         boolean pinFits = pinMajor != null && pinMajor == level;
         Optional<JdkHit> hit = Optional.empty();
         if (pinFits) {
-            hit = LockPinMatch.choose(registry.listHits(), lockJdk.vendor(), lockJdk.version());
+            hit = LockPinMatch.choose(registry.listHits(), lockJdk);
         }
         if (hit.isEmpty()) hit = registry.findHitBySpec(String.valueOf(level));
 

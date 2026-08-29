@@ -199,7 +199,7 @@ class EngineServerRequestTest extends EngineServerHarness {
 
             Path project = shortTempDir();
             Files.writeString(project.resolve("jk-lock.toml"), """
-                    version = 1
+                    version = 2
                     generated-by = "jk test"
                     resolution-algorithm = "pubgrub-v1"
 
@@ -218,6 +218,9 @@ class EngineServerRequestTest extends EngineServerHarness {
             waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
             List<String> types = new ArrayList<>();
+            // Every line, verbatim. A dead worker and a silent one both end with no finding, and
+            // without the transcript the assertion below can only report which of them it is not.
+            List<String> transcript = new ArrayList<>();
             String finding = null;
             String planFinish = null;
             String buildError = null;
@@ -228,6 +231,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                 while ((line = c.readLine()) != null) {
                     String type = EngineProtocol.typeOf(line);
                     types.add(type);
+                    transcript.add(line);
                     switch (type) {
                         case EngineProtocol.AUDIT_FINDING -> finding = line;
                         case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
@@ -243,20 +247,29 @@ class EngineServerRequestTest extends EngineServerHarness {
                 }
             }
 
+            String wire = String.join(System.lineSeparator(), transcript);
             assertThat(buildError)
-                    .as("engine reported a pre-plan error instead of hosting the audit")
+                    .as("engine reported a pre-plan error instead of hosting the audit%n%s", wire)
                     .isNull();
             assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
+
+            // The plan's own verdict comes FIRST. A worker that died and a worker that ran and
+            // found nothing both leave `finding` null, and asserting that first reports the one
+            // fact that cannot distinguish them.
+            assertThat(planFinish)
+                    .as("the audit plan never reached a terminal plan-finish%n%s", wire)
+                    .isNotNull();
+            assertThat(Jsonl.bool(planFinish, "success", false))
+                    .as("the audit plan ran but failed — its step error says why%n%s", wire)
+                    .isTrue();
+
             assertThat(finding)
-                    .as("audit-finding event for the mock vulnerability")
+                    .as("audit-finding event for the mock vulnerability%n%s", wire)
                     .isNotNull();
             assertThat(Jsonl.str(finding, "module")).isEqualTo("com.foo:leaf");
             assertThat(Jsonl.str(finding, "version")).isEqualTo("1.0");
             assertThat(Jsonl.str(finding, "vulnId")).isEqualTo("GHSA-test-1");
             assertThat(Jsonl.str(finding, "summary")).isEqualTo("Stub vulnerability");
-
-            assertThat(planFinish).isNotNull();
-            assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
 
             server.close();
             serverThread.join(5_000);
@@ -299,7 +312,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                 }
                 """);
         Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 1
+                version = 2
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 """);
@@ -352,7 +365,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         // A fresh empty lock (newer than jk.toml) stands in for "already locked" — the plan's
         // parse-build then uses it verbatim instead of resolving over the network.
         Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 1
+                version = 2
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 """);

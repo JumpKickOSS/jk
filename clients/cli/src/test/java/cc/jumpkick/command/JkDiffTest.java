@@ -11,6 +11,13 @@ import org.junit.jupiter.api.Test;
 
 class JkDiffTest {
 
+    private static final String JDK21 = "/home/u/.local/share/jk/jdks/temurin-21";
+    private static final String JDK25 = "/home/u/.local/share/jk/jdks/temurin-25";
+    private static final String GRAAL = "/home/u/.local/share/jk/jdks/graalvm-25";
+    private static final String PRIOR_JDK = "/home/u/.sdkman/candidates/java/current";
+    private static final String LOCAL_BIN = "/home/u/.local/bin";
+    private static final String PROJ = "/home/u/src/proj";
+
     @Test
     void empty_diff_encodes_to_empty_string() {
         assertThat(JkDiff.empty().encode()).isEmpty();
@@ -19,13 +26,13 @@ class JkDiffTest {
     @Test
     void round_trips_basic_keys() {
         var src = new LinkedHashMap<String, String>();
-        src.put("JAVA_HOME", "/opt/jdk-21");
-        src.put("PATH", "/usr/local/bin:/usr/bin");
+        src.put("JAVA_HOME", JDK21);
+        src.put("PATH", LOCAL_BIN + ":/home/u/bin");
         var encoded = new JkDiff(src).encode();
 
         var decoded = JkDiff.parse(encoded);
-        assertThat(decoded.previousValue("JAVA_HOME")).isEqualTo("/opt/jdk-21");
-        assertThat(decoded.previousValue("PATH")).isEqualTo("/usr/local/bin:/usr/bin");
+        assertThat(decoded.previousValue("JAVA_HOME")).isEqualTo(JDK21);
+        assertThat(decoded.previousValue("PATH")).isEqualTo(LOCAL_BIN + ":/home/u/bin");
     }
 
     @Test
@@ -59,17 +66,14 @@ class JkDiffTest {
         // not be frozen into the diff even when present on the target.
         var prior = JkDiff.empty();
         var target = new JkEnv.Target(
-                Optional.of(Path.of("/project")),
-                Map.of(
-                        "JAVA_HOME", "/opt/jdk-25",
-                        "PATH", "/opt/jdk-25/bin:/usr/bin"));
+                Optional.of(Path.of(PROJ)), Map.of("JAVA_HOME", JDK25, "PATH", JDK25 + "/bin:" + LOCAL_BIN));
         var snapshot = (JkDiff.EnvSnapshot) k -> switch (k) {
-            case "JAVA_HOME" -> "/usr/lib/jvm/system";
-            case "PATH" -> "/usr/bin";
+            case "JAVA_HOME" -> PRIOR_JDK;
+            case "PATH" -> LOCAL_BIN;
             default -> null;
         };
         var next = prior.next(target, snapshot);
-        assertThat(next.previousValue("JAVA_HOME")).isEqualTo("/usr/lib/jvm/system");
+        assertThat(next.previousValue("JAVA_HOME")).isEqualTo(PRIOR_JDK);
         assertThat(next.keys()).doesNotContain("PATH");
         assertThat(next.wasUnset("JAVA_HOME")).isFalse();
     }
@@ -79,17 +83,17 @@ class JkDiffTest {
         // The user `cd`s into one project, then another. The diff carries
         // the original pre-activation JAVA_HOME — not the previous project's
         // JAVA_HOME — so deactivating later restores correctly.
-        var prior = new JkDiff(Map.of("JAVA_HOME", "/usr/lib/jvm/system"));
-        var target = new JkEnv.Target(Optional.of(Path.of("/another-project")), Map.of("JAVA_HOME", "/opt/jdk-25"));
-        var snapshot = (JkDiff.EnvSnapshot) k -> "/opt/jdk-21"; // not what we want — would shadow
+        var prior = new JkDiff(Map.of("JAVA_HOME", PRIOR_JDK));
+        var target = new JkEnv.Target(Optional.of(Path.of("/home/u/src/another")), Map.of("JAVA_HOME", JDK25));
+        var snapshot = (JkDiff.EnvSnapshot) k -> JDK21; // not what we want — would shadow
         var next = prior.next(target, snapshot);
-        assertThat(next.previousValue("JAVA_HOME")).isEqualTo("/usr/lib/jvm/system");
+        assertThat(next.previousValue("JAVA_HOME")).isEqualTo(PRIOR_JDK);
     }
 
     @Test
     void next_records_unset_sentinel_for_keys_not_in_environment() {
         var prior = JkDiff.empty();
-        var target = new JkEnv.Target(Optional.of(Path.of("/project")), Map.of("GRAALVM_HOME", "/opt/graalvm"));
+        var target = new JkEnv.Target(Optional.of(Path.of(PROJ)), Map.of("GRAALVM_HOME", GRAAL));
         var snapshot = (JkDiff.EnvSnapshot) k -> null; // nothing set in env
         var next = prior.next(target, snapshot);
         assertThat(next.wasUnset("GRAALVM_HOME")).isTrue();

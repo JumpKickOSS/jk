@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.PreferIpv4;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -332,8 +333,8 @@ public final class JvmOptions {
     static final int ZGC_UNCOMMIT_DELAY_SECONDS = 10;
 
     /**
-     * Default metaspace, CPU share, stack, and {@code ExitOnOutOfMemoryError} for workers, unless
-     * already set in {@code extraArgs}.
+     * Default metaspace, CPU share, stack, IPv4 preference, and {@code ExitOnOutOfMemoryError} for
+     * workers, unless already set in {@code extraArgs}.
      */
     private static void addHardening(List<String> out, PluginTuning s, int concurrency) {
         List<String> extra = s.extraArgs();
@@ -346,6 +347,9 @@ public final class JvmOptions {
         }
         if (!hasArgPrefix(extra, "-Xss")) {
             out.add("-Xss" + DEFAULT_STACK_KB + "k");
+        }
+        if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) {
+            out.add(PreferIpv4.JVM_FLAG);
         }
         if (!hasArgPrefix(
                 extra, "-XX:+ExitOnOutOfMemoryError", "-XX:-ExitOnOutOfMemoryError", "-XX:+CrashOnOutOfMemoryError")) {

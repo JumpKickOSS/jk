@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.PlannerTails.appendDeclaredTails;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -397,7 +398,7 @@ public final class BuildPlanner {
             }
             compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
             // Workspace root with no source tree: nothing to compile or package.
-            if (jkBuild.isWorkspaceRoot() && !CompileSupport.hasSources(in.dir())) {
+            if (CompileSupport.coordinatorOnly(jkBuild, in.dir())) {
                 useJava = false;
                 useKotlin = false;
                 useGroovy = false;
@@ -519,7 +520,7 @@ public final class BuildPlanner {
         // with lazy init: whichever side fires first populates the cache; the
         // other side finds the value already set.
         // Build-logic anchors (BEFORE_COMPILE / AFTER_COMPILE / AFTER_RESOURCES / BEFORE_PACKAGE)
-        // each call BuildLogicSupport.run() independently; a module registering tasks at more
+        // each call BuildLogicSupport.run() independently; a module with scripts at more
         // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
         // here the same lazy-init-race pattern as javaMainSrcRef above: computed once by whichever
         // anchor task needs it first, reused by the rest.
@@ -616,8 +617,17 @@ public final class BuildPlanner {
         BuildPlan.Builder b =
                 BuildPlan.builder("build").addTask(parseBuild).addTask(syncDeps).addTask(ensureJdk);
         // Workspace root with no sources: validate jk.toml + sync deps, nothing more.
-        if (workspaceNoSources) return b.terminal(TaskNames.RESOLVE_DEPS);
-        // SPI BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
+        // Workspace root with no sources: validate jk.toml, sync deps, and run the root's own
+        // `after-build` logic. The graph orders this unit behind every member, so by the time the
+        // step executes the whole workspace is built (JK-1058).
+        if (workspaceNoSources) {
+            if (BuildLogicToml.resolve(in.dir()).isPresent()) {
+                b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
+                return b.terminal(TaskNames.BUILD_LOGIC_AFTER_BUILD);
+            }
+            return b.terminal(TaskNames.RESOLVE_DEPS);
+        }
+        // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
         if (kspEnabled) {
             b.addTask(PlannerKsp.kspStep(cx, pluginDeclsF));
@@ -670,7 +680,7 @@ public final class BuildPlanner {
                     .build());
             return b.terminal(COMPILE_JOIN);
         }
-        // Build-logic AFTER_COMPILE (SPI) before resources / AFTER_RESOURCES.
+        // Build-logic AFTER_COMPILE before resources / AFTER_RESOURCES.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         b.addTask(copyResources);
         if (in.testOnly() || !in.skipTests()) {

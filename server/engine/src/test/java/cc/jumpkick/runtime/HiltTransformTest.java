@@ -166,7 +166,7 @@ class HiltTransformTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 17
-                kotlin  = "^2.4.0"
+                kotlin  = "^2.4.10"
 
                 [android]
                 namespace   = "com.example.hilttx"

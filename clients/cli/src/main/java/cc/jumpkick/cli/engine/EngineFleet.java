@@ -27,6 +27,15 @@ import java.util.Set;
  * <p>Stopping has to be reliable without the user reaching for {@code kill}. On Windows that means
  * hunting a JVM in Task Manager, which is not a reasonable thing to expect of anyone. So every stop
  * here <em>verifies</em> the process is gone and escalates when it is not.
+ *
+ * <h2>How a process is identified as an engine</h2>
+ *
+ * In descending order of evidence: it answers jk's protocol on jk's socket naming its own pid; its
+ * command line names {@code EngineMain} or the engine lib directory; jk's own pid file names it and
+ * it is alive. Only the first two can find an engine no pointer records, which is why the command
+ * line matters at all — and why {@link WindowsCommandLines} exists, since the JDK supplies none on
+ * Windows. Where that snapshot is unavailable there, discovery of <em>untracked</em> engines is not
+ * possible and this class reports the ones jk recorded rather than guessing at the rest.
  */
 public final class EngineFleet {
 
@@ -164,6 +173,10 @@ public final class EngineFleet {
      * main class or {@code /lib/jk-engine/} on the command line. Sidecar AOT trainers and other
      * users' processes are excluded. {@code allHomes} includes other {@code JK_HOME}s (status);
      * {@code false} keeps stop scoped to this home.
+     *
+     * <p>A process whose command line cannot be read is never claimed here: this pass has no
+     * jk-owned state corroborating it, so the executable alone ({@code java.exe} — every Gradle
+     * daemon on the machine) would be a licence to kill unrelated JVMs.
      */
     private static List<Member> untracked(Set<Long> known, boolean allHomes) {
         long self = ProcessHandle.current().pid();
@@ -177,7 +190,7 @@ public final class EngineFleet {
                 if (pid == self || known.contains(pid) || !h.isAlive()) return;
                 if (!sameUser(me, h)) return;
                 String cmd = commandLineOf(h);
-                if (!isResidentEngine(cmd)) return;
+                if (!isResidentEngineProcess(h, cmd)) return;
                 if (!allHomes && !belongsToThisHome(cmd, data, state)) return;
                 out.add(memberForProcess(pid, cmd));
             });
@@ -264,6 +277,32 @@ public final class EngineFleet {
         return commandLine.contains("cc.jumpkick.engine.EngineMain") || commandLine.contains("/lib/jk-engine/");
     }
 
+    /**
+     * True when this <em>process</em> is a resident engine: its command line names one <em>and</em>
+     * it is the kind of program that can host one.
+     *
+     * <p>The command line alone is a substring match, so it says yes to anything that merely
+     * mentions the engine — the shell that ran {@code jk engine status}, a {@code grep} over this
+     * source tree, an editor with the file open. Those are not engines, and {@code stop --all}
+     * hard-kills what this returns; a fleet that lists the user's own terminal is one keystroke
+     * from killing it.
+     */
+    static boolean isResidentEngineProcess(ProcessHandle handle, String commandLine) {
+        return isResidentEngine(commandLine) && isEngineExecutable(handle);
+    }
+
+    /**
+     * Whether the process's own executable can host an engine: a JVM launcher, or a binary inside
+     * the engine lib directory ({@code JK_ENGINE_EXE}). An engine behind a wrapper elsewhere is
+     * still found by the pointer and pid-file passes above — this only bounds who may be claimed
+     * from a bare process scan.
+     */
+    private static boolean isEngineExecutable(ProcessHandle handle) {
+        String exe = handle.info().command().orElse("");
+        return WindowsCommandLines.isJvmExecutable(exe)
+                || exe.replace('\\', '/').contains("/lib/jk-engine/");
+    }
+
     static String commandLineOf(ProcessHandle handle) {
         // /proc is the full argv; ProcessHandle.commandLine() is sometimes only the executable.
         String proc = procCmdline(handle.pid());
@@ -272,6 +311,11 @@ public final class EngineFleet {
         String cmd = info.command().orElse("");
         String args = info.arguments().map(a -> String.join(" ", a)).orElse("");
         String joined = (cmd + " " + args).trim();
+        // On Windows that joined value is the bare executable path: the JDK populates command() but
+        // never arguments()/commandLine() there, so every predicate below would see `java.exe` and
+        // nothing else. The CIM snapshot is the only source of the real argv.
+        String windows = WindowsCommandLines.of(handle.pid());
+        if (!windows.isBlank()) return windows;
         if (!joined.isBlank()) return joined;
         return info.commandLine().orElse("");
     }
@@ -296,10 +340,26 @@ public final class EngineFleet {
         return other.isEmpty() || me.equals(other);
     }
 
+    /**
+     * Whether {@code pid} — named by one of jk's own pid files — is still an engine rather than a
+     * pid the OS recycled onto something else. That guard is what keeps a stale pid file from
+     * putting an innocent process in the fleet, where {@code stop --all} would kill it.
+     *
+     * <p>A command line settles it. When none is available (Windows with the CIM snapshot
+     * unavailable — a blocked or absent PowerShell), the corroboration left is jk's own pid file
+     * plus a JVM launcher as the executable, which is the same evidence
+     * {@link EngineClient#unresponsiveHolderPid} acts on. It narrows recycling to "recycled onto
+     * another JVM" rather than ruling it out; the alternative is to stop listing engines jk itself
+     * recorded, and a fleet that hides its own engines is the failure this class exists for.
+     */
     private static boolean isEnginePid(long pid) {
-        return ProcessHandle.of(pid)
-                .map(h -> isResidentEngine(commandLineOf(h)))
-                .orElse(false);
+        return ProcessHandle.of(pid).map(EngineFleet::looksLikeEngine).orElse(false);
+    }
+
+    private static boolean looksLikeEngine(ProcessHandle handle) {
+        String cmd = commandLineOf(handle);
+        if (!cmd.isBlank()) return isResidentEngineProcess(handle, cmd);
+        return isEngineExecutable(handle);
     }
 
     /** The pid this identity recorded, from the active generation's file or the base one. */

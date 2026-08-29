@@ -8,7 +8,7 @@ The manifest is TOML. There is no Groovy/Kotlin DSL and no XML POM to program. T
 deliberate: `jk add` / `jk remove` can edit the file, code review stays tractable, and
 JumpKick never evaluates your build as a general program.
 
-Custom generate steps live **outside** the manifest in [`.jk-build/`](build-logic.md).
+Custom generate steps live **outside** the manifest in [`jk/` or `.jk/`](build-logic.md).
 Heavy reusable behavior is a [plugin](plugins.md).
 
 ## The lockfile is law

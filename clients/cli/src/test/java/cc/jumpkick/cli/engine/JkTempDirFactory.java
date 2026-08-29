@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -11,14 +12,20 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDirFactory;
 
 /**
- * Prefer short {@code /tmp} paths for UDS-friendly state. Cleanup is owned by {@link
- * JkTempDirDeletionStrategy}. If {@code /tmp} has no inodes left (tmpfs), sweep stale
+ * Prefer short paths for UDS-friendly state ({@link ShortTempDirs#root()}). Cleanup is owned by
+ * {@link JkTempDirDeletionStrategy}. If the root has no inodes left (tmpfs), sweep stale
  * {@code jk-junit-*} / {@code junit-*} dirs we own and retry once.
+ *
+ * <p>This used to gate on the configured temp dir being longer than 60 characters, and the number
+ * was about Unix-domain socket paths. That is no longer the reason: the tier that spawns engines
+ * speaks loopback TCP, which has no path budget. The reason that remains is the one the length
+ * gate was only ever approximating — a {@code @TempDir} fixture project must not sit
+ * <em>inside the checkout</em>, because jk's own {@code jk.toml} is then its workspace root and
+ * {@code WorkspaceLocator.findRoot} walks up into it (JK-2329). The shared convention points
+ * {@code java.io.tmpdir} at {@code build/tmp} / {@code target/tmp}, both inside the checkout, so
+ * this always re-roots rather than asking how long that path happens to be.
  */
 public final class JkTempDirFactory implements TempDirFactory {
-
-    /** Longest root for which {@code root/jk-junit-<12 random>/…/<socket>} stays under sun_path. */
-    static final int MAX_ROOT_LENGTH = 60;
 
     @Override
     public Path createTempDirectory(AnnotatedElementContext elementContext, ExtensionContext extensionContext)
@@ -33,19 +40,21 @@ public final class JkTempDirFactory implements TempDirFactory {
     }
 
     /**
-     * Honor {@code java.io.tmpdir} when it is short enough for UDS paths — JUnitLauncher gives
-     * each worker JVM a private tmpdir precisely so parallel workers don't share temp state, and
-     * hard-coding {@code /tmp} silently defeated that isolation (JK-2183). Fall back to
-     * {@code /tmp} only when the configured tmpdir would overflow {@code sun_path}.
+     * {@link ShortTempDirs#root()} — {@code /tmp} on POSIX, {@code %USERPROFILE%\Temp} on Windows
+     * — falling back to the configured temp dir only when that root cannot be had.
+     *
+     * <p>Worker isolation is not lost by ignoring the configured value: {@code JUnitLauncher} gives
+     * each worker JVM a private tmpdir so parallel workers don't share temp state (JK-2183), and
+     * {@link Files#createTempDirectory} still makes a distinct {@code jk-junit-*} directory per
+     * request under whichever root this returns.
      */
     static Path root(String configuredTmpdir) {
-        if (configuredTmpdir != null && !configuredTmpdir.isBlank()) {
-            Path configured = Path.of(configuredTmpdir);
-            if (configured.toString().length() <= MAX_ROOT_LENGTH && Files.isDirectory(configured)) {
-                return configured;
-            }
+        try {
+            return ShortTempDirs.root();
+        } catch (IOException e) {
+            if (configuredTmpdir != null && !configuredTmpdir.isBlank()) return Path.of(configuredTmpdir);
+            return Path.of(System.getProperty("java.io.tmpdir"));
         }
-        return Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(configuredTmpdir);
     }
 
     /** Best-effort: drop leftover JUnit trees so a tmpfs inode exhaustion can recover. */

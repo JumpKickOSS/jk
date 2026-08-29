@@ -71,7 +71,7 @@ class IntellijSdkRegistrarTest {
                     <jdk version="2">
                       <name value="corretto-21" />
                       <type value="JavaSDK" />
-                      <homePath value="/opt/corretto-21" />
+                      <homePath value="/home/u/.sdkman/candidates/java/corretto-21" />
                     </jdk>
                   </component>
                 </application>
@@ -86,9 +86,10 @@ class IntellijSdkRegistrarTest {
         assertThat(count(xml, "jk-temurin-25")).isEqualTo(1); // no duplicate
 
         // Re-register with a new home → updates in place.
-        r.register(List.of(new IntellijSdkRegistrar.SdkEntry("jk-temurin-25", Path.of("/jdks2/temurin-25"), "25.0.4")));
+        r.register(List.of(new IntellijSdkRegistrar.SdkEntry(
+                "jk-temurin-25", Path.of("/home/u/.local/share/jk/jdks/temurin-25.0.4"), "25.0.4")));
         xml = Files.readString(table);
-        String updated = Path.of("/jdks2/temurin-25")
+        String updated = Path.of("/home/u/.local/share/jk/jdks/temurin-25.0.4")
                 .toAbsolutePath()
                 .normalize()
                 .toString()

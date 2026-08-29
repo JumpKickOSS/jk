@@ -25,7 +25,7 @@ public final class ToolDirCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the tools install root. Default: $JK_CACHE_DIR/tools.", "--tools-dir")
+                Opt.value("<dir>", "Override the tools install root. Default: $JK_STORE_DIR/tools.", "--tools-dir")
                         .hide());
     }
 
@@ -38,8 +38,7 @@ public final class ToolDirCommand implements CliCommand {
     @Override
     public int run(Invocation in) {
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
-        CliOutput.out(
-                String.valueOf(toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools")));
+        CliOutput.out(String.valueOf(toolsDir != null ? toolsDir : JkDirs.tools()));
         return 0;
     }
 }

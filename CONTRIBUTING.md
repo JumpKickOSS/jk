@@ -44,11 +44,26 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 
 ```bash
 ./gradlew classes
-./gradlew :cli:installDist :engine:shadowJar   # thin JVM client + engine fat jar
 ./gradlew dist                                  # native client + engine jar → build/dist/
-./install.sh build/dist/jk                      # optional local install (Unix)
+./install.sh build/dist/jk                      # local install (Unix)
 # Windows:  .\install.cmd build\dist\jk.exe     # bypasses Restricted execution policy
 ```
+
+**The native binary is the product.** `jk` is a slim GraalVM native image, and that is the only
+client we ship, endorse or support. Building one needs a GraalVM-capable JDK — install it however
+you like, SDKMAN is the least ceremony:
+
+```bash
+sdk install java 25-graalce && sdk use java 25-graalce
+```
+
+There is a JVM-mode client behind `:cli:installDist`. It exists for the harness, not for you: it
+cannot self-heal a missing engine (`EngineJarFetcher` fetches for the native client only), so it
+puts a contributor one deleted jar away from a dead tree that only Gradle can revive (JK-1070).
+Do not bootstrap on it.
+
+Once a release is published, none of this applies to the common case — the endorsed install is
+`curl -fsSL https://jumpkick.build/install.sh | bash`, and the binary bootstraps its own engine.
 
 ### Black-box examples (sibling repo)
 
@@ -90,7 +105,7 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
 no `[application]` table). Side-load with `jk install`.
 
-#### A) Native client bootstrap (CI default; needs GraalVM)
+#### Native client bootstrap (the only one)
 
 ```bash
 # 1) Produce a local JumpKick + side-load worker jars into ~/.cache/jk
@@ -99,21 +114,6 @@ no `[application]` table). Side-load with `jk install`.
 export PATH="$HOME/.local/bin:$PATH"   # install.sh default
 
 # 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
-jk lock
-jk build --skip-tests
-jk install
-jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
-```
-
-#### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
-
-```bash
-# 1) Slim client on PATH. Does not run :engine:installLocal — that task always
-# uses the native client at build/dist/jk (jk.exe on Windows) from `./gradlew dist`.
-./gradlew :cli:installDist :engine:shadowJar --no-daemon
-export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
-
-# 2) Same dogfood as (A); --skip-native stages the bootstrap client (no Graal)
 jk lock
 jk build --skip-tests
 jk install
@@ -206,7 +206,7 @@ with a clear message. Use a separate worktree for true parallel builds.
 |---|---|
 | `shared/` | Client-safe modules (`host`, `jk-api`, `core`, `plugin-sdk`, `wire`, …) |
 | `server/` | Engine-only (`engine`, `resolver`, `io`, `toolchain`) |
-| `clients/` | `cli` (native/thin JVM client + CLI tests), `web`, `vscode` (VS Code extension) |
+| `clients/` | `cli` (the native client + its tests), `web`, `vscode` (VS Code extension) |
 | `plugins/` | First-party build/worker plugins |
 
 ### IDE plugins (wire-only)

@@ -260,14 +260,14 @@ class IdeIdeaGenerationTest {
         byte[] processorJar = "dummy-jar".getBytes(StandardCharsets.UTF_8);
         String hex = Hashing.sha256Hex(processorJar);
         Files.writeString(ws.resolve("jk-lock.toml"), """
-                version = 1
+                version = 2
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 manifests-sha256 = "%s"
 
                 [jdk]
-                vendor  = "temurin"
-                version = "25.0.3"
+                suggested-vendor = "temurin"
+                suggested-version = "25.0.3"
 
                 [[artifact]]
                 name = "org.example:myprocessor"

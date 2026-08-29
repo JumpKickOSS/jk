@@ -3,19 +3,18 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.host.Linking;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Linking;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
@@ -52,6 +51,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -162,15 +162,11 @@ public final class ExecPlans {
                 moduleNames = filteredNames;
             }
 
-            int sourceCount = 0;
-            int testCount = 0;
+            int sourceCount = 0, testCount = 0;
             if (counts) {
-                List<Path> countDirs = new ArrayList<>();
-                if (!moduleDirs.isEmpty()) {
-                    for (String d : moduleDirs) countDirs.add(Path.of(d));
-                } else {
-                    countDirs.add(dir);
-                }
+                List<Path> countDirs = moduleDirs.isEmpty()
+                        ? List.of(dir)
+                        : moduleDirs.stream().map(Path::of).toList();
                 for (Path mod : countDirs) {
                     sourceCount += countSources(mod, true);
                     testCount += countSources(mod, false);
@@ -183,7 +179,7 @@ public final class ExecPlans {
             if (hasLock) {
                 try {
                     var pin = LockfileReader.read(lockFile).jdk();
-                    if (pin != null) lockJdk = pin.vendor() + "-" + pin.version();
+                    if (pin != null) lockJdk = pin.fingerprint();
                 } catch (IOException ignored) {
                     // unreadable lock — summarized as jdk-unknown, not an error
                 }
@@ -253,7 +249,9 @@ public final class ExecPlans {
                     build.project().isScala(),
                     build.project().scala() == null
                             ? ""
-                            : build.project().scala().raw());
+                            : build.project().scala().raw(),
+                    CompileSupport.coordinatorOnly(build, dir),
+                    build.install().map(JkBuild.Install::productLib).orElse(""));
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(Errors.text(e));
         }
@@ -833,9 +831,12 @@ public final class ExecPlans {
     }
 
     /**
-     * {@code jk install}'s application half. Preference by what exists after the build: native
-     * binary → {@code ~/.local/bin}; else minified/fat → {@code <data>/lib/&lt;bin&gt;/} + {@code
-     * java -jar}; else thin jar stays in the local repo and the script uses {@code java -cp}.
+     * {@code jk install}'s application half. Preference among the artifacts the manifest
+     * <em>declares</em>, by what exists after the build: native binary (ALWAYS mode) → {@code
+     * ~/.local/bin}; else minified/fat → {@code <data>/lib/&lt;bin&gt;/} + {@code java -jar}; else
+     * thin jar stays in the local repo and the script uses {@code java -cp}. Declared-only on
+     * purpose: {@code target/} can hold leftovers from before a declaration was removed, and a
+     * bare exists-check would install those stale bytes with every step looking honest.
      */
     private static ExecPlan installPlan(
             Path dir,
@@ -862,8 +863,8 @@ public final class ExecPlans {
         String nativeName =
                 project.nativeConfig().map(JkBuild.NativeConfig::name).orElse(null);
 
-        Path nativeBin = layout.nativeBinary();
-        if (Files.isRegularFile(nativeBin)) {
+        if (InstallPlans.installsNativeBinary(project, layout)) {
+            Path nativeBin = layout.nativeBinary();
             String bin = firstNonBlank(binName, nativeName, p.name());
             Path dest = binDir.resolve(BuildLayout.nativeExecutableFileName(bin));
             return installAck(
@@ -874,13 +875,9 @@ public final class ExecPlans {
         Path libDir = libRoot.resolve(bin);
         Path launcherPath = binDir.resolve(AppLauncher.launcherFileName(bin));
 
-        Path minified = layout.minifiedJar();
-        if (Files.isRegularFile(minified)) {
-            return fatJarPlan(minified, libDir, launcherPath, javaHome);
-        }
-        Path assembly = layout.assemblyJar();
-        if (Files.isRegularFile(assembly)) {
-            return fatJarPlan(assembly, libDir, launcherPath, javaHome);
+        Optional<Path> fatJar = InstallPlans.declaredFatJar(project, layout);
+        if (fatJar.isPresent()) {
+            return fatJarPlan(fatJar.get(), libDir, launcherPath, javaHome);
         }
         var shape = PluginBuild.shape(project, dir);
         boolean selfContainedJar = shape.map(sh -> sh.selfContained() && "jar".equals(sh.execMode()))

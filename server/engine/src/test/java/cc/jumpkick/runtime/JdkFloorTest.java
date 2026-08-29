@@ -48,7 +48,7 @@ class JdkFloorTest {
                 group   = "com.example"
                 version = "1.0.0"
                 jdk     = %s
-                kotlin  = "^2.4.0"
+                kotlin  = "^2.4.10"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.3" }

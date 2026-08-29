@@ -36,20 +36,89 @@ public record Lockfile(
         /** Resolved {@code [native] metadata-repository} pin; null when no module declares one. */
         NativeMetadata nativeMetadata) {
 
-    /** Locked Java JDK: vendor short id + full version from the install's release file. */
-    public record JdkPin(String vendor, String version) {
-        public JdkPin {
-            Objects.requireNonNull(vendor, "vendor");
-            Objects.requireNonNull(version, "version");
+    /**
+     * What a lock says about one toolchain, on two independent axes.
+     *
+     * <p>{@code suggested-*} is a record of what created the lock. It does not bind a later build:
+     * its major is a floor, so a newer JDK is fine and an older one is not. {@code required-*} is a
+     * pin the project asked for with {@code =} in its manifest — the vendor, the version, or both
+     * must match exactly, and jk installs that toolchain rather than settling for what is here.
+     *
+     * <p>The axes are per-field: a lock may require a vendor while only suggesting a version. A
+     * field is written on exactly one axis, never both — a required vendor makes the suggested one
+     * meaningless. Missing values are {@code ""}, never null.
+     */
+    public sealed interface ToolchainPin permits JdkPin, GraalPin {
+        String suggestedVendor();
+
+        String suggestedVersion();
+
+        String requiredVendor();
+
+        String requiredVersion();
+
+        /** The vendor to honour, required or merely suggested; {@code ""} when the lock names none. */
+        default String vendor() {
+            return requiredVendor().isEmpty() ? suggestedVendor() : requiredVendor();
+        }
+
+        /** The version to honour, required or merely suggested; {@code ""} when the lock names none. */
+        default String version() {
+            return requiredVersion().isEmpty() ? suggestedVersion() : requiredVersion();
+        }
+
+        default boolean hasRequirement() {
+            return !requiredVendor().isEmpty() || !requiredVersion().isEmpty();
+        }
+
+        default boolean isEmpty() {
+            return vendor().isEmpty() && version().isEmpty();
+        }
+
+        /**
+         * All four fields, for cache keys. A fingerprint that folded the axes together would
+         * collide across two locks that ask for very different things.
+         */
+        default String fingerprint() {
+            return String.join("|", suggestedVendor(), suggestedVersion(), requiredVendor(), requiredVersion());
         }
     }
 
-    /** Locked GraalVM: vendor short id + full version; omit the table when Graal was not in play. */
-    public record GraalPin(String vendor, String version) {
-        public GraalPin {
-            Objects.requireNonNull(vendor, "vendor");
-            Objects.requireNonNull(version, "version");
+    /** Locked Java JDK. See {@link ToolchainPin}. */
+    public record JdkPin(String suggestedVendor, String suggestedVersion, String requiredVendor, String requiredVersion)
+            implements ToolchainPin {
+        public JdkPin {
+            suggestedVendor = blankToEmpty(suggestedVendor);
+            suggestedVersion = blankToEmpty(suggestedVersion);
+            requiredVendor = blankToEmpty(requiredVendor);
+            requiredVersion = blankToEmpty(requiredVersion);
         }
+
+        /** A pin that only records what built the lock — the shape every pin had before pinning existed. */
+        public static JdkPin suggested(String vendor, String version) {
+            return new JdkPin(vendor, version, "", "");
+        }
+    }
+
+    /** Locked GraalVM; omit the table when Graal was not in play. See {@link ToolchainPin}. */
+    public record GraalPin(
+            String suggestedVendor, String suggestedVersion, String requiredVendor, String requiredVersion)
+            implements ToolchainPin {
+        public GraalPin {
+            suggestedVendor = blankToEmpty(suggestedVendor);
+            suggestedVersion = blankToEmpty(suggestedVersion);
+            requiredVendor = blankToEmpty(requiredVendor);
+            requiredVersion = blankToEmpty(requiredVersion);
+        }
+
+        /** A pin that only records what built the lock. */
+        public static GraalPin suggested(String vendor, String version) {
+            return new GraalPin(vendor, version, "", "");
+        }
+    }
+
+    private static String blankToEmpty(String s) {
+        return s == null || s.isBlank() ? "" : s.trim();
     }
 
     /**
@@ -144,8 +213,10 @@ public record Lockfile(
         }
     }
 
-    public static final int CURRENT_VERSION = 1;
-    public static final int MIN_SUPPORTED_VERSION = 1;
+    /** v2 replaced the {@code [jdk]} / {@code [graal]} vendor+version pair with the suggested and required field pairs. */
+    public static final int CURRENT_VERSION = 2;
+
+    public static final int MIN_SUPPORTED_VERSION = 2;
     public static final String RESOLUTION_ALGORITHM = "pubgrub-v1";
 
     public Lockfile {

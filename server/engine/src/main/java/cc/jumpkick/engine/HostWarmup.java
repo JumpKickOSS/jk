@@ -15,6 +15,7 @@ import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.StoreWriteGate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -52,8 +53,11 @@ import java.util.function.Function;
  * <p>So {@code jk cache nuke}, which removes {@code JK_CACHE_DIR} and nothing else, is not undone
  * by an idle warmup, and needs no "recently nuked" flag to stay that way — JK-2499 rejected that
  * shape for the sibling problem. {@code jk self nuke --data} and {@code --state} <em>are</em>
- * refilled, deliberately: those hold what an engine rebuilds because it needs it, and the
- * off-switch above is how a user declines. {@code HostWarmupTest} holds that boundary.
+ * refilled, deliberately — by the <em>next</em> engine: those hold what an engine rebuilds because
+ * it needs it, and the off-switch above is how a user declines. Within the process that hosted the
+ * wipe, hygiene stands down ({@link StoreWriteGate#wipedSinceStart}) — a queued warmup write
+ * landing after the wipe would recreate the store the nuke just reported gone, and on Windows a
+ * write <em>during</em> it holds the delete open. {@code HostWarmupTest} holds that boundary.
  */
 public final class HostWarmup {
 
@@ -118,7 +122,11 @@ public final class HostWarmup {
     }
 
     private static Path cachePath(String tool, Path host, PluginJar jar) {
-        try {
+        // locate() + the closure resolve fetch into the store — one gate hold for the whole leg,
+        // and a stand-down once the store was wiped, exactly as WorkerAotBootstrap's trainer leg:
+        // this path runs from needsWorkerAot() on the warmup decision, before any step.
+        try (var held = StoreWriteGate.write()) {
+            if (StoreWriteGate.wipedSinceStart()) return null;
             Path workerJar = jar.locate();
             String cp = WorkerLaunchClasspath.resolve(workerJar);
             return PluginAot.cachePath(tool, host, cp);
@@ -188,6 +196,9 @@ public final class HostWarmup {
             return;
         }
         for (Runnable step : steps) {
+            // A wiped store means the user just asked for it to be gone; hygiene must not put it
+            // back. Checked per step so a wipe landing mid-pass stops the remainder.
+            if (StoreWriteGate.wipedSinceStart()) return;
             try {
                 step.run();
             } catch (Throwable ignored) {

@@ -13,7 +13,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,6 +23,21 @@ class PluginAotTest {
 
     @TempDir
     Path tmp;
+
+    /**
+     * Let every background trainer finish before JUnit deletes {@link #tmp}.
+     *
+     * <p>These tests await an <em>observable</em> signal — a marker appearing, a claim's mtime
+     * moving — and that signal fires while {@link PluginAot#runTrainer} is still cleaning up
+     * underneath the fixture. The teardown then loses a race with it and the tier goes red on a
+     * {@code DirectoryNotEmptyException} rather than on anything the test asserts. Waiting here
+     * fixes the fixture's lifetime; it deliberately does not make production join its trainers,
+     * which are fire-and-forget by design (JK-1072).
+     */
+    @AfterEach
+    void awaitTrainersQuiescent() throws InterruptedException {
+        Await.until(Duration.ofSeconds(30), () -> !PluginAot.trainingInFlight());
+    }
 
     // ---- keying -----------------------------------------------------------------------------
 
@@ -135,8 +150,12 @@ class PluginAotTest {
         // A stand-in trainer: any command that writes the aot output and exits 0.
         PluginAot.trainAsync(
                 "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
-        Await.until(Duration.ofSeconds(10), () -> Files.exists(cache));
-        Await.until(Duration.ofSeconds(10), () -> !Files.exists(stale[4]));
+        // The sweep, dead-key expiry and manifest rewrite all run inside runTrainer between
+        // publishing the cache and dropping the claim — the claim's disappearance is the
+        // "trainer done, sweep included" signal. Awaiting any single swept file instead races
+        // whatever the sweep deletes after it.
+        Path claim = cache.resolveSibling(cache.getFileName() + ".training");
+        Await.until(Duration.ofSeconds(30), () -> Files.exists(cache) && !Files.exists(claim));
 
         // Keep 4 by recency: the new cache + the 3 youngest stale keys; the rest reclaimed.
         assertThat(stale[0]).exists();
@@ -147,8 +166,6 @@ class PluginAotTest {
         assertThat(deadMarker).doesNotExist();
         assertThat(freshMarker).exists();
         assertThat(engine).exists();
-        assertThat(Files.exists(cache.resolveSibling(cache.getFileName() + ".training")))
-                .isFalse(); // claim released
     }
 
     @Test
@@ -199,9 +216,16 @@ class PluginAotTest {
             trainerBuilt.countDown();
             return List.of("bash", "-c", "echo trained > '" + aotOutput + "'");
         });
-        assertThat(trainerBuilt.await(30, TimeUnit.SECONDS))
-                .as("a fresh foreign claim must block training, but the trainer command was built")
+        // trainAsync rejects a fresh foreign claim synchronously — claimed() runs before any
+        // trainer thread exists, and a refused claim leaves TRAINING before trainAsync returns.
+        // So "still in TRAINING right after the call" is the buggy path's immediate signature,
+        // and no timed wait is needed to prove the green one.
+        assertThat(PluginAot.trainingInFlight())
+                .as("a fresh foreign claim must reject the train before any thread spawns")
                 .isFalse();
+        assertThat(trainerBuilt.getCount())
+                .as("a fresh foreign claim must block training, but the trainer command was built")
+                .isEqualTo(1);
         assertThat(cache).doesNotExist();
     }
 }

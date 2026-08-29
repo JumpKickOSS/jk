@@ -7,7 +7,9 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -114,6 +116,39 @@ public final class WorkspaceResolve {
         } catch (Exception e) {
             return Set.of(); // best-effort, same policy as applyWorkspace
         }
+    }
+
+    /**
+     * Every workspace member's parsed manifest, keyed by {@code group:name} <em>and</em> by bare
+     * {@code name} — the companion to {@link #siblingCoordinates(Path)} for callers that need what
+     * a sibling itself declares, not merely that it is one.
+     *
+     * <p>Both spellings because callers meet both: a manifest parsed through {@link
+     * JkBuildParser#parse} has had its {@code workspace:} placeholders rewritten to real
+     * coordinates, while the members loaded here still carry {@code workspace:<name>}. A lookup
+     * that knew only one spelling would silently miss every edge between siblings.
+     *
+     * <p>Empty on any failure, same best-effort policy as its sibling method.
+     */
+    public static Map<String, JkBuild> siblingManifests(Path moduleDir) {
+        try {
+            var rootDir = WorkspaceLocator.findRoot(moduleDir);
+            if (rootDir.isEmpty()) return Map.of();
+            JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve(ManifestPaths.MANIFEST));
+            if (!root.isWorkspaceRoot()) return Map.of();
+            Map<String, JkBuild> out = new LinkedHashMap<>();
+            index(out, root);
+            for (JkBuild m : WorkspaceLoader.loadModules(rootDir.get(), root).values()) index(out, m);
+            return Map.copyOf(out);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private static void index(Map<String, JkBuild> out, JkBuild module) {
+        String name = module.project().name();
+        out.put(module.project().group() + ":" + name, module);
+        out.putIfAbsent(name, module);
     }
 
     /** True when any declared dependency is a {@code workspace:<name>} sibling placeholder. */

@@ -45,7 +45,6 @@ import java.util.function.Supplier;
  *   <caption>Everything else, derived from a root in every mode</caption>
  *   <tr><th>Role</th><th>Resolves to</th></tr>
  *   <tr><td>store</td><td>{@code <data>/store} ({@link #storeDir()})</td></tr>
- *   <tr><td>tool lib</td><td>{@code <store>/lib} ({@link #libDir()})</td></tr>
  *   <tr><td>product lib (engine jar)</td><td>{@code <data>/lib} ({@link #productLibDir()})</td></tr>
  *   <tr><td>library registry</td><td>{@code <store>/libs.global.toml} ({@link #libraryRegistryFile()})</td></tr>
  *   <tr><td>templates</td><td>{@code <store>/templates} ({@link #templatesDir()})</td></tr>
@@ -70,6 +69,9 @@ public final class JkDirs {
 
     /** Cloned Giter8 catalog directory under {@link #storeDir()}. */
     public static final String TEMPLATES_DIR = "templates";
+
+    /** Provisioned build-tool distribution directory under {@link #storeDir()}. */
+    public static final String TOOLS_DIR = "tools";
 
     private final Function<String, String> env;
     private final String userHome;
@@ -135,6 +137,11 @@ public final class JkDirs {
         return current().templatesDir();
     }
 
+    /** Provisioned build-tool distributions: {@link #toolsDir()}. */
+    public static Path tools() {
+        return current().toolsDir();
+    }
+
     public static Path state() {
         return current().stateDir();
     }
@@ -155,13 +162,9 @@ public final class JkDirs {
         return current().tmpDir();
     }
 
-    public static Path lib() {
-        return current().libDir();
-    }
-
     /**
      * Product library for the live engine jar and installed fat/minified app jars:
-     * {@code <data>/lib}. Distinct from {@link #lib()} ({@code store/lib}, installed tools).
+     * {@code <data>/lib}.
      */
     public static Path productLib() {
         return current().productLibDir();
@@ -237,6 +240,21 @@ public final class JkDirs {
         return storeDir().resolve(TEMPLATES_DIR);
     }
 
+    /**
+     * Provisioned build-tool distributions — Kotlin, Maven, Gradle, and the jars the Groovy
+     * build-logic host forks against. Always {@code <store>}/{@value #TOOLS_DIR}.
+     *
+     * <p>The <strong>store</strong>, not the cache, and the difference is not cosmetic. The cache
+     * holds rebuildable bytes and {@code CacheRetention} enforces that by deleting every top-level
+     * entry {@code CacheTree} does not name — a total table this directory was never in. An
+     * 83 MB Kotlin distribution therefore became residue an hour after it landed, and could be
+     * deleted while a build was using it. A fetched distribution is an artifact, and artifacts live
+     * beside {@code repos}, {@code templates} and the managed JDKs.
+     */
+    public Path toolsDir() {
+        return storeDir().resolve(TOOLS_DIR);
+    }
+
     public Path stateDir() {
         return resolve("JK_STATE_DIR", "state", this::platformStateDir);
     }
@@ -277,20 +295,9 @@ public final class JkDirs {
     }
 
     /**
-     * Shared jar library for installed tools: {@code <store>/lib/} by default. Override via
-     * {@code JK_LIB_DIR}.
-     */
-    public Path libDir() {
-        String override = nonBlank(env.apply("JK_LIB_DIR"));
-        if (override != null) return Path.of(override);
-        return storeDir().resolve("lib");
-    }
-
-    /**
      * Live engine and installed fat/minified app jars: {@code <data>/lib} ({@code jk-engine/<jar>}
      * / {@code <bin>/…}) — {@code $JK_HOME/data/lib} under the umbrella. jk hosts exactly one
-     * engine, so this is a single live tree with no per-version subdirectories. Not
-     * {@link #libDir()}, which is {@code <store>/lib} (installed tools).
+     * engine, so this is a single live tree with no per-version subdirectories.
      */
     public Path productLibDir() {
         return dataDir().resolve("lib");

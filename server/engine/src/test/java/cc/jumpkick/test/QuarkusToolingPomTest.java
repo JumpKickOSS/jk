@@ -96,7 +96,7 @@ class QuarkusToolingPomTest {
         // jk-lock.toml is what jk built from — so it outranks whatever jk.toml declares.
         module(dir, "name = \"svc\"\n\n[quarkus]\nversion = \"3\"\n");
         Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 1
+                version = 2
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
 

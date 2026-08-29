@@ -100,9 +100,9 @@ public final class TestVerb implements HostedVerb {
                     // The request's toolchain selection belongs on it too: without this the SWITCH tier is
                     // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
                     .withToolchainSpecs(
-                        ProtoSession.jdkSpecOf(requestLine),
-                        ProtoSession.graalSpecOf(requestLine),
-                        ProtoSession.graalHomeOf(requestLine));
+                            ProtoSession.jdkSpecOf(requestLine),
+                            ProtoSession.graalSpecOf(requestLine),
+                            ProtoSession.graalHomeOf(requestLine));
 
             BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                             entryDir,

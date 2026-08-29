@@ -56,7 +56,7 @@ public final class EngineStopCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         Optional<EngineClient.Status> before = EngineClient.status(EnginePaths.activeSocket(paths));
         if (before.isEmpty()) {
-            return settle(Exit.SUCCESS, "not running");
+            return stopUnresponsiveHolder(paths);
         }
         long started = before.get().startedAtMillis();
 
@@ -92,6 +92,31 @@ public final class EngineStopCommand implements CliCommand {
         if (exit == Exit.SUCCESS) CommandWedge.printOk("Engine", message);
         else CommandWedge.printFail("Engine", message);
         return exit;
+    }
+
+    /**
+     * No handshake does not mean no engine: a process can hold this directory's election state
+     * while never answering its socket — and then every fresh spawn loses the election to it and
+     * exits silently, so reporting "not running" leaves the user to find the JVM by hand. That
+     * wedge is exactly what stop exists to clear: kill it and confirm it went, on the graceful
+     * path too, because an engine with no working socket has nothing to drain.
+     */
+    private int stopUnresponsiveHolder(EnginePaths.Paths paths) {
+        long pid = EngineClient.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
+        if (pid <= 0) {
+            return settle(Exit.SUCCESS, "not running");
+        }
+        EngineClient.hardKill(pid);
+        if (EngineFleet.waitForExit(pid)) {
+            return settle(
+                    Exit.SUCCESS,
+                    "Engine pid " + pid + " held this directory's engine state without answering its socket"
+                            + " — killed.");
+        }
+        return settle(
+                Exit.FAILURE,
+                "Engine pid " + pid + " holds the engine state, does not answer its socket, and survived a"
+                        + " hard kill.");
     }
 
     /**

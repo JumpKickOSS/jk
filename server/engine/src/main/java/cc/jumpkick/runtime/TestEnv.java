@@ -10,21 +10,24 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The environment handed to a forked test JVMa sandbox jk supplies by default, plus
- * whatever the module declares in {@code [test] env}.
+ * The environment handed to a forked test JVM: the caller's machine env ({@link BuildEnv#MACHINE}),
+ * a sandbox jk supplies by default, plus whatever the module declares in {@code [test] env}.
  *
  * <p>The default matters more than the knob. A forked test JVM inherits the engine's environment, so
  * without sandboxing it would read the developer's real product layout and write the real local m2.
- * jk's Gradle build redirects those per module for exactly that reason.
+ * Without the machine-env seed it would also search the daemon's {@code PATH} — whichever shell
+ * started the engine, possibly days ago — instead of the shell that ran {@code jk}. jk's Gradle
+ * build redirects the product layout per module for exactly that reason; the machine seed is the
+ * matching answer for tools on {@code PATH}.
  *
  * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR}, {@code JK_M2_LOCAL} and the temp root point at
  * throwaway directories under the module's build output unless the module says otherwise. Anything a
- * suite genuinely needs from the real environment it can name explicitly — the sandbox is a default,
- * not a wall.
+ * suite genuinely needs from the real environment beyond {@link BuildEnv#MACHINE} it can name
+ * explicitly — the sandbox is a default, not a wall.
  *
  * <p>The declared values themselves are resolved by {@link TestEnvValues}, which the run-tests cache
  * key also uses: the two must agree about an unset {@code ${VAR}} or a build's outcome depends on
- * what is already cached.
+ * what is already cached. Machine env is deliberately not part of that key.
  */
 public final class TestEnv {
 
@@ -63,16 +66,23 @@ public final class TestEnv {
     private TestEnv() {}
 
     /**
-     * The child environment for {@code project}'s test JVMs: the sandbox defaults with the module's
-     * {@code [test] env} applied over them, and {@code ${target}} / {@code ${module}} / {@code ${VAR}}
-     * expanded.
+     * The child environment for {@code project}'s test JVMs: the caller's machine env ({@link
+     * BuildEnv#MACHINE}), then the sandbox defaults, then the module's {@code [test] env}, with
+     * {@code ${target}} / {@code ${module}} / {@code ${VAR}} expanded.
      *
-     * <p>A module that sets {@code JK_HOME} itself wins — this is a default, not an override.
+     * <p>Machine env overlays the daemon's inherited {@code PATH} with the shell that ran {@code
+     * jk} — without it a suite that execs {@code node} searches whichever shell started the
+     * engine, possibly days ago and without nvm. It is not hashed into the action key; a module
+     * that needs the value keyed declares the name in {@code [test] env}.
+     *
+     * <p>A module that sets {@code JK_HOME} itself wins — the sandbox is a default, not an override.
      */
     public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout) {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
-        // Sandbox first so a declared value replaces it.
+        // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
+        out.putAll(BuildEnv.machine());
+        // Sandbox next so a declared value replaces it.
         Path sandboxHome = target.resolve("test-jk-home").toAbsolutePath();
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());

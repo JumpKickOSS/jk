@@ -114,9 +114,16 @@ public final class JUnitLauncher {
             // hardlink into @TempDir caches; macOS can fail Standard delete. The strategy
             // reports success anyway. Cleanup stays ALWAYS: NEVER left tens of thousands of
             // dirs on tmpfs /tmp until the next @TempDir could not allocate an inode.
-            flags.add(
-                    "-Djunit.jupiter.tempdir.deletion.strategy.default=cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
-            flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
+            //
+            // Only where the classes exist. These two live in jk-cli's TEST tree, and a
+            // non-empty [test] env is not a test for "this is jk-cli" — server/engine sets one
+            // too, and named a factory it cannot load JUnit logs a stack trace per @TempDir and
+            // silently falls back, which costs the soft-fail delete this exists to provide.
+            if (cliTempDirSupport) {
+                flags.add("-Djunit.jupiter.tempdir.deletion.strategy.default="
+                        + "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
+                flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
+            }
             flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=always");
             String jkHome = testEnv.get("JK_HOME");
             if (jkHome != null && !jkHome.isBlank()) {
@@ -145,6 +152,14 @@ public final class JUnitLauncher {
 
     /** Set when {@link #run} starts — the sandboxed temp root; see {@link TestTmpDir}. */
     private Path testTmpDir;
+
+    /**
+     * Set when {@link #run} starts — whether jk-cli's {@code @TempDir} factory and deletion
+     * strategy are on this module's test classpath. Naming them for a module that cannot load
+     * them is not a no-op: JUnit logs a stack trace per {@code @TempDir} and falls back to the
+     * default strategy, so the soft-fail delete the flag exists to install is not installed.
+     */
+    private boolean cliTempDirSupport;
 
     /**
      * {@code.../target/classes/test} → module root ({@code.../}). Null when layout is nonstandard.
@@ -314,6 +329,7 @@ public final class JUnitLauncher {
         // already contain PluginMain; extra entries are harmless.
         classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
         String classpath = Classpaths.join(classpathBase);
+        this.cliTempDirSupport = CliTempDirSupport.onClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
         int resolvedWorkers = workers;
@@ -601,15 +617,22 @@ public final class JUnitLauncher {
      * Per-worker env when {@code W > 1}: private temp root, and for nested-engine suites a
      * per-worker {@code JK_STATE_DIR}. Engine identity is keyed on (state, store), so a shared
      * state dir means one socket for every worker — and one worker's engine force-stop aborts
-     * its siblings mid-request. The suffix stays short: the state dir holds UDS sockets and
-     * {@code sun_path} is ~108 bytes (JK-2183).
+     * its siblings mid-request. The suffix stays short: the state dir holds Unix domain sockets,
+     * and the JDK stops binding past 102 characters (JK-2183; the budget is
+     * {@code UnixSocketPaths.MAX_PATH_LENGTH}, proven there by binding).
      */
     static Map<String, String> workerEnv(Map<String, String> base, int workerId, Path tmp) {
         Map<String, String> env = new LinkedHashMap<>(base);
         env.put("TMPDIR", tmp.toString());
         env.put("TMP", tmp.toString());
         env.put("TEMP", tmp.toString());
-        env.computeIfPresent("JK_STATE_DIR", (k, dir) -> dir + "-w" + workerId);
+        // A CHILD of the run's state dir, not a sibling of it. The sibling spelling
+        // (`<base>-w0`) put every worker's state outside the one directory the run cleans, so
+        // deleting `<base>` recursively never reached them and they accumulated under /tmp
+        // forever. TestTmpDir.forWorker already splits the temp root this way; one idea deserves
+        // one spelling, and this is the one that cannot leak.
+        env.computeIfPresent(
+                "JK_STATE_DIR", (k, dir) -> Path.of(dir).resolve("w" + workerId).toString());
         return env;
     }
 

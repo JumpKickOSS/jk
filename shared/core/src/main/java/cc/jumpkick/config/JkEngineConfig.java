@@ -16,8 +16,14 @@ import org.jspecify.annotations.Nullable;
  * <p>Default engine heap is {@link #DEFAULT_MAX_HEAP_MB} (256 MiB) on developer machines; when
  * {@code CI=1} or {@code CI=true}, the unset default is {@link #CI_DEFAULT_MAX_HEAP_MB} (512 MiB).
  * Explicit file/env values always win — the precedence is {@link MachineConfig}'s.
+ *
+ * <p>{@code continue} is the same shape: unset means fail-fast interactively and keep-going on CI.
+ * The two situations want opposite answers. At a prompt the first failure is the one you are about
+ * to fix and finishing the graph to prove it wastes minutes; on CI a run costs a queue slot, and
+ * reporting one failure per run turns a five-fault branch into five round trips. It never changes
+ * the verdict — a run that kept going and had failures still fails.
  */
-public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs) {
+public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing) {
 
     /** Default engine-process heap ceiling ({@code -Xmx}) when not on CI. */
     public static final int DEFAULT_MAX_HEAP_MB = 256;
@@ -28,8 +34,8 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs) {
     /** Initial engine heap ({@code -Xms}), clamped to {@link #maxHeapMb}. */
     public static final int MIN_HEAP_MB = 32;
 
-    /** Logical non-CI defaults (256 MiB heap). Prefer {@link #resolve()} for effective policy. */
-    public static final JkEngineConfig DEFAULTS = new JkEngineConfig(DEFAULT_MAX_HEAP_MB, null);
+    /** Logical non-CI defaults (256 MiB heap, fail-fast). Prefer {@link #resolve()} for effective policy. */
+    public static final JkEngineConfig DEFAULTS = new JkEngineConfig(DEFAULT_MAX_HEAP_MB, null, false);
 
     /** {@code max-heap-mb} / {@code JK_ENGINE_MAX_HEAP_MB}: negatives are not a heap, 0 = uncapped. */
     private static final MachineConfig<Integer> MAX_HEAP_MB =
@@ -38,9 +44,12 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs) {
     /** {@code jobs} / {@code JK_JOBS}: the built-in is "unset", which {@link Jobs} reads as cores. */
     private static final MachineConfig<Integer> JOBS = MachineConfig.of(null);
 
-    /** Back-compat: heap-only config (jobs default). */
+    /** {@code continue} / {@code JK_CONTINUE}: the built-in is fail-fast; CI moves the floor. */
+    private static final MachineConfig<Boolean> KEEP_GOING = MachineConfig.of(false);
+
+    /** Back-compat: heap-only config (jobs default, fail-fast). */
     public JkEngineConfig(int maxHeapMb) {
-        this(maxHeapMb, null);
+        this(maxHeapMb, null, false);
     }
 
     /** Effective machine config: user-global file + {@code JK_ENGINE_MAX_HEAP_MB} / {@code JK_JOBS}. */
@@ -61,17 +70,27 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs) {
                 JOBS.layer(
                         EnvValues.intValue(env, "JK_JOBS").orElse(null),
                         EnvValues.intValue(env, "JK_ENGINE_JOBS").orElse(null),
-                        scanInt(scan, "engine.jobs")));
+                        scanInt(scan, "engine.jobs")),
+                // As the heap: CI moves the floor, not the precedence.
+                KEEP_GOING.layerOver(
+                        defaultKeepGoing(env),
+                        EnvValues.bool(env, "JK_CONTINUE").orElse(null),
+                        scanBool(scan, "engine.continue")));
     }
 
-    /** Machine defaults only (CI-aware heap, no file/env heap override). */
+    /** Machine defaults only (CI-aware heap and continue, no file/env override). */
     public static JkEngineConfig resolvedDefaults(Function<String, String> env) {
-        return new JkEngineConfig(defaultMaxHeapMb(env), null);
+        return new JkEngineConfig(defaultMaxHeapMb(env), null, defaultKeepGoing(env));
     }
 
     /** Unset heap default: 512 MiB on CI, else 256 MiB. */
     public static int defaultMaxHeapMb(Function<String, String> env) {
         return isCi(env) ? CI_DEFAULT_MAX_HEAP_MB : DEFAULT_MAX_HEAP_MB;
+    }
+
+    /** Unset {@code continue} default: keep going on CI, fail fast at a prompt. */
+    public static boolean defaultKeepGoing(Function<String, String> env) {
+        return isCi(env);
     }
 
     static boolean isCi(Function<String, String> env) {
@@ -82,11 +101,18 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs) {
     public static JkEngineConfig fromToml(Path file) {
         TomlScan scan = scan(file);
         return new JkEngineConfig(
-                MAX_HEAP_MB.layer(scanInt(scan, "engine.max-heap-mb")), JOBS.layer(scanInt(scan, "engine.jobs")));
+                MAX_HEAP_MB.layer(scanInt(scan, "engine.max-heap-mb")),
+                JOBS.layer(scanInt(scan, "engine.jobs")),
+                KEEP_GOING.layer(scanBool(scan, "engine.continue")));
     }
 
     private static TomlScan scan(Path file) {
-        return TomlScan.scan(file, "engine.max-heap-mb", "engine.jobs");
+        return TomlScan.scan(file, "engine.max-heap-mb", "engine.jobs", "engine.continue");
+    }
+
+    private static @Nullable Boolean scanBool(TomlScan scan, String key) {
+        String v = scan.get(key);
+        return v == null ? null : EnvValues.parseBool(v).orElse(null);
     }
 
     private static @Nullable Integer scanInt(TomlScan scan, String key) {

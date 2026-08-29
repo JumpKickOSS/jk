@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/**SPI anchor steps must be dependency-gated in the build DAG. */
+/** Stem-script anchor steps must be dependency-gated in the build DAG. */
 class BuildLogicAnchorGatingTest {
 
     @Test

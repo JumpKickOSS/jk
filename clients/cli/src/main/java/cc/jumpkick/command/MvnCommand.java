@@ -74,7 +74,7 @@ public final class MvnCommand implements CliCommand {
         Path projectDir = directory != null
                 ? directory.toAbsolutePath().normalize()
                 : Path.of(".").toAbsolutePath().normalize();
-        Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
+        Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.tools();
 
         // Provision Maven engine-side, get back the bin path.
         Path mvnBin = provision(projectDir, toolsRoot, noDiscover, false);

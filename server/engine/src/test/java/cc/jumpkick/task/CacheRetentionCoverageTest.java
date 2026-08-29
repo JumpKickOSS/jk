@@ -202,6 +202,30 @@ class CacheRetentionCoverageTest {
         assertThat(report.unknownEntries()).contains(".access.log", "repos");
     }
 
+    /**
+     * The reason provisioned build tools moved to the store, kept executable rather than in prose.
+     *
+     * <p>A tools root under the cache is an unrecognised top-level entry, so an hour after it lands
+     * the residue sweep takes it — an 83 MB Kotlin distribution and the Groovy build-logic jars,
+     * re-downloaded on the next build and deletable while one is using them. Adding {@code tools}
+     * to {@link CacheTree} would spare it from the sweep and leave a fetched artifact in the
+     * rebuildable-bytes root, so the fix was the other direction: {@code JkDirs.toolsDir()} is
+     * under the store. This asserts the hazard is real, which is what makes moving out of it the
+     * answer.
+     */
+    @Test
+    void a_tools_root_under_the_cache_is_residue(@TempDir Path root) throws IOException {
+        Path distribution = tree(root, "tools", OLD);
+
+        var report = CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(distribution).doesNotExist();
+        assertThat(report.unknownEntries()).contains("tools");
+        assertThat(CacheTree.entries())
+                .as("if `tools` is ever added here, this test stops describing the tree")
+                .doesNotContain("tools");
+    }
+
     /** A stray that appeared moments ago may be another engine mid-write. */
     @Test
     void a_fresh_unrecognised_entry_is_inside_the_grace_window(@TempDir Path root) throws IOException {

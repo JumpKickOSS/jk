@@ -102,6 +102,7 @@ Bind once on MCP (`jk_bind` with the project directory), then omit `dir`.
 | Structured failures | — | `jk_diagnostics` |
 | JDK install / pin | `jk jdk list` · `jk jdk install temurin-25` · `jk jdk pin …` | `jk_jdk` (uninstall needs `confirm=true`) |
 | One-off JVM tool | `jkx checkstyle …` · `jk tool run g:a:v …` | `jk_install action=list` (installs stay CLI; trust gates) |
+| Build tool (Kotlin/Maven/Gradle) | `jk install kotlin:latest` · `jk tool list` | (CLI; provisions into `$JK_STORE_DIR/tools`) |
 | Import Maven/Gradle | `jk import pom.xml` | `jk_import` |
 | Forecast / graph | `jk tree` · `jk explain --graph mermaid` | `jk_graph` · `jk_explain` |
 | Host health | `jk doctor` · `jk engine status` | `jk_doctor` · `jk_status` |
@@ -164,6 +165,11 @@ running is rejected; **worktrees are different slots**.
 **`jkx` / `jk tool run`.** uvx-like one-off JVM tools and JBang-compatible scripts (`jkx checkstyle`,
 `jk tool run script.java`). Lint recipes (Checkstyle, …) are tools, not a first-party plugin matrix.
 
+**Build tools.** `jk install kotlin:latest` (also `maven`, `gradle`) provisions the distribution jk
+itself uses — ahead of the build that needs it, into `$JK_STORE_DIR/tools`, so that build is a cache
+hit. `jk tool list` / `jk tool uninstall <tool>:<version>` manage them. These are homes the engine
+consumes, not launchers on `PATH`.
+
 **Workspaces.** Root `jk.toml` has `[workspace] modules = […]`. One lockfile. Independent modules
 build concurrently (`-j`; default = all effective cores / cgroup quota). `-w` is *within-module*
 test workers, a separate knob. Filter with `-m api,worker`, globs, or `--affected-since=origin/main`.
@@ -193,7 +199,7 @@ daemonless OCI `jk image`; `jk publish` with optional signing / Sigstore / SBOM.
 | `target/` | Build outputs (gitignored). |
 | `target/jk-results.md` | High-level report of the last run. **Read this on failure.** |
 | `.jdk-version` | Optional JDK pin. |
-| `.jk-build/` | Optional generate steps *outside* the manifest — not a Gradle script. |
+| `jk/` or `.jk/` | Optional generate steps *outside* the manifest — not a Gradle script. |
 | `~/.config/jk/config.toml` | Machine config (heap, jobs, MCP, …). |
 
 Layout is by directory shape, not a `jk.toml` key: **traditional** Maven trees

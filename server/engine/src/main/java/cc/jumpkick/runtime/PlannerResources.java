@@ -9,7 +9,6 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -27,7 +26,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * copy-resources and SPI build-logic anchors around compile / package.
+ * copy-resources and stem-script build-logic anchors around compile / package.
  */
 public final class PlannerResources {
 
@@ -51,7 +50,7 @@ public final class PlannerResources {
                 .stage(BuildStage.COMPILE)
                 .label("Resources")
                 .kind(TaskKind.CPU)
-                // After AFTER_COMPILE SPI so generated classes land before resource merge.
+                // After AFTER_COMPILE so generated classes land before resource merge.
                 .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_RESOURCES)
                 .ticks(1)
@@ -95,7 +94,7 @@ public final class PlannerResources {
                     boolean stripped = stripFlattenedPluginCatalog(
                             classes, name -> ctx.warn("resources", "stripped leftover plugin-catalog copy: " + name));
                     if (stripped) ctx.label("stripped leftover plugin catalog");
-                    // Project build logic: AFTER_RESOURCES anchor.
+                    // Project build logic: AFTER_RESOURCES stem scripts.
                     boolean logicRan = false;
                     try {
                         logicRan = BuildLogicSupport.run(
@@ -157,8 +156,8 @@ public final class PlannerResources {
     }
 
     /**
-     * SPI anchor {@code BEFORE_COMPILE}: named build-logic tasks before main language compile
-     * (codegen). Product stage {@link BuildStage#GENERATE}.
+     * Anchor {@code BEFORE_COMPILE}: stem-script tasks before main language compile (codegen).
+     * Product stage {@link BuildStage#GENERATE}.
      */
     static Task buildLogicBeforeCompileStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
@@ -194,7 +193,7 @@ public final class PlannerResources {
                 .build();
     }
 
-    /** SPI anchor {@code AFTER_COMPILE}: named build-logic tasks after main classes exist. */
+    /** Anchor {@code AFTER_COMPILE}: stem-script tasks after main classes exist. */
     static Task buildLogicAfterCompileStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
@@ -230,7 +229,7 @@ public final class PlannerResources {
                 .build();
     }
 
-    /** SPI anchor {@code BEFORE_PACKAGE}: named build-logic tasks immediately before jar/image. */
+    /** Anchor {@code BEFORE_PACKAGE}: stem-script tasks immediately before jar/image. */
     static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
@@ -256,6 +255,48 @@ public final class PlannerResources {
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no before-package logic this run
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /**
+     * Anchor {@code AFTER_BUILD}: the workspace root's stem scripts, after every member module has
+     * built.
+     *
+     * <p>The root unit's whole plan is parse / resolve / this, so there is no classes tree to pass
+     * and nothing merges. Ordering comes from the graph — the sourceless root carries an edge to
+     * every member — not from a `requires` here, which could only name tasks in the root's own
+     * plan.
+     */
+    static Task buildLogicAfterBuildStep(BuildPlanner.Ctx cx) {
+        BuildPlanner.Inputs in = cx.in();
+        ActionCache actionCache = cx.actionCache();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        return Task.builder(TaskNames.BUILD_LOGIC_AFTER_BUILD)
+                .stage(BuildStage.PACKAGE)
+                .label("Build logic (after build)")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.RESOLVE_DEPS)
+                .weight(() -> plan.get().fullyCached() ? 0 : 1)
+                .ticks(1)
+                .execute(ctx -> {
+                    try {
+                        boolean ran = BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                /* classesDir */ null,
+                                BuildLogicAnchor.AFTER_BUILD,
+                                ctx::label,
+                                buildLogicInputTokensRef);
+                        if (ran) ctx.label("build-logic applied");
+                        else ctx.cached(); // SKIPPED — no workspace build logic this run
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);

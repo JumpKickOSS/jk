@@ -150,6 +150,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             boolean freshenLock = Jsonl.bool(requestLine, "freshenLock", false);
             boolean ephemeralActions = Jsonl.bool(requestLine, "ephemeralActions", false);
             boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
+            // Absent = fail-fast. The client resolves --continue / [engine] continue / CI and
+            // sends the answer; the engine does not re-derive it from its own environment, which
+            // is the daemon's and not the caller's.
+            boolean keepGoing = Jsonl.bool(requestLine, "keepGoing", false);
             List<String> dirtyHintDirs = ProtoJobs.dirtyHintOf(requestLine);
 
             Path entryDir = Path.of(entryDirStr);
@@ -187,6 +191,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             false,
                             freshenLock)
                     .withModules(moduleTokens)
+                    .withKeepGoing(keepGoing)
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
@@ -198,7 +203,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     homes.forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
                 }
                 Set<Path> selected = dirty == null ? Set.of() : dirty;
-                req = req.withSpec(WorkspaceSpec.install(selected, graalByDir));
+                req = req.withSpec(WorkspaceSpec.install(selected, graalByDir, null));
             }
             WorkspaceRequest workspaceReq = req;
 
@@ -225,9 +230,9 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     // The request's toolchain selection belongs on it too: without this the SWITCH tier is
                     // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
                     .withToolchainSpecs(
-                        ProtoSession.jdkSpecOf(requestLine),
-                        ProtoSession.graalSpecOf(requestLine),
-                        ProtoSession.graalHomeOf(requestLine));
+                            ProtoSession.jdkSpecOf(requestLine),
+                            ProtoSession.graalSpecOf(requestLine),
+                            ProtoSession.graalHomeOf(requestLine));
 
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);

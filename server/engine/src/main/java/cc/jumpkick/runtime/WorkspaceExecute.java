@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.host.Linking;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
@@ -10,6 +9,7 @@ import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Linking;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -82,6 +82,14 @@ public final class WorkspaceExecute {
             candidates.add(layout.nativeBinary());
             candidates.add(layout.nativeLibrary());
             candidates.add(layout.ociImageTar());
+            // Each jar's sidecar POM travels with it. package-jar writes one beside the module's
+            // own jar precisely so a workspace-built worker can be forked with its runtime closure
+            // (PlannerPackage.writeSidecarPom), but the fork is handed the copy surfaced HERE — and
+            // a jar surfaced without its POM has no closure at all. That is how a first-party
+            // worker came to be launched with only its own classes on the classpath, dying on the
+            // first third-party type it touched.
+            candidates.add(sidecarPom(layout.mainJar()));
+            candidates.add(sidecarPom(layout.assemblyJar()));
             moduleArtifacts.put(normalDir, candidates);
             moduleGroup.put(normalDir, build.project().group());
         }
@@ -103,6 +111,18 @@ public final class WorkspaceExecute {
             }
         }
         return links;
+    }
+
+    /**
+     * The {@code .pom} that sits beside {@code jar} — the spelling {@link
+     * cc.jumpkick.runtime.PlannerPackage#writeSidecarPom} writes and {@code
+     * PomRuntimeClasspath.siblingPom} reads. Collision renaming applies the same group prefix to
+     * both names, so a renamed jar keeps a correctly-named POM beside it.
+     */
+    private static Path sidecarPom(Path jar) {
+        String name = jar.getFileName().toString();
+        return jar.resolveSibling(
+                name.endsWith(".jar") ? name.substring(0, name.length() - 4) + ".pom" : name + ".pom");
     }
 
     // =========================================================================
@@ -430,7 +450,13 @@ public final class WorkspaceExecute {
                         for (int i = 0; i < results.size(); i++) {
                             ModuleOutcome o = results.get(i);
                             outcomes.add(o);
-                            if (!o.success()) return o; // fail-fast
+                            // Fail-fast unless the caller asked for the whole graph. Keeping going
+                            // is safe because admission keys on artifacts-ready, not completion: a
+                            // module whose tests failed has already published what its dependents
+                            // compile against, and one that failed before packaging publishes
+                            // nothing, so its dependents fail on their own accurate account
+                            // rather than on this one's behalf.
+                            if (!o.success() && !req.keepGoing()) return o;
                             linkModuleArtifacts(ready.get(i).dir(), wsLinks);
                             ModulePlan p = plans.get(ready.get(i).dir());
                             // Skip fully-cached modules — their near-zero time isn't representative of work.
@@ -448,7 +474,18 @@ public final class WorkspaceExecute {
         // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
         // cancelled rather than a generic failure.
         boolean cancelled = SessionCancel.cancelled();
-        boolean ok = failure == null && !cancelled;
+        // Under keep-going the sink never returns, so the verdict comes from the outcomes: the
+        // run still fails, and the exit code is the first failure's, exactly as fail-fast reports.
+        ModuleOutcome firstFailure = failure;
+        if (firstFailure == null) {
+            for (ModuleOutcome o : outcomes) {
+                if (!o.success()) {
+                    firstFailure = o;
+                    break;
+                }
+            }
+        }
+        boolean ok = firstFailure == null && !cancelled;
         if (ok) {
             // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
             BuildEta.logSeedQuality(etaMs, executeWallMs, dirtyUnits.size());
@@ -480,7 +517,7 @@ public final class WorkspaceExecute {
                 }
             }
         }
-        int exit = ok ? 0 : (cancelled ? 1 : failure.exitCode());
+        int exit = ok ? 0 : (cancelled ? 1 : firstFailure.exitCode());
         WorkspaceResult result = new WorkspaceResult(ok, exit, List.copyOf(outcomes), List.of(), cancelled);
         listener.onWorkspaceFinish(result);
         return result;
@@ -663,10 +700,15 @@ public final class WorkspaceExecute {
         WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
         // INSTALL publishes every module in the (already cone-filtered) graph — selected
         // terminals and production prereqs — so a worker POM can resolve sibling jars from
-        // repos/jk-local. NATIVE/IMAGE keep selection-only terminals.
+        // repos/jk-local. A coordinator root is the exception: it packages nothing, so
+        // assemblePlan gives it no cache-install and the forecast must not expect one.
+        // NATIVE/IMAGE keep selection-only terminals.
         if (target == WorkspaceTarget.INSTALL) {
             Set<Path> all = new LinkedHashSet<>();
-            for (BuildGraph.BuildUnit u : units) all.add(u.dir());
+            for (BuildGraph.BuildUnit u : units) {
+                if (CompileSupport.coordinatorOnly(u.manifest(), u.dir())) continue;
+                all.add(u.dir());
+            }
             return all;
         }
         if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
@@ -741,8 +783,16 @@ public final class WorkspaceExecute {
             BuildPlanner.Inputs inputs = moduleInputs(dir, req, moduleDirs, false);
             BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
             PlannerTails.appendDeclaredTails(b, inputs, graal, true);
-            Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
-            InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
+            // A coordinator root publishes nothing of its own: its plan stops at the workspace's
+            // build logic and has no package-jar for cache-install to require. Appending the
+            // terminal anyway fails plan validation before any module starts — the same reason
+            // appendDeclaredTails returns early for it.
+            if (!CompileSupport.coordinatorOnly(u.manifest(), dir)) {
+                // Client-resolved --m2-dir rides the spec; the engine daemon's own user.home is
+                // the fallback, not the answer — its home is not necessarily the caller's.
+                Path m2 = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
+                InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
+            }
             return b.build();
         }
         // A consumed prereq must package even on the test path: dependents compile against

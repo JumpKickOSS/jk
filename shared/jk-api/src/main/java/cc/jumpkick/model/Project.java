@@ -29,7 +29,8 @@ public record Project(
         boolean m2integration,
         boolean m2install,
         Layout layout,
-        Set<ProjectInherit> workspaceInherits) {
+        Set<ProjectInherit> workspaceInherits,
+        ToolchainSpec jdkSpec) {
 
     /**
      * Sentinel for string fields declared with {@code <field>.workspace = true} until
@@ -53,6 +54,44 @@ public record Project(
         if (description != null && description.isBlank()) description = null;
         workspaceInherits =
                 workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
+        if (jdkSpec == null) jdkSpec = ToolchainSpec.NONE;
+    }
+
+    /**
+     * The pre-{@link ToolchainSpec} arity: a {@code jdk} string alone says only what to resolve,
+     * never whether the author pinned it, so the spec reads as undeclared.
+     */
+    public Project(
+            String group,
+            String name,
+            String version,
+            String jdk,
+            int java,
+            VersionSelector kotlin,
+            VersionSelector groovy,
+            VersionSelector scala,
+            SourcesMode sourcesMode,
+            String description,
+            boolean m2integration,
+            boolean m2install,
+            Layout layout,
+            Set<ProjectInherit> workspaceInherits) {
+        this(
+                group,
+                name,
+                version,
+                jdk,
+                java,
+                kotlin,
+                groovy,
+                scala,
+                sourcesMode,
+                description,
+                m2integration,
+                m2install,
+                layout,
+                workspaceInherits,
+                ToolchainSpec.NONE);
     }
 
     /** Unset Scala pin; {@code workspaceInherits} as given. */
@@ -198,7 +237,8 @@ public record Project(
                 m2integration,
                 m2install,
                 layout,
-                next);
+                next,
+                jdkSpec);
     }
 
     /** True when this project declared {@code version.workspace = true} and is not yet resolved. */
@@ -231,7 +271,8 @@ public record Project(
         boolean m2 = inherits(ProjectInherit.M2INTEGRATION) ? root.m2integration() : m2integration;
         boolean inst = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
         Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
-        return new Project(g, name, v, j, ja, kt, gr, sc, src, desc, m2, inst, lay, Set.of());
+        ToolchainSpec js = inherits(ProjectInherit.JDK) ? root.jdkSpec() : jdkSpec;
+        return new Project(g, name, v, j, ja, kt, gr, sc, src, desc, m2, inst, lay, Set.of(), js);
     }
 
     private static String requireRoot(String value, String field) {
@@ -264,7 +305,8 @@ public record Project(
                 m2integration,
                 m2install,
                 layout,
-                next);
+                next,
+                jdkSpec);
     }
 
     /** Library project — bare-major {@code jdk} (0 → unset). */
@@ -302,6 +344,7 @@ public record Project(
         private final String name;
         private final String version;
         private String jdk;
+        private ToolchainSpec jdkSpec = ToolchainSpec.NONE;
         private int java;
         private VersionSelector kotlin;
         private VersionSelector groovy;
@@ -376,6 +419,12 @@ public record Project(
             return this;
         }
 
+        /** The declaration behind {@link #jdk}: what was suggested, what was pinned with {@code =}. */
+        public Builder jdkSpec(ToolchainSpec jdkSpec) {
+            this.jdkSpec = jdkSpec;
+            return this;
+        }
+
         public Project build() {
             return new Project(
                     group,
@@ -391,7 +440,8 @@ public record Project(
                     m2integration,
                     m2install,
                     layout,
-                    Set.of());
+                    Set.of(),
+                    jdkSpec);
         }
     }
 

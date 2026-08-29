@@ -52,13 +52,13 @@ class TaskForecasterNativeTargetTest {
                 version = "0.1.0"
                 jdk = 25
                 java = 25
-                main = "t.App"
                 """;
         if (nativeTable) manifest += "\n[native]\nenabled = true\n";
         Files.writeString(app.resolve("jk.toml"), manifest);
         Path src = Files.createDirectories(app.resolve("src/main/java/t"));
         Files.writeString(src.resolve("App.java"), "package t; class App { public static void main(String[] a) {} }\n");
-        Lockfile lf = new Lockfile(1, "test", "pubgrub-v1", null, null, List.of(), List.of(), List.of());
+        Lockfile lf = new Lockfile(
+                Lockfile.CURRENT_VERSION, "test", "pubgrub-v1", null, null, List.of(), List.of(), List.of());
         LockfileWriter.write(lf, tmp.resolve("jk-lock.toml"), LockManifestDigest.compute(tmp));
         return app;
     }

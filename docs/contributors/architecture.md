@@ -366,21 +366,23 @@ module costs (`RemainingWork` / `WorkSchedule`). Seed `R0` ≡ `jk explain`; liv
 as modules progress/finish. Bar ≈ `elapsed / (elapsed + R(t))` (cap 99%); countdown re-anchors
 to residual so both end on time with `R → 0`. See [progress-contract.md](progress-contract.md).
 
-### Project build logic (`.jk-build/`, ticket-1037)
+### Project build logic (`.jk/`)
 
-Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local build logic
-(overridable via `[build].logic`): **stem scripts** (`before-compile.groovy` / `.kts`, …) and/or
-**compiled Java/Kotlin** SPI / `*Build` mains under e.g. `.jk-build/src/`. Scripts-only trees are
-valid. The
-engine action-caches each task’s `outDir` and merges into the classes tree. No scripts in TOML.
-Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`, `AFTER_RESOURCES`, `BEFORE_PACKAGE` — each
-carries a stage wire name aligned with `BuildStage`. See
-[user build logic](../user/build-logic.md).
+Convention directories **`jk/`** (visible) or **`.jk/`** (hidden) next to that module's
+`jk.toml` hold project-local stem scripts (overridable via `[build].logic`):
+`before-compile.groovy` / `.kts` and sibling stems. If both dirs exist, `jk/` wins.
+`.kts` wins a same-stem `.groovy`. Groovy and Kotlin scripts run in forked processes.
+Compiled `.java` / `.kt` under the logic dir is rejected. The engine action-caches each
+task’s `outDir` and merges into the classes tree (`BEFORE_COMPILE` is a generated-source
+root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
+`AFTER_RESOURCES`, `BEFORE_PACKAGE` — each carries a stage wire name aligned with
+`BuildStage`. See [user build logic](../user/build-logic.md).
 
 ## Status
 
 Pre-1.0 alpha. **Self-host phase 2:** root workspace covers library/client modules plus thin
 workers (`plugins/test-runner`, `plugins/java-compiler`); `jk lock` + `jk build --skip-tests`
-dogfoods after a Gradle `dist`/`installLocal` or thin `:cli:installDist` + `:engine:shadowJar`
-bootstrap. Full `dist`, remaining plugins, and nested engine integration tests remain
+dogfoods after a Gradle `dist`/`installLocal` bootstrap — the native client is the only endorsed
+one, and once a release is published the bootstrap is
+`curl -fsSL https://jumpkick.build/install.sh | bash` (JK-1070). Full `dist`, remaining plugins, and nested engine integration tests remain
 Gradle-heavy. Breaking changes remain acceptable until 1.0.

@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.EngineTransport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -64,9 +66,10 @@ class GlobalCancelNonTtyTest {
     private static final int EXIT_WAIT_SECONDS = 45;
 
     /**
-     * Under {@code /tmp}, not {@code @TempDir}: the engine socket lives inside this home and a
-     * Unix-domain path longer than {@code sun_path} (~104 bytes) cannot be bound at all — the
-     * module's {@code build/tmp} JUnit root is close enough to that ceiling to matter.
+     * Under {@code /tmp}, not {@code @TempDir}: the stub engine below binds a real Unix domain
+     * socket inside this home, and the JDK refuses to bind one past
+     * {@code UnixSocketPaths.MAX_PATH_LENGTH} characters — the module's {@code build/tmp} JUnit
+     * root is well past that once the socket name is appended.
      */
     private Path home;
 
@@ -85,7 +88,7 @@ class GlobalCancelNonTtyTest {
     }
 
     private Path newHome() throws IOException {
-        home = Files.createTempDirectory(Path.of("/tmp"), "jk-sigint-");
+        home = Files.createTempDirectory(ShortTempDirs.root(), "jk-sigint-");
         return home;
     }
 
@@ -197,6 +200,10 @@ class GlobalCancelNonTtyTest {
         pb.environment().put("JK_JDKS_DIR", home.resolve("jdks").toString());
         pb.environment().put("JK_HTTP_ENABLED", "false");
         pb.environment().put("JK_AUTO_PRUNE", "false");
+        // The stub below binds a Unix domain socket by hand, so this child must speak that lane
+        // whatever the tier defaults to. The tier sets JK_ENGINE_TRANSPORT=tcp and the child
+        // inherits it; without this pin the client reads the socket file expecting a port number.
+        pb.environment().put(EngineTransport.TRANSPORT_ENV, "unix");
         pb.redirectErrorStream(true);
         pb.redirectOutput(out.toFile());
         pb.redirectInput(new File("/dev/null"));

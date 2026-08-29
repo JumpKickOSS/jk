@@ -32,11 +32,16 @@ class StatusCommandTest {
 
     @Test
     void sameBaseDir_matches_dirty_count_shapes() {
-        assertThat(StatusCommand.sameBaseDir("/proj", "/proj")).isTrue();
-        assertThat(StatusCommand.sameBaseDir("/proj", "/proj#d14")).isTrue();
-        assertThat(StatusCommand.sameBaseDir("/proj", "/proj#d0")).isTrue();
-        assertThat(StatusCommand.sameBaseDir("/proj", "/other#d1")).isFalse();
-        assertThat(StatusCommand.sameBaseDir("/proj", "/proj-extra")).isFalse();
+        assertThat(StatusCommand.sameBaseDir("/home/u/src/proj", "/home/u/src/proj"))
+                .isTrue();
+        assertThat(StatusCommand.sameBaseDir("/home/u/src/proj", "/home/u/src/proj#d14"))
+                .isTrue();
+        assertThat(StatusCommand.sameBaseDir("/home/u/src/proj", "/home/u/src/proj#d0"))
+                .isTrue();
+        assertThat(StatusCommand.sameBaseDir("/home/u/src/proj", "/home/u/src/other#d1"))
+                .isFalse();
+        assertThat(StatusCommand.sameBaseDir("/home/u/src/proj", "/home/u/src/proj-extra"))
+                .isFalse();
     }
 
     @Test

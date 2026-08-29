@@ -24,7 +24,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Download/extract a {@link ToolDistribution} under {@code $JK_CACHE_DIR/tools/<slug>/<version>/}
+ * Download/extract a {@link ToolDistribution} under {@code $JK_STORE_DIR/tools/<slug>/<version>/}
  * (zip/tar.gz; optional SHA-256; fail cleans partial install).
  */
 public final class ToolInstaller {
@@ -46,14 +46,23 @@ public final class ToolInstaller {
 
         Path archive = Files.createTempFile("jk-tool-", "-" + dist.archiveType());
         try {
-            HttpResponse<byte[]> response = http.get(dist.downloadUri());
-            if (response.statusCode() != 200) {
-                throw new IOException(
-                        dist.tool().slug() + " download " + dist.downloadUri() + " returned " + response.statusCode());
+            // Streamed to disk, never held whole. The engine runs under a memory cap (248 MiB by
+            // default) and the Kotlin compiler distribution alone is 83 MiB, so buffering the body
+            // in a byte[] made every first `.kts` build-logic run, and every Kotlin/Maven/Gradle
+            // provision, an OutOfMemoryError on a stock engine.
+            HttpResponse<InputStream> response = http.getStream(dist.downloadUri());
+            try (InputStream body = response.body()) {
+                if (response.statusCode() != 200) {
+                    throw new IOException(dist.tool().slug()
+                            + " download "
+                            + dist.downloadUri()
+                            + " returned "
+                            + response.statusCode());
+                }
+                Files.copy(body, archive, StandardCopyOption.REPLACE_EXISTING);
             }
-            byte[] body = response.body();
             if (dist.sha256() != null && !dist.sha256().isEmpty()) {
-                String actual = Hashing.sha256Hex(body);
+                String actual = Hashing.sha256Hex(archive);
                 if (!actual.equalsIgnoreCase(dist.sha256())) {
                     throw new IOException("sha256 mismatch for "
                             + dist.downloadUri()
@@ -63,7 +72,6 @@ public final class ToolInstaller {
                             + actual);
                 }
             }
-            Files.write(archive, body);
             SessionContext.current().io().remoteDown(archive);
 
             // Stage NEXT TO the target (same filesystem): the install is then one atomic

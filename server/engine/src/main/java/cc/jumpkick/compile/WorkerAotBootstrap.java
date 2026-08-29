@@ -6,6 +6,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.util.StoreWriteGate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -69,8 +70,19 @@ public final class WorkerAotBootstrap {
     private static void trainJavaCompiler(
             Path host, long timeoutMs, boolean force, List<String> trained, List<String> skipped, List<String> notes) {
         try {
-            Path workerJar = PluginJar.JAVA_COMPILER.locate();
-            String cp = WorkerLaunchClasspath.resolve(workerJar);
+            Path workerJar;
+            String cp;
+            // One gate hold for the whole locate + closure resolve: the fetches inside write
+            // .put- temps into the store, and a wipe interleaving between them would see the
+            // later fetches recreate repos/. After a wipe, warmup hygiene stands down entirely.
+            try (var held = StoreWriteGate.write()) {
+                if (StoreWriteGate.wipedSinceStart()) {
+                    skipped.add("java-compiler (store wiped; hygiene stands down until restart)");
+                    return;
+                }
+                workerJar = PluginJar.JAVA_COMPILER.locate();
+                cp = WorkerLaunchClasspath.resolve(workerJar);
+            }
             Path cache = PluginAot.cachePath("java-compiler", host, cp);
             if (!force && AotCacheFiles.usable(cache)) {
                 trained.add("java-compiler (cached)");

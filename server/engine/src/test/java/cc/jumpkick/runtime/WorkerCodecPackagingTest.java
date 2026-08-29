@@ -65,6 +65,40 @@ class WorkerCodecPackagingTest {
                 .anyMatch(d -> "org.scala-sbt:zinc_3".equals(d.module()));
     }
 
+    @Test
+    void worker_pom_inherits_what_a_vendored_sibling_needed_from_outside(@TempDir Path tmp) throws Exception {
+        // The jar carries the sibling's CLASSES; the POM has to carry the sibling's own
+        // third-party deps in its place. Without this, jk-auditor shipped jk-core's LockfileReader
+        // with nothing declaring tomlj and died on the first lockfile it read (JK-1066).
+        Path root = tmp.resolve("ws");
+        writeWorkspace(root);
+        Path worker = root.resolve("plugins/worker");
+
+        JkBuild forPom =
+                InstallPlans.omitVendoredWorkerSiblings(JkBuildParser.parse(worker.resolve("jk.toml")), worker);
+
+        assertThat(forPom.dependencies().of(Scope.MAIN))
+                .as("hoisted transitively: worker → plugin-sdk → host → tomlj")
+                .anyMatch(d -> "org.tomlj:tomlj".equals(d.module()))
+                .as("and the vendored siblings themselves stay out — they are inside the jar")
+                .noneMatch(d -> d.module().contains("jk-plugin-sdk"))
+                .noneMatch(d -> d.module().contains("jk-host"));
+    }
+
+    @Test
+    void a_library_keeps_its_sibling_edges(@TempDir Path tmp) throws Exception {
+        // Only workers vendor. A library's consumers resolve its siblings normally, so its POM
+        // must still name them.
+        Path root = tmp.resolve("ws");
+        writeWorkspace(root);
+        Path sdk = root.resolve("shared/plugin-sdk");
+
+        JkBuild forPom = InstallPlans.omitVendoredWorkerSiblings(JkBuildParser.parse(sdk.resolve("jk.toml")), sdk);
+
+        assertThat(forPom.dependencies().of(Scope.MAIN))
+                .anyMatch(d -> d.module().contains("jk-host"));
+    }
+
     private static void writeWorkspace(Path root) throws Exception {
         Files.createDirectories(root);
         Files.writeString(root.resolve("jk.toml"), """
@@ -77,7 +111,13 @@ class WorkerCodecPackagingTest {
 
         Path hostLeaf = root.resolve("shared/host");
         Files.createDirectories(hostLeaf);
-        Files.writeString(hostLeaf.resolve("jk.toml"), "name = \"jk-host\"\n");
+        // A third-party dep two siblings deep: the worker vendors plugin-sdk, which vendors host,
+        // which is the only thing that declares tomlj. Nothing but hoisting can surface it.
+        Files.writeString(hostLeaf.resolve("jk.toml"), """
+                name = "jk-host"
+                [dependencies]
+                tomlj = { group = "org.tomlj", name = "tomlj", version = "1.1.1" }
+                """);
 
         Path sdk = root.resolve("shared/plugin-sdk");
         Files.createDirectories(sdk);

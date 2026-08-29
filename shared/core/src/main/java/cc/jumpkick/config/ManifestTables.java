@@ -145,6 +145,36 @@ public final class ManifestTables {
                 optionalBool(format, "remove-unused-imports"));
     }
 
+    /**
+     * {@code [install]} — what installing this module produces besides its jar and POM.
+     *
+     * <p>Absent for every ordinary target, which is the point: a library, an executable, a native
+     * binary, a script and an external jar are complete shapes already and declare nothing. The one
+     * key today is {@code product-lib}, which is jk installing jk — see {@link JkBuild.Install}.
+     */
+    static Optional<JkBuild.Install> parseInstall(TomlTable root) {
+        if (root.contains("install") && !root.isTable("install")) {
+            throw new JkBuildParseException("`install` must be a table — use [install] with a product-lib key");
+        }
+        TomlTable install = root.getTable("install");
+        if (install == null) return Optional.empty();
+        for (String key : install.keySet()) {
+            if (!"product-lib".equals(key)) {
+                throw new JkBuildParseException("[install] unknown key `" + key + "` — expected product-lib");
+            }
+        }
+        String productLib = stringOrThrow(install, "product-lib", "install.product-lib");
+        // The destination is not configurable: EngineInstall hardcodes the jk-engine home, the
+        // pointer name and the jar naming, so any other value would be freshness-checked and
+        // installed under jk-engine/ while announcing a directory nothing wrote to. (A client-io
+        // test pins this literal to EngineInstall.BIN_NAME.)
+        if (productLib != null && !productLib.equals("jk-engine")) {
+            throw new JkBuildParseException("[install] product-lib must be \"jk-engine\" — installing into jk's own"
+                    + " product layout is jk installing jk, and the engine home is not configurable");
+        }
+        return productLib == null ? Optional.empty() : Optional.of(new JkBuild.Install(productLib));
+    }
+
     /** Present boolean key → its value; absent → null (caller applies the default). */
     static Boolean optionalBool(TomlTable table, String key) {
         return table.contains(key) ? table.getBoolean(key) : null;
@@ -380,8 +410,18 @@ public final class ManifestTables {
      * table is absent.
      */
     static Optional<JkBuild.Application> parseApplication(TomlTable root) {
+        rejectFlattenedApplicationKeys(root);
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
+        // Same stance as the [m2]/[install] guards: a typo inside the right table must not parse
+        // clean and do nothing — `asembly = true` silently building a thin jar is the identical
+        // symptom the misplacement guard below exists for.
+        for (String key : application.keySet()) {
+            if (!APPLICATION_KEYS.contains(key)) {
+                throw new JkBuildParseException("[application] unknown key `" + key + "` — expected one of: "
+                        + String.join(", ", APPLICATION_KEYS));
+            }
+        }
         String main = application.getString("main");
         boolean assembly = artifactFlag(application, "assembly");
         boolean minified = artifactFlag(application, "minified");
@@ -391,6 +431,41 @@ public final class ManifestTables {
             throw new JkBuildParseException("[application].main is required");
         }
         return Optional.of(new JkBuild.Application(main, assembly, minified, nativeImage, config));
+    }
+
+    /**
+     * Every key that belongs to {@code [application]}. Written down so a misplacement is caught as
+     * a class rather than one key at a time.
+     */
+    private static final List<String> APPLICATION_KEYS = List.of("main", "assembly", "minified", "native", "config");
+
+    /**
+     * Reject an {@code [application]} key written at the top level.
+     *
+     * <p>Silence here is expensive and invisible. A top-level {@code assembly = true} used to parse
+     * clean and do nothing: the project built a thin jar, and {@code jk install}'s artifact ladder
+     * — native, then minified, then fat, then thin — then honestly installed a thin-jar launcher
+     * because no fat jar existed. Nothing in that chain is wrong except the key nobody read
+     * (JK-1073). {@code minified} did stop the build, but by accident, reporting a type problem
+     * for what is a wrong-table problem.
+     *
+     * <p>Scalars only. {@code [native]}, {@code [config]} and plugin tables like {@code [assembly]}
+     * are legitimate top-level <em>tables</em> with their own meanings; it is the bare
+     * {@code key = value} form that can only be a misplacement. Same shape as the {@code [m2]}
+     * guard, which rejects the flattened {@code m2integration} / {@code m2install} by name.
+     */
+    private static void rejectFlattenedApplicationKeys(TomlTable root) {
+        for (String key : APPLICATION_KEYS) {
+            if (!root.contains(key) || root.isTable(key)) continue;
+            // `native` and `config` are also real top-level TABLES with their own semantics
+            // ([application] native = true declares the artifact; [native] enabled = true tunes
+            // the build) — a bare scalar could be aiming at either, so the error names both.
+            String alsoATable = key.equals("native") || key.equals("config")
+                    ? ", or as the `[" + key + "]` table if its settings were the intent"
+                    : "";
+            throw new JkBuildParseException("`" + key + "` belongs in [application] — write it as"
+                    + " `[application]` with `" + key + " = …`" + alsoATable + ", not at the top level");
+        }
     }
 
     /**

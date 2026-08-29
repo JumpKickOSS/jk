@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +19,45 @@ import org.junit.jupiter.api.io.TempDir;
  * averages.
  */
 class EffortWeightsStepEtaTest {
+
+    @TempDir
+    Path hostStateDir;
+
+    private String prevStateDir;
+    private String prevBuildsDir;
+
+    /**
+     * Pin state + builds, the same way {@link NativeEffortTest} does and for the same reason. Cold
+     * pricing consults {@code Calibration.load()} before its uncalibrated baselines, so without
+     * this the assertions here read the developer's real {@code host-metrics.toml} and change
+     * meaning the moment that host is calibrated — {@code cached_steps_excluded_from_cost} expects
+     * the uncalibrated {@code 2 * TOKEN} and saw {@code 10}.
+     *
+     * <p>{@code Calibration.installForTest} is not enough on its own: tests share a JVM, and
+     * another class's {@code invalidateMemo()} drops the installed value mid-test. Moving the
+     * directory the memo would reload from is what makes it stick. JK_BUILDS_DIR is required too:
+     * a set JK_HOME would otherwise ignore JK_STATE_DIR for builds/.
+     */
+    @BeforeEach
+    void isolateHostState() {
+        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
+        prevBuildsDir = System.getProperty("jk.env.JK_BUILDS_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", hostStateDir.toString());
+        System.setProperty(
+                "jk.env.JK_BUILDS_DIR", hostStateDir.resolve("builds").toString());
+        Calibration.invalidateMemo();
+        BuildMetrics.clearSessionAggregatesMemo();
+    }
+
+    @AfterEach
+    void restoreHostState() {
+        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
+        if (prevBuildsDir == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
+        else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuildsDir);
+        Calibration.invalidateMemo();
+        BuildMetrics.clearSessionAggregatesMemo();
+    }
 
     @Test
     void cost_from_running_steps_sums_measured_step_averages(@TempDir Path dir) throws Exception {
