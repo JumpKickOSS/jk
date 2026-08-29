@@ -17,14 +17,18 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Tag;
@@ -172,15 +176,81 @@ class SelfNukeCommandTest {
         }
     }
 
+    /**
+     * Roots deliberately kept: the nuke must never schedule them. Keyed by {@link JkDirs} accessor
+     * name so the failure message can name the method an author needs to look at.
+     */
+    private static final Set<String> KEPT_ROOTS = Set.of("binDirectory", "jdksDir", "productLibDir");
+
+    /**
+     * Roots deleted child-by-child rather than as one row, so the root itself is never scheduled
+     * but everything under it (minus {@link SelfNukeCommand.Guards}) is.
+     */
+    private static final Set<String> ENUMERATED_ROOTS = Set.of("dataDir");
+
+    /**
+     * Every directory jk owns is either nuked or deliberately kept — and adding a new one to
+     * {@link JkDirs} without deciding which fails here.
+     *
+     * <p>Within a root the nuke is already exhaustive: cache, state, builds, tmp and config are
+     * removed whole-tree, the store is removed whole-tree engine-side, and the data root is
+     * enumerated child-by-child against the guards. What was *not* whitelist-shaped is the set of
+     * roots itself — a hand-maintained list that a fourteenth accessor would silently fall out of,
+     * leaving files behind that a user who ran {@code --all} believes are gone.
+     */
     @Test
-    void wipeRoots_never_includes_bin_jdks_product_lib_or_store_lib() throws Exception {
+    void every_JkDirs_root_is_either_nuked_or_deliberately_kept() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        // plan() enumerates the data root's children off disk, so it has to exist to be walked.
+        Files.createDirectories(dirs.dataDir());
+        Files.createDirectories(dirs.configDir());
+        List<Path> planned = SelfNukeCommand.plan(dirs, EnumSet.allOf(Target.class)).stream()
+                .map(SelfNukeCommand.PurgeRow::path)
+                .toList();
+
+        List<String> unaccounted = new ArrayList<>();
+        for (Method m : JkDirs.class.getMethods()) {
+            if (m.getParameterCount() != 0 || m.getReturnType() != Path.class) continue;
+            if (Modifier.isStatic(m.getModifiers())) continue;
+            String name = m.getName();
+            if (KEPT_ROOTS.contains(name) || ENUMERATED_ROOTS.contains(name)) continue;
+            Path root = ((Path) m.invoke(dirs)).toAbsolutePath().normalize();
+            boolean covered = planned.stream().anyMatch(row -> root.equals(row) || root.startsWith(row));
+            if (!covered) unaccounted.add(name + "() -> " + root);
+        }
+
+        assertThat(unaccounted)
+                .as("JkDirs grew a root that `jk self nuke --all` neither deletes nor keeps on"
+                        + " purpose. Add a row for it in SelfNukeCommand.plan(), or name it in"
+                        + " KEPT_ROOTS/ENUMERATED_ROOTS here with the reason it survives.")
+                .isEmpty();
+    }
+
+    @Test
+    void the_kept_roots_are_actually_kept() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Files.createDirectories(dirs.dataDir());
+        List<Path> planned = SelfNukeCommand.plan(dirs, EnumSet.allOf(Target.class)).stream()
+                .map(SelfNukeCommand.PurgeRow::path)
+                .toList();
+
+        for (String name : KEPT_ROOTS) {
+            Path root = ((Path) JkDirs.class.getMethod(name).invoke(dirs))
+                    .toAbsolutePath()
+                    .normalize();
+            assertThat(planned)
+                    .as("%s() is on the keep list but was scheduled for deletion", name)
+                    .noneMatch(row -> root.equals(row) || root.startsWith(row));
+        }
+    }
+
+    @Test
+    void wipeRoots_never_includes_bin_jdks_or_the_product_lib() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path bin = dirs.binDirectory().toAbsolutePath().normalize();
         Path jdks = dirs.jdksDir().toAbsolutePath().normalize();
         Path productLib = dirs.productLibDir().toAbsolutePath().normalize();
-        Path lib = dirs.libDir().toAbsolutePath().normalize();
         Files.createDirectories(productLib);
-        Files.createDirectories(lib.resolve("jk-java-compiler"));
 
         List<Path> roots = SelfNukeCommand.wipeRoots(dirs);
         for (Path r : roots) {
@@ -188,12 +258,28 @@ class SelfNukeCommandTest {
             assertThat(abs).isNotEqualTo(bin);
             assertThat(abs).isNotEqualTo(jdks);
             assertThat(abs).isNotEqualTo(productLib);
-            assertThat(abs).isNotEqualTo(lib);
             assertThat(abs.startsWith(bin)).isFalse();
             assertThat(abs.startsWith(jdks)).isFalse();
             assertThat(abs.startsWith(productLib)).isFalse();
-            assertThat(abs.startsWith(lib)).isFalse();
         }
+    }
+
+    /**
+     * {@code <store>/lib} is <em>not</em> guarded, and the name of the old assertion said it was.
+     * The store row is delegated whole-tree to {@code jk storage nuke}, so everything under the
+     * store goes with it — {@code lib} included. Nothing writes there today; if something starts
+     * to, this test is where the decision gets revisited.
+     */
+    @Test
+    void the_store_row_is_an_ancestor_of_store_lib_so_it_goes_with_the_store() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path storeLib = dirs.libDir().toAbsolutePath().normalize();
+        Files.createDirectories(storeLib.resolve("jk-java-compiler"));
+        Files.createDirectories(dirs.dataDir());
+
+        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
+
+        assertThat(roots).anyMatch(storeLib::startsWith);
     }
 
     @Test
@@ -425,11 +511,10 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void guard_refuses_rows_that_contain_product_lib_or_store_lib() throws Exception {
+    void guard_refuses_rows_that_contain_the_product_lib() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-anc");
         Path home = root.resolve("home");
         Files.createDirectories(home.resolve("data/lib"));
-        Files.createDirectories(home.resolve("data/store/lib"));
         // JK_STATE_DIR mis-pointed at the umbrella root: state nuke must not take the whole tree.
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString(), "JK_STATE_DIR", home.toString()),

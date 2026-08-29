@@ -82,14 +82,13 @@ public final class SelfNukeCommand implements CliCommand {
      * <em>same</em> {@link JkDirs} the rows come from, so synthetic test environments guard
      * consistently.
      */
-    record Guards(Path bin, Path jdks, Path productLib, Path lib, Path credentials, Path repoCredentials) {
+    record Guards(Path bin, Path jdks, Path productLib, Path credentials, Path repoCredentials) {
         static Guards of(JkDirs dirs) {
             Path data = dirs.dataDir();
             return new Guards(
                     abs(dirs.binDirectory()),
                     abs(dirs.jdksDir()),
                     abs(dirs.productLibDir()),
-                    abs(dirs.libDir()),
                     abs(data.resolve("credentials")),
                     abs(data.resolve("repo-credentials")));
         }
@@ -296,7 +295,7 @@ public final class SelfNukeCommand implements CliCommand {
                     "Self",
                     "Nuked selected JumpKick data. Kept: active engine "
                             + Jk.VERSION
-                            + ", PATH, JDKs, installed tools"
+                            + ", PATH, JDKs, installed app jars"
                             + (wantData ? ", credentials" : ", store")
                             + ".");
         }
@@ -346,8 +345,13 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     /**
-     * Build ordered purge rows for the selected targets. Never includes bin, JDKs, the active
-     * product-lib engine jar, {@code store/lib/} (installed tools), or the credential stores.
+     * Build ordered purge rows for the selected targets. Never includes bin, JDKs, the product lib
+     * ({@code <data>/lib} — live engine and installed app jars), or the credential stores.
+     *
+     * <p>{@code <store>/lib} is <em>not</em> among them: the store row is delegated whole-tree to
+     * {@code jk storage nuke}, which deletes the store root outright, so everything beneath it —
+     * {@code repos}, {@code templates}, {@code tools}, {@code lib} — goes. That is intended (all of
+     * it is re-fetchable) and nothing writes to {@code <store>/lib} today anyway.
      */
     static List<PurgeRow> plan(JkDirs dirs, Set<Target> selected) {
         Guards guards = Guards.of(dirs);
@@ -441,9 +445,9 @@ public final class SelfNukeCommand implements CliCommand {
 
     /**
      * Schedule a row unless it would touch a guarded tree: equal to, inside, or an <em>ancestor</em>
-     * of bin, jdks, the product-lib engine, {@code store/lib} (installed tools), or the forge/repo
-     * credential stores. Comparisons also run on real paths so
-     * a guarded dir reached through a symlink (e.g. {@code ~/.local/bin -> <data>/bin}) stays safe.
+     * of bin, jdks, the product lib, or the forge/repo credential stores. Comparisons also run on
+     * real paths so a guarded dir reached through a symlink (e.g. {@code ~/.local/bin ->
+     * <data>/bin}) stays safe.
      *
      * @return whether the row was scheduled
      */
@@ -459,7 +463,6 @@ public final class SelfNukeCommand implements CliCommand {
         if (conflicts(norm, guards.bin())
                 || conflicts(norm, guards.jdks())
                 || conflicts(norm, guards.productLib())
-                || conflicts(norm, guards.lib())
                 || conflicts(norm, guards.credentials())
                 || conflicts(norm, guards.repoCredentials())) {
             return false;
@@ -487,9 +490,10 @@ public final class SelfNukeCommand implements CliCommand {
         }
         if (wantData) {
             CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
-            // The guard is the product lib, not the engine directory inside it: every installed
-            // tool under here survives too, and naming only the engine let them survive unmentioned.
-            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed tools)");
+            // The guard is the product lib, not the engine directory inside it: installed app jars
+            // sit beside jk-engine and survive too, and naming only the engine left them unmentioned.
+            // Not "installed tools" — those would be <store>/lib, which the store wipe removes.
+            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed app jars)");
         }
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");

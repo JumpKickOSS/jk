@@ -256,7 +256,6 @@ public final class InstallCommand {
     int runProjectInstallBuildPlan(Path projectDir, String planName) throws IOException {
         Path cacheDir = cacheDir();
         Path binDir = binDir();
-        Path libDir = libDir();
 
         // Validate up front: a non-native application needs a main class for its
         // launcher. (Done here, not in a step, so we fail before building.) Spring Boot
@@ -680,10 +679,6 @@ public final class InstallCommand {
 
     private Path binDir() {
         return binDirOverride != null ? binDirOverride : JkDirs.binDir();
-    }
-
-    private Path libDir() {
-        return libDirOverride != null ? libDirOverride : JkDirs.lib();
     }
 
     private Path m2Dir() {
