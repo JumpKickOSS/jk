@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -66,6 +67,10 @@ class EngineElectionTest {
 
     private EngineElection election(EnginePaths.Paths p, String buildId, long pid) {
         return new EngineElection(p, VERSION, buildId, pid, 1_700_000_000_000L, s -> {});
+    }
+
+    private EngineElection election(EnginePaths.Paths p, String buildId, long pid, Consumer<String> log) {
+        return new EngineElection(p, VERSION, buildId, pid, 1_700_000_000_000L, log);
     }
 
     /**
@@ -163,10 +168,14 @@ class EngineElectionTest {
         FileChannel held = closeLater(FileChannel.open(p.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE));
         assertThat(held.tryLock()).isNotNull();
 
-        assertThat(election(p, "aaaa", 4242).win()).isNull();
+        List<String> log = new ArrayList<>();
+        assertThat(election(p, "aaaa", 4242, log::add).win()).isNull();
         assertThat(EnginePaths.endpoint(p))
                 .as("a loser touches nothing but the lock file")
                 .doesNotExist();
+        // Losing is success-by-proxy, but a silent exit-0 reads as a crash in the engine log — and
+        // an unreachable winner then blocks every spawn with nothing anywhere saying why.
+        assertThat(log).anyMatch(l -> l.contains("mid-startup"));
     }
 
     @Test
@@ -174,12 +183,16 @@ class EngineElectionTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         closeLater(new FakeIncumbent(p, 1, VERSION, "aaaa"));
 
-        assertThat(election(p, "aaaa", 4242).win())
+        List<String> log = new ArrayList<>();
+        assertThat(election(p, "aaaa", 4242, log::add).win())
                 .as("a redundant spawn-race participant")
                 .isNull();
         assertThat(Files.readString(EnginePaths.endpoint(p)).trim())
                 .as("the incumbent still owns the endpoint")
                 .isEqualTo(EnginePaths.generation(p, 1).socket().getFileName().toString());
+        assertThat(log)
+                .as("the loser names the winner it yielded to")
+                .anyMatch(l -> l.contains("already serves") && l.contains("pid"));
     }
 
     /**
