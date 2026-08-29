@@ -4,7 +4,8 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,6 +25,11 @@ import java.util.List;
  * reused. Ordinary {@code .kt} produces ordinary bytecode, so the result runs under plain {@code
  * java} — the compiled-script metadata problem that stops a {@code kotlinc -d} script jar from
  * running does not apply here.
+ *
+ * <p>Compilation goes through {@code java -cp kotlin-compiler.jar K2JVMCompiler}, not {@code
+ * kotlinc}/{@code kotlinc.bat}. On Windows, {@code ProcessBuilder} hands {@code .bat} files to
+ * {@code cmd.exe}, which splits a {@code -cp} value on {@code ;} before the bat sees it; kotlinc
+ * then reports every jar after the first as {@code source entry is not a Kotlin file}.
  *
  * <p>The directory is keyed by the source's hash and the Kotlin version, so editing the host or
  * moving Kotlin versions produces a new jar rather than silently reusing a stale one.
@@ -94,16 +100,18 @@ final class KtsHostJar {
         Path src = dir.resolve("JkKtsHost.kt");
         Files.writeString(src, source(), StandardCharsets.UTF_8);
 
-        String kotlincName = Os.isWindows() ? "kotlinc.bat" : "kotlinc";
-        Path kotlinc = kotlinHome.resolve("bin").resolve(kotlincName);
-        if (!Files.isRegularFile(kotlinc)) {
-            throw new IllegalStateException("[build] logic: kotlinc not found at " + kotlinc);
+        Path compilerJar = kotlinHome.resolve("lib").resolve("kotlin-compiler.jar");
+        if (!Files.isRegularFile(compilerJar)) {
+            throw new IllegalStateException("[build] logic: kotlin-compiler.jar not found at " + compilerJar);
         }
         Path staging = Files.createTempFile(dir, "host-", ".jar");
         Files.deleteIfExists(staging);
 
         List<String> cmd = new ArrayList<>();
-        cmd.add(kotlinc.toString());
+        cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
+        cmd.add("-cp");
+        cmd.add(compilerJar.toAbsolutePath().toString());
+        cmd.add("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler");
         cmd.add("-nowarn");
         cmd.add("-cp");
         cmd.add(Classpaths.join(kotlinClasspath(kotlinHome)));

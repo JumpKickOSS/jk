@@ -117,8 +117,12 @@ class JUnitPinParityTest {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                String s = file.toString();
-                if (s.endsWith(".java") && (s.contains("/src/test/") || s.contains("/src/integrationTest/"))) {
+                // Match path segments, not a literal "/src/test/" substring — Windows toString()
+                // uses backslashes, so a slash-only check finds zero fixtures and the guard passes
+                // vacuously (or fails the floor assertion).
+                if (file.getFileName() != null
+                        && file.getFileName().toString().endsWith(".java")
+                        && isUnderTestSource(file)) {
                     found.add(file);
                 }
                 return FileVisitResult.CONTINUE;
@@ -130,5 +134,15 @@ class JUnitPinParityTest {
             }
         });
         return found;
+    }
+
+    /** True when {@code file} sits under {@code src/test} or {@code src/integrationTest}. */
+    private static boolean isUnderTestSource(Path file) {
+        for (int i = 0; i + 1 < file.getNameCount(); i++) {
+            if (!"src".equals(file.getName(i).toString())) continue;
+            String next = file.getName(i + 1).toString();
+            if ("test".equals(next) || "integrationTest".equals(next)) return true;
+        }
+        return false;
     }
 }

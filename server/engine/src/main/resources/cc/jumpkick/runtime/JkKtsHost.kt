@@ -3,8 +3,8 @@
 // jk's build-logic .kts host: one JVM for a whole build, each script compiled once.
 //
 // Not compiled by jk's own build -- jk is a Java project. KtsHostJar compiles this with the
-// provisioned kotlinc into <store>/tools/kts-host/<hash>/, once, and KtsSession runs it as a
-// child process. It is a resource rather than a Java text block so it stays readable Kotlin.
+// provisioned Kotlin compiler into <store>/tools/kts-host/<hash>/, once, and KtsSession runs it
+// as a child process. It is a resource rather than a Java text block so it stays readable Kotlin.
 //
 // Protocol, one request per line on stdin, one reply per line on stdout:
 //

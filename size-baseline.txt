@@ -136,4 +136,4 @@
 # whole SIGINT design in `TerminalSignals` names it. That is a live receiver with no in-tree
 # sender, which is a question about the cancel protocol and not a line to reclaim, so it was left
 # alone deliberately.
-810  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
+808  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
