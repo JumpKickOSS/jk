@@ -122,8 +122,37 @@ public final class SelfNukeCommand implements CliCommand {
                 Opt.flag("Nuke user config.", "--config"));
     }
 
+    /**
+     * The two nukes that run engine-side. They sit behind a seam because the contract that matters
+     * — a failure here must not stop the local deletes below it — cannot be provoked otherwise:
+     * whether a real engine starts depends on the machine, so a test that corrupts an engine jar
+     * asserts nothing on a box that finds a working one anyway (JK-2015).
+     */
+    interface Hosted {
+        int storage(boolean dryRun) throws IOException;
+
+        int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) throws IOException;
+
+        Hosted DEFAULT = new Hosted() {
+            @Override
+            public int storage(boolean dryRun) throws IOException {
+                return StorageCommand.runNuke(dryRun, true);
+            }
+
+            @Override
+            public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped)
+                    throws IOException {
+                return CacheCommand.runNuke(cacheDir, dryRun, global, true, enginesStopped);
+            }
+        };
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
+        return run(in, Hosted.DEFAULT);
+    }
+
+    int run(Invocation in, Hosted hosted) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         boolean dryRun = in.isSet("dry-run");
         Set<Target> selected = selectedTargets(in);
@@ -161,12 +190,34 @@ public final class SelfNukeCommand implements CliCommand {
         if (enginesStopped) stopFleet();
 
         int exit = Exit.SUCCESS;
+        // What the delegated (engine-hosted) nukes could not do. They are attempted FIRST but must
+        // never end the command: the rows below — state, config, the data root's own children —
+        // are deleted by this process and need no engine at all. Letting an engine failure unwind
+        // `run` meant a user who had just approved a table of five paths got an error about the
+        // engine and five surviving paths, plus the files the spawn attempt had just written
+        // (JK-2015).
+        List<String> delegatedFailures = new ArrayList<>();
+        // A dry run does not call them at all. Both perform their walk engine-side, so even the
+        // preview spawns a daemon — which writes engine logs, an AOT index and a JDK registry into
+        // the very state directory it is pretending to delete. "Touch nothing" is the one promise
+        // this mode makes, and previewing counts is not worth breaking it; the plan table above
+        // already names the store and cache rows.
+        if (dryRun && (wantData || wantCache)) {
+            CliOutput.out("  (store/cache contents not itemised — a dry run does not start an engine)");
+        }
         // Settle order: Storage → Cache → Self, with a blank between back-to-back wedges so
         // adjacent chip backgrounds do not visually merge.
-        if (wantData) {
+        if (wantData && !dryRun) {
             settleGap();
-            int s = StorageCommand.runNuke(dryRun, true);
-            if (s != 0) exit = s;
+            try {
+                int s = hosted.storage(dryRun);
+                if (s != 0) {
+                    exit = s;
+                    delegatedFailures.add("artifact store (jk storage nuke) exited " + s);
+                }
+            } catch (IOException | RuntimeException e) {
+                delegatedFailures.add("artifact store (jk storage nuke): " + e.getMessage());
+            }
         }
         // `jk storage nuke` performs its delete engine-side: the wipe-store request calls
         // ensureRunning and the engine it boots is still there when it returns. Everything below
@@ -174,12 +225,19 @@ public final class SelfNukeCommand implements CliCommand {
         // assumption, and the STATE rows are about to delete the sockets and AOT cache that
         // engine holds open, which it would then write straight back. Take it down again.
         if (enginesStopped && wantData) stopFleet();
-        if (wantCache) {
+        if (wantCache && !dryRun) {
             // Engines were stopped above for STATE/STORE — the hosted purge would boot a fresh
             // one only for the STATE rows below to delete its state dir out from under it.
             settleGap();
-            int c = CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, true, enginesStopped);
-            if (c != 0) exit = c;
+            try {
+                int c = hosted.cache(dirs.cacheDir(), dryRun, global, enginesStopped);
+                if (c != 0) {
+                    exit = c;
+                    delegatedFailures.add("cache tier (jk cache nuke) exited " + c);
+                }
+            } catch (IOException | RuntimeException e) {
+                delegatedFailures.add("cache tier (jk cache nuke): " + e.getMessage());
+            }
         }
 
         long removed = 0;
@@ -198,6 +256,16 @@ public final class SelfNukeCommand implements CliCommand {
             }
         }
 
+        // Say what did NOT happen, always. The whole failure mode this replaced was a command
+        // that reported an engine problem and left the user to infer — wrongly — that the paths
+        // they had just approved were gone.
+        if (!delegatedFailures.isEmpty()) {
+            Theme t = Theme.active();
+            CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
+                    + (dryRun ? " Could not preview:" : " NOT removed — these targets need a running engine:"));
+            for (String f : delegatedFailures) CliOutput.err("  " + f);
+            if (!dryRun) exit = Exit.SOFTWARE;
+        }
         if (!failures.isEmpty()) {
             Theme t = Theme.active();
             CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning()) + " Some paths could not be removed:");
@@ -214,13 +282,21 @@ public final class SelfNukeCommand implements CliCommand {
                             + (removed == 1 ? "" : "s")
                             + (wantCache || wantData ? " plus cache/store targets" : "")
                             + ".");
+        } else if (!delegatedFailures.isEmpty()) {
+            // Partial by construction: the local rows went, the delegated ones did not. Naming the
+            // count is what tells the user the approval was not honoured in full.
+            settleGap();
+            CommandWedge.printFail(
+                    "Self",
+                    "Nuked " + removed + " path" + (removed == 1 ? "" : "s") + "; " + delegatedFailures.size()
+                            + " target" + (delegatedFailures.size() == 1 ? "" : "s") + " left in place.");
         } else if (removed > 0 || wantCache || wantData) {
             settleGap();
             CommandWedge.printOk(
                     "Self",
                     "Nuked selected JumpKick data. Kept: active engine "
                             + Jk.VERSION
-                            + ", PATH, JDKs"
+                            + ", PATH, JDKs, installed tools"
                             + (wantData ? ", credentials" : ", store")
                             + ".");
         }
@@ -411,7 +487,9 @@ public final class SelfNukeCommand implements CliCommand {
         }
         if (wantData) {
             CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
-            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir().resolve("jk-engine")) + "  (live engine)");
+            // The guard is the product lib, not the engine directory inside it: every installed
+            // tool under here survives too, and naming only the engine let them survive unmentioned.
+            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed tools)");
         }
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");

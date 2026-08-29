@@ -3,12 +3,14 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.SelfNukeCommand.Target;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -88,6 +90,86 @@ class SelfNukeCommandTest {
         else System.setProperty("jk.env.JK_HOME", prevHome);
         if (prevState == null) System.clearProperty("jk.env.JK_STATE_DIR");
         else System.setProperty("jk.env.JK_STATE_DIR", prevState);
+    }
+
+    /** A store/cache nuke that fails the way an unstartable engine fails, and counts being asked. */
+    private static final class BrokenEngine implements SelfNukeCommand.Hosted {
+        int calls;
+
+        @Override
+        public int storage(boolean dryRun) throws IOException {
+            calls++;
+            throw new IOException("could not start the build engine");
+        }
+
+        @Override
+        public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped)
+                throws IOException {
+            calls++;
+            throw new IOException("could not start the build engine");
+        }
+    }
+
+    @Test
+    void an_unreachable_engine_still_removes_everything_that_needs_no_engine() throws Exception {
+        // The store and cache nukes run engine-side; state, config and the data root's own children
+        // do not. An engine that cannot start used to unwind the whole command, so a user who had
+        // just approved a table of paths got an error about the engine and every path still there
+        // (JK-2015).
+        JkDirs dirs = JkDirs.current();
+        Path config = dirs.configDir().resolve("config.toml");
+        Path versions = dirs.dataDir().resolve("versions");
+        Files.createDirectories(config.getParent());
+        Files.writeString(config, "x = 1");
+        Files.createDirectories(versions);
+        Files.writeString(versions.resolve("v.toml"), "v");
+
+        int exit = capture(() -> runNuke(new BrokenEngine(), true));
+
+        assertThat(exit).as("a partial nuke must not report success").isNotZero();
+        assertThat(config).as("config needs no engine to delete").doesNotExist();
+        assertThat(versions).as("data-root children need no engine to delete").doesNotExist();
+    }
+
+    @Test
+    void an_unreachable_engine_names_what_it_could_not_remove() throws Exception {
+        // Silence here is the actual harm: the paths that survive are exactly the ones the user
+        // cannot see, so the command has to say which targets it left behind.
+        Files.createDirectories(JkDirs.current().configDir());
+        Files.writeString(JkDirs.current().configDir().resolve("config.toml"), "x = 1");
+
+        String err = captureText(() -> runNuke(new BrokenEngine(), true));
+
+        assertThat(err).contains("NOT removed");
+        assertThat(err).contains("artifact store");
+        assertThat(err).contains("cache tier");
+    }
+
+    @Test
+    void a_dry_run_touches_nothing_and_never_calls_the_engine() throws Exception {
+        // Both delegated nukes walk the tree engine-side, so previewing them spawns a daemon that
+        // writes logs, an AOT index and a JDK registry into the state dir it is pretending to
+        // delete. Touching nothing is the one promise this mode makes.
+        Path config = JkDirs.current().configDir().resolve("config.toml");
+        Files.createDirectories(config.getParent());
+        Files.writeString(config, "x = 1");
+        long before = countFiles(isolatedHome);
+
+        BrokenEngine engine = new BrokenEngine();
+        int exit = capture(() -> runNuke(engine, false));
+
+        assertThat(exit).isZero();
+        assertThat(engine.calls)
+                .as("a dry run must not consult the engine at all")
+                .isZero();
+        assertThat(config).exists();
+        assertThat(countFiles(isolatedHome)).as("a dry run created files").isEqualTo(before);
+    }
+
+    private static long countFiles(Path root) throws IOException {
+        try (var walk = Files.walk(root)) {
+            return walk.filter(Files::isRegularFile).count();
+        }
     }
 
     @Test
@@ -512,6 +594,38 @@ class SelfNukeCommandTest {
         Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
         Path under = home.resolve("cache").resolve("jk");
         assertThat(SelfNukeCommand.displayPath(under)).isEqualTo("~/cache/jk");
+    }
+
+    /** {@code self nuke --all} with the engine-hosted nukes stubbed; {@code apply} false = dry run. */
+    private static int runNuke(SelfNukeCommand.Hosted hosted, boolean apply) {
+        Invocation in = Invocation.builder()
+                .flag("all", true)
+                .flag("yes", apply)
+                .flag("dry-run", !apply)
+                .build();
+        GlobalOptions.from(in); // installs assume-yes for Confirm
+        try {
+            return new SelfNukeCommand().run(in, hosted);
+        } catch (Exception e) {
+            throw new AssertionError("self nuke threw instead of reporting: " + e, e);
+        }
+    }
+
+    /** As {@link #capture} but hands back what was printed. */
+    private static String captureText(IntSupplier body) {
+        PrintStream out = System.out;
+        PrintStream err = System.err;
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        PrintStream cap = new PrintStream(buf, true, StandardCharsets.UTF_8);
+        System.setOut(cap);
+        System.setErr(cap);
+        try {
+            body.getAsInt();
+        } finally {
+            System.setOut(out);
+            System.setErr(err);
+        }
+        return buf.toString(StandardCharsets.UTF_8);
     }
 
     private static int capture(IntSupplier body) {
