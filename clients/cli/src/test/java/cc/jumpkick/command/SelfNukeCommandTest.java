@@ -337,6 +337,12 @@ class SelfNukeCommandTest {
         Files.writeString(cas.resolve("ab/blob"), "cas");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("plugin.jar"), "plugin");
+        // A Maven-layout jar under repos/, because an EMPTY store is the shape that passes for the
+        // wrong reason: this suite once went green only because a network outage left nothing here
+        // for a worker to open, and the wipe therefore had nothing locked to trip over.
+        Path repoJar = dirs.storeDir().resolve("repos/central/com/example/demo/1.0/demo-1.0.jar");
+        Files.createDirectories(repoJar.getParent());
+        Files.writeString(repoJar, "jar");
         Files.createDirectories(bin);
         Path foreign = bin.resolve("uv");
         Files.writeString(foreign, "foreign-tool");
@@ -353,6 +359,9 @@ class SelfNukeCommandTest {
         // storage nuke: entire store, including plugin lib
         assertThat(cas.resolve("ab/blob")).doesNotExist();
         assertThat(lib.resolve("plugin.jar")).doesNotExist();
+        assertThat(repoJar)
+                .as("the Maven-layout tree goes too — this is what a worker holds open")
+                .doesNotExist();
         // the rest of the data root goes with it
         assertThat(completions).doesNotExist();
         // product-lib engine, credentials, and PATH survive

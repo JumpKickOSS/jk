@@ -17,6 +17,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.verbs.HostedVerb;
@@ -40,6 +41,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -899,8 +901,19 @@ public final class EngineServer implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        // A trainer is this engine's child and must not outlive it. Left running it is an orphan
+        // holding store jars open with no parent to reap it — which is how `jk self nuke --data`
+        // stopped the whole fleet and still could not delete the store: the trainer belonged to an
+        // engine that was already gone, so no survivor had it in reach.
+        List<Long> orphans = PluginAot.quiesceTrainers(TRAINER_SHUTDOWN_MILLIS);
+        if (!orphans.isEmpty()) {
+            log.accept("jk engine: stopped " + orphans.size() + " AOT trainer(s) on shutdown (pid " + orphans + ")");
+        }
         election.retire();
     }
+
+    /** Grace for a trainer to die with its engine; short — the engine is already on its way out. */
+    private static final long TRAINER_SHUTDOWN_MILLIS = 5_000;
 
     /**
      * Size the shared worker-JVM memory plan once for the process (core-count concurrency). Hosted

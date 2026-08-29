@@ -10,6 +10,7 @@ import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
@@ -72,6 +73,13 @@ public final class PluginAot {
 
     /** In-JVM double-spawn guard (the claim file guards across processes). */
     private static final Set<Path> TRAINING = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Trainer forks this engine has running. A trainer's classpath is jars <em>inside the artifact
+     * store</em>, and Windows will not delete a file another process holds open — so the store wipe
+     * needs a way to reach these, which a set of cache paths cannot give it.
+     */
+    private static final Set<Process> LIVE_TRAINERS = ConcurrentHashMap.newKeySet();
 
     /** Builds the full trainer command line; {@code aotOutput} is where the JVM assembles the cache. */
     public interface TrainerCommand {
@@ -420,16 +428,27 @@ public final class PluginAot {
     private static void runTrainer(String what, Path cache, Path claim, TrainerCommand trainer, CacheMeta meta) {
         Path scratch = null;
         boolean keepClaim = false;
+        Process p = null;
         Path tmp = cache.resolveSibling(
                 cache.getFileName() + ".tmp-" + ProcessHandle.current().pid());
         try {
             scratch = Files.createTempDirectory("jk-worker-aot-");
             Files.createDirectories(scratch.resolve("out"));
             List<String> cmd = trainer.build(tmp, scratch);
-            Process p = new ProcessBuilder(cmd)
+            p = new ProcessBuilder(cmd)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
+            LIVE_TRAINERS.add(p);
+            // Last possible moment to notice a store wipe: the classpath handed to that fork is
+            // jars in the store, and a fork that starts between the wipe's quiesce and its delete
+            // is a file handle the wipe cannot see coming. Registering first, then checking, means
+            // the window is the fork itself rather than the whole train.
+            if (StoreWriteGate.wipedSinceStart()) {
+                p.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+                System.err.println("jk engine: AOT training for " + what + " abandoned — the store was wiped");
+                return;
+            }
             System.err.println("jk engine: AOT-training " + what + " in the background (pid " + p.pid() + ")");
             if (!p.waitFor(trainingTimeoutMillis, TimeUnit.MILLISECONDS)) {
                 // NO sticky marker: an overrun is usually transient (first Kotlin compile on a
@@ -461,11 +480,48 @@ public final class PluginAot {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
+            if (p != null) LIVE_TRAINERS.remove(p);
             deleteQuietly(tmp);
             deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // interrupted recording
             if (!keepClaim) deleteQuietly(claim);
             if (scratch != null) PathUtil.deleteRecursively(scratch);
             TRAINING.remove(cache);
+        }
+    }
+
+    /**
+     * Stop training and make sure no trainer of ours still holds a file: new trains are suppressed
+     * for this engine's remaining life, live trainer forks are killed and <em>reaped</em>. Returns
+     * the pids it killed, so a caller whose delete still fails can say what it already ruled out.
+     *
+     * <p>For the artifact-store wipe. A trainer runs with store jars on its classpath, and Windows
+     * refuses to delete a file another process holds open — so `jk storage nuke` died on a jar its
+     * own engine had handed to a background trainer seconds earlier. Suppression is deliberately
+     * permanent here, the same stand-down {@link cc.jumpkick.util.StoreWriteGate} makes: the user
+     * asked for the store to be gone, and refilling it from this engine would undo that.
+     */
+    public static List<Long> quiesceTrainers(long timeoutMillis) {
+        AotSettings.suppressTraining();
+        List<Long> killed = new ArrayList<>();
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
+        // Loop rather than sweep once: {@link #trainAsync} joins TRAINING before its thread has
+        // spawned anything, so a single pass can find no process and return while a trainer is
+        // seconds from opening the very jars the caller is about to delete. TRAINING draining is
+        // the signal that every started train has run its cleanup.
+        while (true) {
+            for (Process p : LIVE_TRAINERS) {
+                if (!p.isAlive()) continue;
+                if (!killed.contains(p.pid())) killed.add(p.pid());
+                p.destroyForcibly();
+            }
+            boolean quiet = TRAINING.isEmpty() && LIVE_TRAINERS.stream().noneMatch(Process::isAlive);
+            if (quiet || System.nanoTime() >= deadline) return List.copyOf(killed);
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return List.copyOf(killed);
+            }
         }
     }
 
