@@ -695,7 +695,6 @@ public final class InstallCommand {
         CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
     }
 
-    /** Announce a project install: launcher path for an app, cache-only for a library. */
     /**
      * A product-lib install went into jk's own product layout, not the local cache. Saying "to the
      * local cache" here would name the one place this artifact did not go.
@@ -706,6 +705,7 @@ public final class InstallCommand {
                 + PathDisplay.styledRaw(JkDirs.productLib().resolve(productLib)));
     }
 
+    /** Announce a project install: launcher path for an app, cache-only for a library. */
     private void announceProjectInstall(String coord, Path launcher, Path binDir) {
         if (global.outputIsJson()) return;
         if (launcher == null) {

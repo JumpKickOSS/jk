@@ -70,8 +70,9 @@ public final class ShortTempDirs implements AfterEachCallback {
     }
 
     /**
-     * Synthetic absolute path root (no mkdir). Same locations as {@link #root()}: {@code /tmp} on
-     * POSIX, {@code %USERPROFILE%\Temp} on Windows.
+     * Synthetic absolute path root (no mkdir): {@code /tmp} on POSIX (unconditionally — unlike
+     * {@link #root()}, which falls back to {@code java.io.tmpdir} when {@code /tmp} is absent),
+     * {@code %USERPROFILE%\Temp} on Windows.
      */
     public static Path path() {
         return Os.isWindows() ? Path.of(System.getProperty("user.home"), "Temp") : Path.of("/tmp");

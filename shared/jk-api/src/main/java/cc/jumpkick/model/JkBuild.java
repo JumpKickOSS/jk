@@ -618,11 +618,6 @@ public record JkBuild(
     }
 
     /**
-     * Optional {@code [build]} block: order-only deps, test plugin jars, lint, Kotlin plugins,
-     * KSP options, extra source roots, and per-module test worker pin — never on a classpath or
-     * lockfile.
-     */
-    /**
      * {@code [install]} — what installing this module produces besides its jar and POM.
      *
      * <p>{@code productLib} names a directory under jk's own product library
@@ -642,6 +637,11 @@ public record JkBuild(
         }
     }
 
+    /**
+     * Optional {@code [build]} block: order-only deps, test plugin jars, lint, Kotlin plugins,
+     * KSP options, extra source roots, and per-module test worker pin — never on a classpath or
+     * lockfile.
+     */
     public record Build(
             List<String> orderAfter,
             List<String> testPluginJars,
