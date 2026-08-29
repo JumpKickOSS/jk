@@ -229,6 +229,10 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * Bind and start serving. Throws on an unusable {@code host} or an already-claimed port — the
      * caller treats that as "continue without HTTP", never as engine failure.
+     *
+     * <p>Default host is IPv4 loopback. The process must have {@code java.net.preferIPv4Stack=true}
+     * ({@link cc.jumpkick.host.PreferIpv4}) so the listener is a real AF_INET socket — required for
+     * WSL2 localhost forwarding from Windows.
      */
     public void start() throws IOException {
         loadOrMintToken();

@@ -10,6 +10,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.PreferIpv4;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ class JvmOptionsTest {
                 "-XX:MaxMetaspaceSize=256m",
                 "-XX:ActiveProcessorCount=" + cores(concurrency),
                 "-Xss512k",
+                PreferIpv4.JVM_FLAG,
                 "-XX:+ExitOnOutOfMemoryError");
     }
 
@@ -81,6 +83,7 @@ class JvmOptionsTest {
                         "-XX:MaxMetaspaceSize=1g",
                         "-XX:ActiveProcessorCount=2",
                         "-Xss2m",
+                        PreferIpv4.JVM_FLAG,
                         "-XX:+CrashOnOutOfMemoryError"));
         assertThat(JvmOptions.flags(s, 1))
                 .containsExactly(
@@ -88,6 +91,7 @@ class JvmOptionsTest {
                         "-XX:MaxMetaspaceSize=1g",
                         "-XX:ActiveProcessorCount=2",
                         "-Xss2m",
+                        PreferIpv4.JVM_FLAG,
                         "-XX:+CrashOnOutOfMemoryError");
     }
 

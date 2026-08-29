@@ -14,6 +14,7 @@ import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -512,6 +513,7 @@ public final class EngineSpawn {
                             "-XX:MinHeapFreeRatio=10",
                             "-XX:MaxHeapFreeRatio=25",
                             "-XX:-ShrinkHeapInSteps",
+                            PreferIpv4.JVM_FLAG,
                             "--enable-native-access=ALL-UNNAMED"));
             if (ready) {
                 b.sizeBytes(Files.size(cache)).lastUsed(AotManifest.nowIso());
@@ -575,6 +577,8 @@ public final class EngineSpawn {
                 command.add("-XX:-ShrinkHeapInSteps");
                 command.add("-XX:MaxMetaspaceSize=256m");
                 command.add("-Xss512k");
+                // Real IPv4 sockets so WSL localhost forwarding can relay the HTTP dashboard.
+                command.add(PreferIpv4.JVM_FLAG);
                 // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata and AOT-compiled code.
                 // USE maps an existing cache. TRAIN boots cold and spawns a sidecar trainer
                 // (`EngineMain --aot-training`, isolated temp state, throwaway socket). NONE

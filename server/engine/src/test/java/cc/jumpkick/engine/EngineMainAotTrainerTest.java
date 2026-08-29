@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PreferIpv4;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +33,7 @@ class EngineMainAotTrainerTest {
         List<String> cmd = EngineMain.aotTrainerCommand("/opt/jdk/bin/java", "engine.jar", tmpOut);
         assertThat(cmd).contains("-XX:AOTCacheOutput=" + tmpOut);
         assertThat(cmd).doesNotContain("-XX:AOTCacheOutput=" + finalPath);
+        assertThat(cmd).contains(PreferIpv4.JVM_FLAG);
         assertThat(cmd).containsSubsequence("-cp", "engine.jar");
         assertThat(cmd.getLast()).isEqualTo("--aot-training");
     }

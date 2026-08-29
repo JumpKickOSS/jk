@@ -4,6 +4,7 @@ package cc.jumpkick.quarkus;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.model.command.Exit;
 import io.quarkus.bootstrap.app.AugmentResult;
 import io.quarkus.bootstrap.app.CuratedApplication;
@@ -47,6 +48,7 @@ import java.util.Set;
 public final class QuarkusAugmentMain {
 
     public static void main(String[] args) throws Exception {
+        PreferIpv4.install();
         if (args.length != 11) {
             System.err.println(
                     "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version"

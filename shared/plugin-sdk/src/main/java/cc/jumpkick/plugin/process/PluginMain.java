@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.process;
 
+import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
@@ -28,6 +29,7 @@ public final class PluginMain {
     private PluginMain() {}
 
     public static void main(String[] args) {
+        PreferIpv4.install();
         List<Plugin> plugins = new ArrayList<>();
         for (Plugin p : ServiceLoader.load(Plugin.class)) {
             plugins.add(p);
