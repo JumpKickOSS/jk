@@ -156,6 +156,12 @@ public final class LockPinMatch {
      */
     private static String[] fields(ToolchainSpec spec, JdkHit hit, Lockfile.ToolchainPin previous) {
         ToolchainSpec s = spec == null ? ToolchainSpec.NONE : spec;
+        // Manifest dropped the pin: keep a previous suggestion only when it still names
+        // something installable. Copying nosuchvendor-99 would make the next build try to
+        // install a catalog-missing spec instead of using the JDK that just resolved.
+        if (s.isEmpty() && previous != null && !previous.hasRequirement() && !suggestionIsInstallable(previous)) {
+            previous = null;
+        }
         String rv = hit == null || hit.vendor() == null ? "" : vendorId(hit.vendor());
         String rver = hit == null || hit.version() == null ? "" : hit.version();
         String pv = previous == null ? "" : previous.suggestedVendor();
@@ -167,6 +173,29 @@ public final class LockPinMatch {
 
     private static String pick(String declared, String resolved) {
         return declared.isEmpty() ? resolved : declared;
+    }
+
+    /**
+     * Whether a suggestion-only pin names a vendor the catalog can install. Unknown vendors
+     * ({@code nosuchvendor-99}) are not install specs — the next build must settle on an
+     * installed JDK that meets {@code java = N}, not throw {@code no JDK matches}.
+     *
+     * <p>{@code required-*} pins are not suggestions; this returns {@code false} for them so
+     * callers do not treat a requirement as a droppable floor.
+     */
+    public static boolean suggestionIsInstallable(Lockfile.ToolchainPin pin) {
+        if (pin == null || pin.isEmpty() || pin.hasRequirement()) return false;
+        String vendor = pin.suggestedVendor();
+        return vendor.isEmpty() || knownVendorId(vendor);
+    }
+
+    /** True when {@code id} matches a vendor jk knows how to install (not {@link JdkVendor#UNKNOWN}). */
+    public static boolean knownVendorId(String id) {
+        if (id == null || id.isBlank()) return false;
+        for (JdkVendor v : JdkVendor.values()) {
+            if (v != JdkVendor.UNKNOWN && vendorMatches(v, id)) return true;
+        }
+        return false;
     }
 
     /** Catalog/install spec for an unsatisfied pin. */

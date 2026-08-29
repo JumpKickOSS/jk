@@ -189,6 +189,18 @@ class JdkResolutionTest {
     }
 
     @Test
+    void unknown_vendor_suggestion_settles_on_an_installed_jdk(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        Path j25 = makeJdk(jdks, "temurin-25.0.3");
+        var req = req(tmp).lockJdk("nosuchvendor", "99").build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.wouldInstall()).isFalse();
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
+        assertThat(r.jdk().orElseThrow().home()).isEqualTo(j25);
+    }
+
+    @Test
     void hook_does_not_export_a_too_old_default_for_an_unmet_lock(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);
         Path j21 = makeJdk(jdks, "temurin-21.0.5");

@@ -25,8 +25,9 @@ import java.util.Optional;
  *
  * <p>{@code previous} is the lock being replaced, passed only on a conservative re-lock. It keeps
  * an undeclared suggestion stable across a plain {@code jk lock}: the record of what built the
- * lock should not move because a colleague ran it on a different JDK. {@code jk update} passes
- * null, and the suggestion refreshes.
+ * lock should not move because a colleague ran it on a different JDK. An unknown-vendor
+ * suggestion is not kept — it cannot be installed and would fail the next build after the
+ * manifest pin is gone. {@code jk update} passes null, and the suggestion refreshes.
  */
 public final class ToolchainLockStamp {
 

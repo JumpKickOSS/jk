@@ -147,9 +147,25 @@ public final class JdkResolution {
             if (onPath.isPresent() && hasBin(onPath.get()) && meetsFloor(onPath.get(), lockFloor)) {
                 return Resolved.found(installed(onPath.get()), Tier.PATH, null);
             }
-            // Nothing anywhere clears the lock's floor — install it rather than build under it.
+            // Nothing anywhere clears the lock's floor. A real vendor/major is an install;
+            // an unknown-vendor suggestion is poison from a dropped manifest pin — settle
+            // on whatever is already installed instead of `no JDK matches nosuchvendor-99`.
             if (canInstall && lockFloor != null) {
-                return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(req.lockJdk()));
+                if (LockPinMatch.suggestionIsInstallable(req.lockJdk())) {
+                    return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(req.lockJdk()));
+                }
+                Optional<JdkHit> settled = DefaultJdkPolicy.choose(hits, latestLtsMajor);
+                if (settled.isPresent()) {
+                    return Resolved.found(installed(settled.get().home()), Tier.DEFAULT, null);
+                }
+                if ((r = envHome(req.env().apply("JAVA_HOME"), Tier.JAVA_HOME, null)) != null) return r;
+                if ((r = envHome(req.env().apply("GRAALVM_HOME"), Tier.GRAALVM_HOME, null)) != null) {
+                    return r;
+                }
+                Optional<Path> pathHome = ActiveJavac.home();
+                if (pathHome.isPresent() && hasBin(pathHome.get())) {
+                    return Resolved.found(installed(pathHome.get()), Tier.PATH, null);
+                }
             }
             // Nothing on disk at all → bootstrap-install the latest LTS (which
             // then becomes the default).

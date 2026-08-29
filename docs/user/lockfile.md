@@ -78,7 +78,10 @@ required-version  = "25.0.4"      # exact: 25.0.3, 25.1.0 and 26.0.2 all fail
 `suggested-*` is a record of what created the lock. It binds nothing but the major: a build on a
 newer JDK is fine, an older one is not — and because it is a record, `jk lock` leaves it as it
 found it. Re-locking on a machine with a different vendor does not rewrite what built the lock;
-only `jk update`, whose job is moving forward, refreshes it.
+only `jk update`, whose job is moving forward, refreshes it. An exception: a previous suggestion
+that names a vendor jk cannot install is dropped and rewritten from the toolchain that resolved.
+Copying `nosuchvendor-99` forward would make the next `jk build` try to install a catalog-missing
+spec after the agent already removed the pin.
 
 `required-*` is a pin the project asked for, and only an `=` in `jk.toml` writes one:
 

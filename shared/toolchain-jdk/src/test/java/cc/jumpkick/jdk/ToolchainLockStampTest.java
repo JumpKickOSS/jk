@@ -151,6 +151,18 @@ class ToolchainLockStampTest {
     }
 
     @Test
+    void a_conservative_relock_drops_an_unknown_vendor_suggestion(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("nosuchvendor", "99"));
+        Lockfile rewritten = ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false);
+        assertThat(rewritten.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+    }
+
+    @Test
     void a_declaration_still_beats_the_previous_lock(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
