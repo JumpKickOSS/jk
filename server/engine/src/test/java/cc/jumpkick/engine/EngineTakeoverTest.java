@@ -15,8 +15,6 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.net.StandardProtocolFamily;
-import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -77,8 +75,7 @@ class EngineTakeoverTest {
     }
 
     private static String helloVersion(Path socket) {
-        try (SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX)) {
-            ch.connect(UnixDomainSocketAddress.of(socket));
+        try (SocketChannel ch = EngineSockets.connect(socket)) {
             BufferedWriter w =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader r =
@@ -95,8 +92,7 @@ class EngineTakeoverTest {
     }
 
     private static String send(Path socket, String line) {
-        try (SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX)) {
-            ch.connect(UnixDomainSocketAddress.of(socket));
+        try (SocketChannel ch = EngineSockets.connect(socket)) {
             BufferedWriter w =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader r =

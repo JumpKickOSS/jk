@@ -596,8 +596,7 @@ class BuildLogicSupportTest {
         Path classes = layout.classesDir();
         Files.createDirectories(classes);
 
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
         assertFalse(Files.exists(ran), "inner module anchors must not run gate");
 
         assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));

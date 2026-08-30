@@ -149,7 +149,16 @@ public final class EngineWire {
      */
     static SocketChannel connect(Path socket) throws IOException {
         if (EngineTransport.useLoopbackTcp()) {
-            int port = Integer.parseInt(Files.readString(socket).trim());
+            // A killed engine can leave this file empty or half-written. "No port here" means the
+            // same thing to every caller as nothing listening, and they all handle IOException —
+            // an escaping NumberFormatException would instead take the probe down with it.
+            int port;
+            String raw = Files.readString(socket).trim();
+            try {
+                port = Integer.parseInt(raw);
+            } catch (NumberFormatException notAPort) {
+                throw new IOException("no engine port in " + socket + " (stale or half-written)", notAPort);
+            }
             String token = Files.readString(EnginePaths.tokenFor(socket)).trim();
             SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             BufferedWriter authWriter =

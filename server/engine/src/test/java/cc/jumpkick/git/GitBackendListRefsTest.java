@@ -40,7 +40,7 @@ class GitBackendListRefsTest {
             head = c2.name();
         }
 
-        GitSource source = GitSource.of("file://" + work, "file://" + work, new GitRefSpec.Tag("v1.0.0"));
+        GitSource source = GitSource.of(work.toUri().toString(), work.toUri().toString(), new GitRefSpec.Tag("v1.0.0"));
         Path gitRoot = tempDir.resolve("jk-git");
         GitFetcher.RemoteRefs refs = factory.create(gitRoot).listRefs(source);
 
