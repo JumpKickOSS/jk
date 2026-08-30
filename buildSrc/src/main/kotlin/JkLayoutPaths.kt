@@ -67,7 +67,9 @@ object JkLayoutPaths {
      * thin JVM `:cli:installDist` launcher (`jk.bat` / `jk`) is a supported Windows path (Smart App Control blocks
      * unsigned `jk.exe`).
      *
-     * Order: ship-layout `build/dist/jk[.exe]`, `:cli:nativeCompile` output, then installDist.
+     * Order: ship-layout `build/dist/jk[.exe]`, `:cli:nativeCompile` output, then installDist. Callers that may run
+     * alongside `dist` / `nativeCompile` must order after those tasks so the preferred path is not still open for
+     * writing (Linux ETXTBSY).
      */
     fun clientCandidates(rootProjectDir: File): List<File> {
         val list = mutableListOf<File>()

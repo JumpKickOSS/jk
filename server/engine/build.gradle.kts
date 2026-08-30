@@ -103,6 +103,11 @@ tasks.register("installLocal") {
     dependsOn(tasks.named("shadowJar"))
     // Thin launcher is always cheap. Native {@code dist} is optional: use it when present.
     dependsOn(":cli:installDist")
+    // Prefer build/dist/jk when present, but do not race a concurrent Sync/native-image write
+    // (ETXTBSY / "Text file busy" on Linux). Order only — do not dependsOn, so plain
+    // installLocal stays cheap when dist is not requested.
+    mustRunAfter(rootProject.tasks.named("dist"))
+    mustRunAfter(":cli:nativeCompile")
     doLast {
         val engineJar =
             tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").get().archiveFile
