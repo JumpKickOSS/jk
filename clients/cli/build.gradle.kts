@@ -351,7 +351,8 @@ val checkIdeClientWiring by tasks.registering {
 tasks.named("check") { dependsOn(checkIdeClientWiring) }
 
 // Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via EngineInstall
-// / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
+// / JK_ENGINE_EXE. Preferred production dist is the native image; this path is the supported
+// Windows client when Smart App Control blocks unsigned jk.exe, and Temurin-only CI.
 application {
     mainClass.set("cc.jumpkick.cli.Jk")
     applicationName = "jk"

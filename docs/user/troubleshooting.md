@@ -91,6 +91,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | Disk / CAS full | `jk cache usage` / `jk storage usage` | `jk cache clean` first; [Cache](cache.md) |
 | Engine won’t start / version skew | `jk engine status` | `jk engine stop` then retry; [Engine](engine.md) |
 | Format check failed | `jk format --check` | `jk format` (no `--check`); [Format](format.md) |
+| Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Signing released natives is JK-2059. Turning Smart App Control off is optional for contributors who want unsigned `gradlew dist`. |
 
 ## Cancel a stuck job
 

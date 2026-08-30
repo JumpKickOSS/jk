@@ -110,19 +110,27 @@ Bootstrap pins: [`.sdkmanrc`](.sdkmanrc). Prefer `./gradlew` for builds. One Gra
 ## Reinstall from this checkout
 
 After code changes, reinstall the **local** JumpKick so dogfood uses the build you just made
-(native client on PATH under `~/.local/bin`, engine jar under the product data root):
+(client on PATH under `~/.local/bin`, engine jar under the product data root):
 
 ```bash
+# Native (Unix, or Windows with SAC off / signed jk.exe):
 ./gradlew clean dist installLocal && ./install.sh build/dist/jk
+```
+
+```powershell
+# Windows thin client (supported; Smart App Control blocks unsigned jk.exe):
+.\gradlew :cli:installDist installLocal
+.\install.cmd clients\cli\build\install\jk\bin\jk.bat
 ```
 
 | Step | What it does |
 |---|---|
 | `clean dist` | Fresh `build/dist/jk` (native CLI) + `build/dist/lib/jk-engine-*.jar` |
-| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`) |
-| `./install.sh build/dist/jk` | Installs that dist into `~/.local/bin` + `$JK_HOME/data/lib/jk-engine/` (pointer: `jk-engine.toml` beside the jar) via CAS materialize |
+| `:cli:installDist` | Thin JVM client (`jk` / `jk.bat`) — the Windows SAC-safe path |
+| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`). Uses native `jk` when `dist` already built one; otherwise the thin client. |
+| `./install.sh` / `.\install.cmd` | Installs that client into `~/.local/bin` and materializes the engine jar |
 
-Thin JVM client without Graal (PATH only — does not materialize the engine): `./gradlew :cli:installDist` then put `clients/cli/build/install/jk/bin` on `PATH`. `:engine:installLocal` always uses the native client at `build/dist/jk` (`jk.exe` on Windows) from `./gradlew dist`.
+On Windows, `jk` may be `jk.bat`. Do not insist on `jk.exe`. A leftover unsigned `jk.exe` is parked when the thin client is installed so PATHEXT does not keep launching the blocked PE.
 
 Then verify on PATH (or the install dir):
 
@@ -132,7 +140,7 @@ jk engine status          # engine starts / answers; no version-skew crash
 jk new smoke-app --lang java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) / `.sdkmanrc`). If only unit tests matter mid-ticket, `./gradlew test` (or module filters) is fine; the reinstall smoke is required **before moving a code-changing ticket to done**.
+Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) / `.sdkmanrc`). The Windows thin client does not. If only unit tests matter mid-ticket, `./gradlew test` (or module filters) is fine; the reinstall smoke is required **before moving a code-changing ticket to done**.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -180,7 +188,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
    - **Also** green `./gradlew :cli:integrationTest` and/or `:engine:integrationTest` (or full `./gradlew integrationTest`) when the ticket touches CLI↔engine wire, engine plans/workers, plugin forks, lock/resolve/fetch, or install/materialize.
    - Nightly / main confidence: `./gradlew checkAll` (unit + integration). Do not treat a 20+ minute full e2e as the only mid-ticket loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
-2. **Reinstall** — `./gradlew clean dist installLocal && ./install.sh build/dist/jk` succeeds (for code that ships client/engine).
+2. **Reinstall** — native: `./gradlew clean dist installLocal && ./install.sh build/dist/jk`. Windows thin client: `.\gradlew :cli:installDist installLocal` then `.\install.cmd clients\cli\build\install\jk\bin\jk.bat`.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
@@ -224,6 +232,8 @@ agent **must** run:
 ```bash
 jk format
 ```
+
+On Windows this may be `jk.bat` (thin JVM client). Same command: `jk format`.
 
 `jk format` is Spotless + a first-party FQCN shortener over the **whole tree**, not just
 files you touched. Trust its output. Long-hand FQCNs and similar agent

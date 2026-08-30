@@ -19,16 +19,19 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 ```
 ┌─────────────────────┐         JSONL (UDS / TCP)        ┌──────────────────────────┐
 │  jk client          │ ──────────────────────────────── │  jk engine               │
-│  (GraalVM native)   │                                  │  (HotSpot JVM, capped)   │
+│  (native, or JVM    │                                  │  (HotSpot JVM, capped)   │
+│   thin on Windows)  │                                  │                          │
 │  TUI, shell, jdk    │                                  │  resolve · build · cache │
 │  terminal execs     │                                  │  fork plugin workers     │
 └─────────────────────┘                                  └──────────────────────────┘
 ```
 
 - **Client** — presentation, shell hooks, JDK install prompts, anything that owns your terminal
-  (`jk run` exec, `jk mvn`/`gradle` interactive). Sub-50 ms cold start; no engine code in the
-  native image. The CLI does not interpret plugin schemas — `jk-plugin.toml` and Giter8
-  templates are engine-only, never `:core` / the native client.
+  (`jk run` exec, `jk mvn`/`gradle` interactive). Preferred form is a Graal native image
+  (sub-50 ms cold start). On Windows the thin JVM launcher (`jk.bat` from `:cli:installDist`)
+  is also supported. No engine code in the native image. The CLI does not interpret plugin
+  schemas — `jk-plugin.toml` and Giter8 templates are engine-only, never `:core` / the
+  native client.
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
@@ -382,7 +385,8 @@ root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
 
 Pre-1.0 alpha. **Self-host phase 2:** root workspace covers library/client modules plus thin
 workers (`plugins/test-runner`, `plugins/java-compiler`); `jk lock` + `jk build --skip-tests`
-dogfoods after a Gradle `dist`/`installLocal` bootstrap — the native client is the only endorsed
-one, and once a release is published the bootstrap is
+dogfoods after a Gradle `dist`/`installLocal` bootstrap. The native client is the preferred
+shipped client; Windows also supports the thin JVM client (`jk.bat`) because Smart App Control
+blocks unsigned `jk.exe` (JK-2037; signing is JK-2059). Once a release is published the bootstrap is
 `curl -fsSL https://jumpkick.build/install.sh | bash` (JK-1070). Full `dist`, remaining plugins, and nested engine integration tests remain
 Gradle-heavy. Breaking changes remain acceptable until 1.0.
