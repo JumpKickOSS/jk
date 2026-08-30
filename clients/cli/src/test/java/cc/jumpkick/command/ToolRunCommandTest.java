@@ -166,7 +166,7 @@ class ToolRunCommandTest {
         git(repo, "commit", "-m", "init");
 
         Path state = tempDir.resolve("home");
-        run("trust", "add", "--state-dir", state.toString(), "file://" + tempDir.toAbsolutePath() + "/");
+        run("trust", "add", "--state-dir", state.toString(), tempDir.toUri().toString());
         int exit = run(
                 "tool",
                 "run",
@@ -174,7 +174,7 @@ class ToolRunCommandTest {
                 tempDir.resolve("home/cache").toString(),
                 "--state-dir",
                 state.toString(),
-                "git+file://" + repo.toAbsolutePath(),
+                "git+" + repo.toUri(),
                 "x");
         assertThat(exit).isEqualTo(1); // args reach the repo's main.java
     }
@@ -193,7 +193,7 @@ class ToolRunCommandTest {
         git(repo, "commit", "-m", "init");
 
         Path state = tempDir.resolve("home");
-        run("trust", "add", "--state-dir", state.toString(), "file://" + tempDir.toAbsolutePath() + "/");
+        run("trust", "add", "--state-dir", state.toString(), tempDir.toUri().toString());
         int exit = run(
                 "tool",
                 "run",
@@ -201,7 +201,7 @@ class ToolRunCommandTest {
                 tempDir.resolve("home/cache").toString(),
                 "--state-dir",
                 state.toString(),
-                "git+file://" + repo.toAbsolutePath() + "!tools/greeter");
+                "git+" + repo.toUri() + "!tools/greeter");
         assertThat(exit).isEqualTo(0);
     }
 
@@ -212,7 +212,7 @@ class ToolRunCommandTest {
                 "run",
                 "--state-dir",
                 tempDir.resolve("home").toString(),
-                "git+file://" + tempDir.toAbsolutePath() + "/nope");
+                "git+" + tempDir.resolve("nope").toUri());
         assertThat(exit).isEqualTo(64);
     }
 

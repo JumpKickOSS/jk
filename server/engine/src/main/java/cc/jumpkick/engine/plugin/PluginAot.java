@@ -490,18 +490,20 @@ public final class PluginAot {
     }
 
     /**
-     * Stop training and make sure no trainer of ours still holds a file: new trains are suppressed
-     * for this engine's remaining life, live trainer forks are killed and <em>reaped</em>. Returns
-     * the pids it killed, so a caller whose delete still fails can say what it already ruled out.
+     * Kill and <em>reap</em> every trainer fork this JVM started, returning the pids — so a caller
+     * whose delete still fails can say what it already ruled out.
      *
-     * <p>For the artifact-store wipe. A trainer runs with store jars on its classpath, and Windows
-     * refuses to delete a file another process holds open — so `jk storage nuke` died on a jar its
-     * own engine had handed to a background trainer seconds earlier. Suppression is deliberately
-     * permanent here, the same stand-down {@link cc.jumpkick.util.StoreWriteGate} makes: the user
-     * asked for the store to be gone, and refilling it from this engine would undo that.
+     * <p>Two callers, one reason: a trainer runs with store jars on its classpath, and Windows
+     * refuses to delete a file another process holds open. The engine calls this on shutdown so a
+     * trainer never outlives its parent, and the store wipe calls it because a trainer started
+     * moments ago is exactly what stopping the engines does not reach.
+     *
+     * <p>Deliberately does <em>not</em> touch {@link AotSettings}: whether new trains may start is
+     * the caller's policy, and this runs in-process in tests where a global suppression would
+     * outlive the engine that set it. The wipe's stand-down is
+     * {@link cc.jumpkick.util.StoreWriteGate#wipedSinceStart}, which {@link #runTrainer} honours.
      */
     public static List<Long> quiesceTrainers(long timeoutMillis) {
-        AotSettings.suppressTraining();
         List<Long> killed = new ArrayList<>();
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
         // Loop rather than sweep once: {@link #trainAsync} joins TRAINING before its thread has

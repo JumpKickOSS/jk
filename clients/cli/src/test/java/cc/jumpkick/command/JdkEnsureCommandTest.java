@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.testing.FakeJdk;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -314,18 +315,12 @@ class JdkEnsureCommandTest {
     }
 
     private static void makeJdkInstall(Path home, String version) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
-        Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        FakeJdk.create(home, version);
     }
 
     /** An installed Oracle GraalVM — its release file must classify as ORACLE_GRAALVM. */
     private static void makeGraalvmInstall(Path home, String version) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        FakeJdk.create(home, version); // platform-correct launchers; the release file is rewritten below
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\""

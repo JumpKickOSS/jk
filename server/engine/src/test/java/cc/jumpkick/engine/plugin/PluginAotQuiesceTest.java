@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.Await;
-import cc.jumpkick.util.AotSettings;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,7 +15,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,12 +29,6 @@ class PluginAotQuiesceTest {
 
     @TempDir
     Path tmp;
-
-    @AfterEach
-    void allowTrainingAgain() {
-        // quiesceTrainers suppresses training for the JVM's life — undo it for sibling tests.
-        AotSettings.clearTrainingSuppressionForTests();
-    }
 
     /** A real jar so a JVM will map it rather than reject it. */
     private Path storeJar() throws IOException {

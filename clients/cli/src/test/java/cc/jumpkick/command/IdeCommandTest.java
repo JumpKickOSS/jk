@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.testing.FakeJdk;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -201,11 +202,6 @@ class IdeCommandTest {
     }
 
     private static void fakeJdk(Path jdksRoot, String name, String version) throws IOException {
-        Path home = jdksRoot.resolve(name);
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
-        Files.writeString(
-                home.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"" + version + "\"\n");
+        FakeJdk.create(jdksRoot.resolve(name), version);
     }
 }

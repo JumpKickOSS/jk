@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.testing.FakeJdk;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -102,8 +103,9 @@ class JdkUpdateCommandTest {
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
         assertThat(jdks.resolve("temurin-25.0.2")).doesNotExist();
-        // Corretto untouched.
-        assertThat(jdks.resolve("corretto-25.0.1").resolve("bin").resolve("java"))
+        // Corretto untouched. Fixture install, so the launcher carries the platform's name —
+        // unlike the extracted rows above, whose name comes from the stub archive.
+        assertThat(jdks.resolve("corretto-25.0.1").resolve("bin").resolve(FakeJdk.exe("java")))
                 .exists();
         assertThat(jdks.resolve("corretto-25.0.3")).doesNotExist();
     }
@@ -150,7 +152,7 @@ class JdkUpdateCommandTest {
         assertThat(stdout).contains("Nothing to do");
         assertThat(stdout).contains("up to date");
         assertThat(stdout).contains("JDK"); // CommandWedge chip label
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve(FakeJdk.exe("java")))
                 .exists();
     }
 
@@ -180,7 +182,7 @@ class JdkUpdateCommandTest {
                         "--feed-url",
                         maven.base().resolve("/feed/jdks.json").toString())));
         assertThat(stdout).contains("Aborted");
-        assertThat(jdks.resolve("temurin-25.0.2").resolve("bin").resolve("java"))
+        assertThat(jdks.resolve("temurin-25.0.2").resolve("bin").resolve(FakeJdk.exe("java")))
                 .exists();
         assertThat(jdks.resolve("temurin-25.0.3")).doesNotExist();
     }
@@ -299,11 +301,7 @@ class JdkUpdateCommandTest {
     }
 
     private static void makeJdkInstall(Path home, String version, String implementor) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
-        Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
+        FakeJdk.create(home, version, implementor);
     }
 
     private static <T> T withStdin(String input, Supplier<T> body) {

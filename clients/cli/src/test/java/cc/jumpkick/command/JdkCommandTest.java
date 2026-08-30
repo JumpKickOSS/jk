@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.testing.FakeJdk;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -366,7 +367,14 @@ class JdkCommandTest {
         // ProbeSupport.discoverJdk canonicalises via toRealPath(); on macOS
         // @TempDir lives under /var/folders → /private/var/folders, so the
         // exported JAVA_HOME is the canonical form.
-        assertThat(stdout).isEqualTo("export JAVA_HOME=" + jdkHome.toRealPath());
+        //
+        // The value is shell-quoted when it contains anything a bare word would mangle, which a
+        // Windows path always does — its backslashes would otherwise be read as escapes by the
+        // shell this line is meant to be eval'd in. So assert the contract (an eval-safe line
+        // naming this home), not one platform's spelling of it.
+        String home = jdkHome.toRealPath().toString();
+        assertThat(stdout).isEqualTo("export JAVA_HOME=" + JdkHomeCommand.shellQuote(home));
+        assertThat(stdout).startsWith("export JAVA_HOME=").contains(home);
     }
 
     @Test
@@ -498,16 +506,9 @@ class JdkCommandTest {
     }
 
     private static void makeJdkInstall(Path home) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
-        // ProbeSupport.discoverJdk demands a release file — every modern
-        // JDK ships one since 7u72, so the fixture follows suit.
         var m = Pattern.compile("(\\d+(?:\\.\\d+){0,2})")
                 .matcher(home.getFileName().toString());
-        String version = m.find() ? m.group(1) : "21";
-        Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        FakeJdk.create(home, m.find() ? m.group(1) : "21");
     }
 
     private static String feedJson(long size, String sha256, String url) {
