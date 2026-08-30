@@ -107,9 +107,7 @@ public record TestSelection(
             }
             return new Resolved(List.copyOf(discovered), includeTags, excludeTags);
         }
-        List<String> want = suites.isEmpty()
-                ? (gate ? TestSuites.GATE : List.of(TestSuites.DEFAULT))
-                : suites;
+        List<String> want = suites.isEmpty() ? (gate ? TestSuites.GATE : List.of(TestSuites.DEFAULT)) : suites;
         List<String> missing = new ArrayList<>();
         LinkedHashSet<String> known = new LinkedHashSet<>(discovered);
         // Default suite may be requested even when empty (no-op compile).

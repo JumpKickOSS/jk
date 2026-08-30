@@ -176,8 +176,7 @@ class TestSelectionResolveTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("--all")
                 .hasMessageContaining("--gate");
-        assertThatThrownBy(
-                        () -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--pre-merge", "--all")))
+        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--pre-merge", "--all")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("--gate");
     }

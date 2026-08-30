@@ -489,7 +489,9 @@ public final class TestCommand implements CliCommand {
         }
         Path wd = GlobalOptions.from(in).workingDir();
         if (scriptsOnly) {
-            Path root = WorkspaceScan.isWorkspaceRoot(wd) ? wd : WorkspaceScan.findRoot(wd).orElse(wd);
+            Path root = WorkspaceScan.isWorkspaceRoot(wd)
+                    ? wd
+                    : WorkspaceScan.findRoot(wd).orElse(wd);
             if (!BuildLogicToml.hasStem(root, "gate")) {
                 throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
             }
@@ -558,8 +560,7 @@ public final class TestCommand implements CliCommand {
                 if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
                 for (String name : suites) {
                     if (!TestSuites.isSuiteName(name)) {
-                        throw new IllegalArgumentException(
-                                "unknown test suite '" + name + "' in [test] gate-suites");
+                        throw new IllegalArgumentException("unknown test suite '" + name + "' in [test] gate-suites");
                     }
                 }
             } else {

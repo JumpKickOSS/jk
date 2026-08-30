@@ -75,7 +75,8 @@ public final class BuildLogicSupport {
 
     static void rejectMisplacedStems(
             List<BuildLogicScripts.ScriptTask> scripts, boolean workspaceRoot, Path logicDir, Path projectDir) {
-        boolean member = projectDir != null && WorkspaceScan.findRoot(projectDir).isPresent();
+        boolean member =
+                projectDir != null && WorkspaceScan.findRoot(projectDir).isPresent();
         for (BuildLogicScripts.ScriptTask s : scripts) {
             if (s.anchor() == BuildLogicAnchor.GATE) {
                 if (!member) continue;

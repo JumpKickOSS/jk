@@ -63,9 +63,9 @@ object JkLayoutPaths {
     }
 
     /**
-     * Client for dogfood tasks (`installLocal` materialize). Native image from `./gradlew dist` first
-     * when present; the thin JVM `:cli:installDist` launcher (`jk.bat` / `jk`) is a supported
-     * Windows path (Smart App Control blocks unsigned `jk.exe`).
+     * Client for dogfood tasks (`installLocal` materialize). Native image from `./gradlew dist` first when present; the
+     * thin JVM `:cli:installDist` launcher (`jk.bat` / `jk`) is a supported Windows path (Smart App Control blocks
+     * unsigned `jk.exe`).
      *
      * Order: ship-layout `build/dist/jk[.exe]`, `:cli:nativeCompile` output, then installDist.
      */
@@ -88,9 +88,9 @@ object JkLayoutPaths {
     }
 
     /**
-     * True when [file] can be started on this OS. Windows accepts a PE (`.exe`) or a cmd launcher
-     * (`.bat` / `.cmd`); the extensionless Unix `jk` script is not a Win32 image. Launch `.bat`
-     * through `cmd.exe /c` (see `:engine:installLocal`).
+     * True when [file] can be started on this OS. Windows accepts a PE (`.exe`) or a cmd launcher (`.bat` / `.cmd`);
+     * the extensionless Unix `jk` script is not a Win32 image. Launch `.bat` through `cmd.exe /c` (see
+     * `:engine:installLocal`).
      */
     fun isRunnableClient(file: File): Boolean {
         if (!file.isFile) return false
@@ -105,8 +105,7 @@ object JkLayoutPaths {
     fun launchCommand(client: String, vararg args: String): List<String> {
         val name = File(client).name.lowercase()
         val bat = name.endsWith(".bat") || name.endsWith(".cmd")
-        return if (isWindows() && bat) listOf("cmd.exe", "/c", client) + args
-        else listOf(client) + args.toList()
+        return if (isWindows() && bat) listOf("cmd.exe", "/c", client) + args else listOf(client) + args.toList()
     }
 
     private fun userHome(): String = System.getProperty("user.home")

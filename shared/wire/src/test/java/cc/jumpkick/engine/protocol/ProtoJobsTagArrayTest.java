@@ -62,8 +62,7 @@ class ProtoJobsTagArrayTest {
 
     @Test
     void scripts_flags_survive_the_round_trip() {
-        TestSelection sent =
-                TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
+        TestSelection sent = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
         TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");
         assertThat(back.scriptsOnly()).isTrue();
         assertThat(back.noScripts()).isFalse();

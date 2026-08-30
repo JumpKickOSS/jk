@@ -60,39 +60,22 @@ class TestCommandOptionsTest {
         String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
         assertThat(help).contains("--gate, --pre-merge");
         Opt buildGate = new BuildCommand()
-                .options()
-                .stream()
-                .filter(o -> o.names().contains("--gate"))
-                .findFirst()
-                .orElseThrow();
+                .options().stream()
+                        .filter(o -> o.names().contains("--gate"))
+                        .findFirst()
+                        .orElseThrow();
         assertThat(buildGate.names()).containsExactly("--gate", "--pre-merge");
     }
 
     @Test
     void scripts_only_and_no_scripts_are_on_test_and_build() {
-        assertThat(new TestCommand()
-                        .options()
-                        .stream()
-                        .map(Opt::names)
-                        .anyMatch(n -> n.contains("--scripts-only")))
+        assertThat(new TestCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--scripts-only")))
                 .isTrue();
-        assertThat(new TestCommand()
-                        .options()
-                        .stream()
-                        .map(Opt::names)
-                        .anyMatch(n -> n.contains("--no-scripts")))
+        assertThat(new TestCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--no-scripts")))
                 .isTrue();
-        assertThat(new BuildCommand()
-                        .options()
-                        .stream()
-                        .map(Opt::names)
-                        .anyMatch(n -> n.contains("--scripts-only")))
+        assertThat(new BuildCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--scripts-only")))
                 .isTrue();
-        assertThat(new BuildCommand()
-                        .options()
-                        .stream()
-                        .map(Opt::names)
-                        .anyMatch(n -> n.contains("--no-scripts")))
+        assertThat(new BuildCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--no-scripts")))
                 .isTrue();
     }
 }

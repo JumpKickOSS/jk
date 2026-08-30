@@ -27,13 +27,7 @@ final class BuildLogicTaskScan {
      * parsing the manifest — which is exactly what this offline path exists to avoid.
      */
     private static final List<String> SCRIPT_STEMS =
-            List.of(
-                    "before-compile",
-                    "after-compile",
-                    "after-resources",
-                    "before-package",
-                    "after-build",
-                    "gate");
+            List.of("before-compile", "after-compile", "after-resources", "before-package", "after-build", "gate");
 
     private BuildLogicTaskScan() {}
 

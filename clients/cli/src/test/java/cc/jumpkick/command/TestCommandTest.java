@@ -53,7 +53,8 @@ class TestCommandTest {
         Files.writeString(broken, "package example;\nclass BrokenIT { void t(  // syntax error\n");
         String cache = tempDir.resolve("cache").toString();
         assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", cache)).isEqualTo(0);
-        assertThat(run("test", "--gate", "-C", tempDir.toString(), "--cache-dir", cache)).isNotEqualTo(0);
+        assertThat(run("test", "--gate", "-C", tempDir.toString(), "--cache-dir", cache))
+                .isNotEqualTo(0);
         assertThat(run("test", "--pre-merge", "-C", tempDir.toString(), "--cache-dir", cache))
                 .isNotEqualTo(0);
     }
@@ -78,7 +79,8 @@ class TestCommandTest {
         assertThat(Files.exists(ran)).isFalse();
         assertThat(run("test", "--gate", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);
-        assertThat(run("test", "--gate", "--no-scripts", "-C", p, "--cache-dir", c)).isEqualTo(0);
+        assertThat(run("test", "--gate", "--no-scripts", "-C", p, "--cache-dir", c))
+                .isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);
         assertThat(run("test", "--scripts-only", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);
@@ -87,7 +89,8 @@ class TestCommandTest {
                 "package example; public class App { public static int n() { return 1; } }\n");
         assertThat(run("test", "--scripts-only", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(2);
-        assertThat(run("test", "--gate", "--scripts-only", "-C", p, "--cache-dir", c)).isEqualTo(0);
+        assertThat(run("test", "--gate", "--scripts-only", "-C", p, "--cache-dir", c))
+                .isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(2);
     }
 
@@ -116,9 +119,7 @@ class TestCommandTest {
         Path cache = tempDir.resolve("cache");
         Path ran = tempDir.resolve("gate-ran.log");
         Files.createDirectories(project.resolve("core/src/main/java/example"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 group = "com.example"
                 name = "root"
                 version = "0.1.0"

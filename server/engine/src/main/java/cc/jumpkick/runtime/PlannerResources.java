@@ -348,7 +348,8 @@ public final class PlannerResources {
     }
 
     static boolean skipJUnit(BuildPlanner.Inputs in) {
-        TestSelection s = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
+        TestSelection s =
+                in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
         if (s.scriptsOnly()) return true;
         return !in.testOnly() && in.skipTests();
     }
@@ -366,11 +367,7 @@ public final class PlannerResources {
      * scripts. Returns the terminal name, or {@code null} when GATE is not on this plan.
      */
     static String appendGate(
-            BuildPlan.Builder b,
-            BuildPlanner.Ctx cx,
-            boolean includeTests,
-            boolean testOnly,
-            boolean afterBuild) {
+            BuildPlan.Builder b, BuildPlanner.Ctx cx, boolean includeTests, boolean testOnly, boolean afterBuild) {
         BuildPlanner.Inputs in = cx.in();
         if (!runGateScripts(in) || !invocationRoot(in.dir())) return null;
         if (in.session().testSelection().scriptsOnly() && !BuildLogicToml.hasStem(in.dir(), "gate")) {
