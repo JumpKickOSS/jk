@@ -6,8 +6,10 @@ turn requires. Product bet: [Why JumpKick](why.md#test-rungs-the-execute-moat).
 
 ```bash
 jk test                              # unit rung — default suite only. Inner loop.
-jk test --gate                       # share-the-commit: unit + integration (if present)
+jk test --gate                       # share-the-commit: unit + integration (if present) + gate scripts
 jk test --pre-merge                  # silent alias of --gate
+jk test --scripts-only               # gate scripts, no JUnit
+jk test --gate --no-scripts          # gate suites, skip extra scripts
 jk test --suite integration          # -s is the short form. Climb one named suite.
 jk test --suite e2e                  # UI / compose / contract; not a habit
 jk test --all                        # every suite; tag excludes cleared. Nightly / release.
@@ -37,6 +39,9 @@ Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
 directory.
+
+`--scripts-only` and `--no-scripts` cannot be combined. `--scripts-only` with no
+`gate` stem is a config error. Same flags on `jk build`. See [build logic](build-logic.md).
 
 `--all` and `--suite` cannot be combined. `--all` and `--gate` cannot be combined.
 Unknown suite names error with the available list (`--gate`'s default `integration`

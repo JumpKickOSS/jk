@@ -76,6 +76,8 @@ public final class BuildCommand implements CliCommand {
                 .repeat());
         opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
         opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
+        opts.add(Opt.flag("Gate scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip gate scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
@@ -138,6 +140,7 @@ public final class BuildCommand implements CliCommand {
             return Exit.CONFIG;
         }
         TestCommand.warnGateOverride(in, global);
+        if (testSelection.scriptsOnly()) this.buildOpts.skipTests = true;
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path startDir = global.workingDir();

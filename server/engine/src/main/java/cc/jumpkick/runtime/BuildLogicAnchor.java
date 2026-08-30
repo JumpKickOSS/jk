@@ -27,8 +27,8 @@ public enum BuildLogicAnchor {
     BEFORE_PACKAGE("package"),
 
     /**
-     * The workspace root's own anchor: after every member module has finished building. The only
-     * anchor a root may use, and one no member may use.
+     * The workspace root's own always-on anchor: after every member module has finished building.
+     * One of two root-scoped anchors ({@link #GATE} is the other); no member may use either.
      *
      * <p>The four above are cuts relative to a compile that a sourceless root does not have —
      * there is nothing for {@code before-compile} to be before. This one is defined by the
@@ -38,7 +38,15 @@ public enum BuildLogicAnchor {
      * <p>Stage wire {@code package}: it is the last thing in the build, and the fold a user reads
      * has no bucket further right.
      */
-    AFTER_BUILD("package");
+    AFTER_BUILD("package"),
+
+    /**
+     * Share-the-commit checks bound to {@code --gate} / {@code --scripts-only}. Same root-only
+     * shape as {@link #AFTER_BUILD} (once per graph, whole-tree cache key) but it does not run on
+     * an inner {@code jk test} / {@code jk build}. Legal at a workspace root or a standalone
+     * project; illegal in a workspace member.
+     */
+    GATE("package");
 
     private final String stageWire;
 
@@ -48,7 +56,7 @@ public enum BuildLogicAnchor {
 
     /** Whether this anchor belongs to the workspace root rather than to a module. */
     public boolean workspaceScoped() {
-        return this == AFTER_BUILD;
+        return this == AFTER_BUILD || this == GATE;
     }
 
     /**

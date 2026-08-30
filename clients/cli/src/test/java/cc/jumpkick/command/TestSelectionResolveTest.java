@@ -231,4 +231,60 @@ class TestSelectionResolveTest {
                 .hasMessageContaining("Nope")
                 .hasMessageContaining("gate-suites");
     }
+
+    @Test
+    void scripts_only_and_no_scripts_cannot_combine(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        assertThatThrownBy(() ->
+                        TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only", "--no-scripts")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(TestCommand.SCRIPTS_FLAGS_CONFLICT);
+    }
+
+    @Test
+    void scripts_only_without_a_gate_stem_errors(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no gate scripts")
+                .hasMessageContaining("jk/gate");
+    }
+
+    @Test
+    void scripts_only_selects_scripts_without_junit(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        writeGate(dir);
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only"));
+        assertThat(sel.scriptsOnly()).isTrue();
+        assertThat(sel.gate()).isFalse();
+        assertThat(sel.runGateScripts()).isTrue();
+        assertThat(sel.noScripts()).isFalse();
+    }
+
+    @Test
+    void gate_scripts_only_equals_scripts_only(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        writeGate(dir);
+        var only = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only"));
+        var both = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "--scripts-only"));
+        assertThat(only.scriptsOnly()).isTrue();
+        assertThat(both.scriptsOnly()).isTrue();
+        assertThat(only.runGateScripts()).isTrue();
+        assertThat(both.runGateScripts()).isTrue();
+    }
+
+    @Test
+    void gate_no_scripts_skips_gate_scripts(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "--no-scripts"));
+        assertThat(sel.gate()).isTrue();
+        assertThat(sel.noScripts()).isTrue();
+        assertThat(sel.runGateScripts()).isFalse();
+        assertThat(sel.suites()).containsExactly("test", "integration");
+    }
+
+    private static void writeGate(Path dir) throws Exception {
+        Files.createDirectories(dir.resolve(".jk"));
+        Files.writeString(dir.resolve(".jk/gate.groovy"), "// gate\n");
+    }
 }

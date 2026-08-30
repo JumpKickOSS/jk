@@ -623,7 +623,8 @@ public final class BuildPlanner {
         if (workspaceNoSources) {
             if (BuildLogicToml.resolve(in.dir()).isPresent()) {
                 b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
-                return b.terminal(TaskNames.BUILD_LOGIC_AFTER_BUILD);
+                String gate = PlannerResources.appendGate(b, cx, false, in.testOnly(), true);
+                return b.terminal(gate != null ? gate : TaskNames.BUILD_LOGIC_AFTER_BUILD);
             }
             return b.terminal(TaskNames.RESOLVE_DEPS);
         }
@@ -683,7 +684,8 @@ public final class BuildPlanner {
         // Build-logic AFTER_COMPILE before resources / AFTER_RESOURCES.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         b.addTask(copyResources);
-        if (in.testOnly() || !in.skipTests()) {
+        boolean skipJUnit = PlannerResources.skipJUnit(in);
+        if (!skipJUnit) {
             b.addTask(compileTest).addTask(runTests);
         }
         // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only
@@ -729,8 +731,11 @@ public final class BuildPlanner {
         if (useGroovy) {
             b.addTask(writeStampGroovy);
         }
+        String gate = PlannerResources.appendGate(b, cx, !skipJUnit, in.testOnly(), false);
         if (in.testOnly()) {
-            return b.terminal(TaskNames.RUN_TESTS);
+            if (gate != null) return b.terminal(gate);
+            if (!skipJUnit) return b.terminal(TaskNames.RUN_TESTS);
+            return b.terminal(TaskNames.COPY_RESOURCES);
         }
         return b.terminal(TaskNames.PACKAGE_JAR);
     }

@@ -21,9 +21,11 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.layout.TestSuites;
@@ -85,6 +87,8 @@ public final class TestCommand implements CliCommand {
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
         opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
+        opts.add(Opt.flag("Gate scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip gate scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
@@ -389,7 +393,7 @@ public final class TestCommand implements CliCommand {
                         jdksDir,
                         workerCount,
                         profileName,
-                        /* skipTests */ false,
+                        /* skipTests */ testSelection.scriptsOnly(),
                         global.verbose,
                         concurrency,
                         null,
@@ -442,6 +446,7 @@ public final class TestCommand implements CliCommand {
     }
 
     static final String GATE_SUITE_OVERRIDE_WARNING = "--gate ignored because --suite was set";
+    static final String SCRIPTS_FLAGS_CONFLICT = "--scripts-only and --no-scripts cannot be combined";
 
     static void warnGateOverride(Invocation in, GlobalOptions global) {
         if (!gateRequested(in) || in.values("suite").isEmpty()) return;
@@ -468,6 +473,11 @@ public final class TestCommand implements CliCommand {
     static TestSelection resolveTestSelection(Invocation in) {
         boolean all = in.isSet("all");
         boolean gate = gateRequested(in);
+        boolean scriptsOnly = in.isSet("scripts-only");
+        boolean noScripts = in.isSet("no-scripts");
+        if (scriptsOnly && noScripts) {
+            throw new IllegalArgumentException(SCRIPTS_FLAGS_CONFLICT);
+        }
         List<String> suites = new ArrayList<>(in.values("suite"));
         boolean cliInclude = in.has("include-tags");
         boolean cliExclude = in.has("exclude-tags");
@@ -478,6 +488,12 @@ public final class TestCommand implements CliCommand {
             throw new IllegalArgumentException("--all and --gate cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
+        if (scriptsOnly) {
+            Path root = WorkspaceScan.isWorkspaceRoot(wd) ? wd : WorkspaceScan.findRoot(wd).orElse(wd);
+            if (!BuildLogicToml.hasStem(root, "gate")) {
+                throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
+            }
+        }
         Path toml = wd.resolve(ManifestPaths.MANIFEST);
         String explicit = in.value("profile").orElse(null);
         boolean explicitProfile = explicit != null && !explicit.isBlank();
@@ -550,6 +566,6 @@ public final class TestCommand implements CliCommand {
                 suites = new ArrayList<>(TestSuites.GATE);
             }
         }
-        return TestSelection.of(suites, all, include, exclude, spoke, applyGate);
+        return TestSelection.of(suites, all, include, exclude, spoke, applyGate, scriptsOnly, noScripts);
     }
 }

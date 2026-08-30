@@ -67,4 +67,32 @@ class TestCommandOptionsTest {
                 .orElseThrow();
         assertThat(buildGate.names()).containsExactly("--gate", "--pre-merge");
     }
+
+    @Test
+    void scripts_only_and_no_scripts_are_on_test_and_build() {
+        assertThat(new TestCommand()
+                        .options()
+                        .stream()
+                        .map(Opt::names)
+                        .anyMatch(n -> n.contains("--scripts-only")))
+                .isTrue();
+        assertThat(new TestCommand()
+                        .options()
+                        .stream()
+                        .map(Opt::names)
+                        .anyMatch(n -> n.contains("--no-scripts")))
+                .isTrue();
+        assertThat(new BuildCommand()
+                        .options()
+                        .stream()
+                        .map(Opt::names)
+                        .anyMatch(n -> n.contains("--scripts-only")))
+                .isTrue();
+        assertThat(new BuildCommand()
+                        .options()
+                        .stream()
+                        .map(Opt::names)
+                        .anyMatch(n -> n.contains("--no-scripts")))
+                .isTrue();
+    }
 }

@@ -33,9 +33,14 @@ public record TestSelection(
          * {@code --gate} / {@code --pre-merge}: {@link TestSuites#INTEGRATION} in {@link #suites}
          * is optional (skip if the directory is absent) instead of an unknown-suite error.
          */
-        boolean gate) {
+        boolean gate,
+        /** {@code --scripts-only}: run gate scripts, skip JUnit. */
+        boolean scriptsOnly,
+        /** {@code --no-scripts}: skip gate scripts even when {@link #gate} is set. */
+        boolean noScripts) {
 
-    public static final TestSelection DEFAULT = new TestSelection(List.of(), false, List.of(), List.of(), false, false);
+    public static final TestSelection DEFAULT =
+            new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, false);
 
     public TestSelection {
         suites = normalizeNames(suites);
@@ -64,13 +69,32 @@ public record TestSelection(
             List<String> excludeTags,
             boolean tagsResolved,
             boolean gate) {
+        return of(suites, allSuites, includeTags, excludeTags, tagsResolved, gate, false, false);
+    }
+
+    public static TestSelection of(
+            List<String> suites,
+            boolean allSuites,
+            List<String> includeTags,
+            List<String> excludeTags,
+            boolean tagsResolved,
+            boolean gate,
+            boolean scriptsOnly,
+            boolean noScripts) {
         return new TestSelection(
                 suites == null ? List.of() : suites,
                 allSuites,
                 includeTags == null ? List.of() : includeTags,
                 excludeTags == null ? List.of() : excludeTags,
                 tagsResolved,
-                gate);
+                gate,
+                scriptsOnly,
+                noScripts);
+    }
+
+    /** Gate scripts run with {@code --gate} unless {@link #noScripts}, or with {@link #scriptsOnly}. */
+    public boolean runGateScripts() {
+        return !noScripts && (scriptsOnly || gate);
     }
 
     /** Resolve concrete suite names for a module (validates unknown names). */
@@ -118,14 +142,16 @@ public record TestSelection(
         if (more == null || more.isEmpty()) return this;
         LinkedHashSet<String> merged = new LinkedHashSet<>(excludeTags);
         merged.addAll(normalizeNames(more));
-        return new TestSelection(suites, allSuites, includeTags, List.copyOf(merged), tagsResolved, gate);
+        return new TestSelection(
+                suites, allSuites, includeTags, List.copyOf(merged), tagsResolved, gate, scriptsOnly, noScripts);
     }
 
     public TestSelection withIncludeTags(List<String> more) {
         if (more == null || more.isEmpty()) return this;
         LinkedHashSet<String> merged = new LinkedHashSet<>(includeTags);
         merged.addAll(normalizeNames(more));
-        return new TestSelection(suites, allSuites, List.copyOf(merged), excludeTags, tagsResolved, gate);
+        return new TestSelection(
+                suites, allSuites, List.copyOf(merged), excludeTags, tagsResolved, gate, scriptsOnly, noScripts);
     }
 
     private static List<String> normalizeNames(List<String> in) {

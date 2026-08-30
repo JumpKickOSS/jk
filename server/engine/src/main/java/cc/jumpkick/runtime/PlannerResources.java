@@ -5,11 +5,15 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerSupport.copyResources;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
@@ -304,6 +308,86 @@ public final class PlannerResources {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * Anchor {@code GATE}: invocation-root stem scripts bound to {@code --gate} /
+     * {@code --scripts-only}. Same cache and bindings as {@link #buildLogicAfterBuildStep}.
+     */
+    static Task buildLogicGateStep(BuildPlanner.Ctx cx, String... requires) {
+        BuildPlanner.Inputs in = cx.in();
+        ActionCache actionCache = cx.actionCache();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        return Task.builder(TaskNames.BUILD_LOGIC_GATE)
+                .stage(BuildStage.PACKAGE)
+                .label("Build logic (gate)")
+                .kind(TaskKind.CPU)
+                .requires(requires)
+                .weight(() -> plan.get().fullyCached() ? 0 : 1)
+                .ticks(1)
+                .execute(ctx -> {
+                    try {
+                        boolean ran = BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                /* classesDir */ null,
+                                BuildLogicAnchor.GATE,
+                                ctx::label,
+                                buildLogicInputTokensRef);
+                        if (ran) ctx.label("build-logic applied");
+                        else ctx.cached();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    static boolean skipJUnit(BuildPlanner.Inputs in) {
+        TestSelection s = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
+        if (s.scriptsOnly()) return true;
+        return !in.testOnly() && in.skipTests();
+    }
+
+    static boolean runGateScripts(BuildPlanner.Inputs in) {
+        return in.session() != null && in.session().testSelection().runGateScripts();
+    }
+
+    static boolean invocationRoot(Path dir) {
+        return WorkspaceScan.isWorkspaceRoot(dir) || WorkspaceScan.findRoot(dir).isEmpty();
+    }
+
+    /**
+     * Append the GATE step when this unit is the invocation root and the session asked for
+     * scripts. Returns the terminal name, or {@code null} when GATE is not on this plan.
+     */
+    static String appendGate(
+            BuildPlan.Builder b,
+            BuildPlanner.Ctx cx,
+            boolean includeTests,
+            boolean testOnly,
+            boolean afterBuild) {
+        BuildPlanner.Inputs in = cx.in();
+        if (!runGateScripts(in) || !invocationRoot(in.dir())) return null;
+        if (in.session().testSelection().scriptsOnly() && !BuildLogicToml.hasStem(in.dir(), "gate")) {
+            throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
+        }
+        String[] req;
+        if (afterBuild) {
+            req = new String[] {TaskNames.BUILD_LOGIC_AFTER_BUILD};
+        } else if (testOnly) {
+            req = new String[] {includeTests ? TaskNames.RUN_TESTS : TaskNames.COPY_RESOURCES};
+        } else if (includeTests) {
+            req = new String[] {TaskNames.RUN_TESTS, TaskNames.PACKAGE_JAR};
+        } else {
+            req = new String[] {TaskNames.PACKAGE_JAR};
+        }
+        b.addTask(buildLogicGateStep(cx, req));
+        return TaskNames.BUILD_LOGIC_GATE;
     }
 
     /**

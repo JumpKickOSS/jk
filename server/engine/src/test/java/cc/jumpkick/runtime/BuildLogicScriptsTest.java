@@ -26,6 +26,8 @@ class BuildLogicScriptsTest {
         assertEquals(
                 BuildLogicAnchor.AFTER_RESOURCES,
                 BuildLogicScripts.matchAnchor("after-resources").orElseThrow());
+        assertEquals(BuildLogicAnchor.GATE, BuildLogicScripts.matchAnchor("gate").orElseThrow());
+        assertEquals(BuildLogicAnchor.GATE, BuildLogicScripts.matchAnchor("gate-house").orElseThrow());
         assertTrue(BuildLogicScripts.matchAnchor("compile.groovy").isEmpty());
         assertTrue(BuildLogicScripts.matchAnchor("random").isEmpty());
     }

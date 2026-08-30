@@ -47,6 +47,8 @@ public final class TaskNames {
     public static final String BUILD_LOGIC_BEFORE_PACKAGE = "build-logic-before-package";
     /** AFTER_BUILD anchor — the workspace root's, after every member module has built. */
     public static final String BUILD_LOGIC_AFTER_BUILD = "build-logic-after-build";
+    /** GATE anchor — invocation-root scripts bound to {@code --gate} / {@code --scripts-only}. */
+    public static final String BUILD_LOGIC_GATE = "build-logic-gate";
 
     public static final String ENSURE_JDK = "ensure-jdk";
     public static final String FETCH_CATALOG = "fetch-catalog";

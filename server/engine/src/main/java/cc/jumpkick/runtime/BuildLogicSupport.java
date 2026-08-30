@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.BuildLogicToml.Logic;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -69,20 +70,40 @@ public final class BuildLogicSupport {
      * indistinguishable from one that passed.
      */
     static void rejectMisplacedStems(List<BuildLogicScripts.ScriptTask> scripts, boolean workspaceRoot, Path logicDir) {
+        rejectMisplacedStems(scripts, workspaceRoot, logicDir, logicDir.getParent());
+    }
+
+    static void rejectMisplacedStems(
+            List<BuildLogicScripts.ScriptTask> scripts, boolean workspaceRoot, Path logicDir, Path projectDir) {
+        boolean member = projectDir != null && WorkspaceScan.findRoot(projectDir).isPresent();
         for (BuildLogicScripts.ScriptTask s : scripts) {
+            if (s.anchor() == BuildLogicAnchor.GATE) {
+                if (!member) continue;
+                throw misplaced(
+                        logicDir,
+                        s,
+                        "a module",
+                        "before-compile / after-compile / after-resources / before-package —"
+                                + " after-build and gate are the invocation root's anchors");
+            }
             if (s.anchor().workspaceScoped() == workspaceRoot) continue;
             String where = workspaceRoot ? "a workspace root" : "a module";
             String use = workspaceRoot
-                    ? "after-build — the root has no compile or package step for the others to cut against"
+                    ? "after-build or gate — the root has no compile or package step for the others to cut against"
                     : "before-compile / after-compile / after-resources / before-package —"
-                            + " after-build is the workspace root's anchor";
-            throw new IllegalStateException("[build] " + logicDir.getFileName() + "/"
-                    + s.file().getFileName()
-                    + " is not a valid stem for "
-                    + where
-                    + ". Use "
-                    + use);
+                            + " after-build and gate are the invocation root's anchors";
+            throw misplaced(logicDir, s, where, use);
         }
+    }
+
+    private static IllegalStateException misplaced(
+            Path logicDir, BuildLogicScripts.ScriptTask s, String where, String use) {
+        return new IllegalStateException("[build] " + logicDir.getFileName() + "/"
+                + s.file().getFileName()
+                + " is not a valid stem for "
+                + where
+                + ". Use "
+                + use);
     }
 
     /**
@@ -109,9 +130,11 @@ public final class BuildLogicSupport {
         Logic c = cfg.get();
         rejectCompiledSources(c.dir());
         List<BuildLogicScripts.ScriptTask> scripts = BuildLogicScripts.discover(c.dir());
-        rejectMisplacedStems(scripts, anchor.workspaceScoped(), c.dir());
+        rejectMisplacedStems(scripts, anchor.workspaceScoped(), c.dir(), projectDir);
         if (scripts.isEmpty()) {
-            if (anchor == BuildLogicAnchor.AFTER_RESOURCES || anchor == BuildLogicAnchor.AFTER_BUILD) {
+            if (anchor == BuildLogicAnchor.AFTER_RESOURCES
+                    || anchor == BuildLogicAnchor.AFTER_BUILD
+                    || anchor == BuildLogicAnchor.GATE) {
                 label.accept("build-logic: no scripts in " + c.dir().getFileName());
             }
             return true;

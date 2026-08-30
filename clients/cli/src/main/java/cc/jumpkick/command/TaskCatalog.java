@@ -78,6 +78,8 @@ final class TaskCatalog {
             def(TaskNames.COMPILE_TEST, "Compile test sources", BuildLayout::testClassesDir),
             def(TaskNames.RUN_TESTS, "Run tests", BuildLayout::testResultsDir, "test"),
             def(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE, "Project build-logic (BEFORE_PACKAGE)", BuildLayout::classesDir),
+            def(TaskNames.BUILD_LOGIC_AFTER_BUILD, "Workspace build-logic (AFTER_BUILD)", null),
+            def(TaskNames.BUILD_LOGIC_GATE, "Workspace build-logic (GATE)", null),
             def(TaskNames.PACKAGE_JAR, "Package main jar", BuildLayout::mainJar, "package", "jar"),
             def(TaskNames.PACKAGE_ASSEMBLY, "Package assembly (fat) jar", BuildLayout::assemblyJar, "assembly"),
             def(TaskNames.WRITE_STAMP, "Write Java compile freshness stamp", null),

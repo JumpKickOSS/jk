@@ -227,9 +227,9 @@ public final class ProtoJobs {
                 + freshenLock
                 + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
                 + (testOnly ? ",\"testOnly\":true" : "")
-                + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + jsonStringArray(dirtyHint) : "")
+                + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + Jsonl.array(dirtyHint) : "")
                 + (selection != null && !selection.equals(TestSelection.DEFAULT) ? testSelectionFields(selection) : "")
-                + (modules != null && !modules.isEmpty() ? ",\"modules\":" + jsonStringArray(modules) : "")
+                + (modules != null && !modules.isEmpty() ? ",\"modules\":" + Jsonl.array(modules) : "")
                 + triggerJsonSuffix()
                 + progressModeJsonSuffix()
                 + "}";
@@ -259,7 +259,7 @@ public final class ProtoJobs {
      * selection.
      */
     public static List<String> dirtyHintOf(String json) {
-        List<String> dirs = stringArrayField(json, "dirtyHint");
+        List<String> dirs = Jsonl.strArray(json, "dirtyHint");
         return dirs.isEmpty() ? null : dirs;
     }
 
@@ -357,39 +357,27 @@ public final class ProtoJobs {
         TestSelection s = selection == null ? TestSelection.DEFAULT : selection;
         StringBuilder sb = new StringBuilder();
         sb.append(",\"allSuites\":").append(s.allSuites());
-        sb.append(",\"suites\":").append(jsonStringArray(s.suites()));
-        sb.append(",\"includeTags\":").append(jsonStringArray(s.includeTags()));
-        sb.append(",\"excludeTags\":").append(jsonStringArray(s.excludeTags()));
+        sb.append(",\"suites\":").append(Jsonl.array(s.suites()));
+        sb.append(",\"includeTags\":").append(Jsonl.array(s.includeTags()));
+        sb.append(",\"excludeTags\":").append(Jsonl.array(s.excludeTags()));
         sb.append(",\"tagsResolved\":").append(s.tagsResolved());
-        return (s.gate() ? sb.append(",\"gate\":true") : sb).toString();
+        if (s.gate()) sb.append(",\"gate\":true");
+        if (s.scriptsOnly()) sb.append(",\"scriptsOnly\":true");
+        if (s.noScripts()) sb.append(",\"noScripts\":true");
+        return sb.toString();
     }
 
     /** Parse suite/tag selection from a test/build request line. */
     public static TestSelection testSelectionOf(String json) {
-        boolean all = Jsonl.bool(json, "allSuites", false);
-        List<String> suites = stringArrayField(json, "suites");
-        List<String> include = stringArrayField(json, "includeTags");
-        List<String> exclude = stringArrayField(json, "excludeTags");
         return TestSelection.of(
-                suites, all, include, exclude, Jsonl.bool(json, "tagsResolved", false), Jsonl.bool(json, "gate", false));
-    }
-
-    private static String jsonStringArray(List<String> values) {
-        return values == null ? "[]" : Jsonl.array(values);
-    }
-
-    /** Best-effort parse of a JSON string array field (flat list of quoted strings). */
-    /**
-     * Delegates to {@link Jsonl#strArray} — the one string-array reader.
-     *
-     * <p>This used to be a private copy whose closing bracket was {@code json.indexOf(']')}, i.e.
-     * the first {@code ]} in the document rather than the first one outside a quoted element. Any
-     * value containing {@code ]} truncated the array, so an {@code excludeTags} entry like
-     * {@code "[slow]"} decoded to garbage and the tag stopped matching — excluded tests ran.
-     * {@code Jsonl.strArray} already documents and handles that case.
-     */
-    private static List<String> stringArrayField(String json, String key) {
-        return Jsonl.strArray(json, key);
+                Jsonl.strArray(json, "suites"),
+                Jsonl.bool(json, "allSuites", false),
+                Jsonl.strArray(json, "includeTags"),
+                Jsonl.strArray(json, "excludeTags"),
+                Jsonl.bool(json, "tagsResolved", false),
+                Jsonl.bool(json, "gate", false),
+                Jsonl.bool(json, "scriptsOnly", false),
+                Jsonl.bool(json, "noScripts", false));
     }
 
     /** Start a single-project build (see {@link EngineProtocol#SINGLE_BUILD_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */
