@@ -35,7 +35,7 @@ Default **`jk test` is the unit suite only.** That is the inner loop. Do not pas
 | When | Command |
 |------|---------|
 | Editing a class / fixing a unit assertion | `jk test` |
-| About to push, or the change crossed DB / HTTP / FS | `jk test --suite integration` (if that directory exists) |
+| About to push, or the change crossed DB / HTTP / FS | `jk test --gate` (alias `--pre-merge`) |
 | UI / compose / contract change, or reproducing CI | `jk test --suite e2e` |
 | Never as a habit | `jk test --all` |
 

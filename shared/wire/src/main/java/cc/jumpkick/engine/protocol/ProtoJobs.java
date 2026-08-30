@@ -361,7 +361,7 @@ public final class ProtoJobs {
         sb.append(",\"includeTags\":").append(jsonStringArray(s.includeTags()));
         sb.append(",\"excludeTags\":").append(jsonStringArray(s.excludeTags()));
         sb.append(",\"tagsResolved\":").append(s.tagsResolved());
-        return sb.toString();
+        return (s.gate() ? sb.append(",\"gate\":true") : sb).toString();
     }
 
     /** Parse suite/tag selection from a test/build request line. */
@@ -370,8 +370,8 @@ public final class ProtoJobs {
         List<String> suites = stringArrayField(json, "suites");
         List<String> include = stringArrayField(json, "includeTags");
         List<String> exclude = stringArrayField(json, "excludeTags");
-        boolean tagsResolved = Jsonl.bool(json, "tagsResolved", false);
-        return TestSelection.of(suites, all, include, exclude, tagsResolved);
+        return TestSelection.of(
+                suites, all, include, exclude, Jsonl.bool(json, "tagsResolved", false), Jsonl.bool(json, "gate", false));
     }
 
     private static String jsonStringArray(List<String> values) {

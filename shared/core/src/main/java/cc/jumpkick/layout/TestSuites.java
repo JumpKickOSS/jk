@@ -38,6 +38,12 @@ public final class TestSuites {
     /** Canonical default suite name (maps to {@code test/src} or {@code src/test/…}). */
     public static final String DEFAULT = "test";
 
+    /** Canonical integration suite — the extra rung {@code --gate} includes when it exists. */
+    public static final String INTEGRATION = "integration";
+
+    /** Default {@code --gate} suite list: unit plus integration (integration is optional). */
+    public static final List<String> GATE = List.of(DEFAULT, INTEGRATION);
+
     /** Top-level names that are never treated as optional test suites in simple layout. */
     private static final Set<String> SIMPLE_RESERVED = Set.of(
             "src",

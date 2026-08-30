@@ -6,32 +6,43 @@ turn requires. Product bet: [Why JumpKick](why.md#test-rungs-the-execute-moat).
 
 ```bash
 jk test                              # unit rung — default suite only. Inner loop.
-jk test --suite integration          # -s is the short form. Climb one rung.
-jk test -s test -s integration       # today’s share-the-commit selection
+jk test --gate                       # share-the-commit: unit + integration (if present)
+jk test --pre-merge                  # silent alias of --gate
+jk test --suite integration          # -s is the short form. Climb one named suite.
 jk test --suite e2e                  # UI / compose / contract; not a habit
 jk test --all                        # every suite; tag excludes cleared. Nightly / release.
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
+jk build --gate                      # package with the gate green
 jk build --all                       # package with the full suite green
 ```
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
-run `jk test`, not `--all`. Before you share a commit, also run `integration` if
-that suite exists. The named composition of that bar is `--gate` (silent alias
-`--pre-merge`): unit + integration + optional house-rule scripts, still excluding
-`slow` / `network` / `bench`. Command pages will list those flags when the binary
-accepts them; until then the `-s test -s integration` line is the same test
-selection.
+run `jk test`, not `--all`. Before you share a commit, run **`--gate`** (silent
+alias `--pre-merge`): unit + `integration` when that directory exists. Tag excludes
+from `[test]` still apply (`slow` / `network` / `bench` stay out). `--gate` cannot
+combine with `--all`. `--suite` wins over `--gate` (a warning is printed).
+
+Override the gate suite list:
+
+```toml
+[test]
+gate-suites = ["test", "integration", "contract"]
+```
+
+Unknown names in `gate-suites` fail with the discovered-suite list. Missing
+`integration` on the default list is not an error.
 
 Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
 directory.
 
-`--all` and `--suite` cannot be combined. Unknown suite names error with the available
-list. `--all` means “everything”: every suite directory **and** cleared `[test]` / profile
-tag excludes. Explicit `--include-tags` / `--exclude-tags` still compose on top.
-`jk build` accepts the same selection flags.
+`--all` and `--suite` cannot be combined. `--all` and `--gate` cannot be combined.
+Unknown suite names error with the available list (`--gate`'s default `integration`
+is the exception: skip if absent). `--all` means “everything”: every suite directory
+**and** cleared `[test]` / profile tag excludes. Explicit `--include-tags` /
+`--exclude-tags` still compose on top. `jk build` accepts the same selection flags.
 
 Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`). Named
 suites are discovered when those directories exist.

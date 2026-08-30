@@ -2,9 +2,11 @@
 package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -149,5 +151,84 @@ class TestSelectionResolveTest {
         assertThat(sel.includeTags()).isEmpty();
         assertThat(sel.excludeTags()).isEmpty();
         assertThat(sel.tagsResolved()).isFalse();
+    }
+
+    @Test
+    void gate_and_pre_merge_are_the_same_selection(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["slow", "network", "bench"]
+                """);
+        var gate = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate"));
+        var pre = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--pre-merge"));
+        assertThat(gate).isEqualTo(pre);
+        assertThat(gate.gate()).isTrue();
+        assertThat(gate.suites()).containsExactly("test", "integration");
+        assertThat(gate.excludeTags()).containsExactly("slow", "network", "bench");
+        assertThat(gate.allSuites()).isFalse();
+        assertThat(gate.identityToken()).isEqualTo(pre.identityToken());
+    }
+
+    @Test
+    void gate_and_all_cannot_combine(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "--all")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("--all")
+                .hasMessageContaining("--gate");
+        assertThatThrownBy(
+                        () -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--pre-merge", "--all")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("--gate");
+    }
+
+    @Test
+    void suite_wins_over_gate(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "-s", "e2e"));
+        assertThat(sel.gate()).isFalse();
+        assertThat(sel.suites()).containsExactly("e2e");
+    }
+
+    @Test
+    void gate_suites_override_the_default_list(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                gate-suites = ["test", "contract"]
+                """);
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate"));
+        assertThat(sel.gate()).isTrue();
+        assertThat(sel.suites()).containsExactly("test", "contract");
+    }
+
+    @Test
+    void empty_gate_suites_is_the_unit_suite(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                gate-suites = []
+                """);
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate"));
+        assertThat(sel.suites()).containsExactly("test");
+        assertThat(sel.gate()).isTrue();
+    }
+
+    @Test
+    void suite_plus_gate_warns_once(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
+        Invocation in = parse("-C", dir.toString(), "--gate", "-s", "e2e");
+        String err = Capture.stderr(() -> TestCommand.warnGateOverride(in, GlobalOptions.from(in)));
+        assertThat(err).contains(TestCommand.GATE_SUITE_OVERRIDE_WARNING);
+    }
+
+    @Test
+    void illegal_gate_suites_name_errors(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                gate-suites = ["Nope"]
+                """);
+        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Nope")
+                .hasMessageContaining("gate-suites");
     }
 }
