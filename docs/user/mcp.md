@@ -50,6 +50,7 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 | **`jk_details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results --details` dumps the full file |
 | **`jk_why`** | Why a dependency is on the graph |
 | **`jk_explain`** | Forecast next build |
+| **`jk_affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
 | **`jk_outdated`** | Declared deps newer than the lock (read-only) |
 | **`jk_deps`** | Preview/apply surgical dependency add/remove (`apply` defaults **false**) |
 | **`jk_workspace`** | Preview/apply workspace member add/remove |

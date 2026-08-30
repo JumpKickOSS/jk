@@ -56,6 +56,8 @@ public record Session(
         @With String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
         @With TestSelection testSelection,
+        /** {@code jk test --affected}: rank and run WIP test classes. */
+        @With boolean affected,
         /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
         @With IoLedger io) {
 
@@ -89,6 +91,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                affected,
                 io);
     }
 
@@ -157,6 +160,7 @@ public record Session(
                 null,
                 "",
                 TestSelection.DEFAULT,
+                false,
                 IoLedger.currentOrNew());
     }
 
@@ -177,6 +181,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                affected,
                 io);
     }
 
@@ -197,6 +202,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                affected,
                 io);
     }
 
@@ -221,6 +227,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                affected,
                 io);
     }
 

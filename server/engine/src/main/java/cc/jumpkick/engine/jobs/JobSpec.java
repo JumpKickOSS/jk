@@ -16,7 +16,8 @@ public record JobSpec(
         List<String> includeTags,
         List<String> excludeTags,
         List<String> suites,
-        boolean skipTests) {
+        boolean skipTests,
+        boolean affected) {
 
     public JobSpec {
         kind = kind == null || kind.isBlank() ? "build" : kind.trim().toLowerCase(Locale.ROOT);
@@ -29,12 +30,12 @@ public record JobSpec(
     }
 
     public static JobSpec of(String kind, String dir) {
-        return new JobSpec(kind, dir, List.of(), List.of(), List.of(), List.of(), false);
+        return new JobSpec(kind, dir, List.of(), List.of(), List.of(), List.of(), false, false);
     }
 
     /** Same spec with a normalized absolute {@code dir} (the admission point resolves it once). */
     public JobSpec withDir(String absoluteDir) {
-        return new JobSpec(kind, absoluteDir, modules, includeTags, excludeTags, suites, skipTests);
+        return new JobSpec(kind, absoluteDir, modules, includeTags, excludeTags, suites, skipTests, affected);
     }
 
     public boolean hasModuleFilter() {

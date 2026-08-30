@@ -35,16 +35,21 @@ public final class CommonOpts {
 
     /**
      * Workspace module selection shared by every build-family command ({@code -m}/{@code
-     * --modules}, {@code --affected-since}). Resolved engine-side via {@code projectInfo}.
+     * --modules}, {@code --affected}, {@code --affected-since}). Resolved engine-side via
+     * {@code projectInfo}.
      *
      * <p>Semantics: {@code build}/{@code test} treat the selection as the work list (siblings are
      * not rebuilt — pair with {@code --affected-since} to catch dependents); {@code native} builds
      * the selection's prereq closure but native-compiles only the selection. A working directory
      * that is a workspace member with no {@code -m} is the same as {@code -m <that-module>}.
+     *
+     * <p>{@code --affected} is the working-tree cone; {@code --affected-since} is {@code ref...HEAD}.
+     * They are mutually exclusive. {@code --aff} is ambiguous.
      */
     public static List<Opt> moduleSelection() {
         return List.of(
                 Opt.value("<sel>", "Only selected modules (paths/globs)", "-m", "--modules"),
+                Opt.flag("Modules changed in the working tree", "--affected"),
                 Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
     }
 

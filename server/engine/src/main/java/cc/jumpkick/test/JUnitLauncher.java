@@ -75,6 +75,14 @@ public final class JUnitLauncher {
     /** {@code [test] serial-tags} — see {@link #withSerialTags}. */
     private List<String> serialTags = List.of();
 
+    /** When non-empty, run only these class FQCNs ({@code --affected}). */
+    private List<String> classNames = List.of();
+
+    public JUnitLauncher withClassNames(List<String> names) {
+        this.classNames = names == null ? List.of() : List.copyOf(names);
+        return this;
+    }
+
     /**
      * Extra environment for the test JVM. Used to isolate nested-engine suites ({@code jk-cli}) so
      * {@code EngineTestExtension} cannot force-stop the host engine that is running {@code jk test}, and
@@ -334,7 +342,12 @@ public final class JUnitLauncher {
 
         int resolvedWorkers = workers;
         List<String> preDiscovered = null;
-        if (workers == 0) {
+        if (!classNames.isEmpty()) {
+            preDiscovered = classNames;
+            resolvedWorkers =
+                    TestWorkers.resolve(workers == 0 ? 0 : workers, preDiscovered.size(), TestWorkers.effectiveJobs());
+            if (preDiscovered.size() <= 1) resolvedWorkers = 1;
+        } else if (workers == 0) {
             // Discover once so auto can size the pool; reuse the list when W>1.
             preDiscovered = discoverClasses(javaBinary, classpath, testClassesDir, listener);
             resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
@@ -373,7 +386,7 @@ public final class JUnitLauncher {
                 classpath,
                 runnerFlags(1, testTmpDir),
                 PROTOCOL_PREFIX,
-                withTagArgs(List.of("--scan-classpath=" + testClassesDir)),
+                withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames)),
                 testEnv,
                 inferredModuleDir,
                 aggregator::accept,

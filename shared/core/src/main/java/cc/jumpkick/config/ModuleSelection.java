@@ -65,13 +65,28 @@ public final class ModuleSelection {
      * When neither is set, returns {@code null} (caller should not filter).
      */
     public static Result resolveOptional(Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince) {
+        return resolveOptional(entryDir, entryBuild, modulesSpec, affectedSince, false);
+    }
+
+    /**
+     * As {@link #resolveOptional(Path, JkBuild, String, String)} with {@code affectedWip} for
+     * {@code --affected}. {@code affectedSince} and {@code affectedWip} together is a config error.
+     */
+    public static Result resolveOptional(
+            Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince, boolean affectedWip) {
+        if (affectedWip && affectedSince != null && !affectedSince.isBlank()) {
+            return Result.fail("use --affected (WIP) or --affected-since=<ref>, not both");
+        }
         Result modules = null;
         if (modulesSpec != null && !modulesSpec.isBlank()) {
             modules = resolve(entryDir, entryBuild, modulesSpec);
             if (!modules.ok()) return modules;
         }
         AffectedSelection.Result affected = null;
-        if (affectedSince != null && !affectedSince.isBlank()) {
+        if (affectedWip) {
+            affected = AffectedSelection.resolveWip(entryDir, entryBuild);
+            if (!affected.ok()) return Result.fail(affected.errorMessage());
+        } else if (affectedSince != null && !affectedSince.isBlank()) {
             affected = AffectedSelection.resolve(entryDir, entryBuild, affectedSince);
             if (!affected.ok()) return Result.fail(affected.errorMessage());
         }

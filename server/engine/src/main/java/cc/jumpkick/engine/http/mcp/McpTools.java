@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.http.ProgressTokenRegistry;
+import cc.jumpkick.engine.http.mcp.tools.AffectedTestsTool;
 import cc.jumpkick.engine.http.mcp.tools.BindTool;
 import cc.jumpkick.engine.http.mcp.tools.CancelTool;
 import cc.jumpkick.engine.http.mcp.tools.ConfigTool;
@@ -58,6 +59,7 @@ public final class McpTools {
             + "Raw transcript → jk_details (budgeted; CLI `jk results --details` "
             + "dumps the full details.jsonl). "
             + "Why dep X → jk_why. Module/dep DAG → jk_graph. Slow / next-build ETA → jk_explain. "
+            + "WIP tests → jk_affected_tests (advisory; writes target/jk-tests-affected.md). "
             + "Frozen / kill → jk_status then jk_job cancel. "
             + "Run / test / lock / format / publish (dry-run) / install / import → jk_run (wait defaults true). "
             + "Scaffold → jk_new (preview first). Export maven/gradle/bom → jk_export. "
@@ -109,6 +111,7 @@ public final class McpTools {
                 new JobTool(),
                 new WhyTool(),
                 new ExplainTool(),
+                new AffectedTestsTool(),
                 new OutdatedTool(),
                 new DepsTool(),
                 new WorkspaceTool(),

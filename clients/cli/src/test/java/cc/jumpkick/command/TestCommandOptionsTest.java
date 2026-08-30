@@ -68,6 +68,23 @@ class TestCommandOptionsTest {
     }
 
     @Test
+    void affected_and_affected_since_both_declared() {
+        List<Opt> opts = new TestCommand().options();
+        assertThat(opts.stream().anyMatch(o -> o.names().contains("--affected")))
+                .isTrue();
+        assertThat(opts.stream().anyMatch(o -> o.names().contains("--affected-since")))
+                .isTrue();
+        assertThat(new BuildCommand().options().stream().anyMatch(o -> o.names().contains("--affected")))
+                .isTrue();
+    }
+
+    @Test
+    void affected_parses_as_flag() throws Exception {
+        Invocation in = parse("--affected");
+        assertThat(in.isSet("affected")).isTrue();
+    }
+
+    @Test
     void scripts_only_and_no_scripts_are_on_test_and_build() {
         assertThat(new TestCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--scripts-only")))
                 .isTrue();

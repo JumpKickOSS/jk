@@ -25,6 +25,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.test.AffectedTests;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -115,6 +116,15 @@ public final class BuildPlanner {
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.of("layout", BuildLayout.class);
     public static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
     public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.of("no-test-sources", Boolean.class);
+
+    @SuppressWarnings("rawtypes")
+    public static final BuildPlanKey<Map> PRE_COMPILE_ABI = BuildPlanKey.of("pre-compile-abi", Map.class);
+
+    @SuppressWarnings("rawtypes")
+    public static final BuildPlanKey<List> COMPILED_MAIN_SOURCES = BuildPlanKey.of("compiled-main-sources", List.class);
+
+    public static final BuildPlanKey<AffectedTests> AFFECTED_TESTS =
+            BuildPlanKey.of("affected-tests", AffectedTests.class);
 
     /** Serializes {@code run-tests} across concurrent modules unless {@code parallelTests}. */
     static final Semaphore TEST_GATE = new Semaphore(1);

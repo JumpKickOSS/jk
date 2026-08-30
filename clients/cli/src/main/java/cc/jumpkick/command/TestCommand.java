@@ -109,6 +109,7 @@ public final class TestCommand implements CliCommand {
     GlobalOptions global;
     int jobs;
     String affectedSince;
+    boolean affectedWip;
     String modulesSpec;
     TestSelection testSelection = TestSelection.DEFAULT;
     private CliSessionTranscript session;
@@ -120,7 +121,12 @@ public final class TestCommand implements CliCommand {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.affectedSince = in.value("affected-since").orElse(null);
+        this.affectedWip = in.isSet("affected");
         this.modulesSpec = in.value("modules").orElse(null);
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
+            CommandWedge.printFail("Test", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
         this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
@@ -133,8 +139,10 @@ public final class TestCommand implements CliCommand {
             return Exit.CONFIG;
         }
         warnGateOverride(in, global);
-        SessionContext.install(
-                SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
+        SessionContext.install(SessionContext.current()
+                .withParallelTests(parallelTests)
+                .withTestSelection(testSelection)
+                .withAffected(affectedWip));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
@@ -163,8 +171,10 @@ public final class TestCommand implements CliCommand {
         }
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
-        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince);
+        if (affectedWip
+                || (affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
+            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -232,6 +242,9 @@ public final class TestCommand implements CliCommand {
         }
 
         if (result.success()) return finishSession(0);
+        for (var d : result.errors()) {
+            if ("affected-refuse".equals(d.code())) return finishSession(Exit.CONFIG);
+        }
         // Test failures get exit 4; compile / launcher errors are exit 1.
         if (testResult != null && !testResult.allPassed()) return finishSession(4);
         return finishSession(1);
@@ -256,6 +269,7 @@ public final class TestCommand implements CliCommand {
             argv.add("--affected-since");
             argv.add(r);
         });
+        if (in.isSet("affected")) argv.add("--affected");
         if (in.isSet("serial-tests") || in.isSet("no-parallel-tests")) argv.add("--serial-tests");
         else if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
         in.value("workers").ifPresent(w -> {
@@ -272,9 +286,9 @@ public final class TestCommand implements CliCommand {
      */
     private int runSelectedWorkspaceTests(Path entryDir, ProjectInfo rootInfo, Path cache, int workerCount)
             throws IOException, InterruptedException {
-        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
+        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         if (!tokens.isEmpty()) {
-            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -304,7 +318,8 @@ public final class TestCommand implements CliCommand {
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
         List<String> scopeNames = List.of();
         if (modules != null && !modules.isEmpty()) {
-            scopeNames = ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince));
+            scopeNames =
+                    ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip));
             if (!live) {
                 ModuleScopeHint.print("testing", scopeNames, global != null && global.outputIsJson());
             }

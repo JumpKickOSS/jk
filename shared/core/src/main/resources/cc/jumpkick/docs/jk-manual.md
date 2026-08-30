@@ -175,7 +175,7 @@ consumes, not launchers on `PATH`.
 
 **Workspaces.** Root `jk.toml` has `[workspace] modules = […]`. One lockfile. Independent modules
 build concurrently (`-j`; default = all effective cores / cgroup quota). `-w` is *within-module*
-test workers, a separate knob. Filter with `-m api,worker`, globs, or `--affected-since=origin/main`.
+test workers, a separate knob. Filter with `-m api,worker`, globs, `--affected` (WIP cone), or `--affected-since=origin/main`.
 
 **Explain.** `jk explain` is the day-to-day “why would this rebuild?” tool (cache hit/miss + ETA).
 Prefer it over Gradle build scans for that question.
@@ -237,6 +237,7 @@ jk test --all                # nightly / release, not every turn
 jk test --exclude-tags slow,bench
 jk build -m api,worker
 jk build --affected-since=origin/main
+jk test --affected                   # WIP modules + ranked test classes; writes target/jk-tests-affected.md
 jk build -j4                 # cap module concurrency (0 = all effective cores)
 jk test -w4                  # within-module test workers
 jk build --skip-tests

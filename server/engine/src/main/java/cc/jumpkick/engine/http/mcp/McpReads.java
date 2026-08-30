@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.config.AffectedSelection;
+import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
 import cc.jumpkick.runtime.ExplainReport;
@@ -17,6 +23,12 @@ import cc.jumpkick.runtime.GenerateOps;
 import cc.jumpkick.runtime.GraphOps;
 import cc.jumpkick.runtime.OutdatedPlans;
 import cc.jumpkick.runtime.TaskForecast;
+import cc.jumpkick.test.AbiIndex;
+import cc.jumpkick.test.AffectedTestRanker;
+import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.test.ClassAbi;
+import cc.jumpkick.test.JkTestsAffectedMarkdown;
+import cc.jumpkick.test.TestClassIndex;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -195,6 +207,87 @@ public final class McpReads {
             return r.toStructured();
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
+            m.put("error", Errors.text(e));
+            return m;
+        }
+    }
+
+    /**
+     * Advisory WIP ranking from on-disk classes. Writes {@code target/jk-tests-affected.md}. Does
+     * not compile. Stale class files → refuse {@code stale}.
+     */
+    public static Map<String, Object> affectedTests(
+            String dir, List<String> includeTags, List<String> excludeTags, List<String> suites) {
+        Path root = PathUtil.resolveUserPath(dir);
+        Map<String, Object> m = new LinkedHashMap<>();
+        try {
+            Path manifest = root.resolve(ManifestPaths.MANIFEST);
+            JkBuild build = JkBuildParser.parse(manifest);
+            List<String> dirty = DirtyPaths.wip(root);
+            if (dirty == null) {
+                AffectedTests refused = AffectedTests.refused(
+                        new AffectedTests.Refuse("no-git-no-classes", "git working tree could not be read"),
+                        List.of(),
+                        List.of());
+                JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(root), refused);
+                return refused.toStructured();
+            }
+            AffectedSelection.Result cone = AffectedSelection.resolveWip(root, build);
+            if (!cone.ok()) {
+                AffectedTests refused = AffectedTests.refused(
+                        new AffectedTests.Refuse("no-git-no-classes", cone.errorMessage()), List.of(), List.of());
+                JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(root), refused);
+                return refused.toStructured();
+            }
+            TestSelection sel = TestSelection.of(
+                    suites == null ? List.of() : suites,
+                    false,
+                    includeTags == null ? List.of() : includeTags,
+                    excludeTags == null ? List.of() : excludeTags,
+                    true);
+            AffectedTests acc = AffectedTests.empty(List.of(), List.of());
+            Map<Path, JkBuild> modules =
+                    build.isWorkspaceRoot() ? WorkspaceLoader.loadModules(root, build) : Map.of(root, build);
+            for (Path modDir : cone.moduleDirs()) {
+                JkBuild unit = modules.getOrDefault(modDir, build);
+                BuildLayout layout =
+                        build.isWorkspaceRoot() ? BuildLayout.of(root, modDir, unit) : BuildLayout.of(modDir, unit);
+                Map<String, ClassAbi.Fingerprint> current = AbiIndex.scanClasses(layout.classesDir());
+                Map<String, ClassAbi.Fingerprint> pre = AbiIndex.load(AbiIndex.path(layout.buildDir()));
+                var tests = TestClassIndex.scan(layout.testClassesDir(), current.keySet());
+                String coord = unit.project().group() + ":" + unit.project().name();
+                String rel = root.relativize(modDir).toString();
+                if (rel.isBlank()) rel = ".";
+                AffectedTests slice = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                        modDir,
+                        coord,
+                        root,
+                        sel,
+                        dirty,
+                        pre,
+                        current,
+                        List.of(),
+                        tests,
+                        current.keySet(),
+                        List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"))));
+                acc = acc.merge(slice);
+            }
+            List<AffectedTests.Row> rows = acc.ranked();
+            boolean truncated = rows.size() > 20;
+            if (truncated) {
+                acc = new AffectedTests(
+                        acc.modules(),
+                        acc.changed(),
+                        rows.subList(0, 20),
+                        AffectedTests.CAP,
+                        acc.candidateCount(),
+                        acc.refuse());
+            }
+            JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(root), acc);
+            Map<String, Object> out = acc.toStructured();
+            if (truncated) out.put("truncated", true);
+            return out;
+        } catch (Exception e) {
             m.put("error", Errors.text(e));
             return m;
         }

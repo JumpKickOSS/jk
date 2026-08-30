@@ -321,6 +321,17 @@ final class EngineReads {
     static ProjectInfo projectInfo(
             EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
             throws IOException {
+        return projectInfo(paths, dir, modules, affectedSince, false, counts);
+    }
+
+    static ProjectInfo projectInfo(
+            EnginePaths.Paths paths,
+            Path dir,
+            String modules,
+            String affectedSince,
+            boolean affectedWip,
+            boolean counts)
+            throws IOException {
         return request(
                 paths,
                 // project-info used to ride bare, with no session envelope at all — so the engine
@@ -328,7 +339,8 @@ final class EngineReads {
                 // state rather than the caller's (JK-1040).
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                ProtoReads.projectInfoRequest(dir.toString(), modules, affectedSince, counts),
+                                ProtoReads.projectInfoRequest(
+                                        dir.toString(), modules, affectedSince, affectedWip, counts),
                                 SessionContext.current().variant(),
                                 SessionContext.current().clientEnv(),
                                 SessionContext.current().jvm(),

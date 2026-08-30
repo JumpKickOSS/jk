@@ -689,7 +689,18 @@ public final class EngineClient {
     public static ProjectInfo projectInfo(
             EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
             throws IOException {
-        return EngineReads.projectInfo(paths, dir, modules, affectedSince, counts);
+        return projectInfo(paths, dir, modules, affectedSince, false, counts);
+    }
+
+    public static ProjectInfo projectInfo(
+            EnginePaths.Paths paths,
+            Path dir,
+            String modules,
+            String affectedSince,
+            boolean affectedWip,
+            boolean counts)
+            throws IOException {
+        return EngineReads.projectInfo(paths, dir, modules, affectedSince, affectedWip, counts);
     }
 
     /**

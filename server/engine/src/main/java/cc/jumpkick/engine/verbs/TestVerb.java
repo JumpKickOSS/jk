@@ -91,6 +91,7 @@ public final class TestVerb implements HostedVerb {
                     .withJvm(ProtoSession.jvmTuning(requestLine))
                     .withParallelTests(parallelTests)
                     .withTestSelection(ProtoJobs.testSelectionOf(requestLine))
+                    .withAffected(Jsonl.bool(requestLine, "affected", false))
                     // The request's env belongs on the session too, not only on the request: it is
                     // what BuildEnv hands every build-path caller, and without it `FOO=x jk build`
                     // reached variant `env:` indirection (which is passed the request's map
@@ -128,7 +129,11 @@ public final class TestVerb implements HostedVerb {
             host.releaseExclusiveSlot();
             host.accTests(
                     host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
-            return result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
+            if (result.success()) return JobOutcome.ok();
+            for (var d : result.errors()) {
+                if ("affected-refuse".equals(d.code())) return JobOutcome.failed(Exit.CONFIG);
+            }
+            return JobOutcome.failed(Exit.FAILURE);
         } catch (Exception e) {
             // The run threw before it could rule. Declining here would hand the journal a run
             // with no failure rows, which derives green — a test run that never finished,

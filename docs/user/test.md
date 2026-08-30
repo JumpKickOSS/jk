@@ -15,9 +15,16 @@ jk test --suite e2e                  # UI / compose / contract; not a habit
 jk test --all                        # every suite; tag excludes cleared. Nightly / release.
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
+jk test --affected                   # rank ≤20 classes/module for the working tree and run them
+jk test --affected-since=origin/main # modules changed since the ref; all their tests
 jk build --gate                      # package with the gate green
 jk build --all                       # package with the full suite green
 ```
+
+`--affected` selects the working-tree module cone and ranks at most 20 test **classes per
+module**. `--affected-since=<ref>` is the commit-range cone and runs **all** tests in those
+modules. They cannot be combined (`--aff` is ambiguous). Ranked output:
+`target/jk-tests-affected.md`. Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
 run `jk test`, not `--all`. Before you share a commit, run **`--gate`** (silent
@@ -53,6 +60,22 @@ Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`
 suites are discovered when those directories exist.
 
 When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
+
+## Affected tests (WIP)
+
+```bash
+jk test --affected              # rank ≤20 classes/module for the working tree, run them
+jk test --affected-since=origin/main   # modules changed since the ref; all tests in those modules
+```
+
+`--affected` is the working-tree cone (unstaged + untracked; last commit if the tree is clean).
+It is **not** `--affected-since=HEAD` (that range is empty). The two flags cannot be combined.
+`--aff` is ambiguous.
+
+The ranked list is written to `target/jk-tests-affected.md` (modules + tests, or REFUSED).
+It does not replace `target/jk-results.md`. Ranking refuse exits **2**; test failures **4**.
+When the guess would be dishonest (`jk.toml` change, too many types, a dirty test outside the
+current suite), jk prints `cannot rank affected tests` and tells you to run `jk test`.
 
 ## Tag filters
 
