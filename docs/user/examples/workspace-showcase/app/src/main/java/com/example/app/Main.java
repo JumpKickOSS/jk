@@ -3,12 +3,17 @@ package com.example.app;
 
 import com.example.lib.Greet;
 
-/** Showcase app: depends on the workspace lib module. */
+/** Prints the greeting built by the {@code lib} module. */
 public final class Main {
-    public static void main(String[] args) {
-        String name = args.length > 0 ? args[0] : "jk";
-        System.out.println(Greet.hello(name));
-    }
 
     private Main() {}
+
+    public static void main(String[] args) {
+        System.out.println(greeting(args));
+    }
+
+    /** The line {@code main} prints: the first argument greeted by {@code lib}. */
+    static String greeting(String[] args) {
+        return Greet.hello(args.length > 0 ? args[0] : "");
+    }
 }

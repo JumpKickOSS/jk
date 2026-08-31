@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.example.lib;
 
-/** Tiny library shared by the showcase app module. */
+/** Greeting text, shared with every module that depends on {@code lib}. */
 public final class Greet {
-    public static String hello(String name) {
-        return "hello " + (name == null || name.isBlank() ? "world" : name);
-    }
 
     private Greet() {}
+
+    /** Greets {@code name}, or the world when {@code name} is blank. */
+    public static String hello(String name) {
+        return "hello " + (name.isBlank() ? "world" : name);
+    }
 }
