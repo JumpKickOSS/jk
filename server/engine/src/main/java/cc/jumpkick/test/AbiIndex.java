@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -46,6 +46,9 @@ public enum CacheTree {
     /** Content hashes keyed by absolute path, sharded two hex digits deep. */
     HASH_MEMO("hash-memo"),
 
+    /** JVM ABI tokens keyed by classpath-entry content identity. */
+    ABI_MEMO("abi-memo"),
+
     /** Kotlin ABI snapshots for the incremental classpath. */
     KOTLIN_CP_SNAPSHOTS("kotlin-cp-snapshots"),
 

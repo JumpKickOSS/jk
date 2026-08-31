@@ -12,6 +12,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.runtime.TestClassWalls;
+import cc.jumpkick.task.AbiMemo;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.task.FileHashMemo;
@@ -197,12 +198,13 @@ public final class IdleHousekeeping {
      * stamp memo (so a long-lived engine re-stamps rather than freezing the ranking), the metrics
      * aggregate, and any unclaimed test-wall snapshots. All are optimisations, never correctness.
      *
-     * <p>The file hash memo is persisted here rather than dropped: it is keyed by path, so it does
-     * not grow with the number of builds, and its whole payoff is the build after this one.
+     * <p>The file-hash and ABI memos are persisted here rather than dropped: they do not grow with
+     * the number of builds, and their whole payoff is the build after this one.
      */
     private static void dropHeapResidue() {
         try {
             FileHashMemo.flush();
+            AbiMemo.flush();
             ActionCache.clearStampCache();
             ResolveProcessCacheControl.clearAll();
             BuildMetrics.clearSessionAggregatesMemo();

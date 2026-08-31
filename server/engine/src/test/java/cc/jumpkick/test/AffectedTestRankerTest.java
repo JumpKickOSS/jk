@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.task.ClassAbi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

@@ -53,6 +53,10 @@ public final class CacheTier {
             // nothing about whether the next build wants what is inside.
             case HASH_MEMO -> Bound.files(null, Bound.resetOverBytes(32L * 1024 * 1024));
 
+            // Same shape as HASH_MEMO: one rewritten file, mtime is a churn clock, not a use clock.
+            // Resetting it costs one re-extract of wholly derived ABI tokens.
+            case ABI_MEMO -> Bound.files(null, Bound.resetOverBytes(32L * 1024 * 1024));
+
             // Written once and never rewritten on reuse, so mtime cannot rank them.
             case KOTLIN_CP_SNAPSHOTS -> Bound.files(null, Bound.resetOverBytes(128L * 1024 * 1024));
 

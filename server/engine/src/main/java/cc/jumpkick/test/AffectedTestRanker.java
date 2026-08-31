@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.task.ClassAbi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

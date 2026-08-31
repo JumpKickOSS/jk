@@ -13,6 +13,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.ClassAbi;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

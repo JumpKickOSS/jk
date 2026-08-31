@@ -5,6 +5,7 @@ import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.task.ClassAbi;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;

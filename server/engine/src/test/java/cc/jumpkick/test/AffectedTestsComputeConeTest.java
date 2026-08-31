@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.task.ClassAbi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
