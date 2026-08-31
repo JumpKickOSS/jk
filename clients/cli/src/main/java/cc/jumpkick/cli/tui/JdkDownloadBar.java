@@ -7,6 +7,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.terminal.Ansi;
 import java.io.PrintStream;
 
@@ -123,6 +124,11 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         closed = true;
         stopAnimator();
         LiveRegion.clearActive(this);
+        // Before the silent check: --no-progress and script mode cancel too, and the bytes on disk
+        // do not care whether anything was painted. Ctrl-C ends in Runtime.halt, which runs no
+        // shutdown hook and unwinds no stack, so the installer's own finally blocks never fire —
+        // this is the only moment left to unlink what it was streaming into.
+        JdkInstaller.reapInFlight();
         if (silent) return false;
         // One line, the same chip and bar geometry the user was already watching, frozen where it
         // stopped and repainted in the failure gradient. This used to dump SEGMENTS bare ▰ glyphs —
