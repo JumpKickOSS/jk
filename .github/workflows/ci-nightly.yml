@@ -102,3 +102,54 @@ jobs:
         run: |
           JK_BIN=jk MODULES=60 GATE_COMMITTED_MIB=64 GATE_USED_MIB=24 \
             ./scripts/heap-monorepo-measure.sh
+
+  # The five samples under docs/user/examples are what new projects get copied from, and
+  # nothing built them until JK-2619 — which is how the .jk-build/ rot in line-count-build
+  # (JK-2618) survived unnoticed in a directory the user docs link to.
+  #
+  # This is nightly and not ci.yml for the reason stated on the `network` job above: resolving
+  # commons-codec, commons-text and JUnit from Central puts this job behind Sonatype's per-IP
+  # quota, and a 429 on the PR gate blocks a merge for a reason the change did not cause.
+  # Nightly, the same 429 costs a re-run.
+  #
+  # `git diff --exit-code` on the lockfiles is the real assertion here, not a tidiness check:
+  # jk.toml declares only exact pins, so a build that rewrites a committed jk-lock.toml means
+  # either a pin drifted or the lock writer put something non-deterministic in the file. That
+  # is lockfile-as-law, enforced on the samples that are supposed to demonstrate it.
+  examples:
+    name: Doc examples build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - name: Bootstrap thin client + engine jar + workers
+        run: |
+          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+          echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
+
+      - name: Build and test every sample
+        run: |
+          set -euo pipefail
+          failed=0
+          for manifest in docs/user/examples/*/jk.toml; do
+            sample="$(dirname "$manifest")"
+            echo "::group::$sample"
+            if ! ( cd "$sample" && jk build --no-ansi && jk test --no-ansi ); then
+              echo "::error file=$manifest::sample failed: $sample"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+      - name: A sample build must not rewrite its committed lockfile
+        run: git diff --exit-code -- 'docs/user/examples/**/jk-lock.toml'
