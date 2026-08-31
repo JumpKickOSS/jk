@@ -128,7 +128,7 @@ public final class JkWedge implements Widget {
         String tail = tailAnsi(ctx);
         if (tail.isEmpty()) return chip + cap;
         // Plan bar sits flush against the nerd cap so the powerline blends into the bar lead.
-        if (progress != null && progress.look() == Progress.Look.PLAN && ctx.wedge()) {
+        if (progress != null && progress.isBlockBar() && ctx.wedge()) {
             return chip + cap + tail;
         }
         return chip + cap + " " + tail;
@@ -159,13 +159,54 @@ public final class JkWedge implements Widget {
 
     private String paintCap(RenderContext ctx, ChipColors colors) {
         if (!ctx.wedge() || !ctx.ansi()) return "";
-        if (progress != null && progress.look() == Progress.Look.PLAN) {
-            Rgb lead = ProgressBar.shared().leadColor(progress.numerator(), Math.max(1L, progress.denominator()));
+        if (progress != null && progress.isBlockBar()) {
+            // The cap blends into the bar's lead, so it has to ask the SAME bar the tail will paint
+            // with — otherwise a stopped (red) bar gets a green powerline cap.
+            Rgb lead = progress.bar().leadColor(progress.numerator(), Math.max(1L, progress.denominator()));
             return Theme.colorize(
                     Glyphs.SEGMENT_END_NERD,
                     ctx.theme().withBackground(ctx.theme().bright(colors.cap), lead));
         }
         return cap(colors.cap, true);
+    }
+
+    /**
+     * The wedge as one row of a live region: {@link #renderLine} clipped so it cannot wrap.
+     *
+     * <p><strong>Why live lines must be clipped and static ones need not be.</strong> A live region
+     * repaints with {@code \r}, which rewinds the cursor to the start of the <em>current physical
+     * row</em> only. Let the line exceed the terminal width and the terminal wraps it onto a second
+     * row; {@code \r} then rewinds the wrong row and every subsequent frame lands on a new line, so
+     * an 80 ms animator turns into a screenful of stacked half-frames. That is exactly what
+     * {@code jk jdk install lts} did: a 40-cell bar plus the {@code JDK} chip plus
+     * {@code NN% · Downloading Eclipse Temurin} is wider than an 80-column terminal (JK-2602).
+     *
+     * <p>A static line, printed once with a newline, may wrap harmlessly — which is why the clip
+     * lives here rather than inside {@link #renderLine}: truncating a settled result would throw
+     * away the tail of a long install path for no gain.
+     *
+     * <p>Every live painter should route through this, so the geometry rule has one owner and a
+     * chrome change cannot fix the wrap in one command and leave it in the next.
+     */
+    public String renderLiveLine(RenderContext ctx) {
+        return RenderContext.truncateVisible(renderLine(ctx), RenderContext.rowColumnBudget(ctx.width()));
+    }
+
+    /**
+     * The line a stopped run settles on: this wedge's chip, the bar frozen where it stopped and
+     * repainted in the failure gradient, and {@code message}. One row, clipped like any live line.
+     */
+    public static String stoppedLine(String title, long numerator, long denominator, String message, RenderContext ctx) {
+        // The message rides as the wedge's message, not the progress suffix: tailAnsi already
+        // composes `bar + " " + message`, so setting both prints it twice.
+        return new JkWedge(Icon.cross(), title, RichText.plain(message), Variant.FAIL, null)
+                .progress(new Progress(
+                        numerator,
+                        denominator,
+                        RichText.empty(),
+                        Progress.Look.STOPPED,
+                        Progress.DEFAULT_SEGMENTS))
+                .renderLiveLine(ctx);
     }
 
     /**

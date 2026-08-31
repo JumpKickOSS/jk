@@ -13,7 +13,13 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
         /** Underlined block bar used on the plan header ({@code █}). */
         PLAN,
         /** Track cells used inside tables ({@code ▰▱}). */
-        TRACK
+        TRACK,
+        /**
+         * {@link #PLAN}'s block bar in the failure gradient: a run that stopped where it stopped.
+         * Same geometry, same cap, red — so a cancel repaints the line the user was watching rather
+         * than replacing it with a different widget (JK-2602).
+         */
+        STOPPED
     }
 
     public static final int DEFAULT_SEGMENTS = ProgressBar.SEGMENTS;
@@ -58,10 +64,20 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
     public String render(RenderContext ctx) {
         String core =
                 switch (look) {
-                    case PLAN -> ProgressBar.shared().render(numerator, denominator);
+                    case PLAN, STOPPED -> bar().render(numerator, denominator);
                     case TRACK -> trackBar(ctx);
                 };
         return suffix.isEmpty() ? core : core + " " + suffix.render(ctx);
+    }
+
+    /** The bar this look paints with — the progress gradient, or the failure one when stopped. */
+    ProgressBar bar() {
+        return look == Look.STOPPED ? ProgressBar.stopped() : ProgressBar.shared();
+    }
+
+    /** True for the looks that paint the wide block bar, which the wedge butts its cap against. */
+    boolean isBlockBar() {
+        return look == Look.PLAN || look == Look.STOPPED;
     }
 
     private String trackBar(RenderContext ctx) {

@@ -291,10 +291,13 @@ public final class Spinner implements AutoCloseable {
      */
     static String renderWedgeFrame(int frame, String command, String message, NerdFontCaps nerdFont, Style[] pulseFg) {
         RenderContext ctx = RenderContext.current().withCaps(nerdFont).withFrame(frame);
+        // renderLiveLine, not renderLine: this frame is repainted with \r, and \r rewinds one
+        // physical row. A message long enough to wrap turns every frame into a new line — the same
+        // defect JK-2602 filed against the JDK bar, latent here for any long `jk install` label.
         return new JkWedge(
                         Icon.spinner(), command == null ? "" : command, RichText.ansi(message == null ? "" : message))
                 .variant(JkWedge.Variant.WORK)
-                .renderLine(ctx);
+                .renderLiveLine(ctx);
     }
 
     @Override

@@ -8,7 +8,6 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
-import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
 
 /**
@@ -28,7 +27,6 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private final String displayName; // "Eclipse Temurin 26"
     private final NerdFontCaps nerdFont;
     private final boolean silent;
-    private final Style[] failColors;
 
     private int frame;
     private long numerator;
@@ -43,8 +41,6 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         this.displayName = displayName;
         this.nerdFont = nerdFont;
         this.silent = silent;
-        this.failColors = SpinnerProgressBar.buildGradient(
-                ProgressBar.SEGMENTS, Theme.active().failureGradient());
     }
 
     /**
@@ -128,11 +124,14 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         stopAnimator();
         LiveRegion.clearActive(this);
         if (silent) return false;
-        // Repaint every segment in failure red.
+        // One line, the same chip and bar geometry the user was already watching, frozen where it
+        // stopped and repainted in the failure gradient. This used to dump SEGMENTS bare ▰ glyphs —
+        // a third bar look, no wedge, no ERASE_LINE_TO_END, so the previous frame's trailing `%`
+        // survived underneath it (JK-2602).
         out.print("\r");
-        for (int i = 0; i < ProgressBar.SEGMENTS; i++) {
-            out.print(Theme.colorize(String.valueOf(ProgressBar.FILLED_CHAR), failColors[i]));
-        }
+        out.print(JkWedge.stoppedLine("JDK", numerator, denominator, "Cancelled by user!", context()));
+        out.print(Ansi.ERASE_LINE_TO_END);
+        out.println();
         out.print(Osc.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
@@ -178,17 +177,26 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         drawn = true;
     }
 
+    /** The live row, through the shared wedge geometry so it can never wrap. */
     private String buildLine() {
+        return wedge().renderLiveLine(context());
+    }
+
+    private RenderContext context() {
+        return RenderContext.current().withCaps(nerdFont).withFrame(frame);
+    }
+
+    /** The live wedge: spinner chip, plan bar while downloading, status suffix. */
+    private JkWedge wedge() {
         Theme t = Theme.active();
         String command = installing ? "Installing " : "Downloading ";
         RichText status = RichText.ansi(Theme.colorize(command + displayName, t.normalGray()));
-        RenderContext ctx = RenderContext.current().withCaps(nerdFont).withFrame(frame);
         JkWedge wedge = new JkWedge(Icon.spinner(), "JDK", installing ? status : RichText.empty())
                 .variant(JkWedge.Variant.WORK);
         if (!installing) {
             wedge = wedge.progress(new Progress(numerator, denominator)
                     .suffix(RichText.of(RichText.parse("[dark-gray]·[/] "), status)));
         }
-        return wedge.renderLine(ctx);
+        return wedge;
     }
 }
