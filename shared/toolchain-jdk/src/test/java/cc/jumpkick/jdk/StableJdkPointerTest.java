@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIOException;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,6 +19,42 @@ class StableJdkPointerTest {
         Files.writeString(JdkFingerprint.java(home), "#!/fake");
         Files.writeString(JdkFingerprint.javac(home), "#!/fake");
         return home;
+    }
+
+    @Test
+    void a_jdk_jk_does_not_own_is_never_deleted_to_free_the_pointer_name(@TempDir Path tmp) throws IOException {
+        // JK-2624. The pointer name is <vendor>-<major> and the jdks root is SHARED — it is
+        // IntelliJ's `~/.jdks`, not a jk-private directory. So `graalvm-25` is both a name jk wants
+        // and, on a real machine, very often a JDK the user or the IDE installed there first.
+        // Claiming the name by deleting what is already there destroyed real GraalVM and Temurin
+        // installs on the developer's machine.
+        Path jdks = tmp.resolve("jdks");
+        Files.createDirectories(jdks);
+        Path theirs = fakeJdk(jdks, "graalvm-25", "25"); // somebody else's install, no .jk-owned
+        Path ours = fakeJdk(jdks, "graalvm-25.0.4", "25.0.4");
+        JdkOwnership.mark(ours);
+
+        assertThatIOException()
+                .isThrownBy(() -> new StableJdkPointer(jdks).ensure("graalvm-25", ours))
+                .withMessageContaining("not installed by jk");
+
+        assertThat(theirs.resolve("release")).as("their JDK is untouched").exists();
+        assertThat(JdkFingerprint.java(theirs)).exists();
+    }
+
+    @Test
+    void a_superseded_jk_install_at_the_pointer_name_is_still_replaced(@TempDir Path tmp) throws IOException {
+        // The flip side: when the directory in the way IS jk's own — a repoint that left a real
+        // directory behind — reclaiming the name is correct and must keep working.
+        Path jdks = tmp.resolve("jdks");
+        Files.createDirectories(jdks);
+        Path stale = fakeJdk(jdks, "temurin-25", "25.0.3");
+        JdkOwnership.mark(stale);
+        Path fresh = fakeJdk(jdks, "temurin-25.0.4", "25.0.4");
+
+        new StableJdkPointer(jdks).ensure("temurin-25", fresh);
+
+        assertThat(jdks.resolve("temurin-25").toRealPath()).isEqualTo(fresh.toRealPath());
     }
 
     @Test
