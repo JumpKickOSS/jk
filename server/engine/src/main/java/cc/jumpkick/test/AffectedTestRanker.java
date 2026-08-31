@@ -88,6 +88,8 @@ public final class AffectedTestRanker {
                         ? List.of(TestSuites.DEFAULT)
                         : in.selection().suites());
         if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
+        // Layout-aware FQC derivation (compact and traditional); string heuristics as fallback.
+        SourceFqcs fqcs = SourceFqcs.of(module, suites);
 
         for (String raw : in.dirtyPaths() == null ? List.<String>of() : in.dirtyPaths()) {
             if (raw == null || raw.isBlank()) continue;
@@ -101,29 +103,28 @@ public final class AffectedTestRanker {
                 continue;
             }
             if (name.equals("package-info.java") || name.equals("module-info.java")) continue;
-            boolean isJava = name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy");
-            if (!isJava) continue;
+            if (!isClassSource(name)) continue;
             onlyNonClass = false;
             if (module != null && p.startsWith(module)) {
-                Path rel = module.relativize(p);
-                String relStr = rel.toString().replace('\\', '/');
-                if (isTestSource(relStr)) {
-                    if (!suiteContains(relStr, suites)) {
-                        outside = true;
-                    } else {
-                        String fqc = fqcFromSource(relStr);
-                        if (fqc != null) dirtyTestClasses.add(fqc);
+                String relStr = module.relativize(p).toString().replace('\\', '/');
+                SourceFqcs.Hit hit = fqcs.classify(relStr, suites);
+                switch (hit.kind()) {
+                    case TEST_OUTSIDE -> outside = true;
+                    case TEST_SELECTED -> {
+                        if (hit.fqc() != null) dirtyTestClasses.add(hit.fqc());
                     }
-                } else if (isMainSource(relStr)) {
-                    String fqc = fqcFromSource(relStr);
-                    if (fqc != null) {
-                        ClassAbi.Kind kind = kindOf(fqc, in);
-                        changed.merge(
-                                fqc,
-                                kind,
-                                (a, b) -> a == ClassAbi.Kind.ABI || b == ClassAbi.Kind.ABI
-                                        ? ClassAbi.Kind.ABI
-                                        : ClassAbi.Kind.BODY);
+                    case MAIN -> {
+                        if (hit.fqc() != null) {
+                            changed.merge(
+                                    hit.fqc(),
+                                    kindOf(hit.fqc(), in),
+                                    (a, b) -> a == ClassAbi.Kind.ABI || b == ClassAbi.Kind.ABI
+                                            ? ClassAbi.Kind.ABI
+                                            : ClassAbi.Kind.BODY);
+                        }
+                    }
+                    case NONE -> {
+                        /* under no source root — not a classifiable source */
                     }
                 }
             }
@@ -132,19 +133,11 @@ public final class AffectedTestRanker {
             for (Path src : in.compiledMainSources()) {
                 if (src == null) continue;
                 Path p = src.toAbsolutePath().normalize();
-                if (module != null
-                        && p.startsWith(module)
-                        && isMainSource(module.relativize(p).toString())) {
-                    String fqc = fqcFromSource(module.relativize(p).toString().replace('\\', '/'));
-                    if (fqc != null && !changed.containsKey(fqc)) {
-                        changed.put(fqc, kindOf(fqc, in));
-                    }
-                    // Zinc rebuilt a dependent: treat the dirty type as ABI if another source compiled.
-                    if (fqc != null
-                            && in.dirtyPaths() != null
-                            && in.dirtyPaths().size() >= 1) {
-                        // leave kind as classified; extra ABI vote when this source is not itself dirty
-                    }
+                if (module == null || !p.startsWith(module)) continue;
+                String relStr = module.relativize(p).toString().replace('\\', '/');
+                SourceFqcs.Hit hit = fqcs.classify(relStr, suites);
+                if (hit.kind() == SourceFqcs.Kind.MAIN && hit.fqc() != null && !changed.containsKey(hit.fqc())) {
+                    changed.put(hit.fqc(), kindOf(hit.fqc(), in));
                 }
             }
         }
@@ -276,6 +269,14 @@ public final class AffectedTestRanker {
             return false;
         }
         return true;
+    }
+
+    /** A source file whose compilation produces classes — the grain the ranker reasons in. */
+    static boolean isClassSource(String fileName) {
+        return fileName.endsWith(".java")
+                || fileName.endsWith(".kt")
+                || fileName.endsWith(".groovy")
+                || fileName.endsWith(".scala");
     }
 
     static boolean isMainSource(String rel) {

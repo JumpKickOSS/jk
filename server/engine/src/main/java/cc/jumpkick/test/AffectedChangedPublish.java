@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.layout.TestSuites;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,6 +52,7 @@ public final class AffectedChangedPublish {
             Map<String, ClassAbi.Fingerprint> currentAbi) {
         Path module = moduleDir.toAbsolutePath().normalize();
         Path root = workspaceRoot.toAbsolutePath().normalize();
+        SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));
         for (String raw : dirty) {
             if (raw == null || raw.isBlank()) continue;
             Path p = Path.of(raw);
@@ -59,10 +61,11 @@ public final class AffectedChangedPublish {
             if (!p.startsWith(module)) continue;
             String name = p.getFileName() == null ? "" : p.getFileName().toString();
             if (name.equals("package-info.java") || name.equals("module-info.java")) continue;
-            if (!(name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy"))) continue;
+            if (!AffectedTestRanker.isClassSource(name)) continue;
             String rel = module.relativize(p).toString().replace('\\', '/');
-            if (AffectedTestRanker.isTestSource(rel) || !AffectedTestRanker.isMainSource(rel)) continue;
-            String fqc = AffectedTestRanker.fqcFromSource(rel);
+            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
+            if (hit.kind() != SourceFqcs.Kind.MAIN) continue;
+            String fqc = hit.fqc();
             if (fqc == null) continue;
             ClassAbi.Fingerprint cur = currentAbi == null ? null : currentAbi.get(fqc);
             ClassAbi.Kind kind = cur == null

@@ -4,12 +4,14 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class AffectedTestRankerTest {
 
@@ -258,6 +260,63 @@ class AffectedTestRankerTest {
         // Local classification (BODY) wins over the stale foreign ABI vote for the same FQC.
         assertThat(r.ranked().getFirst().score()).isEqualTo(100);
         assertThat(r.ranked().getFirst().reason()).isEqualTo("name-body:com.acme.Foo");
+    }
+
+    @Test
+    void compact_layout_derives_full_fqcs(@TempDir Path ws) throws Exception {
+        // Compact (simple) layout: main under src/<pkg>, tests under test/src/<pkg>. The string
+        // heuristics dropped the first package segment; root resolution must not (JK-2609).
+        Path module = ws.resolve("api");
+        Files.writeString(
+                Files.createDirectories(module).resolve("jk.toml"),
+                "group = \"com.acme\"\nname = \"api\"\nversion = \"0.1.0\"\nlayout = \"simple\"\n");
+        Files.createDirectories(module.resolve("src/com/acme"));
+        Files.createDirectories(module.resolve("test/src/com/acme"));
+
+        TestClassIndex.Entry test =
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), "Foo");
+        var prev = new ClassAbi.Fingerprint("api", "b1");
+        var now = new ClassAbi.Fingerprint("api", "b2");
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                module,
+                "com.acme:api",
+                ws,
+                TestSelection.DEFAULT,
+                List.of("api/src/com/acme/Foo.java", "api/test/src/com/acme/FooTest.java"),
+                Map.of("com.acme.Foo", prev),
+                Map.of("com.acme.Foo", now),
+                List.of(),
+                List.of(test),
+                Set.of("com.acme.Foo"),
+                List.of()));
+        assertThat(r.refused()).isFalse();
+        // The dirty test ranks under its real FQCN, and the body-only main edit name-matches it.
+        assertThat(r.classNames()).containsExactly("com.acme.FooTest");
+        assertThat(r.ranked().getFirst().reason()).isEqualTo("test-src");
+    }
+
+    @Test
+    void compact_layout_dirty_integration_test_refuses_outside_selection(@TempDir Path ws) throws Exception {
+        Path module = ws.resolve("api");
+        Files.writeString(
+                Files.createDirectories(module).resolve("jk.toml"),
+                "group = \"com.acme\"\nname = \"api\"\nversion = \"0.1.0\"\nlayout = \"simple\"\n");
+        Files.createDirectories(module.resolve("integration/src/com/acme"));
+
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                module,
+                "com.acme:api",
+                ws,
+                TestSelection.DEFAULT,
+                List.of("api/integration/src/com/acme/FooIT.java"),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                List.of(),
+                Set.of(),
+                List.of()));
+        assertThat(r.refused()).isTrue();
+        assertThat(r.refuse().code()).isEqualTo("outside-selection");
     }
 
     @Test
