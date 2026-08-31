@@ -4,14 +4,31 @@ Ephemeral / pinned CLI tools on the JVM, in the spirit of `uvx`. JBang-compatibl
 work too.
 
 ```bash
-jk tool run checkstyle -c checkstyle.xml src/main/java
-jkx checkstyle -c checkstyle.xml src/main/java          # same idea, after install
-jk tool install com.puppycrawl.tools:checkstyle:10.21.4
+# Run once, without installing. `--` separates jk's own flags from the tool's, and
+# `--main` is required for a jar with no Main-Class in its manifest.
+jk tool run com.puppycrawl.tools:checkstyle:14.1.0 \
+  --main com.puppycrawl.tools.checkstyle.Main -- -c checkstyle.xml src/main/java
+
+# Or install once; the launcher lands on PATH under the artifact's short name.
+jk tool install com.puppycrawl.tools:checkstyle:14.1.0 \
+  --main com.puppycrawl.tools.checkstyle.Main
+checkstyle -c checkstyle.xml src/main/java
+
 jk tool list
-jk tool uninstall …
+jk tool uninstall checkstyle
 jk tool dir
 jk tool run script.java                                 # JBang-compatible headers
 ```
+
+Two sharp edges worth knowing before you copy the above:
+
+- **`--` is not optional.** `jk tool run` parses the leading flags itself, so
+  `jk tool run <tool> -c foo.xml` exits 64 on `unrecognized option '-c'`. Everything after
+  `--` goes to the tool untouched. `jkx` is the same binary and behaves identically.
+- **`jk tool run` does not resolve an installed tool by name.** Even after
+  `jk tool install`, `jk tool run checkstyle -- …` answers ``checkstyle` is not in the
+  library catalog` — pass the full coordinate, or use the launcher the install put on
+  `PATH`. Tracked at JK-2622.
 
 `jk install g:a:v` outside a project is the same jkx-style install (coordinate on PATH).
 Trust gates stay on the CLI — MCP `jk_install action=list` shows installed tools but does
