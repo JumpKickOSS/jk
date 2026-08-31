@@ -47,19 +47,29 @@ public final class DirtyPaths {
     }
 
     /**
-     * {@code git diff --name-only --end-of-options <rev>}. Unlike {@link
+     * {@code git diff --name-only --relative --end-of-options <rev>}. Unlike {@link
      * AffectedSelection#gitDiffNameOnly}, {@code rev} is used as-is (callers pass {@code HEAD} or
      * {@code HEAD~1...HEAD}), not {@code ref + "...HEAD"}.
+     *
+     * <p>{@code --relative}: diff prints repo-root-relative paths by default while {@code
+     * ls-files} prints cwd-relative ones — resolved against a workspace root nested inside a
+     * larger repo, the two bases disagree and diff lines point at nonexistent files (JK-2611).
+     * With it, both commands speak workspace-root-relative, and dirt outside the root (which no
+     * module can own) drops out instead of mis-resolving.
      */
     static List<String> gitDiffNameOnly(Path root, String rev) {
-        return gitLines(root, "diff", "--name-only", "--end-of-options", rev);
+        return gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", rev);
     }
 
     static List<String> gitUntracked(Path root) {
         return gitLines(root, "ls-files", "--others", "--exclude-standard");
     }
 
-    /** {@code null} on failure; otherwise one trimmed non-blank line per path. */
+    /**
+     * {@code null} on failure; otherwise one trimmed non-blank line per path — from stdout only.
+     * stderr is discarded, never parsed: a {@code warning:}/{@code hint:} line merged into the
+     * output would otherwise be taken for a dirty path (JK-2611).
+     */
     static List<String> gitLines(Path root, String... gitArgs) {
         try {
             List<String> cmd = new ArrayList<>();
@@ -67,7 +77,7 @@ public final class DirtyPaths {
             for (String a : gitArgs) cmd.add(a);
             Process p = new ProcessBuilder(cmd)
                     .directory(root.toFile())
-                    .redirectErrorStream(true)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
             List<String> lines = new ArrayList<>();
             try (var r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {

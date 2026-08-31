@@ -32,6 +32,28 @@ class DirtyPathsTest {
         assertThat(afterCommit).contains("b.txt");
     }
 
+    @Test
+    void nested_workspace_root_gets_workspace_relative_paths(@TempDir Path repo) throws Exception {
+        // The workspace lives one level below the git root (monorepo). Diff paths must come back
+        // relative to the workspace root — not the repo root — and dirt outside the workspace
+        // (which no module can own) must not leak in (JK-2611).
+        git(repo, "init");
+        git(repo, "config", "user.email", "t@t");
+        git(repo, "config", "user.name", "t");
+        Path ws = Files.createDirectories(repo.resolve("ws"));
+        Files.writeString(ws.resolve("tracked.java"), "class A {}", StandardCharsets.UTF_8);
+        Files.writeString(repo.resolve("outside.java"), "class B {}", StandardCharsets.UTF_8);
+        git(repo, "add", ".");
+        git(repo, "commit", "-m", "base");
+
+        Files.writeString(ws.resolve("tracked.java"), "class A { int x; }", StandardCharsets.UTF_8);
+        Files.writeString(repo.resolve("outside.java"), "class B { int x; }", StandardCharsets.UTF_8);
+        Files.writeString(ws.resolve("untracked.java"), "class C {}", StandardCharsets.UTF_8);
+
+        List<String> wip = DirtyPaths.wip(ws);
+        assertThat(wip).containsExactlyInAnyOrder("tracked.java", "untracked.java");
+    }
+
     private static void git(Path dir, String... args) throws Exception {
         List<String> cmd = new ArrayList<>();
         cmd.add("git");
