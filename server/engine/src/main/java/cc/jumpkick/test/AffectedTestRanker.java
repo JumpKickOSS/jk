@@ -30,7 +30,37 @@ public final class AffectedTestRanker {
             List<Path> compiledMainSources,
             List<TestClassIndex.Entry> tests,
             Set<String> productionFqcs,
-            List<AffectedTests.ModuleRow> cone) {}
+            List<AffectedTests.ModuleRow> cone,
+            /** Changed types other (dependency) modules classified — FQC → kind. Never refused on. */
+            Map<String, ClassAbi.Kind> foreignChanged) {
+
+        public Inputs(
+                Path moduleDir,
+                String moduleCoord,
+                Path workspaceRoot,
+                TestSelection selection,
+                List<String> dirtyPaths,
+                Map<String, ClassAbi.Fingerprint> preCompileAbi,
+                Map<String, ClassAbi.Fingerprint> currentAbi,
+                List<Path> compiledMainSources,
+                List<TestClassIndex.Entry> tests,
+                Set<String> productionFqcs,
+                List<AffectedTests.ModuleRow> cone) {
+            this(
+                    moduleDir,
+                    moduleCoord,
+                    workspaceRoot,
+                    selection,
+                    dirtyPaths,
+                    preCompileAbi,
+                    currentAbi,
+                    compiledMainSources,
+                    tests,
+                    productionFqcs,
+                    cone,
+                    Map.of());
+        }
+    }
 
     public static AffectedTests rank(Inputs in) {
         List<AffectedTests.ModuleRow> cone = in.cone() == null ? List.of() : in.cone();
@@ -139,7 +169,9 @@ public final class AffectedTestRanker {
                     cone,
                     toChanged(in, changed));
         }
-        boolean noCode = changed.isEmpty() && dirtyTestClasses.isEmpty();
+        boolean foreignEmpty =
+                in.foreignChanged() == null || in.foreignChanged().isEmpty();
+        boolean noCode = changed.isEmpty() && dirtyTestClasses.isEmpty() && foreignEmpty;
         if (noCode
                 && onlyNonClass
                 && in.dirtyPaths() != null
@@ -152,8 +184,15 @@ public final class AffectedTestRanker {
                 in.selection() == null ? List.of() : in.selection().includeTags();
         List<String> exclude =
                 in.selection() == null ? List.of() : in.selection().excludeTags();
-        Map<String, Set<String>> bySimple =
-                TestClassIndex.productionFqcsBySimple(in.productionFqcs() == null ? Set.of() : in.productionFqcs());
+        // Local changed types score first; a dependency module's classified types (foreign) fill
+        // in behind them so a dependent's importers rank too (JK-2606). Local wins a duplicate.
+        LinkedHashMap<String, ClassAbi.Kind> scoreable = new LinkedHashMap<>(changed);
+        if (in.foreignChanged() != null) {
+            for (var e : in.foreignChanged().entrySet()) scoreable.putIfAbsent(e.getKey(), e.getValue());
+        }
+        Set<String> nameable = new LinkedHashSet<>(in.productionFqcs() == null ? Set.of() : in.productionFqcs());
+        nameable.addAll(scoreable.keySet());
+        Map<String, Set<String>> bySimple = TestClassIndex.productionFqcsBySimple(nameable);
 
         List<Scored> scored = new ArrayList<>();
         for (TestClassIndex.Entry t : in.tests() == null ? List.<TestClassIndex.Entry>of() : in.tests()) {
@@ -166,7 +205,7 @@ public final class AffectedTestRanker {
             }
             Set<String> nameHits =
                     t.nameMatchSimple().isEmpty() ? Set.of() : bySimple.getOrDefault(t.nameMatchSimple(), Set.of());
-            for (var e : changed.entrySet()) {
+            for (var e : scoreable.entrySet()) {
                 boolean imported = t.imports().contains(e.getKey());
                 boolean named = nameHits.contains(e.getKey())
                         || (!t.nameMatchSimple().isEmpty()

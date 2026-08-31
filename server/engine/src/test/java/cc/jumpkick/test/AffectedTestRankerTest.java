@@ -170,6 +170,97 @@ class AffectedTestRankerTest {
     }
 
     @Test
+    void foreign_abi_change_ranks_a_dependents_importer() {
+        // Module B is a clean dependent: no local dirty paths, but its test imports a type
+        // module A classified as ABI-changed (JK-2606).
+        TestClassIndex.Entry importer =
+                new TestClassIndex.Entry("com.acme.b.BarTest", Set.of("com.acme.a.Foo"), Set.of(), "Bar");
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/b"),
+                "com.acme:b",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                List.of(importer),
+                Set.of("com.acme.a.Foo", "com.acme.b.Bar"),
+                List.of(new AffectedTests.ModuleRow("b", "com.acme:b", "dependent")),
+                Map.of("com.acme.a.Foo", ClassAbi.Kind.ABI)));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.classNames()).containsExactly("com.acme.b.BarTest");
+        assertThat(r.ranked().getFirst().score()).isEqualTo(90);
+        assertThat(r.ranked().getFirst().reason()).isEqualTo("abi-import:com.acme.a.Foo");
+        assertThat(r.modules().getFirst().why()).isEqualTo("dependent");
+    }
+
+    @Test
+    void foreign_body_change_ranks_importer_at_body_import() {
+        TestClassIndex.Entry importer =
+                new TestClassIndex.Entry("com.acme.b.BarTest", Set.of("com.acme.a.Foo"), Set.of(), "Bar");
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/b"),
+                "com.acme:b",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                List.of(importer),
+                Set.of("com.acme.a.Foo"),
+                List.of(),
+                Map.of("com.acme.a.Foo", ClassAbi.Kind.BODY)));
+        assertThat(r.classNames()).containsExactly("com.acme.b.BarTest");
+        assertThat(r.ranked().getFirst().score()).isEqualTo(80);
+    }
+
+    @Test
+    void foreign_change_name_matches_a_dependents_test() {
+        TestClassIndex.Entry named = new TestClassIndex.Entry("com.acme.b.FooTest", Set.of(), Set.of(), "Foo");
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/b"),
+                "com.acme:b",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                List.of(named),
+                Set.of(),
+                List.of(),
+                Map.of("com.acme.a.Foo", ClassAbi.Kind.BODY)));
+        assertThat(r.classNames()).containsExactly("com.acme.b.FooTest");
+        assertThat(r.ranked().getFirst().reason()).isEqualTo("name-body:com.acme.a.Foo");
+    }
+
+    @Test
+    void local_changed_outranks_the_same_foreign_type() {
+        var prev = new ClassAbi.Fingerprint("api1", "b");
+        var now = new ClassAbi.Fingerprint("api1", "b2");
+        TestClassIndex.Entry test =
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), "Foo");
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/api"),
+                "com.acme:api",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of("api/src/main/java/com/acme/Foo.java"),
+                Map.of("com.acme.Foo", prev),
+                Map.of("com.acme.Foo", now),
+                List.of(),
+                List.of(test),
+                Set.of("com.acme.Foo"),
+                List.of(),
+                Map.of("com.acme.Foo", ClassAbi.Kind.ABI)));
+        // Local classification (BODY) wins over the stale foreign ABI vote for the same FQC.
+        assertThat(r.ranked().getFirst().score()).isEqualTo(100);
+        assertThat(r.ranked().getFirst().reason()).isEqualTo("name-body:com.acme.Foo");
+    }
+
+    @Test
     void cap_is_twenty() {
         var prev = new ClassAbi.Fingerprint("a", "1");
         var now = new ClassAbi.Fingerprint("a", "2");

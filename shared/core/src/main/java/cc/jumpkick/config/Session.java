@@ -58,6 +58,8 @@ public record Session(
         @With TestSelection testSelection,
         /** {@code jk_run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
+        /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
+        @With AffectedChanged affectedChanged,
         /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
         @With IoLedger io) {
 
@@ -71,6 +73,7 @@ public record Session(
         clientEnv = (clientEnv == null || clientEnv.isEmpty()) ? Map.of() : Map.copyOf(clientEnv);
         assemblyOverride = (assemblyOverride == null || assemblyOverride.isBlank()) ? "" : assemblyOverride.trim();
         testSelection = testSelection == null ? TestSelection.DEFAULT : testSelection;
+        affectedChanged = (affectedChanged == null) ? new AffectedChanged() : affectedChanged;
         io = (io == null) ? new IoLedger() : io;
     }
 
@@ -92,6 +95,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 affected,
+                affectedChanged,
                 io);
     }
 
@@ -161,6 +165,7 @@ public record Session(
                 "",
                 TestSelection.DEFAULT,
                 false,
+                new AffectedChanged(),
                 IoLedger.currentOrNew());
     }
 
@@ -182,6 +187,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 affected,
+                affectedChanged,
                 io);
     }
 
@@ -203,6 +209,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 affected,
+                affectedChanged,
                 io);
     }
 
@@ -228,6 +235,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 affected,
+                affectedChanged,
                 io);
     }
 

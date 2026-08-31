@@ -5,7 +5,6 @@ import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 
-import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
@@ -42,7 +41,8 @@ public final class AffectedTestRun {
         Path classesDir = ctx.require(MAIN_CLASSES);
         Path testClasses = ctx.require(TEST_CLASSES);
 
-        List<String> dirty = DirtyPaths.wip(wsRoot);
+        // One git exec per invocation: the carrier memoizes the WIP set for every module.
+        List<String> dirty = in.session().affectedChanged().dirtyPaths(wsRoot);
         if (dirty == null && !Files.isDirectory(classesDir)) {
             throw refuse(ctx, "no-git-no-classes", "not a git repo and no compiled main classes");
         }
@@ -52,7 +52,11 @@ public final class AffectedTestRun {
         Map<String, ClassAbi.Fingerprint> pre = (Map<String, ClassAbi.Fingerprint>)
                 ctx.get(BuildPlanner.PRE_COMPILE_ABI).orElse(Map.of());
         Map<String, ClassAbi.Fingerprint> current = AbiIndex.scanClasses(classesDir);
+        // Dependency modules' changed types (classified at their compiles) rank this module's
+        // importers too — a dependent in the cone is not "nothing affected" (JK-2606).
+        Map<String, ClassAbi.Kind> foreign = AffectedChangedPublish.foreignFor(in.session(), current.keySet());
         Set<String> production = new LinkedHashSet<>(current.keySet());
+        production.addAll(foreign.keySet());
         List<TestClassIndex.Entry> tests = TestClassIndex.scan(testClasses, production);
         if (tests.isEmpty() && !Files.isDirectory(testClasses)) {
             throw refuse(ctx, "no-tests", "no compiled test classes");
@@ -62,8 +66,9 @@ public final class AffectedTestRun {
         List<Path> compiled =
                 (List<Path>) ctx.get(BuildPlanner.COMPILED_MAIN_SOURCES).orElse(List.of());
         Path rel = wsRoot.relativize(moduleDir);
+        String why = AffectedTestsCompute.hasLocalDirty(wsRoot, moduleDir, dirty) ? "dirty" : "dependent";
         AffectedTests.ModuleRow coneRow =
-                new AffectedTests.ModuleRow(rel.toString().isEmpty() ? "." : rel.toString(), coord, "dirty");
+                new AffectedTests.ModuleRow(rel.toString().isEmpty() ? "." : rel.toString(), coord, why);
 
         AffectedTests report = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 moduleDir,
@@ -76,7 +81,8 @@ public final class AffectedTestRun {
                 compiled,
                 tests,
                 production,
-                List.of(coneRow)));
+                List.of(coneRow),
+                foreign));
         ctx.put(BuildPlanner.AFFECTED_TESTS, report);
         if (report.refused()) {
             ctx.error("affected-refuse", report.refuse().message());

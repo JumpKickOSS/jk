@@ -39,6 +39,7 @@ import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.test.AbiIndex;
+import cc.jumpkick.test.AffectedChangedPublish;
 import cc.jumpkick.test.ClassAbi;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -416,7 +417,11 @@ public final class PlannerCompile {
                     ctx.put(BUILD_OUTCOME, r.outcome());
                     ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
                     Path mainClasses = ctx.require(MAIN_CLASSES);
-                    AbiIndex.write(abiFile, AbiIndex.scanClasses(mainClasses));
+                    Map<String, ClassAbi.Fingerprint> currentAbi = AbiIndex.scanClasses(mainClasses);
+                    AbiIndex.write(abiFile, currentAbi);
+                    // Cross-module --affected: publish this module's changed types while the
+                    // pre-compile baseline is still in memory; dependents rank against them.
+                    AffectedChangedPublish.publish(in.session(), in.dir(), preAbi, currentAbi);
                     ctx.progress(sources.size());
                 })
                 .build();

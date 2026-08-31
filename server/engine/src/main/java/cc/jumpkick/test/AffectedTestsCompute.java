@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.JkBuildParser;
@@ -67,31 +68,60 @@ public final class AffectedTestsCompute {
         AffectedTests acc = AffectedTests.empty(List.of(), List.of());
         Map<Path, JkBuild> modules =
                 build.isWorkspaceRoot() ? WorkspaceLoader.loadModules(root, build) : Map.of(root, build);
+
+        // Pass 1 — classify every dirty module's changed types into one carrier, so pass 2 can
+        // rank *dependent* cone modules against them (abi-import across modules, JK-2606).
+        record Unit(Path dir, JkBuild build, BuildLayout layout, boolean dirtyHere) {}
+        List<Unit> units = new ArrayList<>();
+        AffectedChanged carrier = new AffectedChanged();
         for (Path modDir : cone.moduleDirs()) {
             Path abs = modDir.toAbsolutePath().normalize();
             if (onlyModules != null && !onlyModules.isEmpty() && !onlyModules.contains(abs)) continue;
-            if (!hasLocalDirty(root, abs, dirty)) continue;
             JkBuild unit = modules.getOrDefault(modDir, build);
             BuildLayout layout =
                     build.isWorkspaceRoot() ? BuildLayout.of(root, modDir, unit) : BuildLayout.of(modDir, unit);
-            Map<String, ClassAbi.Fingerprint> current = AbiIndex.scanClasses(layout.classesDir());
-            Map<String, ClassAbi.Fingerprint> pre = AbiIndex.load(AbiIndex.path(layout.buildDir()));
-            var tests = testsFor(modDir, layout.testClassesDir(), current.keySet(), sel);
-            String coord = unit.project().group() + ":" + unit.project().name();
-            String rel = root.relativize(modDir).toString();
+            boolean dirtyHere = hasLocalDirty(root, abs, dirty);
+            units.add(new Unit(modDir, unit, layout, dirtyHere));
+            if (dirtyHere) {
+                AffectedChangedPublish.classifyInto(
+                        carrier,
+                        root,
+                        modDir,
+                        dirty,
+                        AbiIndex.load(AbiIndex.path(layout.buildDir())),
+                        AbiIndex.scanClasses(layout.classesDir()));
+            }
+        }
+
+        // Pass 2 — rank each cone module: a dirty module scores its own changed types first, a
+        // dependent scores the carrier's foreign types. Dependents keep a "dependent" module row.
+        for (Unit u : units) {
+            Map<String, ClassAbi.Fingerprint> current =
+                    AbiIndex.scanClasses(u.layout().classesDir());
+            Map<String, ClassAbi.Kind> foreign = AffectedChangedPublish.foreignFor(carrier, current.keySet());
+            Set<String> production = new LinkedHashSet<>(current.keySet());
+            production.addAll(foreign.keySet());
+            Map<String, ClassAbi.Fingerprint> pre =
+                    u.dirtyHere() ? AbiIndex.load(AbiIndex.path(u.layout().buildDir())) : Map.of();
+            var tests = testsFor(u.dir(), u.layout().testClassesDir(), production, sel);
+            String coord =
+                    u.build().project().group() + ":" + u.build().project().name();
+            String rel = root.relativize(u.dir()).toString();
             if (rel.isBlank()) rel = ".";
+            String why = u.dirtyHere() ? "dirty" : "dependent";
             AffectedTests slice = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
-                    modDir,
+                    u.dir(),
                     coord,
                     root,
                     sel,
-                    dirty,
+                    u.dirtyHere() ? dirty : List.of(),
                     pre,
                     current,
                     List.of(),
                     tests,
-                    current.keySet(),
-                    List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"))));
+                    production,
+                    List.of(new AffectedTests.ModuleRow(rel, coord, why)),
+                    foreign));
             acc = acc.merge(slice);
         }
         return capGlobal(acc);
