@@ -114,12 +114,19 @@ public final class StableJdkPointer {
      */
     public void healAfterRemoval(String pointerName, List<JdkHit> survivors) throws IOException {
         Objects.requireNonNull(pointerName, "pointerName");
+        Path root = jdksRoot.toAbsolutePath().normalize();
         Optional<Path> newest = (survivors == null ? List.<JdkHit>of() : survivors).stream()
                 .filter(h -> h.home() != null && h.version() != null)
                 .filter(h -> pointerNameFor(JdkRegistry.identifierFor(h.home()))
                         .filter(pointerName::equals)
                         .isPresent())
                 .map(h -> Map.entry(JdkSelector.versionKey(h.version()), IntellijJdkDir.installDirOf(h.home())))
+                // Only installs in THIS root may win the name. A registry probe chain reports JDKs
+                // from everywhere — IntelliJ's root, sdkman, Homebrew — and aiming jk's pointer at
+                // one of those is how a link from ~/.jdks came to point into ~/.sdkman, which is the
+                // cross-root link that cost real JDKs in JK-2624. Caught by an end-to-end smoke:
+                // a pointer in a sandbox root re-aimed at the developer's real ~/.jdks.
+                .filter(e -> e.getValue().toAbsolutePath().normalize().startsWith(root))
                 // A directory emptied by an interrupted delete is not a JDK; linking to one is worse
                 // than having no link, because it reads as configured and fails at exec.
                 .filter(e -> Files.isRegularFile(JdkFingerprint.java(IntellijJdkDir.javaHome(e.getValue()))))

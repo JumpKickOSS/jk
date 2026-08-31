@@ -62,6 +62,27 @@ class StableJdkPointerTest {
     }
 
     @Test
+    void healing_never_aims_the_pointer_outside_its_own_root(@TempDir Path tmp) throws IOException {
+        // The probe chain reports JDKs from everywhere — IntelliJ's root, sdkman, Homebrew — so a
+        // survivor of the right vendor and major may live somewhere jk does not manage. Aiming the
+        // pointer there is how a link under ~/.jdks came to point into ~/.sdkman (JK-2624).
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path elsewhere = Files.createDirectories(tmp.resolve("somebody-elses-root"));
+        Path ours = fakeJdk(jdks, "temurin-25.0.4", "25.0.4");
+        Path theirs = fakeJdk(elsewhere, "temurin-25.0.9", "25.0.9"); // newer, but not in our root
+        StableJdkPointer ptr = new StableJdkPointer(jdks);
+        ptr.ensure("temurin-25", ours);
+
+        PathUtil.deleteRecursively(ours);
+        ptr.healAfterRemoval("temurin-25", hits(theirs));
+
+        assertThat(Files.exists(jdks.resolve("temurin-25"), LinkOption.NOFOLLOW_LINKS))
+                .as("nothing in this root survives, so the name is retired")
+                .isFalse();
+        assertThat(JdkFingerprint.java(theirs)).as("and their JDK is untouched").exists();
+    }
+
+    @Test
     void healing_ignores_a_directory_emptied_by_an_interrupted_delete(@TempDir Path tmp) throws IOException {
         // The debris this bug left on the reporting machine: JDK-shaped names holding nothing.
         // Linking to one reads as configured and fails at exec, which is worse than no link.
