@@ -54,6 +54,36 @@ class JdkUpdateCommandTest {
     }
 
     @Test
+    void declining_the_prompt_updates_and_keeps_the_old_install(@TempDir Path tempDir) throws Exception {
+        // JK-2627. Removal is a question now (default yes), because a JDK is minutes of download and
+        // an IDE, a shell or another project's lockfile may be pinned to the exact patch directory.
+        Path jdks = tempDir.resolve("jdks");
+        makeJdkInstall(jdks.resolve("temurin-25.0.2"), "25.0.2", "Eclipse Adoptium");
+        serveFeed(tempDir, vendorEntry("Eclipse", "Temurin", "temurin", 25, "25.0.3"));
+
+        // "y" to the plan, "n" to removing the old one.
+        int exit = withStdin("y\nn\n", () -> run(
+                "jdk",
+                "update",
+                "25",
+                "--jdks-dir",
+                jdks.toString(),
+                "--feed-url",
+                maven.base().resolve("/feed/jdks.json").toString()));
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
+                .as("the update still happens")
+                .exists();
+        assertThat(jdks.resolve("temurin-25.0.2").resolve("bin").resolve("java"))
+                .as("declining keeps the old install")
+                .exists();
+        assertThat(jdks.resolve("temurin-25").toRealPath())
+                .as("the pointer moves to the new patch either way")
+                .isEqualTo(jdks.resolve("temurin-25.0.3").toRealPath());
+    }
+
+    @Test
     void an_update_never_removes_a_jdk_jk_did_not_install(@TempDir Path tempDir) throws Exception {
         // JK-2624. --jdks-dir defaults to ~/.jdks, IntelliJ's shared root, so the JDK being
         // superseded is quite often one the user or the IDE installed. Updating past it is fine;

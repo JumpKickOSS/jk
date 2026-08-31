@@ -88,9 +88,11 @@ public final class JdkInstaller {
      */
     public InstalledJdk install(JdkCatalog.Entry entry, LongConsumer onBytesRead)
             throws IOException, InterruptedException {
-        // Clean up patches superseded by an earlier upgrade (Windows defers
-        // deletion of in-use JDKs; POSIX drains immediately).
-        new JdkGarbage(registry.jdksRoot()).drain();
+        // Deliberately does NOT drain JdkGarbage. Installing is not collecting, and this method is
+        // on the automatic provisioning path: the queue is a file that outlives the process, so a
+        // row left by an earlier update fired here during an ordinary build and deleted the JDK the
+        // build was running on (JK-2627). Draining belongs to the explicit `jk jdk` verb that
+        // queued the row, where the user has been asked.
         InstalledJdk already = alreadyInstalled(entry);
         if (already != null) return already;
         DownloadedArchive dl = download(entry, onBytesRead);

@@ -21,6 +21,7 @@ import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.jdk.JdkToolUninstaller;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -317,6 +318,18 @@ public final class JdkUninstallCommand implements CliCommand {
                         // leaving graal-default dangling at a removed row.
                         reconcileDefaultAfterRemoval(registry, defaults, victims);
                         reconcileGraalAfterRemoval(registry, defaults, victims);
+                        // The <vendor>-<major> symlink is a third, independent pointer, and it was
+                        // not reconciled at all: removing ~/.jdks/temurin-25.0.4.1 left
+                        // ~/.jdks/temurin-25 aimed at nothing, so an IDE holding that stable path
+                        // had a broken SDK — the one thing the pointer exists to prevent (JK-2627).
+                        // Newest survivor of that vendor and major takes the name; none left, name
+                        // retired.
+                        StableJdkPointer.healAfterRemovals(
+                                registry,
+                                victims.stream()
+                                        .map(v -> JdkRegistry.identifierFor(v.home()))
+                                        .toList(),
+                                m -> ctx.warn("pointer", m));
                     } catch (IOException e) {
                         ctx.error("reconcile", e.getMessage());
                         throw new RuntimeException(e);
