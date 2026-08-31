@@ -162,7 +162,8 @@ public final class JkWedge implements Widget {
         if (progress != null && progress.isBlockBar()) {
             // The cap blends into the bar's lead, so it has to ask the SAME bar the tail will paint
             // with — otherwise a stopped (red) bar gets a green powerline cap.
-            Rgb lead = progress.bar().leadColor(progress.numerator(), Math.max(1L, progress.denominator()));
+            Rgb lead = progress.bar()
+                    .leadColor(progress.numerator(), Math.max(1L, progress.denominator()), progress.segments());
             return Theme.colorize(
                     Glyphs.SEGMENT_END_NERD,
                     ctx.theme().withBackground(ctx.theme().bright(colors.cap), lead));
@@ -196,7 +197,8 @@ public final class JkWedge implements Widget {
      * The line a stopped run settles on: this wedge's chip, the bar frozen where it stopped and
      * repainted in the failure gradient, and {@code message}. One row, clipped like any live line.
      */
-    public static String stoppedLine(String title, long numerator, long denominator, String message, RenderContext ctx) {
+    public static String stoppedLine(
+            String title, long numerator, long denominator, int segments, String message, RenderContext ctx) {
         // The message rides as the wedge's message, not the progress suffix: tailAnsi already
         // composes `bar + " " + message`, so setting both prints it twice.
         return new JkWedge(Icon.cross(), title, RichText.plain(message), Variant.FAIL, null)
@@ -205,7 +207,7 @@ public final class JkWedge implements Widget {
                         denominator,
                         RichText.empty(),
                         Progress.Look.STOPPED,
-                        Progress.DEFAULT_SEGMENTS))
+                        segments))
                 .renderLiveLine(ctx);
     }
 

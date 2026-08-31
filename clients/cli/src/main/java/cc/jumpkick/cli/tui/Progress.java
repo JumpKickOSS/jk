@@ -22,7 +22,19 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
         STOPPED
     }
 
+    /** Bar width when the caller controls the trailing text (the plan header). */
     public static final int DEFAULT_SEGMENTS = ProgressBar.SEGMENTS;
+
+    /**
+     * Bar width for a line whose trailing text the caller does <em>not</em> control — a JDK vendor
+     * and version, a Maven coordinate, a path.
+     *
+     * <p>{@code jk jdk install}, {@code jk install} and friends append text they are handed, so at
+     * the default width the row measured 90–92 columns on an 80-column terminal and the label was
+     * the only thing left to ellipsize. Eight cells off the bar buys eight columns of label back and
+     * the bar still reads at a glance (JK-2602).
+     */
+    public static final int NARROW_SEGMENTS = 32;
 
     /**
      * The canonical constructor is public by record rule — it can be no narrower than the class,
@@ -64,10 +76,15 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
     public String render(RenderContext ctx) {
         String core =
                 switch (look) {
-                    case PLAN, STOPPED -> bar().render(numerator, denominator);
+                    case PLAN, STOPPED -> bar().render(numerator, denominator, segments);
                     case TRACK -> trackBar(ctx);
                 };
         return suffix.isEmpty() ? core : core + " " + suffix.render(ctx);
+    }
+
+    /** As {@link #segments(int)} with {@link #NARROW_SEGMENTS} — the width for uncontrolled tails. */
+    public Progress narrow() {
+        return segments(NARROW_SEGMENTS);
     }
 
     /** The bar this look paints with — the progress gradient, or the failure one when stopped. */

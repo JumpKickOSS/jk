@@ -129,7 +129,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         // a third bar look, no wedge, no ERASE_LINE_TO_END, so the previous frame's trailing `%`
         // survived underneath it (JK-2602).
         out.print("\r");
-        out.print(JkWedge.stoppedLine("JDK", numerator, denominator, "Cancelled by user!", context()));
+        out.print(JkWedge.stoppedLine(
+                "JDK", numerator, denominator, Progress.NARROW_SEGMENTS, "Cancelled by user!", context()));
         out.print(Ansi.ERASE_LINE_TO_END);
         out.println();
         out.print(Osc.taskbarClear());
@@ -194,7 +195,10 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         JkWedge wedge = new JkWedge(Icon.spinner(), "JDK", installing ? status : RichText.empty())
                 .variant(JkWedge.Variant.WORK);
         if (!installing) {
+            // Narrow: the trailing text is a JDK product and version we are handed, so the bar
+            // yields the columns rather than the label losing them.
             wedge = wedge.progress(new Progress(numerator, denominator)
+                    .narrow()
                     .suffix(RichText.of(RichText.parse("[dark-gray]·[/] "), status)));
         }
         return wedge;
