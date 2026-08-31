@@ -2,11 +2,20 @@
 <!DOCTYPE module PUBLIC
     "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
     "https://checkstyle.org/dtds/configuration_1_3.dtd">
-<!-- Minimal Google-inspired starter for the Checkstyle recipe sample. -->
+<!-- Rules a formatter cannot decide: naming a constant, writing a Javadoc,
+     bracing a branch, shaping a utility class. `jk format` owns layout and
+     unused imports, so nothing here repeats it. -->
 <module name="Checker">
-  <property name="severity" value="UTF-8"/>
+  <property name="charset" value="UTF-8"/>
+  <!-- Findings are errors, so a violation exits non-zero and fails a CI job. -->
+  <property name="severity" value="error"/>
   <module name="TreeWalker">
-    <module name="UnusedImports"/>
+    <module name="MagicNumber"/>
+    <module name="MissingJavadocMethod">
+      <property name="scope" value="public"/>
+    </module>
     <module name="NeedBraces"/>
+    <module name="FinalClass"/>
+    <module name="HideUtilityClassConstructor"/>
   </module>
 </module>
