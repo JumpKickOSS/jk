@@ -22,21 +22,43 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Rank tests for the working tree from sources and on-disk classes. Does not compile or run. */
+/** Rank tests from sources and on-disk classes. Does not compile or run. */
 public final class AffectedTestsCompute {
 
     private AffectedTestsCompute() {}
 
     public static AffectedTests fromDisk(Path root, TestSelection selection, Set<Path> onlyModules) throws Exception {
+        return fromDisk(root, selection, onlyModules, null);
+    }
+
+    /**
+     * {@code since} null/blank is the working-tree cone ({@code --affected}); otherwise
+     * {@code since...HEAD} ({@code --affected-since}).
+     */
+    public static AffectedTests fromDisk(Path root, TestSelection selection, Set<Path> onlyModules, String since)
+            throws Exception {
         JkBuild build = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
-        List<String> dirty = DirtyPaths.wip(root);
-        if (dirty == null) {
-            return AffectedTests.refused(
-                    new AffectedTests.Refuse("no-git-no-classes", "git working tree could not be read"),
-                    List.of(),
-                    List.of());
+        List<String> dirty;
+        AffectedSelection.Result cone;
+        if (since != null && !since.isBlank()) {
+            dirty = AffectedSelection.gitDiffNameOnly(root, since);
+            if (dirty == null) {
+                return AffectedTests.refused(
+                        new AffectedTests.Refuse("no-git-no-classes", "git ref `" + since + "` could not be resolved"),
+                        List.of(),
+                        List.of());
+            }
+            cone = AffectedSelection.resolve(root, build, since);
+        } else {
+            dirty = DirtyPaths.wip(root);
+            if (dirty == null) {
+                return AffectedTests.refused(
+                        new AffectedTests.Refuse("no-git-no-classes", "git working tree could not be read"),
+                        List.of(),
+                        List.of());
+            }
+            cone = AffectedSelection.resolveWip(root, build);
         }
-        AffectedSelection.Result cone = AffectedSelection.resolveWip(root, build);
         if (!cone.ok()) {
             return AffectedTests.refused(
                     new AffectedTests.Refuse("no-git-no-classes", cone.errorMessage()), List.of(), List.of());
@@ -48,6 +70,7 @@ public final class AffectedTestsCompute {
         for (Path modDir : cone.moduleDirs()) {
             Path abs = modDir.toAbsolutePath().normalize();
             if (onlyModules != null && !onlyModules.isEmpty() && !onlyModules.contains(abs)) continue;
+            if (!hasLocalDirty(root, abs, dirty)) continue;
             JkBuild unit = modules.getOrDefault(modDir, build);
             BuildLayout layout =
                     build.isWorkspaceRoot() ? BuildLayout.of(root, modDir, unit) : BuildLayout.of(modDir, unit);
@@ -72,6 +95,19 @@ public final class AffectedTestsCompute {
             acc = acc.merge(slice);
         }
         return capGlobal(acc);
+    }
+
+    static boolean hasLocalDirty(Path root, Path module, List<String> dirty) {
+        if (dirty == null || dirty.isEmpty()) return false;
+        Path mod = module.toAbsolutePath().normalize();
+        Path base = root.toAbsolutePath().normalize();
+        for (String raw : dirty) {
+            if (raw == null || raw.isBlank()) continue;
+            Path p = Path.of(raw);
+            if (!p.isAbsolute()) p = base.resolve(p);
+            if (p.normalize().startsWith(mod)) return true;
+        }
+        return false;
     }
 
     /**

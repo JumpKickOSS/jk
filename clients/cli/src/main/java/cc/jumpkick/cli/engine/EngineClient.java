@@ -849,10 +849,10 @@ public final class EngineClient {
         return EngineResolveAdapter.runOutdated(paths, req);
     }
 
-    /** Ranked tests for the working tree — no compile, no run. */
-    public static AffectedTestsReport runAffectedTests(EnginePaths.Paths paths, Path dir, TestSelection selection)
-            throws IOException {
-        return EngineResolveAdapter.runAffectedTests(paths, dir, selection);
+    /** Ranked tests for the working tree or {@code since...HEAD} — no compile, no run. */
+    public static AffectedTestsReport runAffectedTests(
+            EnginePaths.Paths paths, Path dir, TestSelection selection, String since) throws IOException {
+        return EngineResolveAdapter.runAffectedTests(paths, dir, selection, since);
     }
 
     public static BuildPlanResult runAudit(

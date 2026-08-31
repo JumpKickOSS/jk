@@ -16,17 +16,16 @@ jk test --all                        # every suite; tag excludes cleared. Nightl
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
 jk test --affected                   # ranked classes for the working tree (does not run them)
-jk test --affected-since=origin/main # modules changed since the ref; all their tests
+jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
 jk build --gate                      # package with the gate green
 jk build --all                       # package with the full suite green
 ```
 
-`--affected` ranks at most 20 test **classes** for the **git working tree** (unstaged +
-untracked; last commit if the tree is clean), prints them as a table, and writes
-`target/jk-tests-affected.md`. It does **not** run tests. That cone is not `jk explain`'s
-rebuild set (cache-dirty modules). `--affected-since=<ref>` is the commit-range module cone
-and runs **all** tests in those modules. They cannot be combined (`--aff` is ambiguous).
-Refuse exits **2**; that file is not `jk-results.md`.
+`--affected` and `--affected-since=<ref>` rank at most 20 test **classes**, print them as a
+table, and write `target/jk-tests-affected.md`. They do **not** run tests. `--affected` is
+the git working tree (unstaged + untracked; last commit if the tree is clean).
+`--affected-since` is `ref...HEAD`. Neither is `jk explain`'s rebuild set. They cannot
+be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
 run `jk test`, not `--all`. Before you share a commit, run **`--gate`** (silent
@@ -67,15 +66,15 @@ When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 
 ```bash
 jk test --affected              # rank ≤20 classes for the working tree; print a table; do not run
-jk test --affected-since=origin/main   # modules changed since the ref; all tests in those modules
+jk test --affected-since=HEAD~2 # same table for ref...HEAD (does not run)
 ```
 
 `--affected` is the working-tree cone (unstaged + untracked; last commit if the tree is clean).
 It is **not** `--affected-since=HEAD` (that range is empty). The two flags cannot be combined.
 `--aff` is ambiguous.
 
-`jk test --affected` prints the ranking as a table (Score · Class · Reason) and writes
-`target/jk-tests-affected.md`. It does **not** run tests and does not replace
+Both flags print the ranking as a table (Score · Class · Reason) and write
+`target/jk-tests-affected.md`. They do **not** run tests and do not replace
 `target/jk-results.md`. Ranking refuse exits **2**. When the guess would be dishonest
 (`jk.toml` change, too many types, a dirty test outside the current suite), jk prints
 `cannot rank affected tests` and tells you to run `jk test`.

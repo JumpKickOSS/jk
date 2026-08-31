@@ -377,11 +377,17 @@ public final class ProtoReads {
         return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
     }
 
-    /** Ranked tests for the working tree. Selection fields omitted when default. */
+    /** Ranked tests for the working tree, or {@code since...HEAD} when {@code affectedSince} is set. */
     public static String affectedTestsRequest(String dir, TestSelection selection) {
-        return "{\"type\":\"" + EngineProtocol.AFFECTED_TESTS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
-                + ProtoJobs.testSelectionFields(selection)
-                + "}";
+        return affectedTestsRequest(dir, selection, null);
+    }
+
+    public static String affectedTestsRequest(String dir, TestSelection selection, String affectedSince) {
+        String extra = ProtoJobs.testSelectionFields(selection);
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
+        }
+        return "{\"type\":\"" + EngineProtocol.AFFECTED_TESTS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {

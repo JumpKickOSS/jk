@@ -45,8 +45,7 @@ jk test -j0 -w0
 jk test --suite integration -j0 -w0   # skip if the tree has no integration suite
 # or a subset:
 jk test --modules 'api,worker'
-jk test --affected-since=origin/main   # CI: all tests in modules changed since the ref
-# jk test --affected                   # local/agent: ranked WIP classes, not a CI substitute
+# jk test --affected / --affected-since=HEAD~2  # ranked list only; does not run
 ```
 
 Do **not** make the PR job `jk test --all`. That is the nightly / release job.

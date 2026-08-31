@@ -85,7 +85,9 @@ public final class TestCommand implements CliCommand {
         opts.add(CommonOpts.cacheDir());
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.keepGoing());
-        opts.addAll(CommonOpts.moduleSelection(Opt.flag("Ranked WIP tests (does not run)", "--affected")));
+        opts.addAll(CommonOpts.moduleSelection(
+                Opt.flag("Ranked WIP tests (does not run)", "--affected"),
+                Opt.value("<git-ref>", "Ranked tests since ref (no run)", "--affected-since")));
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
@@ -158,7 +160,7 @@ public final class TestCommand implements CliCommand {
         // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
-        if (affectedWip) {
+        if (affectedWip || (affectedSince != null && !affectedSince.isBlank())) {
             return finishSession(showAffected(dir));
         }
 
@@ -260,13 +262,14 @@ public final class TestCommand implements CliCommand {
     }
 
     /**
-     * {@code --affected} is a ranked list, not a test run. Write {@code target/jk-tests-affected.md}
-     * and print the same ranking as a table.
+     * {@code --affected} / {@code --affected-since} is a ranked list, not a test run. Write
+     * {@code target/jk-tests-affected.md} and print the same ranking as a table.
      */
     private int showAffected(Path dir) {
         AffectedTestsReport report;
         try {
-            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection);
+            String since = affectedWip ? null : affectedSince;
+            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since);
         } catch (IOException e) {
             CommandWedge.printFail("Test", e.getMessage());
             if (session != null) session.error(e.getMessage());

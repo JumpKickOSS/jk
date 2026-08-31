@@ -17,7 +17,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** {@code jk test --affected} — ranked list, no test run. */
+/** {@code jk test --affected} / {@code --affected-since} — ranked list, no test run. */
 public final class AffectedTestsVerb implements HostedVerb {
 
     private final VerbHost host;
@@ -52,7 +52,9 @@ public final class AffectedTestsVerb implements HostedVerb {
             AffectedTestsReport report;
             try {
                 Path dir = Path.of(Jsonl.str(requestLine, "dir"));
-                AffectedTests ranked = AffectedTestsCompute.fromDisk(dir, ProtoJobs.testSelectionOf(requestLine), null);
+                String since = Jsonl.str(requestLine, "affectedSince");
+                AffectedTests ranked =
+                        AffectedTestsCompute.fromDisk(dir, ProtoJobs.testSelectionOf(requestLine), null, since);
                 JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(dir), ranked);
                 report = toReport(ranked);
             } catch (Exception e) {

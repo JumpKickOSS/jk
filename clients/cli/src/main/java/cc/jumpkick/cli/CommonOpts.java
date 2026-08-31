@@ -44,19 +44,25 @@ public final class CommonOpts {
      * that is a workspace member with no {@code -m} is the same as {@code -m <that-module>}.
      *
      * <p>{@code --affected} is the working-tree cone; {@code --affected-since} is {@code ref...HEAD}.
-     * They are mutually exclusive. {@code --aff} is ambiguous. {@code jk test --affected} lists
-     * ranked classes and does not run them — pass a different {@code affected} opt for that help.
+     * They are mutually exclusive. {@code --aff} is ambiguous. {@code jk test} lists ranked classes
+     * for either flag and does not run them — pass command-specific opts for that help.
      */
     public static List<Opt> moduleSelection() {
-        return moduleSelection(Opt.flag("WIP working-tree change set", "--affected"));
+        return moduleSelection(
+                Opt.flag("WIP working-tree change set", "--affected"),
+                Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
     }
 
     /** Like {@link #moduleSelection()} with a command-specific {@code --affected} help string. */
     public static List<Opt> moduleSelection(Opt affected) {
+        return moduleSelection(
+                affected, Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
+    }
+
+    /** Like {@link #moduleSelection()} with command-specific {@code --affected} / {@code --affected-since} help. */
+    public static List<Opt> moduleSelection(Opt affected, Opt affectedSince) {
         return List.of(
-                Opt.value("<sel>", "Only selected modules (paths/globs)", "-m", "--modules"),
-                affected,
-                Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
+                Opt.value("<sel>", "Only selected modules (paths/globs)", "-m", "--modules"), affected, affectedSince);
     }
 
     /**

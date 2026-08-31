@@ -37,14 +37,14 @@ final class EngineResolveAdapter {
     private EngineResolveAdapter() {}
 
     /**
-     * Ranked tests for the working tree ({@code jk test --affected}): one synchronous request, one
-     * {@code affected-tests-ack}. Read-only — no compile, no test run.
+     * Ranked tests ({@code jk test --affected} / {@code --affected-since}): one synchronous request,
+     * one {@code affected-tests-ack}. Read-only — no compile, no test run.
      */
-    static AffectedTestsReport runAffectedTests(EnginePaths.Paths paths, Path dir, TestSelection selection)
-            throws IOException {
+    static AffectedTestsReport runAffectedTests(
+            EnginePaths.Paths paths, Path dir, TestSelection selection, String since) throws IOException {
         return EngineReads.request(
                 paths,
-                ProtoReads.affectedTestsRequest(dir.toString(), selection),
+                ProtoReads.affectedTestsRequest(dir.toString(), selection, since),
                 EngineProtocol.AFFECTED_TESTS_ACK,
                 "affected-tests request",
                 AffectedTestsReport::decode);
