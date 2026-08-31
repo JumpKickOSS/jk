@@ -2,7 +2,9 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.AffectedTestsReport;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.engine.protocol.DenyReport;
@@ -689,7 +691,18 @@ public final class EngineClient {
     public static ProjectInfo projectInfo(
             EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
             throws IOException {
-        return EngineReads.projectInfo(paths, dir, modules, affectedSince, counts);
+        return projectInfo(paths, dir, modules, affectedSince, false, counts);
+    }
+
+    public static ProjectInfo projectInfo(
+            EnginePaths.Paths paths,
+            Path dir,
+            String modules,
+            String affectedSince,
+            boolean affectedWip,
+            boolean counts)
+            throws IOException {
+        return EngineReads.projectInfo(paths, dir, modules, affectedSince, affectedWip, counts);
     }
 
     /**
@@ -834,6 +847,12 @@ public final class EngineClient {
     public static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req)
             throws IOException {
         return EngineResolveAdapter.runOutdated(paths, req);
+    }
+
+    /** Ranked tests for the working tree or {@code since...HEAD} — no compile, no run. */
+    public static AffectedTestsReport runAffectedTests(
+            EnginePaths.Paths paths, Path dir, TestSelection selection, String since) throws IOException {
+        return EngineResolveAdapter.runAffectedTests(paths, dir, selection, since);
     }
 
     public static BuildPlanResult runAudit(

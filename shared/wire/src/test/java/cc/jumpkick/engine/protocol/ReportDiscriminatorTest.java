@@ -12,6 +12,8 @@ class ReportDiscriminatorTest {
     void every_report_encodes_the_type_discriminator_its_client_matches() {
         assertThat(EngineProtocol.typeOf(WhyReport.error("x").encode())).isEqualTo(EngineProtocol.WHY_ACK);
         assertThat(EngineProtocol.typeOf(OutdatedReport.error("x").encode())).isEqualTo(EngineProtocol.OUTDATED_ACK);
+        assertThat(EngineProtocol.typeOf(AffectedTestsReport.error("c", "x").encode()))
+                .isEqualTo(EngineProtocol.AFFECTED_TESTS_ACK);
         assertThat(EngineProtocol.typeOf(IdeWireModel.error("x").encode())).isEqualTo(EngineProtocol.IDE_MODEL_ACK);
         assertThat(EngineProtocol.typeOf(ExecPlan.error("run", "x").encode())).isEqualTo(EngineProtocol.EXEC_PLAN_ACK);
         assertThat(EngineProtocol.typeOf(GeneratedFiles.error("x").encode())).isEqualTo(EngineProtocol.GENERATE_ACK);

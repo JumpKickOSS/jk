@@ -105,15 +105,21 @@ public final class CompileVerb implements HostedVerb {
                         Set<Path> selected = new LinkedHashSet<>();
                         List<String> raw = new ArrayList<>();
                         String affected = null;
+                        boolean wip = false;
                         for (String d : Jsonl.strArray(requestLine, "moduleDirs")) {
                             if (d == null || d.isBlank()) continue;
-                            if (d.startsWith("affected:")) affected = d.substring("affected:".length());
+                            if ("affected-wip".equals(d)) wip = true;
+                            else if (d.startsWith("affected:")) affected = d.substring("affected:".length());
                             else raw.add(d);
                         }
-                        if (!raw.isEmpty() || affected != null) {
+                        if (!raw.isEmpty() || affected != null || wip) {
                             try {
                                 var hit = ModuleSelection.resolveOptional(
-                                        entryDir, rootBuild, raw.isEmpty() ? null : String.join(",", raw), affected);
+                                        entryDir,
+                                        rootBuild,
+                                        raw.isEmpty() ? null : String.join(",", raw),
+                                        affected,
+                                        wip);
                                 if (hit != null && !hit.ok()) {
                                     host.sendQuiet(
                                             writer,

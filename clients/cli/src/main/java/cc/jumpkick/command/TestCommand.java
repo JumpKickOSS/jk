@@ -21,12 +21,15 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.AffectedTestsReport;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
@@ -82,7 +85,9 @@ public final class TestCommand implements CliCommand {
         opts.add(CommonOpts.cacheDir());
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.keepGoing());
-        opts.addAll(CommonOpts.moduleSelection());
+        opts.addAll(CommonOpts.moduleSelection(
+                Opt.flag("Ranked WIP tests (does not run)", "--affected"),
+                Opt.value("<git-ref>", "Ranked tests since ref (no run)", "--affected-since")));
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
@@ -109,6 +114,7 @@ public final class TestCommand implements CliCommand {
     GlobalOptions global;
     int jobs;
     String affectedSince;
+    boolean affectedWip;
     String modulesSpec;
     TestSelection testSelection = TestSelection.DEFAULT;
     private CliSessionTranscript session;
@@ -120,7 +126,12 @@ public final class TestCommand implements CliCommand {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.affectedSince = in.value("affected-since").orElse(null);
+        this.affectedWip = in.isSet("affected");
         this.modulesSpec = in.value("modules").orElse(null);
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
+            CommandWedge.printFail("Test", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
         this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
@@ -149,6 +160,10 @@ public final class TestCommand implements CliCommand {
         // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
+        if (affectedWip || (affectedSince != null && !affectedSince.isBlank())) {
+            return finishSession(showAffected(dir));
+        }
+
         var info = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
@@ -163,8 +178,10 @@ public final class TestCommand implements CliCommand {
         }
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
-        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince);
+        if (affectedWip
+                || (affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
+            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -232,6 +249,9 @@ public final class TestCommand implements CliCommand {
         }
 
         if (result.success()) return finishSession(0);
+        for (var d : result.errors()) {
+            if ("affected-refuse".equals(d.code())) return finishSession(Exit.CONFIG);
+        }
         // Test failures get exit 4; compile / launcher errors are exit 1.
         if (testResult != null && !testResult.allPassed()) return finishSession(4);
         return finishSession(1);
@@ -239,6 +259,54 @@ public final class TestCommand implements CliCommand {
 
     private int finishSession(int code) {
         return CliSessionTranscript.finish(session, code, global != null && global.verbose);
+    }
+
+    /**
+     * {@code --affected} / {@code --affected-since} is a ranked list, not a test run. Write
+     * {@code target/jk-tests-affected.md} and print the same ranking as a table.
+     */
+    private int showAffected(Path dir) {
+        AffectedTestsReport report;
+        try {
+            String since = affectedWip ? null : affectedSince;
+            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since);
+        } catch (IOException e) {
+            CommandWedge.printFail("Test", e.getMessage());
+            if (session != null) session.error(e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (global != null && global.outputIsJson()) {
+            CliOutput.outRaw(report.encode());
+            return report.error() != null ? Exit.CONFIG : Exit.SUCCESS;
+        }
+        if (report.error() != null && !report.error().isBlank()) {
+            CommandWedge.printFail("Test", "cannot rank affected tests: " + report.error() + ". Run jk test");
+            if (session != null) session.error(report.error());
+            return Exit.CONFIG;
+        }
+        if (report.rows().isEmpty()) {
+            CommandWedge.printOk("Test", "nothing affected");
+            if (session != null) session.wedge("nothing affected");
+            return 0;
+        }
+        CommandWedge.envelopeStart();
+        for (String line : renderAffectedTable(report.rows())) {
+            CliOutput.out(line);
+        }
+        if (session != null) session.wedge(report.rows().size() + " affected");
+        return 0;
+    }
+
+    static List<String> renderAffectedTable(List<AffectedTestsReport.Row> rows) {
+        Table table = new Table("Affected tests")
+                .columns(
+                        new Table.Column("Score", Table.Align.RIGHT),
+                        new Table.Column("Class"),
+                        new Table.Column("Reason"));
+        for (AffectedTestsReport.Row r : rows) {
+            table.row(String.valueOf(r.score()), r.className(), r.reason());
+        }
+        return table.render(RenderContext.current());
     }
 
     private List<String> testArgv(Invocation in) {
@@ -256,6 +324,7 @@ public final class TestCommand implements CliCommand {
             argv.add("--affected-since");
             argv.add(r);
         });
+        if (in.isSet("affected")) argv.add("--affected");
         if (in.isSet("serial-tests") || in.isSet("no-parallel-tests")) argv.add("--serial-tests");
         else if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
         in.value("workers").ifPresent(w -> {
@@ -272,9 +341,9 @@ public final class TestCommand implements CliCommand {
      */
     private int runSelectedWorkspaceTests(Path entryDir, ProjectInfo rootInfo, Path cache, int workerCount)
             throws IOException, InterruptedException {
-        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
+        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         if (!tokens.isEmpty()) {
-            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -304,7 +373,8 @@ public final class TestCommand implements CliCommand {
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
         List<String> scopeNames = List.of();
         if (modules != null && !modules.isEmpty()) {
-            scopeNames = ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince));
+            scopeNames =
+                    ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip));
             if (!live) {
                 ModuleScopeHint.print("testing", scopeNames, global != null && global.outputIsJson());
             }

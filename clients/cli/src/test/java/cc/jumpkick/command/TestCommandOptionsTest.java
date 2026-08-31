@@ -68,6 +68,35 @@ class TestCommandOptionsTest {
     }
 
     @Test
+    void affected_and_affected_since_both_declared() {
+        List<Opt> opts = new TestCommand().options();
+        assertThat(opts.stream().anyMatch(o -> o.names().contains("--affected")))
+                .isTrue();
+        assertThat(opts.stream().anyMatch(o -> o.names().contains("--affected-since")))
+                .isTrue();
+        assertThat(new BuildCommand().options().stream().anyMatch(o -> o.names().contains("--affected")))
+                .isTrue();
+    }
+
+    @Test
+    void affected_parses_as_flag() throws Exception {
+        Invocation in = parse("--affected");
+        assertThat(in.isSet("affected")).isTrue();
+    }
+
+    @Test
+    void test_affected_help_says_list_only() {
+        String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
+        assertThat(help).contains("Ranked WIP tests (does not run)");
+        assertThat(help).contains("Ranked tests since ref (no run)");
+        for (String line : help.split("\\R", -1)) {
+            if (line.contains("--affected")) {
+                assertThat(line).doesNotContain("testing modules");
+            }
+        }
+    }
+
+    @Test
     void scripts_only_and_no_scripts_are_on_test_and_build() {
         assertThat(new TestCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--scripts-only")))
                 .isTrue();

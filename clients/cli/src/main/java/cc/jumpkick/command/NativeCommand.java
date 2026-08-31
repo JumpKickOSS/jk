@@ -99,6 +99,7 @@ public final class NativeCommand implements CliCommand {
     String modulesSpec;
 
     String affectedSince;
+    boolean affectedWip;
     List<String> scopeHintNames = List.of();
 
     @Override
@@ -112,6 +113,11 @@ public final class NativeCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
         this.modulesSpec = in.value("modules").orElse(null);
         this.affectedSince = in.value("affected-since").orElse(null);
+        this.affectedWip = in.isSet("affected");
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
+            CommandWedge.printFail("Native", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
 
         Path startDir = global.workingDir();
         VariantSelection.install(in, startDir);
@@ -145,7 +151,7 @@ public final class NativeCommand implements CliCommand {
 
         // Single project: -m/--affected-since still validate.
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            var sel = ProjectInfos.orError(startDir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(startDir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Native", sel.error());
                 return Exit.CONFIG;
@@ -203,7 +209,7 @@ public final class NativeCommand implements CliCommand {
         // -m / --affected-since: engine ModuleSelection via projectInfo.
         List<Path> selectedDirs = null;
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            var sel = ProjectInfos.orError(wsRoot, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(wsRoot, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Native", sel.error());
                 return Exit.CONFIG;
@@ -242,7 +248,7 @@ public final class NativeCommand implements CliCommand {
         // Never cascade the whole workspace (sibling modules outside the native dependency cone).
         List<Path> cascadeRoots = List.copyOf(graalHomes.keySet());
         if (selectedDirs != null) {
-            var sel = ProjectInfos.orError(wsRoot, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(wsRoot, modulesSpec, affectedSince, affectedWip);
             this.scopeHintNames = ModuleScopeHint.namesFrom(sel);
             ModuleScopeHint.print("building", scopeHintNames, mode == BuildPlanConsole.Mode.JSON);
         }

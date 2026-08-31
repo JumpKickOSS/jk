@@ -104,12 +104,19 @@ public final class ImageCommand implements CliCommand {
         // -m/--modules: an image is built for exactly one module — redirect to it.
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
+        boolean affectedWip = in.isSet("affected");
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
+            CommandWedge.printFail("Image", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
         var peekEarly = ProjectInfos.orNull(projectDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, modulesSpec, peekEarly);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
-        if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
+        if (affectedWip
+                || (modulesSpec != null && !modulesSpec.isBlank())
+                || (affectedSince != null && !affectedSince.isBlank())) {
             Path selectRoot = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : projectDir;
-            var selected = ProjectInfos.orError(selectRoot, modulesSpec, affectedSince);
+            var selected = ProjectInfos.orError(selectRoot, modulesSpec, affectedSince, affectedWip);
             if (selected.error() != null && !selected.error().isBlank()) {
                 CommandWedge.printFail("Image", selected.error());
                 return Exit.CONFIG;

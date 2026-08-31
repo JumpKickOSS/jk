@@ -76,12 +76,17 @@ public final class CompileCommand implements CliCommand {
 
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
+        boolean affectedWip = in.isSet("affected");
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
+            CommandWedge.printFail("Compile", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
         var peek = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
-        List<String> selectors = ModuleSelectors.tokens(modulesSpec, affectedSince);
+        List<String> selectors = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         Path infoDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : dir;
-        var info = ProjectInfos.orError(infoDir, modulesSpec, affectedSince);
+        var info = ProjectInfos.orError(infoDir, modulesSpec, affectedSince, affectedWip);
         if (info.error() != null) {
             CommandWedge.printFail("Compile", info.error());
             return Exit.CONFIG;

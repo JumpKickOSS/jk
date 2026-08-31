@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import java.util.Map;
@@ -358,16 +359,35 @@ public final class ProtoReads {
      * --affected-since} filters (omitted when blank).
      */
     public static String projectInfoRequest(String dir, String modules, String affectedSince, boolean counts) {
+        return projectInfoRequest(dir, modules, affectedSince, false, counts);
+    }
+
+    public static String projectInfoRequest(
+            String dir, String modules, String affectedSince, boolean affectedWip, boolean counts) {
         String extra = "";
         if (modules != null && !modules.isBlank()) extra += ",\"modules\":" + Jsonl.quote(modules);
         if (affectedSince != null && !affectedSince.isBlank()) {
             extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
         }
+        if (affectedWip) extra += ",\"affected\":true";
         // Source/test counting walks every module's src trees — opt-in (jk status), never the
         // default for the identity-only callers on hot paths (JK-2162). The dead `cache` field
         // the verb never read is gone (JK-2168).
         if (counts) extra += ",\"counts\":true";
         return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
+    }
+
+    /** Ranked tests for the working tree, or {@code since...HEAD} when {@code affectedSince} is set. */
+    public static String affectedTestsRequest(String dir, TestSelection selection) {
+        return affectedTestsRequest(dir, selection, null);
+    }
+
+    public static String affectedTestsRequest(String dir, TestSelection selection, String affectedSince) {
+        String extra = ProtoJobs.testSelectionFields(selection);
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
+        }
+        return "{\"type\":\"" + EngineProtocol.AFFECTED_TESTS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {

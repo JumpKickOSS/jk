@@ -120,6 +120,11 @@ public final class ExplainCommand implements CliCommand {
         boolean hasGraph = graphFmt != null;
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSinceEarly = in.value("affected-since").orElse(null);
+        boolean affectedWip = in.isSet("affected");
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSinceEarly)) {
+            CommandWedge.printFail("Explain", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
         var peek = ProjectInfos.orNull(startDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
@@ -159,9 +164,11 @@ public final class ExplainCommand implements CliCommand {
         String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
-        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
+        if (affectedWip
+                || (affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
             try {
-                var selected = ProjectInfos.orError(graphDir, modulesSpec, affectedSince);
+                var selected = ProjectInfos.orError(graphDir, modulesSpec, affectedSince, affectedWip);
                 if (selected.error() != null && !selected.error().isBlank()) {
                     CommandWedge.printFail("Explain", selected.error());
                     return Exit.CONFIG;

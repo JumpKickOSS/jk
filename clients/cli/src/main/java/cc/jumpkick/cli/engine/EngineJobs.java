@@ -84,36 +84,38 @@ final class EngineJobs {
     static String encodeWorkspaceRequest(WorkspaceRequest req, Session session) {
         return withKeepGoing(
                 withWorkspaceSpec(
-                        ProtoJobs.buildRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.workers(),
-                                req.profile(),
-                                req.skipTests(),
-                                req.verbose(),
-                                req.maxModuleConcurrency(),
-                                session.parallelTests(),
-                                session.offline(),
-                                session.force(),
-                                // jk build asks the engine to auto-freshen a stale workspace lock; verify's
-                                // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
-                                req.freshenLock(),
-                                // verify's scratch rebuild: never persist action records under
-                                // scratch-salted keys that can never recur.
-                                req.ephemeralActions(),
-                                // workspace jk test: every module plan stops at run-tests.
-                                req.testOnly(),
-                                // -m / --affected-since module selection — the engine schedules
-                                // exactly these dirs instead of forecasting dirtiness itself.
-                                req.dirtyHint() == null
-                                        ? null
-                                        : req.dirtyHint().stream()
-                                                .map(Object::toString)
-                                                .sorted()
-                                                .toList(),
-                                session.testSelection(),
-                                req.modules()),
+                        Jsonl.append(
+                                ProtoJobs.buildRequest(
+                                        req.entryDir().toString(),
+                                        req.cache().toString(),
+                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                        req.workers(),
+                                        req.profile(),
+                                        req.skipTests(),
+                                        req.verbose(),
+                                        req.maxModuleConcurrency(),
+                                        session.parallelTests(),
+                                        session.offline(),
+                                        session.force(),
+                                        // jk build asks the engine to auto-freshen a stale workspace lock; verify's
+                                        // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
+                                        req.freshenLock(),
+                                        // verify's scratch rebuild: never persist action records under
+                                        // scratch-salted keys that can never recur.
+                                        req.ephemeralActions(),
+                                        // workspace jk test: every module plan stops at run-tests.
+                                        req.testOnly(),
+                                        // -m / --affected-since module selection — the engine schedules
+                                        // exactly these dirs instead of forecasting dirtiness itself.
+                                        req.dirtyHint() == null
+                                                ? null
+                                                : req.dirtyHint().stream()
+                                                        .map(Object::toString)
+                                                        .sorted()
+                                                        .toList(),
+                                        session.testSelection(),
+                                        req.modules()),
+                                session.affected() ? "\"affected\":true" : ""),
                         req),
                 req);
     }
@@ -173,17 +175,21 @@ final class EngineJobs {
                 paths,
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                ProtoJobs.testRequest(
-                                        req.entryDir().toString(),
-                                        req.cache().toString(),
-                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                        req.workers(),
-                                        req.profile(),
-                                        req.verbose(),
-                                        req.offline(),
-                                        req.force(),
-                                        req.parallelTests() || session.parallelTests(),
-                                        sel),
+                                Jsonl.append(
+                                        ProtoJobs.testRequest(
+                                                req.entryDir().toString(),
+                                                req.cache().toString(),
+                                                req.jdksDir() != null
+                                                        ? req.jdksDir().toString()
+                                                        : null,
+                                                req.workers(),
+                                                req.profile(),
+                                                req.verbose(),
+                                                req.offline(),
+                                                req.force(),
+                                                req.parallelTests() || session.parallelTests(),
+                                                sel),
+                                        session.affected() ? "\"affected\":true" : ""),
                                 session.variant(),
                                 session.clientEnv(),
                                 session.jvm(),

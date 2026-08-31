@@ -38,11 +38,14 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.LangCompile;
+import cc.jumpkick.test.AbiIndex;
+import cc.jumpkick.test.ClassAbi;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -368,6 +371,9 @@ public final class PlannerCompile {
                     Files.createDirectories(genDir);
                     Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
                     ctx.label("compiling " + sources.size() + " sources");
+                    Path abiFile = AbiIndex.path(ctx.require(LAYOUT).buildDir());
+                    Map<String, ClassAbi.Fingerprint> preAbi = AbiIndex.load(abiFile);
+                    ctx.put(PRE_COMPILE_ABI, preAbi);
                     JavaCompile.Result r = JavaCompile.run(
                             taskId,
                             request,
@@ -408,6 +414,9 @@ public final class PlannerCompile {
                         ctx.cached();
                     }
                     ctx.put(BUILD_OUTCOME, r.outcome());
+                    ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
+                    Path mainClasses = ctx.require(MAIN_CLASSES);
+                    AbiIndex.write(abiFile, AbiIndex.scanClasses(mainClasses));
                     ctx.progress(sources.size());
                 })
                 .build();

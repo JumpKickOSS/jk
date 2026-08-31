@@ -66,14 +66,20 @@ public final class McpJobRuns {
         String kind = pinnedKind;
         if (kind == null) kind = in.str("kind");
         if (kind == null || kind.isBlank()) kind = "build";
+        List<String> modules = in.strings("modules");
+        boolean affected = in.flag("affected");
+        if (affected && (modules == null || modules.isEmpty())) {
+            modules = List.of("affected-wip");
+        }
         JobSpec spec = new JobSpec(
                 kind,
                 in.requiredDir(),
-                in.strings("modules"),
+                modules,
                 in.strings("include_tags"),
                 in.strings("exclude_tags"),
                 in.strings("suites"),
-                in.flag("skip_tests"));
+                in.flag("skip_tests"),
+                affected);
         boolean wait = in.flagOr("wait", true);
         int timeoutS = in.count("timeout_s", 600, 1, MAX_WAIT_S);
         long triggeredAt = System.currentTimeMillis();

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.WhyReport;
@@ -17,6 +18,9 @@ import cc.jumpkick.runtime.GenerateOps;
 import cc.jumpkick.runtime.GraphOps;
 import cc.jumpkick.runtime.OutdatedPlans;
 import cc.jumpkick.runtime.TaskForecast;
+import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.test.AffectedTestsCompute;
+import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -195,6 +199,32 @@ public final class McpReads {
             return r.toStructured();
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
+            m.put("error", Errors.text(e));
+            return m;
+        }
+    }
+
+    /**
+     * Advisory WIP ranking from on-disk classes. Writes {@code target/jk-tests-affected.md}. Does
+     * not compile. Stale class files → refuse {@code stale}.
+     */
+    public static Map<String, Object> affectedTests(
+            String dir, List<String> includeTags, List<String> excludeTags, List<String> suites) {
+        Path root = PathUtil.resolveUserPath(dir);
+        Map<String, Object> m = new LinkedHashMap<>();
+        try {
+            TestSelection sel = TestSelection.of(
+                    suites == null ? List.of() : suites,
+                    false,
+                    includeTags == null ? List.of() : includeTags,
+                    excludeTags == null ? List.of() : excludeTags,
+                    true);
+            AffectedTests acc = AffectedTestsCompute.fromDisk(root, sel, null);
+            JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(root), acc);
+            Map<String, Object> out = acc.toStructured();
+            if (acc.ranked().size() < acc.candidateCount()) out.put("truncated", true);
+            return out;
+        } catch (Exception e) {
             m.put("error", Errors.text(e));
             return m;
         }

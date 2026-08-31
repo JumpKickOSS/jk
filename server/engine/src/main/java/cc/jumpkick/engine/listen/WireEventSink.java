@@ -97,6 +97,7 @@ public final class WireEventSink implements EventSink {
             // terminal (PlanFinishLine).
             case EngineEvent.Plan e -> null;
             case EngineEvent.PlanFinish e -> null;
+            case EngineEvent.AffectedTests e -> e.jsonObject();
         };
     }
 }

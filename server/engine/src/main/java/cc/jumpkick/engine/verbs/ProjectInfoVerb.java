@@ -56,6 +56,7 @@ public final class ProjectInfoVerb implements HostedVerb {
                                 Path.of(Jsonl.str(requestLine, "dir")),
                                 Jsonl.str(requestLine, "modules"),
                                 Jsonl.str(requestLine, "affectedSince"),
+                                Jsonl.bool(requestLine, "affected", false),
                                 Jsonl.bool(requestLine, "counts", false)));
             } catch (Exception e) {
                 info = ProjectInfo.error(Errors.text(e));

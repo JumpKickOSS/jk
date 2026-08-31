@@ -56,6 +56,7 @@ public final class VerbRegistry {
                 new CacheInventoryVerb(host),
                 new ProjectInfoVerb(host),
                 new OutdatedVerb(host),
+                new AffectedTestsVerb(host),
                 new TreeVerb(host),
                 new WhyVerb(host),
                 new PluginCommandVerb(host),

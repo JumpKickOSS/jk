@@ -27,6 +27,10 @@ Read **`target/jk-results.md` first** (same markdown as `jk results`). File tool
 shelling out `jk results` when MCP is not connected. The report is token-cheap and covers
 compile, test, and package outcomes for the whole invocation.
 
+After an edit, MCP **`jk_affected_tests`** (or `jk test --affected`) writes
+`target/jk-tests-affected.md` — a short ranked list of test classes for the working tree.
+That file is not the last-job report. `--affected` and `--affected-since` cannot be combined.
+
 ## Tests — cheapest rung that can catch the bug
 
 Default **`jk test` is the unit suite only.** That is the inner loop. Do not pass
@@ -34,6 +38,7 @@ Default **`jk test` is the unit suite only.** That is the inner loop. Do not pas
 
 | When | Command |
 |------|---------|
+| Which tests did this edit touch? | `jk test --affected` / `--affected-since` (table; does not run) |
 | Editing a class / fixing a unit assertion | `jk test` |
 | About to push, or the change crossed DB / HTTP / FS | `jk test --gate` (alias `--pre-merge`) |
 | UI / compose / contract change, or reproducing CI | `jk test --suite e2e` |
