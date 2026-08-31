@@ -115,7 +115,4 @@ public sealed interface EngineEvent {
      * {@link PlanFinishLine} — its kind-specific tails are encoded by the owning verb.
      */
     record PlanFinish(String dir, boolean success) implements EngineEvent {}
-
-    /** Schema-1 {@code affected-tests} JSON object (already encoded). */
-    record AffectedTests(String dir, String jsonObject) implements EngineEvent {}
 }

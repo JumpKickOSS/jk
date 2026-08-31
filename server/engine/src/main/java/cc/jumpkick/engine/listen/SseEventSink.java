@@ -49,7 +49,6 @@ public final class SseEventSink implements EventSink {
             case EngineEvent.PlanModule e -> {}
             case EngineEvent.PlanStep e -> {}
             case EngineEvent.PlanDone e -> {}
-            case EngineEvent.AffectedTests e -> {}
         }
     }
 }
