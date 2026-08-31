@@ -3443,7 +3443,7 @@ val checkManifestDepParity by tasks.registering {
 tasks.named("check") { dependsOn(checkManifestDepParity) }
 
 // ---------------------------------------------------------------------------
-// Guard G37 (JK-2602): recursive tree deletion has one owner, and it does not follow links.
+// Guard G37 (JK-2603): recursive tree deletion has one owner, and it does not follow links.
 //
 // Defect it prevents: a delete that empties whatever a symbolic link points at. jk discovers
 // host-installed toolchains and links its registry entries to them — an sdkman or IntelliJ JDK is
@@ -3534,7 +3534,7 @@ val checkOneRecursiveDelete by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("Recursive tree deletion belongs to cc.jumpkick.host.PathUtil,"
-                    + " which removes a symbolic link instead of entering it (JK-2602). These do it"
+                    + " which removes a symbolic link instead of entering it (JK-2603). These do it"
                     + " themselves, so each one decides that question again:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  PathUtil is on every module's classpath — :host is the floor the CLI, the"
