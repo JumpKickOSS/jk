@@ -68,6 +68,79 @@ class AtomicWritesTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void replace_leaves_an_existing_files_mode_alone(@TempDir Path dir) throws IOException {
+        // JK-2623. The staging file is created 0600 by the JDK, and the rename used to carry that
+        // onto the target — so a replace silently tightened files that were never secrets. The one
+        // that mattered is jk-lock.toml: a file whose whole purpose is to be committed and read by
+        // everybody, written owner-only.
+        Path target = dir.resolve("jk-lock.toml");
+        Files.writeString(target, "before");
+        Files.setPosixFilePermissions(target, PosixFilePermissions.fromString("rw-r--r--"));
+
+        AtomicWrites.replace(target, "after");
+
+        assertThat(Files.readString(target)).isEqualTo("after");
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(target)))
+                .as("a replace changes the contents, not the mode")
+                .isEqualTo("rw-r--r--");
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void replace_preserves_a_tight_mode_too(@TempDir Path dir) throws IOException {
+        // The rule is "keep what you found", not "widen". A target somebody deliberately locked down
+        // stays locked down — otherwise the fix for the leak would itself be a leak.
+        Path target = dir.resolve("secret.toml");
+        Files.writeString(target, "before");
+        Files.setPosixFilePermissions(target, PosixFilePermissions.fromString("rw-------"));
+
+        AtomicWrites.replace(target, "after");
+
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(target)))
+                .isEqualTo("rw-------");
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void a_fresh_replace_lands_at_the_same_mode_a_plain_write_would(@TempDir Path dir) throws IOException {
+        // No target to copy a mode from, so the answer has to be the process default — whatever the
+        // umask says, asserted against Files.write rather than against a hardcoded 0644, because the
+        // umask running the suite is not ours to choose.
+        Path reference = dir.resolve("reference.txt");
+        Files.write(reference, "x".getBytes(StandardCharsets.UTF_8));
+
+        Path target = dir.resolve("fresh.txt");
+        AtomicWrites.replace(target, "x");
+
+        assertThat(Files.getPosixFilePermissions(target))
+                .as("a created file is an ordinary file")
+                .isEqualTo(Files.getPosixFilePermissions(reference));
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void replaceDurably_follows_the_same_rule(@TempDir Path dir) throws IOException {
+        // The lockfile goes through replaceDurably, not replace, so the fsync path needs the mode
+        // handling too — it was the original report.
+        Path target = dir.resolve("jk-lock.toml");
+        Files.writeString(target, "before");
+        Files.setPosixFilePermissions(target, PosixFilePermissions.fromString("rw-r--r--"));
+
+        AtomicWrites.replaceDurably(target, "after");
+
+        assertThat(Files.readString(target)).isEqualTo("after");
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(target)))
+                .isEqualTo("rw-r--r--");
+
+        Path fresh = dir.resolve("fresh-durable.txt");
+        Path reference = dir.resolve("reference-durable.txt");
+        Files.write(reference, "x".getBytes(StandardCharsets.UTF_8));
+        AtomicWrites.replaceDurably(fresh, "x");
+        assertThat(Files.getPosixFilePermissions(fresh)).isEqualTo(Files.getPosixFilePermissions(reference));
+    }
+
+    @Test
     void moveInto_replaces_an_existing_file(@TempDir Path dir) throws IOException {
         Path target = dir.resolve("c.txt");
         Files.writeString(target, "stale");

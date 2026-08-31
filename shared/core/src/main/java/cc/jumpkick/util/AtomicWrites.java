@@ -12,6 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Set;
 import java.util.function.IntConsumer;
 
 /**
@@ -63,7 +67,7 @@ public final class AtomicWrites {
     public static void replace(Path target, byte[] bytes) throws IOException {
         Path parent = target.getParent();
         if (parent != null) Files.createDirectories(parent);
-        Path tmp = Files.createTempFile(parent, "." + target.getFileName() + "-", ".tmp");
+        Path tmp = staging(parent, target);
         boolean moved = false;
         try {
             Files.write(tmp, bytes);
@@ -85,7 +89,7 @@ public final class AtomicWrites {
     public static void replaceDurably(Path target, byte[] bytes) throws IOException {
         Path parent = target.getParent();
         if (parent != null) Files.createDirectories(parent);
-        Path tmp = Files.createTempFile(parent, "." + target.getFileName() + "-", ".tmp");
+        Path tmp = staging(parent, target);
         boolean moved = false;
         try {
             try (FileChannel ch = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
@@ -110,6 +114,67 @@ public final class AtomicWrites {
     public static void replace(Path target, String content) throws IOException {
         replace(target, content.getBytes(StandardCharsets.UTF_8));
     }
+
+    /**
+     * A temp sibling to write into, carrying the mode {@code target} should end up with.
+     *
+     * <p><strong>Why this is not just {@code createTempFile}.</strong> On POSIX,
+     * {@link Files#createTempFile} creates {@code 0600} <em>by design</em> and ignores the umask —
+     * the JDK assumes a temp file holds something private. The rename then carries those bits onto
+     * the target, so a replace did not only change a file's contents, it tightened its permissions,
+     * and it did so to files that were never secrets: {@code jk-lock.toml}, whose entire purpose is
+     * to be committed and read by everyone on the team; the user's own hand-written {@code jk.toml},
+     * which {@code McpManifest} edits surgically; {@code jk-results.md}, which a CI runner may
+     * collect as a different uid. Worse, it was sticky in the wrong direction — 0644 in, 0600 out,
+     * and nothing ever widened it back, so a file loosened by hand re-tightened on the next build
+     * (JK-2623).
+     *
+     * <p>So: create at {@code 0666 & ~umask}, which is exactly what a plain {@link Files#write}
+     * would produce (the kernel masks the requested mode, so asking for {@code rw-rw-rw-} asks for
+     * the default rather than for world-writable), then adopt {@code target}'s current mode when
+     * {@code target} already exists. A replace preserves what it found; a create looks like any
+     * other new file.
+     *
+     * <p>The mode is set <em>before</em> the bytes are written, not after, so a target that really is
+     * {@code 0600} never has a readable window with content in it. Secrets should not be arriving
+     * here at all — {@code OwnerOnlyFiles} is the path that creates {@code 0600} deliberately, and
+     * every credential store in the tree uses it — but a helper this widely called does not get to
+     * assume that.
+     *
+     * <p>Non-POSIX filesystems take neither branch and get the JDK's default: nothing to set, and
+     * nothing to throw.
+     */
+    private static Path staging(Path parent, Path target) throws IOException {
+        String prefix = "." + target.getFileName() + "-";
+        if (Files.getFileAttributeView(parent, PosixFileAttributeView.class) == null) {
+            return Files.createTempFile(parent, prefix, ".tmp"); // non-POSIX: no modes to manage
+        }
+        Path tmp;
+        try {
+            tmp = Files.createTempFile(parent, prefix, ".tmp", PosixFilePermissions.asFileAttribute(CREATE_MODE));
+        } catch (UnsupportedOperationException noPosixAttrs) {
+            return Files.createTempFile(parent, prefix, ".tmp");
+        }
+        Set<PosixFilePermission> existing;
+        try {
+            existing = Files.getPosixFilePermissions(target);
+        } catch (IOException absent) {
+            return tmp; // the common case: no target yet, so the umask default stands
+        }
+        try {
+            Files.setPosixFilePermissions(tmp, existing);
+        } catch (IOException ignored) {
+            // Best-effort: publishing the new contents matters more than matching the old mode.
+        }
+        return tmp;
+    }
+
+    /**
+     * What to ask for when creating a fresh staging file. The kernel applies the umask to this, so
+     * it means "the default a new file gets here", not "world-writable" — under the usual
+     * {@code 022} it lands as {@code rw-r--r--}, byte for byte what {@link Files#write} produces.
+     */
+    private static final Set<PosixFilePermission> CREATE_MODE = PosixFilePermissions.fromString("rw-rw-rw-");
 
     /**
      * Move a fully-written temp file over {@code target} atomically ({@code REPLACE_EXISTING}
