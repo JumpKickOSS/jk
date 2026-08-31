@@ -21,10 +21,12 @@ jk build --gate                      # package with the gate green
 jk build --all                       # package with the full suite green
 ```
 
-`--affected` ranks at most 20 test **classes** for the working tree, prints them as a table,
-and writes `target/jk-tests-affected.md`. It does **not** run tests. `--affected-since=<ref>`
-is the commit-range module cone and runs **all** tests in those modules. They cannot be
-combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
+`--affected` ranks at most 20 test **classes** for the **git working tree** (unstaged +
+untracked; last commit if the tree is clean), prints them as a table, and writes
+`target/jk-tests-affected.md`. It does **not** run tests. That cone is not `jk explain`'s
+rebuild set (cache-dirty modules). `--affected-since=<ref>` is the commit-range module cone
+and runs **all** tests in those modules. They cannot be combined (`--aff` is ambiguous).
+Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
 run `jk test`, not `--all`. Before you share a commit, run **`--gate`** (silent

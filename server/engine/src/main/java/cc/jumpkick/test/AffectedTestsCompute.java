@@ -6,17 +6,23 @@ import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Rank tests for the working tree from on-disk classes. Does not compile or run. */
+/** Rank tests for the working tree from sources and on-disk classes. Does not compile or run. */
 public final class AffectedTestsCompute {
 
     private AffectedTestsCompute() {}
@@ -47,7 +53,7 @@ public final class AffectedTestsCompute {
                     build.isWorkspaceRoot() ? BuildLayout.of(root, modDir, unit) : BuildLayout.of(modDir, unit);
             Map<String, ClassAbi.Fingerprint> current = AbiIndex.scanClasses(layout.classesDir());
             Map<String, ClassAbi.Fingerprint> pre = AbiIndex.load(AbiIndex.path(layout.buildDir()));
-            var tests = TestClassIndex.scan(layout.testClassesDir(), current.keySet());
+            var tests = testsFor(modDir, layout.testClassesDir(), current.keySet(), sel);
             String coord = unit.project().group() + ":" + unit.project().name();
             String rel = root.relativize(modDir).toString();
             if (rel.isBlank()) rel = ".";
@@ -66,6 +72,57 @@ public final class AffectedTestsCompute {
             acc = acc.merge(slice);
         }
         return capGlobal(acc);
+    }
+
+    /**
+     * Compiled test classes (imports + tags) plus every test source in the selection, so ranking
+     * still works when {@code target/classes/test} has not been built yet.
+     */
+    static List<TestClassIndex.Entry> testsFor(
+            Path moduleDir, Path testClassesDir, Set<String> production, TestSelection sel) throws IOException {
+        LinkedHashMap<String, TestClassIndex.Entry> byName = new LinkedHashMap<>();
+        for (TestClassIndex.Entry e : TestClassIndex.scan(testClassesDir, production)) {
+            byName.put(e.className(), e);
+        }
+        for (TestClassIndex.Entry e : scanTestSources(moduleDir, sel)) {
+            byName.putIfAbsent(e.className(), e);
+        }
+        return List.copyOf(byName.values());
+    }
+
+    static List<TestClassIndex.Entry> scanTestSources(Path moduleDir, TestSelection sel) throws IOException {
+        boolean compact = ModuleLayout.isCompact(moduleDir);
+        List<String> suites;
+        if (sel != null && sel.allSuites()) {
+            suites = TestSuites.discover(moduleDir, compact);
+        } else if (sel == null || sel.suites().isEmpty()) {
+            suites = List.of(TestSuites.DEFAULT);
+        } else {
+            suites = sel.suites();
+        }
+        LinkedHashMap<String, TestClassIndex.Entry> out = new LinkedHashMap<>();
+        for (String suite : suites) {
+            LinkedHashSet<Path> roots = new LinkedHashSet<>();
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
+            for (Path root : roots) {
+                PathUtil.forEachRegularFile(root, (p, attrs) -> {
+                    String fn = p.getFileName().toString();
+                    if (!(fn.endsWith(".java") || fn.endsWith(".kt") || fn.endsWith(".groovy"))) return;
+                    if (fn.equals("package-info.java") || fn.equals("module-info.java")) return;
+                    String rel = root.relativize(p).toString().replace('\\', '/');
+                    int ext = rel.lastIndexOf('.');
+                    if (ext < 0) return;
+                    String fqc = rel.substring(0, ext).replace('/', '.');
+                    if (fqc.isBlank() || fqc.contains("$")) return;
+                    out.putIfAbsent(
+                            fqc,
+                            new TestClassIndex.Entry(fqc, Set.of(), Set.of(), TestClassIndex.nameMatchSimple(fqc)));
+                });
+            }
+        }
+        return List.copyOf(out.values());
     }
 
     /** Display/MCP budget: highest scores across the workspace, at most {@link AffectedTests#CAP}. */

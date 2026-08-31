@@ -100,6 +100,45 @@ class AffectedTestRankerTest {
     }
 
     @Test
+    void dirty_test_source_ranks_without_compiled_index() {
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/api"),
+                "com.acme:api",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of("api/src/test/java/com/acme/FooTest.java"),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                List.of(),
+                Set.of(),
+                List.of()));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.classNames()).containsExactly("com.acme.FooTest");
+        assertThat(r.ranked().getFirst().reason()).isEqualTo("test-src");
+        assertThat(r.ranked().getFirst().score()).isEqualTo(110);
+    }
+
+    @Test
+    void dirty_main_name_matches_source_test_without_class_files() {
+        TestClassIndex.Entry test = new TestClassIndex.Entry("com.acme.FooTest", Set.of(), Set.of(), "Foo");
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/api"),
+                "com.acme:api",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of("api/src/main/java/com/acme/Foo.java"),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                List.of(test),
+                Set.of(),
+                List.of()));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.classNames()).containsExactly("com.acme.FooTest");
+    }
+
+    @Test
     void cap_is_twenty() {
         var prev = new ClassAbi.Fingerprint("a", "1");
         var now = new ClassAbi.Fingerprint("a", "2");

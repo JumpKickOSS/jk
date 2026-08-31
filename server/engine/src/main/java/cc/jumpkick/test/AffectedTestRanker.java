@@ -168,7 +168,9 @@ public final class AffectedTestRanker {
                     t.nameMatchSimple().isEmpty() ? Set.of() : bySimple.getOrDefault(t.nameMatchSimple(), Set.of());
             for (var e : changed.entrySet()) {
                 boolean imported = t.imports().contains(e.getKey());
-                boolean named = nameHits.contains(e.getKey());
+                boolean named = nameHits.contains(e.getKey())
+                        || (!t.nameMatchSimple().isEmpty()
+                                && t.nameMatchSimple().equals(simpleName(e.getKey())));
                 if (e.getValue() == ClassAbi.Kind.BODY && named && score < 100) {
                     score = 100;
                     reason = "name-body:" + e.getKey();
@@ -184,6 +186,11 @@ public final class AffectedTestRanker {
                 }
             }
             if (score > 0) scored.add(new Scored(t.className(), reason, score));
+        }
+        LinkedHashSet<String> already = new LinkedHashSet<>();
+        for (Scored s : scored) already.add(s.className());
+        for (String fqc : dirtyTestClasses) {
+            if (already.add(fqc)) scored.add(new Scored(fqc, "test-src", 110));
         }
         scored.sort(Comparator.comparingInt(Scored::score).reversed().thenComparing(Scored::className));
         int candidates = scored.size();
@@ -256,6 +263,16 @@ public final class AffectedTestRanker {
             if (s.contains("src/" + suite + "/") || s.contains("/" + suite + "/")) return true;
         }
         return false;
+    }
+
+    static String simpleName(String fqc) {
+        if (fqc == null || fqc.isBlank()) return "";
+        int dot = fqc.lastIndexOf('.');
+        String simple = dot < 0 ? fqc : fqc.substring(dot + 1);
+        if (simple.endsWith("Kt") && simple.length() > 2) {
+            return simple.substring(0, simple.length() - 2);
+        }
+        return simple;
     }
 
     static String fqcFromSource(String rel) {
