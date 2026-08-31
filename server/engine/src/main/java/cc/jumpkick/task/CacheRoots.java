@@ -6,6 +6,7 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,21 +73,19 @@ public final class CacheRoots {
      * path fragments into {@code refs}.
      */
     private static void scanTextFilesRecursively(Path dir, Cas cas, Set<String> refs) throws IOException {
-        try (Stream<Path> stream = Files.walk(dir)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                String body;
-                try {
-                    body = Files.readString(file, StandardCharsets.UTF_8);
-                } catch (IOException ignored) {
-                    // Skip binaries / unreadable files; if our text roots
-                    // ever go binary we'll need a per-source parser anyway.
-                    continue;
-                }
-                addExplicitShaTokens(body, refs);
-                addPathEmbeddedShas(body, cas, refs);
+        // Guard G45: regular-file-ness comes from the attributes the walk already read.
+        PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+            String body;
+            try {
+                body = Files.readString(file, StandardCharsets.UTF_8);
+            } catch (IOException ignored) {
+                // Skip binaries / unreadable files; if our text roots
+                // ever go binary we'll need a per-source parser anyway.
+                return;
             }
-        }
+            addExplicitShaTokens(body, refs);
+            addPathEmbeddedShas(body, cas, refs);
+        });
     }
 
     /**

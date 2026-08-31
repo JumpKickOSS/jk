@@ -434,11 +434,12 @@ public final class BuildLogicSupport {
     public static List<Path> generatedSources(BuildLayout layout, String suffix) throws IOException {
         Path root = generatedSourceRoot(layout);
         if (!Files.isDirectory(root)) return List.of();
-        try (Stream<Path> walk = Files.walk(root)) {
-            return walk.filter(f -> Files.isRegularFile(f) && f.toString().endsWith(suffix))
-                    .sorted()
-                    .toList();
-        }
+        // Guard G45: regular-file-ness comes from the walk's own attributes.
+        List<Path> hits = new ArrayList<>();
+        PathUtil.forEachRegularFile(root, (f, attrs) -> {
+            if (f.toString().endsWith(suffix)) hits.add(f);
+        });
+        return hits.stream().sorted().toList();
     }
 
     private static void mergeIntoClasses(Path generated, Path classesDir) throws IOException {

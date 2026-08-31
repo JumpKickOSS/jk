@@ -3,12 +3,11 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -73,17 +72,13 @@ public final class ClasspathAbi {
 
     private static List<String> extractDir(Path root) throws IOException {
         List<Path> classes = new ArrayList<>();
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
-                if (!a.isRegularFile()) return FileVisitResult.CONTINUE;
-                if (BuildStamps.isStampFile(f.getFileName().toString())) return FileVisitResult.CONTINUE;
-                Path rel = root.relativize(f);
-                if (ActionCache.hasJkScratchSegment(rel)) return FileVisitResult.CONTINUE;
-                if (!f.getFileName().toString().endsWith(".class")) return FileVisitResult.CONTINUE;
-                classes.add(f);
-                return FileVisitResult.CONTINUE;
-            }
+        // Guard G45: the walk already read each entry's attributes, so ask for them once rather
+        // than re-resolving the path to ask again.
+        PathUtil.forEachRegularFile(root, (f, a) -> {
+            if (BuildStamps.isStampFile(f.getFileName().toString())) return;
+            if (ActionCache.hasJkScratchSegment(root.relativize(f))) return;
+            if (!f.getFileName().toString().endsWith(".class")) return;
+            classes.add(f);
         });
         classes.sort(Comparator.comparing(p -> root.relativize(p).toString().replace('\\', '/')));
         List<String> lines = new ArrayList<>();
