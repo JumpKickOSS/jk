@@ -6,8 +6,8 @@ import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.discovery.ToolProvisioner;
 import cc.jumpkick.discovery.ToolSpec;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,14 +68,11 @@ public final class ToolProvisioning {
                 && isHealthyEntry(spec, existing.get().home())) {
             return new Result(existing.get(), Result.Source.CACHED, "");
         }
-        // 2. Broken cache entry — purge and continue.
+        // 2. Broken cache entry — purge and continue. Through JkOwnership rather than a local
+        // three-arm copy: link-vs-populated-directory is the same question JK-2624 got wrong
+        // elsewhere, and having one answer is the point of the owner.
         if (existing.isPresent()) {
-            Path entry = existing.get().home();
-            if (Files.isSymbolicLink(entry)) {
-                SymlinkProvisioner.unlink(entry);
-            } else if (Files.exists(entry)) {
-                PathUtil.deleteRecursively(entry);
-            }
+            JkOwnership.removeIfOwned(existing.get().home());
         }
 
         // 3. Probe the host for an existing install.

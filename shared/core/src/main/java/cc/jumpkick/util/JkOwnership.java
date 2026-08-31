@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.util;
+
+import cc.jumpkick.host.PathUtil;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+
+/**
+ * "Did jk create this?" — the question a delete has to answer before it recurses into a directory
+ * jk shares with somebody else.
+ *
+ * <p>jk is a guest in several roots on purpose. {@code ~/.jdks} is IntelliJ's, and installing there
+ * is the point — "so IDE and JumpKick share managed runtimes". {@code ~/.local/bin} is everyone's.
+ * In a shared root a <em>name</em> is not a claim: {@code graalvm-25} is a name jk wants and also,
+ * very often, a JDK the user installed first. Three sites decided that question for themselves and
+ * two of them got it wrong, destroying four real JDK installations (JK-2624). This is the fourth
+ * spelling of the rule and meant to be the last.
+ *
+ * <p><strong>Where a marker is and is not the answer.</strong> Most of jk's deletes are under roots
+ * it owns outright — the cache, the store, the state dir, a project's {@code target/} — and there
+ * containment is a <em>stronger</em> check than a marker, because it cannot be lost, forged, or
+ * forgotten at write time. Requiring a marker there would add ceremony to a hundred correct call
+ * sites and invent a new failure mode where jk refuses to clean its own cache. So this type is for
+ * the shared roots, and for the shape of thing that can hold a marker: a directory tree. A single
+ * file in a shared directory cannot carry one — the launcher jk writes into {@code ~/.local/bin}
+ * proves its own origin with a generated-by header instead (JK-2626).
+ *
+ * <p>Compare {@link OwnerOnlyFiles}, which owns who may <em>read</em> a file. This owns who may
+ * <em>delete</em> one.
+ */
+public final class JkOwnership {
+
+    /** Marker file written inside a directory tree jk created. */
+    public static final String MARKER = ".jk-owned";
+
+    private JkOwnership() {}
+
+    /**
+     * Write the ownership marker under {@code dir}. Best-effort and never throws: a missing marker
+     * costs a later refusal to clean up, which is the safe direction to fail in.
+     */
+    public static void mark(Path dir) {
+        if (dir == null) return;
+        try {
+            Files.createDirectories(dir);
+            Path marker = dir.resolve(MARKER);
+            if (!Files.exists(marker)) Files.writeString(marker, "jumpkick\n", StandardCharsets.UTF_8);
+        } catch (IOException ignored) {
+            // Attribution only; the install itself is already on disk.
+        }
+    }
+
+    /** Whether jk created the tree at {@code dir}. */
+    public static boolean isOwned(Path dir) {
+        return dir != null && Files.isRegularFile(dir.resolve(MARKER));
+    }
+
+    /**
+     * Remove whatever is at {@code path} — a symlink, a Windows junction, an empty directory, a
+     * regular file — and, when it is a <em>populated</em> directory, only if jk created it.
+     *
+     * <p>{@link Files#delete} is the load-bearing first move. It removes a link, a junction, an
+     * empty directory or a file in one shot and never follows the link, so a junction's target is
+     * untouched; only a genuinely populated directory reaches the ownership question. A
+     * {@link Files#walk}-shaped delete would descend into a junction instead, because Java does not
+     * classify junctions as symlinks, and delete the real JDK on the other side.
+     *
+     * <p>An unowned populated directory <strong>throws</strong> rather than returning quietly. The
+     * callers here treat a failure to claim a name as non-fatal — a stable pointer is a convenience,
+     * the install behind it is already complete — so the operation still finishes; the difference is
+     * that the reason lands somewhere a human reads instead of a JDK going missing.
+     */
+    public static void removeIfOwned(Path path) throws IOException {
+        if (path == null) return;
+        try {
+            Files.delete(path);
+            return;
+        } catch (NoSuchFileException alreadyGone) {
+            return;
+        } catch (DirectoryNotEmptyException populated) {
+            // The only case that needs an answer.
+        }
+        if (!isOwned(path)) {
+            throw new IOException("refusing to remove " + path + " — jk did not create it (no " + MARKER
+                    + " marker), and this directory is shared. Remove it yourself if you meant to,"
+                    + " or point jk somewhere else.");
+        }
+        PathUtil.deleteRecursively(path);
+    }
+}

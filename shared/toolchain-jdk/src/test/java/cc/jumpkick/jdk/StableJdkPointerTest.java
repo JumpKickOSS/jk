@@ -36,7 +36,7 @@ class StableJdkPointerTest {
 
         assertThatIOException()
                 .isThrownBy(() -> new StableJdkPointer(jdks).ensure("graalvm-25", ours))
-                .withMessageContaining("not installed by jk");
+                .withMessageContaining("jk did not create it");
 
         assertThat(theirs.resolve("release")).as("their JDK is untouched").exists();
         assertThat(JdkFingerprint.java(theirs)).exists();

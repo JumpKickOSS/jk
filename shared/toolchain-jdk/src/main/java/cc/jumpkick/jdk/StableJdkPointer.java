@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
-import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -67,54 +65,11 @@ public final class StableJdkPointer {
             } catch (IOException dangling) {
                 // fall through and recreate
             }
-            removeExisting(pointer);
+            JkOwnership.removeIfOwned(pointer);
         }
 
         Files.createDirectories(jdksRoot);
         DirLinks.replace(pointer, installDir);
     }
 
-    /**
-     * Remove a pointer whether it's a POSIX symlink, a Windows junction, or a real directory —
-     * without ever recursing <em>through</em> a link, and without ever deleting a JDK jk did not
-     * install.
-     *
-     * <p>{@link Files#delete} removes a symlink, a junction, or an empty dir in one shot and never
-     * follows the link, so a junction's target is untouched. Only a genuinely populated directory
-     * reaches the recursive branch (a junction never does — {@code delete} succeeds on it first).
-     * This is the load-bearing invariant: {@link Files#walk} would descend into a junction (Java
-     * doesn't classify junctions as symlinks) and delete the real JDK.
-     *
-     * <p><strong>And a populated directory is not automatically ours to remove.</strong> The
-     * pointer name is {@code <vendor>-<major>} and {@link JkDirs#jdks()} is a <em>shared</em> root —
-     * IntelliJ's {@code ~/.jdks}, which is the entire point of installing there. So {@code
-     * graalvm-25} is simultaneously a name jk wants and, on a real machine, very often a JDK the
-     * user or the IDE put there first. This branch used to assume any real directory in the way was
-     * jk's own leftover from a repoint and delete it outright; on the developer's machine that
-     * silently destroyed a GraalVM 25 and a Temurin install, leaving empty directories behind
-     * (JK-2624). {@link JdkOwnership} exists precisely to tell the two apart — it was written so
-     * "uninstall/GC never deletes an alien install that happens to share the IntelliJ JDK root" —
-     * and this site simply never asked it.
-     *
-     * <p>Refusing throws rather than returning quietly: every caller treats a pointer failure as
-     * non-fatal (the pointer is a convenience, the install is already complete), so the build still
-     * succeeds — but the reason lands somewhere a human can read instead of a JDK going missing.
-     */
-    private static void removeExisting(Path pointer) throws IOException {
-        try {
-            Files.delete(pointer);
-        } catch (NoSuchFileException gone) {
-            // already removed
-        } catch (DirectoryNotEmptyException realDir) {
-            // A populated directory sits where the pointer belongs. Ours to reclaim only if we
-            // put it there.
-            if (!JdkOwnership.isJkOwned(pointer)) {
-                throw new IOException("refusing to remove " + pointer
-                        + " to free the stable pointer name: it is a JDK not installed by jk (no "
-                        + JdkOwnership.MARKER + " marker). Remove it yourself, or install jk's JDK "
-                        + "under a different root with JK_JDKS_DIR.");
-            }
-            PathUtil.deleteRecursively(pointer);
-        }
-    }
 }

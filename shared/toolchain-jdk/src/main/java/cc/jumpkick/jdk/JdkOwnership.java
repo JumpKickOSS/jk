@@ -1,34 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
-import java.io.IOException;
-import java.nio.file.Files;
+import cc.jumpkick.util.JkOwnership;
 import java.nio.file.Path;
 
 /**
- * Marks JDK install trees that JumpKick extracted, so uninstall/GC never deletes an alien
- * install that happens to share the IntelliJ JDK root ({@code ~/.jdks} /
+ * JDK-shaped face of {@link JkOwnership}: marks install trees JumpKick extracted, so uninstall/GC
+ * never deletes an alien install that happens to share the IntelliJ JDK root ({@code ~/.jdks} /
  * {@code ~/Library/Java/JavaVirtualMachines}).
+ *
+ * <p>The marker itself is not JDK vocabulary — {@code ~/.local/bin} and the tool store ask the same
+ * question — so it lives in {@link JkOwnership} and this type adds only the part that is about
+ * JDKs: unwrapping a macOS {@code Contents/Home} bundle to find the tree the marker sits in.
  */
 public final class JdkOwnership {
 
     /** Marker file name inside an install directory (or next to a macOS {@code .jdk} bundle). */
-    public static final String MARKER = ".jk-owned";
+    public static final String MARKER = JkOwnership.MARKER;
 
     private JdkOwnership() {}
 
     /** Write the ownership marker under {@code installDir} (best-effort; never throws). */
     public static void mark(Path installDir) {
-        if (installDir == null) return;
-        try {
-            Files.createDirectories(installDir);
-            Path marker = installDir.resolve(MARKER);
-            if (!Files.exists(marker)) {
-                Files.writeString(marker, "jumpkick\n");
-            }
-        } catch (IOException ignored) {
-            // Best-effort: missing marker only affects attribution/uninstall, not runtime use.
-        }
+        JkOwnership.mark(installDir);
     }
 
     /**
@@ -36,8 +30,7 @@ public final class JdkOwnership {
      * marked as jk-installed.
      */
     public static boolean isJkOwned(Path installDir) {
-        if (installDir == null) return false;
-        return Files.isRegularFile(installDir.resolve(MARKER));
+        return JkOwnership.isOwned(installDir);
     }
 
     /**

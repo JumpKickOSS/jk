@@ -2,7 +2,9 @@
 package cc.jumpkick.discovery;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIOException;
 
+import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -29,6 +31,41 @@ class SymlinkProvisionerTest {
         SymlinkProvisioner.link(link, source);
         assertThat(Files.isSymbolicLink(link)).isTrue();
         assertThat(Files.readSymbolicLink(link)).isEqualTo(source);
+    }
+
+    @Test
+    void link_refuses_to_clobber_a_populated_directory_jk_did_not_create(@TempDir Path tempDir) throws IOException {
+        // JK-2625. link() cleared the way by recursing into whatever sat at the target. Every
+        // current caller happens to pass a path under jk's own store, so this never fired — but the
+        // class advertises itself as shared with the JDK side, and that is exactly the caller that
+        // pointed the identical logic at ~/.jdks and destroyed real installs (JK-2624).
+        Path theirs = tempDir.resolve("their-tool");
+        Files.createDirectories(theirs);
+        Files.writeString(theirs.resolve("payload.txt"), "irreplaceable\n");
+        Path source = Files.createDirectories(tempDir.resolve("source"));
+
+        assertThatIOException()
+                .isThrownBy(() -> SymlinkProvisioner.link(theirs, source))
+                .withMessageContaining("jk did not create it");
+
+        assertThat(theirs.resolve("payload.txt")).exists();
+        assertThat(Files.isSymbolicLink(theirs)).isFalse();
+    }
+
+    @Test
+    void link_still_replaces_a_populated_directory_jk_did_create(@TempDir Path tempDir) throws IOException {
+        // The flip side: a stale download of jk's own is still cleared, or the refusal above would
+        // turn provisioning into a dead end.
+        Path ours = tempDir.resolve("our-tool");
+        Files.createDirectories(ours);
+        Files.writeString(ours.resolve("payload.txt"), "stale\n");
+        JkOwnership.mark(ours);
+        Path source = Files.createDirectories(tempDir.resolve("source"));
+
+        SymlinkProvisioner.link(ours, source);
+
+        assertThat(Files.isSymbolicLink(ours)).isTrue();
+        assertThat(Files.readSymbolicLink(ours)).isEqualTo(source);
     }
 
     @Test
