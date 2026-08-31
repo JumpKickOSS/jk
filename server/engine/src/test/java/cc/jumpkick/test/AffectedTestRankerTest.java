@@ -17,8 +17,8 @@ class AffectedTestRankerTest {
 
     @Test
     void body_only_name_match_ranks_foo_test_first() {
-        var foo = new ClassAbi.Fingerprint("api", "body1");
-        var fooNow = new ClassAbi.Fingerprint("api", "body2");
+        var foo = new ClassAbi.Fingerprint("api");
+        var fooNow = new ClassAbi.Fingerprint("api");
         TestClassIndex.Entry test =
                 new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), "Foo");
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
@@ -40,8 +40,8 @@ class AffectedTestRankerTest {
 
     @Test
     void abi_import_outranks_unrelated() {
-        var prev = new ClassAbi.Fingerprint("api1", "b");
-        var now = new ClassAbi.Fingerprint("api2", "b");
+        var prev = new ClassAbi.Fingerprint("api1");
+        var now = new ClassAbi.Fingerprint("api2");
         TestClassIndex.Entry importer =
                 new TestClassIndex.Entry("com.acme.BarTest", Set.of("com.acme.Foo"), Set.of(), "Bar");
         TestClassIndex.Entry other =
@@ -64,8 +64,8 @@ class AffectedTestRankerTest {
 
     @Test
     void exclude_tag_drops_class() {
-        var foo = new ClassAbi.Fingerprint("a", "1");
-        var fooNow = new ClassAbi.Fingerprint("a", "2");
+        var foo = new ClassAbi.Fingerprint("a");
+        var fooNow = new ClassAbi.Fingerprint("a");
         TestClassIndex.Entry slow =
                 new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of("slow"), "Foo");
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
@@ -240,8 +240,8 @@ class AffectedTestRankerTest {
 
     @Test
     void local_changed_outranks_the_same_foreign_type() {
-        var prev = new ClassAbi.Fingerprint("api1", "b");
-        var now = new ClassAbi.Fingerprint("api1", "b2");
+        var prev = new ClassAbi.Fingerprint("api1");
+        var now = new ClassAbi.Fingerprint("api1");
         TestClassIndex.Entry test =
                 new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), "Foo");
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
@@ -275,8 +275,8 @@ class AffectedTestRankerTest {
 
         TestClassIndex.Entry test =
                 new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), "Foo");
-        var prev = new ClassAbi.Fingerprint("api", "b1");
-        var now = new ClassAbi.Fingerprint("api", "b2");
+        var prev = new ClassAbi.Fingerprint("api");
+        var now = new ClassAbi.Fingerprint("api");
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 module,
                 "com.acme:api",
@@ -321,8 +321,8 @@ class AffectedTestRankerTest {
 
     @Test
     void cap_is_twenty() {
-        var prev = new ClassAbi.Fingerprint("a", "1");
-        var now = new ClassAbi.Fingerprint("a", "2");
+        var prev = new ClassAbi.Fingerprint("a");
+        var now = new ClassAbi.Fingerprint("a");
         List<TestClassIndex.Entry> tests = new ArrayList<>();
         for (int i = 0; i < 25; i++) {
             tests.add(new TestClassIndex.Entry("com.acme.T" + i + "Test", Set.of("com.acme.Foo"), Set.of(), "T" + i));

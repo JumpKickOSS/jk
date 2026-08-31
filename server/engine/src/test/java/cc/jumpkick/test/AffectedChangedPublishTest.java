@@ -15,8 +15,8 @@ class AffectedChangedPublishTest {
     @Test
     void classifies_only_this_modules_dirty_main_sources() {
         AffectedChanged carrier = new AffectedChanged();
-        var prev = new ClassAbi.Fingerprint("api1", "b1");
-        var now = new ClassAbi.Fingerprint("api2", "b2");
+        var prev = new ClassAbi.Fingerprint("api1");
+        var now = new ClassAbi.Fingerprint("api2");
         AffectedChangedPublish.classifyInto(
                 carrier,
                 Path.of("/ws"),

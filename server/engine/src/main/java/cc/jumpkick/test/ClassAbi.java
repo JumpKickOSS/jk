@@ -5,6 +5,7 @@ import cc.jumpkick.host.Hashing;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.SortedMap;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -13,22 +14,41 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 /**
- * Language-neutral ABI vs body fingerprints of a JVM class file. API includes {@code ConstantValue}
- * so inlined {@code public static final} constants classify as ABI, matching Zinc.
+ * Language-neutral ABI fingerprint of a JVM class file. API includes {@code ConstantValue} so
+ * inlined {@code public static final} constants classify as ABI, matching Zinc. Named nested
+ * classes fold into their owner's fingerprint ({@link #of(byte[], SortedMap)}), so an API change
+ * inside {@code Foo.Builder} flips {@code Foo} to ABI (JK-2616). A body hash used to ride along;
+ * {@link #classify} never read it, so it is gone — half the hashing for the same answers.
  */
 public final class ClassAbi {
 
     private ClassAbi() {}
 
-    public record Fingerprint(String apiHex, String bodyHex) {}
+    public record Fingerprint(String apiHex) {}
 
     public static Fingerprint of(byte[] classBytes) {
+        return new Fingerprint(Hashing.sha256Hex(String.join("\n", apiLines(classBytes))));
+    }
+
+    /**
+     * Fingerprint of an owner class plus its named nested classes' API surfaces, keyed by nested
+     * class file name (sorted, so order is stable). Anonymous/local classes ({@code Foo$1}) are the
+     * caller's to exclude — a body edit that adds one must stay BODY.
+     */
+    public static Fingerprint of(byte[] ownerBytes, SortedMap<String, byte[]> nestedByName) {
+        List<String> lines = new ArrayList<>(apiLines(ownerBytes));
+        for (var e : nestedByName.entrySet()) {
+            lines.add("$ " + e.getKey());
+            lines.addAll(apiLines(e.getValue()));
+        }
+        return new Fingerprint(Hashing.sha256Hex(String.join("\n", lines)));
+    }
+
+    private static List<String> apiLines(byte[] classBytes) {
         ClassReader cr = new ClassReader(classBytes);
         ApiCollector api = new ApiCollector();
         cr.accept(api, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-        String apiHex = Hashing.sha256Hex(String.join("\n", api.lines));
-        String bodyHex = Hashing.sha256Hex(classBytes);
-        return new Fingerprint(apiHex, bodyHex);
+        return api.lines;
     }
 
     public enum Kind {

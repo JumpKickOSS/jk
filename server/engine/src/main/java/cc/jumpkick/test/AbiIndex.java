@@ -12,9 +12,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
-/** On-disk {@code target/incremental/main-abi.idx}: one {@code FQC\\tapiHex\\tbodyHex} line. */
+/** On-disk {@code target/incremental/main-abi.idx}: one {@code FQC\\tapiHex} line (schema JK-2616). */
 public final class AbiIndex {
 
     public static final String FILE_NAME = "main-abi.idx";
@@ -31,8 +33,10 @@ public final class AbiIndex {
         try (Stream<String> lines = Files.lines(file, StandardCharsets.UTF_8)) {
             lines.forEach(line -> {
                 if (line.isBlank()) return;
-                String[] p = line.split("\t", 3);
-                if (p.length == 3) out.put(p[0], new ClassAbi.Fingerprint(p[1], p[2]));
+                String[] p = line.split("\t", -1);
+                // Two fields since JK-2616; an old three-field row is dropped, which just means
+                // one full re-scan on the next compile.
+                if (p.length == 2) out.put(p[0], new ClassAbi.Fingerprint(p[1]));
             });
         }
         return out;
@@ -61,7 +65,7 @@ public final class AbiIndex {
             if (hit.kind() != SourceFqcs.Kind.MAIN || hit.fqc() == null) continue;
             Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
             if (Files.isRegularFile(classFile)) {
-                out.put(hit.fqc(), ClassAbi.of(Files.readAllBytes(classFile)));
+                out.put(hit.fqc(), fingerprintWithNested(classFile, hit.fqc()));
             } else {
                 out.remove(hit.fqc());
             }
@@ -69,16 +73,29 @@ public final class AbiIndex {
         return out;
     }
 
+    /** One owner class file plus its sibling {@code Owner$Named*.class} files. */
+    private static ClassAbi.Fingerprint fingerprintWithNested(Path classFile, String fqc) throws IOException {
+        String simple = fqc.substring(fqc.lastIndexOf('.') + 1);
+        SortedMap<String, byte[]> nested = new TreeMap<>();
+        try (Stream<Path> siblings = Files.list(classFile.getParent())) {
+            for (Path p : siblings.toList()) {
+                String name = p.getFileName().toString();
+                if (!name.startsWith(simple + "$") || !name.endsWith(".class")) continue;
+                String stem = name.substring(0, name.length() - ".class".length());
+                String suffix = stem.substring(simple.length());
+                if (!isNamedNested(suffix)) continue;
+                nested.put(stem.substring(simple.length() + 1), Files.readAllBytes(p));
+            }
+        }
+        byte[] owner = Files.readAllBytes(classFile);
+        return nested.isEmpty() ? ClassAbi.of(owner) : ClassAbi.of(owner, nested);
+    }
+
     public static void write(Path file, Map<String, ClassAbi.Fingerprint> rows) throws IOException {
         Files.createDirectories(file.getParent());
         StringBuilder sb = new StringBuilder();
         for (var e : rows.entrySet()) {
-            sb.append(e.getKey())
-                    .append('\t')
-                    .append(e.getValue().apiHex())
-                    .append('\t')
-                    .append(e.getValue().bodyHex())
-                    .append('\n');
+            sb.append(e.getKey()).append('\t').append(e.getValue().apiHex()).append('\n');
         }
         AtomicWrites.replace(file, sb.toString());
     }
@@ -86,13 +103,34 @@ public final class AbiIndex {
     public static Map<String, ClassAbi.Fingerprint> scanClasses(Path classesDir) throws IOException {
         Map<String, ClassAbi.Fingerprint> out = new LinkedHashMap<>();
         if (classesDir == null || !Files.isDirectory(classesDir)) return out;
+        Map<String, byte[]> owners = new LinkedHashMap<>();
+        Map<String, SortedMap<String, byte[]>> nested = new LinkedHashMap<>();
         PathUtil.forEachRegularFile(classesDir, (p, attrs) -> {
             if (!p.toString().endsWith(".class")) return;
             String rel = classesDir.relativize(p).toString().replace('\\', '/');
-            if (rel.contains("$")) return;
             String fqc = rel.substring(0, rel.length() - ".class".length()).replace('/', '.');
-            out.put(fqc, ClassAbi.of(Files.readAllBytes(p)));
+            int dollar = fqc.indexOf('$');
+            if (dollar < 0) {
+                owners.put(fqc, Files.readAllBytes(p));
+            } else if (isNamedNested(fqc.substring(dollar))) {
+                // Named nested classes classify with their owner (JK-2616); anonymous/local
+                // ($1, $2$Local…) stay out — a body edit that adds one must stay BODY.
+                nested.computeIfAbsent(fqc.substring(0, dollar), k -> new TreeMap<>())
+                        .put(fqc.substring(dollar + 1), Files.readAllBytes(p));
+            }
         });
+        for (var e : owners.entrySet()) {
+            SortedMap<String, byte[]> inner = nested.get(e.getKey());
+            out.put(e.getKey(), inner == null ? ClassAbi.of(e.getValue()) : ClassAbi.of(e.getValue(), inner));
+        }
         return out;
+    }
+
+    /** Every {@code $}-segment starts with a non-digit — {@code $Builder} yes, {@code $1}/{@code $2$Local} no. */
+    static boolean isNamedNested(String dollarSuffix) {
+        for (String seg : dollarSuffix.substring(1).split("\\$", -1)) {
+            if (seg.isEmpty() || Character.isDigit(seg.charAt(0))) return false;
+        }
+        return true;
     }
 }
