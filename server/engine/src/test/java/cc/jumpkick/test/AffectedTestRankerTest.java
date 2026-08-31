@@ -100,6 +100,37 @@ class AffectedTestRankerTest {
     }
 
     @Test
+    void production_package_named_test_is_not_a_test_source() {
+        assertThat(AffectedTestRanker.isTestSource("src/main/java/cc/jumpkick/test/Foo.java"))
+                .isFalse();
+        assertThat(AffectedTestRanker.isMainSource("src/main/java/cc/jumpkick/test/Foo.java"))
+                .isTrue();
+        assertThat(AffectedTestRanker.isTestSource("src/test/java/cc/jumpkick/test/FooTest.java"))
+                .isTrue();
+    }
+
+    @Test
+    void dirty_main_in_test_package_name_matches_not_test_src() {
+        TestClassIndex.Entry test = new TestClassIndex.Entry("cc.jumpkick.test.FooTest", Set.of(), Set.of(), "Foo");
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/engine"),
+                "cc.jumpkick:engine",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of("engine/src/main/java/cc/jumpkick/test/Foo.java"),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                List.of(test),
+                Set.of(),
+                List.of()));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.classNames()).containsExactly("cc.jumpkick.test.FooTest");
+        assertThat(r.ranked().getFirst().reason()).startsWith("name-");
+        assertThat(r.ranked().getFirst().reason()).doesNotContain("test-src");
+    }
+
+    @Test
     void dirty_test_source_ranks_without_compiled_index() {
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),

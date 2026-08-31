@@ -246,21 +246,21 @@ public final class AffectedTestRanker {
 
     static boolean isTestSource(String rel) {
         String s = rel.replace('\\', '/');
-        return s.contains("/test/")
-                || s.contains("src/test/")
+        // Layout roots only — not a production package named `test` under src/main.
+        if (s.contains("src/test/")
                 || s.contains("src/integration/")
                 || s.contains("src/e2e/")
-                || s.contains("src/it/");
+                || s.contains("src/it/")) {
+            return true;
+        }
+        return s.startsWith("test/") || s.startsWith("integration/") || s.startsWith("e2e/") || s.startsWith("it/");
     }
 
     static boolean suiteContains(String rel, Set<String> suites) {
         String s = rel.replace('\\', '/');
         for (String suite : suites) {
-            if ("test".equals(suite)
-                    && (s.contains("src/test/") || s.contains("/test/java/") || s.contains("/test/kotlin/"))) {
-                return true;
-            }
-            if (s.contains("src/" + suite + "/") || s.contains("/" + suite + "/")) return true;
+            if (s.contains("src/" + suite + "/")) return true;
+            if (s.startsWith(suite + "/")) return true;
         }
         return false;
     }
