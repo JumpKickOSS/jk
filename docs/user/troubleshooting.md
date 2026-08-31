@@ -83,7 +83,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | Symptom | Where to look | Typical fix |
 |---------|---------------|-------------|
 | Compile error | `jk-results.md` (file:line) | Edit the source; `jk compile` or `jk build` |
-| Test failure | `jk-results.md` (class, stack); JUnit XML under `target/reports/test-results/` | Fix the test or code; see [Test](test.md) for suites/tags |
+| Test failure | `jk-results.md` (class, stack); JUnit XML under `target/reports/test-results/` | Fix, then **replay the same selection** (`jk test`, not `--all`). Suites/tags: [Test](test.md) |
 | Resolve / lock conflict | `jk lock` prose; `jk why <coord>`; `jk tree` | Relax a range, add a BOM, or pin; [Lockfile](lockfile.md), [Platforms](platforms.md) |
 | Checksum / trust | lock-time error naming repo + coordinate | `jk repo refresh <coord>` if you intentionally replaced bits; otherwise treat as compromise |
 | Cache surprise (rebuilt / didn’t) | `jk explain` | [Explain](explain.md) |
@@ -91,6 +91,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | Disk / CAS full | `jk cache usage` / `jk storage usage` | `jk cache clean` first; [Cache](cache.md) |
 | Engine won’t start / version skew | `jk engine status` | `jk engine stop` then retry; [Engine](engine.md) |
 | Format check failed | `jk format --check` | `jk format` (no `--check`); [Format](format.md) |
+| Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Signing released natives is JK-2059. Turning Smart App Control off is optional for contributors who want unsigned `gradlew dist`. |
 
 ## Cancel a stuck job
 

@@ -619,11 +619,14 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
             HttpResponse<String> fromRel = get("/api/fs?dir=" + enc, "Authorization", "Bearer " + token());
             assertThat(fromTilde.statusCode()).isEqualTo(200);
             assertThat(fromRel.statusCode()).isEqualTo(200);
+            // Jsonl.quote, not hand-built quotes: a Windows path's backslashes are escaped in the
+            // JSON the engine emits, so a raw path here only ever matches on POSIX.
+            String dirField = "\"dir\":" + Jsonl.quote(pick.toString());
             assertThat(fromTilde.body())
-                    .contains("\"dir\":\"" + pick + "\"")
+                    .contains(dirField)
                     .contains("\"dirs\":[\"child-a\"]")
                     .contains("\"hasJkToml\":true");
-            assertThat(fromRel.body()).contains("\"dir\":\"" + pick + "\"");
+            assertThat(fromRel.body()).contains(dirField);
         } finally {
             PathUtil.deleteRecursively(pick);
         }

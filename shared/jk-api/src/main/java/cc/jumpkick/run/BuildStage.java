@@ -199,7 +199,11 @@ public enum BuildStage {
                     TaskNames.KSP -> COMPILE;
             // GENERATE reserved for explicit stage / future before-compile codegen tasks
             case TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS -> TEST;
-            case TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_ASSEMBLY, TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> PACKAGE;
+            case TaskNames.PACKAGE_JAR,
+                    TaskNames.PACKAGE_ASSEMBLY,
+                    TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
+                    TaskNames.BUILD_LOGIC_AFTER_BUILD,
+                    TaskNames.BUILD_LOGIC_GATE -> PACKAGE;
             case TaskNames.TRAIN -> TRAIN;
             case TaskNames.NATIVE_IMAGE -> NATIVE;
             case TaskNames.WRITE_IMAGE, TaskNames.IMAGE_PLAN -> IMAGE;

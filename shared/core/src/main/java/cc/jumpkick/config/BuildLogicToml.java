@@ -45,6 +45,13 @@ public final class BuildLogicToml {
     private static final String LOGIC = "build.logic";
     private static final List<String> RETIRED_DIRS = List.of(".jk-build", "jk-build");
 
+    /**
+     * {@code --scripts-only} with no {@code gate} stem at the invocation root. Canonical paths the
+     * lookup covers; {@code [build].logic} still resolves first when set.
+     */
+    public static final String NO_GATE_SCRIPTS =
+            "no gate scripts in this project (looked for jk/gate.{kts,groovy} / .jk/gate.{kts,groovy} at the root)";
+
     private BuildLogicToml() {}
 
     /** A project's resolved build-logic directory. */
@@ -74,6 +81,27 @@ public final class BuildLogicToml {
             if (Files.isDirectory(dir)) return Optional.of(new Logic(dir));
         }
         return Optional.empty();
+    }
+
+    /**
+     * True when the resolved logic dir has {@code name.kts} or {@code name.groovy} (underscore
+     * alias too). Suffix variants ({@code name-…}) still run when the engine discovers them.
+     */
+    public static boolean hasStem(Path projectDir, String name) {
+        if (name == null || name.isBlank()) return false;
+        Optional<Logic> logic = resolve(projectDir);
+        if (logic.isEmpty()) return false;
+        Path dir = logic.get().dir();
+        String stem = name.trim().toLowerCase(Locale.ROOT).replace('_', '-');
+        String under = stem.replace('-', '_');
+        return file(dir, stem + ".kts")
+                || file(dir, stem + ".groovy")
+                || file(dir, under + ".kts")
+                || file(dir, under + ".groovy");
+    }
+
+    private static boolean file(Path dir, String name) {
+        return Files.isRegularFile(dir.resolve(name));
     }
 
     /**

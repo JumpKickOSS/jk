@@ -189,8 +189,9 @@ public final class BuildGraph {
             // nothing, but it has an `after-build` script to run, and the only way to run that
             // once — after every member, with the scheduler and the report it already has — is to
             // be in the graph. Without this the directory is silently ignored (JK-1058).
-            boolean rootHasBuildLogic =
-                    !rootHasSources && BuildLogicToml.resolve(rootDir).isPresent();
+            boolean rootHasLogicDir = BuildLogicToml.resolve(rootDir).isPresent();
+            boolean rootHasBuildLogic = !rootHasSources && rootHasLogicDir;
+            boolean rootHasGate = rootHasLogicDir && BuildLogicToml.hasStem(rootDir, "gate");
             boolean rootBuildable = rootHasSources || rootHasBuildLogic;
             if (rootBuildable) {
                 addUnit(rootDir, root, Origin.ROOT);
@@ -221,7 +222,7 @@ public final class BuildGraph {
             // `after-build` means after every member, so the sourceless root depends on all of
             // them. A root that builds nothing publishes nothing, so no member can depend back on
             // it and these edges cannot close a cycle.
-            if (rootHasBuildLogic) {
+            if (rootHasBuildLogic || (rootHasSources && rootHasGate)) {
                 for (Path moduleDir : modules.keySet()) {
                     addEdge(rootDir, canonical(moduleDir));
                 }

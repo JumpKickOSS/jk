@@ -24,8 +24,8 @@ or remove a tool-switch.
   intent ──► mutate project ──► build/test ──► observe ──► repair ──► repeat
      │            │                 │             │           │
   jk manual    TOML +            cache +       jk-results   structured
-  / MCP        jk add/deps       warm engine   + diagnostics  edits +
-  templates    format            ETA/explain   (not log scrape) format
+  / MCP        jk add/deps       right rung    + diagnostics  edits +
+  templates    format            warm engine   (not log scrape) format
                toolchain         lockfile law
 ```
 
@@ -34,6 +34,7 @@ or remove a tool-switch.
 | **Observe & repair** | Structured, token-cheap failures — not Gradle/Maven log archaeology |
 | **Mutate without fear** | Small declarative surface agents and humans edit the same way |
 | **Execute cheaply** | The *Nth* rebuild in a session feels free (cache + warm engine + low RSS) |
+| **Run the right tests** | Inner loop is unit; a named **gate** before share; `--all` is nightly; the report discloses what was skipped |
 | **Stabilize the environment** | No turns burned on `JAVA_HOME`, wrappers, or bootstrap scripts |
 | **Enter the ecosystem** | Import/export so migration time counts in cycle time |
 | **Shared reality** | One build model; TTY, web UI, and MCP show the same facts |
@@ -56,27 +57,28 @@ Think in **layers of the switch decision**, not a flat checklist.
 | **1** | **Agent-native results + MCP** (`jk-results.md`, diagnostics, `jk manual`, MCP tools) | Agents stop scraping logs. Failures become structured, token-cheap, re-enterable. This is the unique moat vs Maven *and* Gradle. |
 | **2** | **Declarative TOML + surgical edits** (`jk.toml`, `jk add`/`remove`, MCP `jk_deps` / `jk_manifest`) | Agents and humans share one small surface. Mutation is cheap and reviewable. |
 | **3** | **Lockfile-as-law + PubGrub diagnostics** (`jk-lock.toml`, `why`, readable conflicts) | Removes overnight CI drift and “agent guessed a version.” Predictability is what Maven users actually loved. |
+| **4** | **Named test rungs** (unit inner loop · `--gate` / `--pre-merge` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. Maven Surefire/Failsafe and Gradle `sourceSets` have no such voice. |
 
-Alone, each is nice. Together they make the agent loop *possible*.
+Alone, each is nice. Together they make the agent loop *possible* — and keep the execute step from destroying it.
 
 ### Tier 1 — Prove it in the first ten minutes
 
 | Rank | Feature | Role |
 |------|---------|------|
-| **4** | **Action cache + CAS + warm engine (low RSS)** | Shorter *repeated* cycles — not “we beat Gradle by 8%.” |
-| **5** | **Beautiful CLI + accurate ETA** | Human trust on long runs; progress/ETA also exist as machine facts. |
-| **6** | **Built-in format** | Closes the agent edit loop without a second toolchain. |
-| **7** | **Templates / `jk new`** | Time-to-first-success for humans and agents scaffolding greenfield work. |
+| **5** | **Action cache + CAS + warm engine (low RSS)** | Shorter *repeated* cycles — not “we beat Gradle by 8%.” |
+| **6** | **Beautiful CLI + accurate ETA** | Human trust on long runs; progress/ETA also exist as machine facts. |
+| **7** | **Built-in format** | Closes the agent edit loop without a second toolchain. |
+| **8** | **Templates / `jk new`** | Time-to-first-success for humans and agents scaffolding greenfield work. |
 
 ### Tier 2 — Remove the reason to stay
 
 | Rank | Feature | Role |
 |------|---------|------|
-| **8** | **Maven import/export + `~/.m2` compatibility** | Lowers switching cost for the majority Maven camp. |
-| **9** | **Gradle import/export (best-effort) + `jk gradle` / `jk mvn`** | Escape hatch so migration is not all-or-nothing. |
-| **10** | **Integrated JDK / shell activation** | Agents and humans stop fighting `JAVA_HOME`. |
-| **11** | **`jk update` / outdated** | Stay current by design; upgrades are a real resolve step. |
-| **12** | **`jkx` / tool run** | One surface for ephemeral JVM tools (npx/uvx/JBang-shaped). |
+| **9** | **Maven import/export + `~/.m2` compatibility** | Lowers switching cost for the majority Maven camp. |
+| **10** | **Gradle import/export (best-effort) + `jk gradle` / `jk mvn`** | Escape hatch so migration is not all-or-nothing. |
+| **11** | **Integrated JDK / shell activation** | Agents and humans stop fighting `JAVA_HOME`. |
+| **12** | **`jk update` / outdated** | Stay current by design; upgrades are a real resolve step. |
+| **13** | **`jkx` / tool run** | One surface for ephemeral JVM tools (npx/uvx/JBang-shaped). |
 
 ### Tier 3 — Seal the deal after they have felt the loop
 
@@ -84,11 +86,11 @@ These impress on a feature matrix and retain power users; they rarely *cause* th
 
 | Rank | Feature | Notes |
 |------|---------|-------|
-| **13** | Web UI | Supervisory mirror of the same model; secondary to MCP for conversion. |
-| **14** | Supply chain / SBOM / audit / CVE | Strong “enterprise yes,” weak “try tonight.” |
-| **15** | OCI images | Ship path; not day-one abandon reason. |
-| **16** | Git-as-dependency / git modules | Power-user depth after trust is earned. |
-| **17** | Native-image / deep framework support | Keep them; do not lead with them. |
+| **14** | Web UI | Supervisory mirror of the same model; secondary to MCP for conversion. |
+| **15** | Supply chain / SBOM / audit / CVE | Strong “enterprise yes,” weak “try tonight.” |
+| **16** | OCI images | Ship path; not day-one abandon reason. |
+| **17** | Git-as-dependency / git modules | Power-user depth after trust is earned. |
+| **18** | Native-image / deep framework support | Keep them; do not lead with them. |
 
 **Raw speed vs Gradle** is a **credibility footnote** beside this list: competitive on warm
 builds; the win is fewer failed cycles and less agent thrash.
@@ -98,12 +100,13 @@ builds; the win is fewer failed cycles and less agent thrash.
 ## Pitch shape (one page)
 
 1. **Hero:** the JVM build tool coding agents can drive.  
-2. **Proof:** `jk new` → `jk add` → `jk build` → open `target/jk-results.md` (or MCP).  
+2. **Proof:** `jk new` → `jk add` → `jk test` → open `target/jk-results.md` (or MCP).  
 3. **Why leave Maven:** same declarative philosophy, modern surface, real lockfile, agent-readable outcomes.  
 4. **Why leave Gradle:** warm/incremental ambition without “build is a second app.”  
-5. **Speed (humble):** competitive with modern Gradle; designed so *repeated* local/agent cycles stay small.  
-6. **Batteries (one line):** toolchain, format, audit/SBOM, images, git deps, web UI — delete five side tools.  
-7. **Adoption:** import Maven today; keep `~/.m2`; escape hatches for Gradle.
+5. **Tests (the execute moat):** default `jk test` is the cheap unit rung; `--gate` (alias `--pre-merge`) is the named share-the-commit bar; `--all` is nightly — not a habit. The report says what was *not* run.  
+6. **Speed (humble):** competitive with modern Gradle; designed so *repeated* local/agent cycles stay small.  
+7. **Batteries (one line):** toolchain, format, audit/SBOM, images, git deps, web UI — delete five side tools.  
+8. **Adoption:** import Maven today; keep `~/.m2`; escape hatches for Gradle.
 
 Feature dumps belong under “what’s included.” Conversion happens in tiers 0–1.
 
@@ -164,6 +167,7 @@ Agents thrash on DSL folklore; humans maintain a second product forever.
 3. **Faster and more reproducible by default** — lockfile as law; cache what you can prove  
 4. **Still on Maven Central** — same coordinates and gravity  
 5. **Closed-loop for coding agents** — structured observe/repair, not log scraping  
+6. **A named, cheap default test rung** — so agents neither run the world every turn nor skip the wiring tests that catch real bugs  
 
 That is JumpKick.
 
@@ -178,6 +182,7 @@ ergonomics — and adds an **agent-closed loop** as a first-class surface.
 | Principle | What it means |
 |-----------|----------------|
 | **Closed loop for agents** | `jk manual`, `jk-results.md`, MCP diagnostics/run — same model as the human CLI |
+| **Cheapest test rung first** | Unit on every edit; named **gate** before share; e2e / `--all` on purpose. Suites are scope; tags are cost. |
 | **Data, not a program** | `jk.toml` is TOML — readable, editable, reviewable |
 | **Finite shape** | Convention-over-configuration; plugins extend a known model |
 | **Lockfile is law** | `jk-lock.toml` at the workspace root; `jk build` does not re-resolve when valid |
@@ -204,6 +209,38 @@ That is the upgrade path people meant when they said “there has to be somethin
 than a POM” — **without** answering “so write Kotlin to compile Java,” and **with** a
 surface coding agents can drive.
 
+### Test rungs (the execute moat)
+
+Maven and Gradle can *run* tests. They cannot *tell an agent which tests to run this
+turn.* Surefire vs Failsafe is folklore. Gradle `sourceSets` is a comment in a
+convention plugin the next model has never seen. Agents then do one of two expensive
+things: run everything (`--all`, Playwright, Testcontainers, Maven Central) on every
+assertion fix, or never leave the default suite and discover wiring bugs in CI.
+
+JumpKick’s bet is a **pyramid for writing tests** and a **named ladder for running them.**
+
+| Rung | Where it lives | What is real | Who runs it |
+|------|----------------|--------------|-------------|
+| **Unit** | `src/test/…` (or `test/src/`) | The class under test | Every inner-loop turn. `jk test`. |
+| **Integration** | `src/integration/…` | One module + nearby collaborators (one Testcontainer is fine) | Before share. Named **`--gate`** (silent alias `--pre-merge`). |
+| **E2E** | `src/e2e/…` | The product as a user/CI would: Playwright, compose, full fixtures | CI / nightly. Locally a judgment call. `jk test --all` is not a habit. |
+
+Cost is a **tag**, not a fourth directory: `@Tag("slow")`, `@Tag("network")`. A 90-second
+Kafka test is still integration *scope*; it is the wrong *budget* for `--gate`.
+
+House-rule / check scripts (the things JumpKick itself runs from `.jk/` today on every
+build) belong on that same named bar: runnable **with** `--gate`, **alone**
+(`--scripts-only`), or **skipped** (`--no-scripts`). They are not a surprise tax on
+`jk test` while you fix `assertEquals`.
+
+The observe step has to match: `target/jk-results.md` (and MCP `jk_results`) must
+disclose **what ran, what did not, how to replay, what to run next.** A green unit
+run that silently skipped integration is how wiring bugs escape.
+
+Commands, layout, and MCP `rung` are specified in KanArtist (`projects/jk/docs/test-rungs.md`,
+JK-2046+). Day-to-day flags while that lands: [Test](test.md). Default `jk test` is
+already the unit suite — that half of the bet is real.
+
 ---
 
 ## Positioning
@@ -213,6 +250,7 @@ surface coding agents can drive.
 | Build is… | Data (XML) | Code (Groovy/Kotlin) | Data (TOML) |
 | Shape | Finite lifecycle | Open-ended graph | Finite + conventions |
 | Agent I/O | Log scrape | Log scrape | Results + MCP first-class |
+| Tests | Surefire vs Failsafe folklore (`*IT.java`) | `sourceSets` + house style | **Named rungs** + results that disclose the skip |
 | Everyday ergonomics | Weak CLI, heavy files | Powerful, high ceremony | Terse CLI + ETA |
 | Flexibility | Plugins, limited | Near-unlimited | Plugins + hatch outside TOML |
 | Reproducibility | Possible | Possible | **Default** (lockfile law) |
@@ -221,7 +259,8 @@ surface coding agents can drive.
 
 **One line:** Maven proved the market wants a **predictable build**. Gradle proved some
 teams need **power when the default isn’t enough**. Coding agents proved the next bottleneck
-is **closed-loop diagnose and repair**. JumpKick aims at all three.
+is **closed-loop diagnose and repair** — including *which tests to run this turn*. JumpKick
+aims at all four.
 
 ---
 
@@ -239,8 +278,11 @@ If that number does not win, polish the Tier 0 surfaces until it does. Feature c
 not save it.
 
 Honesty today: the skeleton is real (`jk manual`, results, MCP, TOML edits, lockfile,
-cache). The north star becomes *true* when failure coverage, recipe reliability, and
-measured turns-to-green beat the incumbents — not when the README says so.
+cache, **directory suites** so `jk test` is already the unit rung). The named `--gate`
+bar, gate-script stem, results Selection block, and MCP `rung` are the remaining
+execute-step work (KanArtist JK-2046+). The north star becomes *true* when failure
+coverage, recipe reliability, **cheap default tests**, and measured turns-to-green beat
+the incumbents — not when the README says so.
 
 ---
 
@@ -261,5 +303,6 @@ not become the universal Maven replacement.** The new wedge is **agent-closed lo
 - [Getting started](getting-started.md)
 - [Agents](agents.md)
 - [MCP](mcp.md)
+- [Test](test.md)
 - [Concepts](concepts.md)
 - [README](../../README.md) — hero pitch

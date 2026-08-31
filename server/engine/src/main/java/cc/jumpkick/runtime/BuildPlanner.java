@@ -25,6 +25,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.test.AffectedTests;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -115,6 +116,15 @@ public final class BuildPlanner {
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.of("layout", BuildLayout.class);
     public static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
     public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.of("no-test-sources", Boolean.class);
+
+    @SuppressWarnings("rawtypes")
+    public static final BuildPlanKey<Map> PRE_COMPILE_ABI = BuildPlanKey.of("pre-compile-abi", Map.class);
+
+    @SuppressWarnings("rawtypes")
+    public static final BuildPlanKey<List> COMPILED_MAIN_SOURCES = BuildPlanKey.of("compiled-main-sources", List.class);
+
+    public static final BuildPlanKey<AffectedTests> AFFECTED_TESTS =
+            BuildPlanKey.of("affected-tests", AffectedTests.class);
 
     /** Serializes {@code run-tests} across concurrent modules unless {@code parallelTests}. */
     static final Semaphore TEST_GATE = new Semaphore(1);
@@ -623,7 +633,8 @@ public final class BuildPlanner {
         if (workspaceNoSources) {
             if (BuildLogicToml.resolve(in.dir()).isPresent()) {
                 b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
-                return b.terminal(TaskNames.BUILD_LOGIC_AFTER_BUILD);
+                String gate = PlannerResources.appendGate(b, cx, false, in.testOnly(), true);
+                return b.terminal(gate != null ? gate : TaskNames.BUILD_LOGIC_AFTER_BUILD);
             }
             return b.terminal(TaskNames.RESOLVE_DEPS);
         }
@@ -683,7 +694,8 @@ public final class BuildPlanner {
         // Build-logic AFTER_COMPILE before resources / AFTER_RESOURCES.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         b.addTask(copyResources);
-        if (in.testOnly() || !in.skipTests()) {
+        boolean skipJUnit = PlannerResources.skipJUnit(in);
+        if (!skipJUnit) {
             b.addTask(compileTest).addTask(runTests);
         }
         // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only
@@ -729,8 +741,11 @@ public final class BuildPlanner {
         if (useGroovy) {
             b.addTask(writeStampGroovy);
         }
+        String gate = PlannerResources.appendGate(b, cx, !skipJUnit, in.testOnly(), false);
         if (in.testOnly()) {
-            return b.terminal(TaskNames.RUN_TESTS);
+            if (gate != null) return b.terminal(gate);
+            if (!skipJUnit) return b.terminal(TaskNames.RUN_TESTS);
+            return b.terminal(TaskNames.COPY_RESOURCES);
         }
         return b.terminal(TaskNames.PACKAGE_JAR);
     }

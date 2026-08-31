@@ -11,8 +11,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
-import java.net.StandardProtocolFamily;
-import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -33,9 +31,10 @@ import org.junit.jupiter.api.AfterEach;
 
 /**
  * The real-socket fixture the {@code EngineServer*Test} contract tests share: short-path temp
- * dirs and their cleanup, a hand-rolled Unix-domain-socket client, the mock-repo seeder, and the
- * drivers that run one request to its terminal line. Nothing here stands in for the engine — every
- * test starts a real {@link EngineServer} and talks to it over a real socket.
+ * dirs and their cleanup, a hand-rolled client that speaks whichever transport the engine bound
+ * ({@link EngineTransport}), the mock-repo seeder, and the drivers that run one request to its
+ * terminal line. Nothing here stands in for the engine — every test starts a real
+ * {@link EngineServer} and talks to it over a real socket.
  */
 abstract class EngineServerHarness {
 
@@ -98,8 +97,7 @@ abstract class EngineServerHarness {
         private final BufferedWriter writer;
 
         Client(Path socket) throws IOException {
-            channel = SocketChannel.open(StandardProtocolFamily.UNIX);
-            channel.connect(UnixDomainSocketAddress.of(socket));
+            channel = EngineSockets.connect(socket);
             reader =
                     new BufferedReader(new InputStreamReader(Channels.newInputStream(channel), StandardCharsets.UTF_8));
             writer = new BufferedWriter(

@@ -95,12 +95,14 @@ val dist by tasks.registering(Sync::class) {
 
 /**
  * Local dogfood refresh: all worker `installLocal` tasks, then `:engine:installLocal`.
- * Engine materialize uses the native client from `./gradlew dist` (`build/dist/jk[.exe]`).
+ * Engine materialize prefers the native client from `./gradlew dist` (`build/dist/jk[.exe]`)
+ * when that file exists; otherwise the thin `:cli:installDist` launcher. `:engine:installLocal`
+ * mustRunAfter `dist` / `:cli:nativeCompile` so `./gradlew dist installLocal` does not exec a
+ * binary still open for writing (Linux ETXTBSY).
  */
 tasks.register("installLocal") {
     group = "distribution"
     description = "Side-load workers + materialize engine jar and bounce daemon for local dogfood"
-    // Engine last: it needs the native client from `dist` for self materialize.
     dependsOn(
         subprojects
             .filter { it.path != ":engine" }

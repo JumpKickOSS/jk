@@ -1,34 +1,96 @@
 # Test
 
+JumpKick is opinionated about **when** to run tests, not only how. Write a pyramid
+(many unit, fewer integration, few e2e). Run a ladder: climb only as high as this
+turn requires. Product bet: [Why JumpKick](why.md#test-rungs-the-execute-moat).
+
 ```bash
-jk test                              # default suite only
-jk test --suite integration          # -s is the short form
-jk test -s test -s integration
-jk test --all                        # every suite; config tag excludes cleared
+jk test                              # unit rung — default suite only. Inner loop.
+jk test --gate                       # share-the-commit: unit + integration (if present) + gate scripts
+jk test --pre-merge                  # silent alias of --gate
+jk test --scripts-only               # gate scripts, no JUnit
+jk test --gate --no-scripts          # gate suites, skip extra scripts
+jk test --suite integration          # -s is the short form. Climb one named suite.
+jk test --suite e2e                  # UI / compose / contract; not a habit
+jk test --all                        # every suite; tag excludes cleared. Nightly / release.
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
+jk test --affected                   # ranked classes for the working tree (does not run them)
+jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
+jk build --gate                      # package with the gate green
 jk build --all                       # package with the full suite green
 ```
 
-`--all` and `--suite` cannot be combined. Unknown suite names error with the available
-list. `--all` means “everything”: every suite directory **and** cleared `[test]` / profile
-tag excludes. Explicit `--include-tags` / `--exclude-tags` still compose on top.
-`jk build` accepts the same selection flags.
+`--affected` and `--affected-since=<ref>` rank at most 20 test **classes**, print them as a
+table, and write `target/jk-tests-affected.md`. They do **not** run tests. `--affected` is
+the git working tree (unstaged + untracked; last commit if the tree is clean).
+`--affected-since` is `ref...HEAD`. Neither is `jk explain`'s rebuild set. They cannot
+be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
+
+`--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
+run `jk test`, not `--all`. Before you share a commit, run **`--gate`** (silent
+alias `--pre-merge`): unit + `integration` when that directory exists. Tag excludes
+from `[test]` still apply (`slow` / `network` / `bench` stay out). `--gate` cannot
+combine with `--all`. `--suite` wins over `--gate` (a warning is printed).
+
+Override the gate suite list:
+
+```toml
+[test]
+gate-suites = ["test", "integration", "contract"]
+```
+
+Unknown names in `gate-suites` fail with the discovered-suite list. Missing
+`integration` on the default list is not an error.
+
+Canonical extra suite **names** are `integration` and `e2e`. Any other suite
+directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
+crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
+directory.
+
+`--scripts-only` and `--no-scripts` cannot be combined. `--scripts-only` with no
+`gate` stem is a config error. Same flags on `jk build`. See [build logic](build-logic.md).
+
+`--all` and `--suite` cannot be combined. `--all` and `--gate` cannot be combined.
+Unknown suite names error with the available list (`--gate`'s default `integration`
+is the exception: skip if absent). `--all` means “everything”: every suite directory
+**and** cleared `[test]` / profile tag excludes. Explicit `--include-tags` /
+`--exclude-tags` still compose on top. `jk build` accepts the same selection flags.
 
 Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`). Named
 suites are discovered when those directories exist.
 
 When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 
+## Affected tests (WIP)
+
+```bash
+jk test --affected              # rank ≤20 classes for the working tree; print a table; do not run
+jk test --affected-since=HEAD~2 # same table for ref...HEAD (does not run)
+```
+
+`--affected` is the working-tree cone (unstaged + untracked; last commit if the tree is clean).
+It is **not** `--affected-since=HEAD` (that range is empty). The two flags cannot be combined.
+`--aff` is ambiguous.
+
+Both flags print the ranking as a table (Score · Class · Reason) and write
+`target/jk-tests-affected.md`. They do **not** run tests and do not replace
+`target/jk-results.md`. Ranking refuse exits **2**. When the guess would be dishonest
+(`jk.toml` change, too many types, a dirty test outside the current suite), jk prints
+`cannot rank affected tests` and tells you to run `jk test`.
+
 ## Tag filters
 
 ```toml
 [test]
 workers = 1
-exclude-tags = ["slow", "bench"]
+exclude-tags = ["slow", "network", "bench"]
 
 [profiles.ci]
-exclude-tags = []          # key present: clear excludes on CI
+# Auto-selected when CI is set. Keep the inner/gate excludes — do not clear them
+# just because it is CI. Nightly is `jk test --all` (or a dedicated nightly profile),
+# not the PR job.
+exclude-tags = ["slow", "network", "bench"]
 ```
 
 **Precedence** (later layer replaces an earlier list only when it *speaks* for that list):

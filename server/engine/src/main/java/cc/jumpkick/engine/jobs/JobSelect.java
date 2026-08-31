@@ -25,13 +25,16 @@ public final class JobSelect {
         if (tokens == null || tokens.isEmpty()) return null;
         List<String> raw = new ArrayList<>();
         String affected = null;
+        boolean wip = false;
         for (String d : tokens) {
             if (d == null || d.isBlank()) continue;
-            if (d.startsWith("affected:")) affected = d.substring("affected:".length());
+            if ("affected-wip".equals(d)) wip = true;
+            else if (d.startsWith("affected:")) affected = d.substring("affected:".length());
             else raw.add(d);
         }
-        if (raw.isEmpty() && affected == null) return null;
-        return ModuleSelection.resolveOptional(entryDir, entry, raw.isEmpty() ? null : String.join(",", raw), affected);
+        if (raw.isEmpty() && affected == null && !wip) return null;
+        return ModuleSelection.resolveOptional(
+                entryDir, entry, raw.isEmpty() ? null : String.join(",", raw), affected, wip);
     }
 
     /** User-selected module dirs only (canonical). {@code null} when the caller did not filter. */
@@ -40,7 +43,7 @@ public final class JobSelect {
         ModuleSelection.Result sel;
         boolean tokenShape = false;
         for (String m : modules) {
-            if (m != null && m.startsWith("affected:")) {
+            if (m != null && (m.startsWith("affected:") || "affected-wip".equals(m))) {
                 tokenShape = true;
                 break;
             }

@@ -53,6 +53,46 @@ class TestSuitesTest {
     }
 
     @Test
+    void gate_includes_integration_when_discovered() {
+        var r = TestSelection.of(TestSuites.GATE, false, List.of(), List.of(), true, true)
+                .resolve(List.of("test", "integration"));
+        assertThat(r.ok()).isTrue();
+        assertThat(r.suites()).containsExactly("test", "integration");
+    }
+
+    @Test
+    void gate_skips_missing_integration() {
+        var r = TestSelection.of(TestSuites.GATE, false, List.of(), List.of(), true, true)
+                .resolve(List.of("test"));
+        assertThat(r.ok()).isTrue();
+        assertThat(r.suites()).containsExactly("test");
+    }
+
+    @Test
+    void gate_without_integration_dir_is_the_default_suite() {
+        var r = TestSelection.of(TestSuites.GATE, false, List.of(), List.of(), true, true)
+                .resolve(List.of());
+        assertThat(r.ok()).isTrue();
+        assertThat(r.suites()).containsExactly("test");
+    }
+
+    @Test
+    void explicit_integration_suite_still_errors_when_absent() {
+        var r = TestSelection.of(List.of("integration"), false, List.of(), List.of())
+                .resolve(List.of("test"));
+        assertThat(r.ok()).isFalse();
+        assertThat(r.missingMessage()).contains("integration");
+    }
+
+    @Test
+    void gate_unknown_extra_suite_errors() {
+        var r = TestSelection.of(List.of("test", "contract"), false, List.of(), List.of(), true, true)
+                .resolve(List.of("test"));
+        assertThat(r.ok()).isFalse();
+        assertThat(r.missingMessage()).contains("contract").contains("test");
+    }
+
+    @Test
     void traditional_layout_discover(@TempDir Path tmp) throws Exception {
         Path testJava = tmp.resolve("src/test/java");
         Files.createDirectories(testJava);

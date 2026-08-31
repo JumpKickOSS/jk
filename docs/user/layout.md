@@ -29,13 +29,26 @@ Web “Layout” does the same for templates that declare both layouts —
 | Named test suite `<name>` | `src/<name>/{java,kotlin,groovy}` | `<name>/src/` (e.g. `integration/src/`) |
 | Named suite resources | `src/<name>/resources` | `<name>/resources` |
 
+Canonical extra suite names — use these unless you have a reason not to:
+
+| Suite | Traditional | Simple | Run with |
+|-------|-------------|---------|----------|
+| **unit** (default) | `src/test/…` | `test/src/` | `jk test` |
+| **integration** | `src/integration/…` | `integration/src/` | `jk test --gate` (share-the-commit) |
+| **e2e** | `src/e2e/…` | `e2e/src/` | `jk test --suite e2e` (CI / judgment) |
+
+Other names (`contract`, `mutation`, …) are discovered the same way. Do not put
+Playwright or compose stacks in `src/test`. Cost (`slow`, `network`) is a JUnit
+tag, not a fourth canonical directory. [Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
+
 Outputs always land under **`target/`**. Standalone project: `{project}/target/`.
 Workspace: `{workspace}/target/{module-rel}/` (not `module/target/`).
 
 ## Tests
 
-`jk test` runs the **default suite** only. Other suite directories are discovered when
-they exist. Select them with `--suite` / `--all`. Details: [Test](test.md).
+`jk test` runs the **default (unit) suite** only. Other suite directories are discovered
+when they exist. Select them with `--suite` / `--all`. `--all` is nightly, not the
+inner loop. Details: [Test](test.md).
 
 `jk ide` marks every discovered suite as IDE test source roots.
 

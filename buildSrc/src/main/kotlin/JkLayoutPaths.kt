@@ -63,11 +63,13 @@ object JkLayoutPaths {
     }
 
     /**
-     * Native client for dogfood tasks (`installLocal` materialize). Always the Graal image from `./gradlew dist` —
-     * never the thin JVM `:cli:installDist` scripts (`jk.bat` / `jk`).
+     * Client for dogfood tasks (`installLocal` materialize). Native image from `./gradlew dist` first when present; the
+     * thin JVM `:cli:installDist` launcher (`jk.bat` / `jk`) is a supported Windows path (Smart App Control blocks
+     * unsigned `jk.exe`).
      *
-     * Order: ship-layout `build/dist/jk[.exe]`, then `:cli:nativeCompile` output. Windows only accepts `jk.exe`
-     * (CreateProcess cannot launch the Unix `jk` script or a `.bat` wrapper).
+     * Order: ship-layout `build/dist/jk[.exe]`, `:cli:nativeCompile` output, then installDist. Callers that may run
+     * alongside `dist` / `nativeCompile` must order after those tasks so the preferred path is not still open for
+     * writing (Linux ETXTBSY).
      */
     fun clientCandidates(rootProjectDir: File): List<File> {
         val list = mutableListOf<File>()
@@ -75,6 +77,8 @@ object JkLayoutPaths {
         list.add(File(rootProjectDir, "build/dist/jk"))
         list.add(File(rootProjectDir, "clients/cli/build/native/nativeCompile/jk.exe"))
         list.add(File(rootProjectDir, "clients/cli/build/native/nativeCompile/jk"))
+        list.add(File(rootProjectDir, "clients/cli/build/install/jk/bin/jk.bat"))
+        list.add(File(rootProjectDir, "clients/cli/build/install/jk/bin/jk"))
         return list.distinct()
     }
 
@@ -85,14 +89,25 @@ object JkLayoutPaths {
         return null
     }
 
-    /** True when [file] can be started with {@link ProcessBuilder} on this OS. */
+    /**
+     * True when [file] can be started on this OS. Windows accepts a PE (`.exe`) or a cmd launcher (`.bat` / `.cmd`);
+     * the extensionless Unix `jk` script is not a Win32 image. Launch `.bat` through `cmd.exe /c` (see
+     * `:engine:installLocal`).
+     */
     fun isRunnableClient(file: File): Boolean {
         if (!file.isFile) return false
         val name = file.name.lowercase()
         if (name.endsWith(".exe")) return true
-        // Windows: neither `.bat` / `.cmd` nor the extensionless Unix `jk` script is a Win32 image.
-        if (isWindows() || name.endsWith(".bat") || name.endsWith(".cmd")) return false
+        if (name.endsWith(".bat") || name.endsWith(".cmd")) return isWindows()
+        if (isWindows()) return false
         return file.canExecute()
+    }
+
+    /** ProcessBuilder argv that starts [client] with [args] on this OS. */
+    fun launchCommand(client: String, vararg args: String): List<String> {
+        val name = File(client).name.lowercase()
+        val bat = name.endsWith(".bat") || name.endsWith(".cmd")
+        return if (isWindows() && bat) listOf("cmd.exe", "/c", client) + args else listOf(client) + args.toList()
     }
 
     private fun userHome(): String = System.getProperty("user.home")

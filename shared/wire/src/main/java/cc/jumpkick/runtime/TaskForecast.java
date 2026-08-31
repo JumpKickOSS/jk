@@ -88,7 +88,9 @@ public final class TaskForecast {
                         TaskNames.WRITE_STAMP_GROOVY,
                         TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
                         TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> true;
+                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
+                        TaskNames.BUILD_LOGIC_AFTER_BUILD,
+                        TaskNames.BUILD_LOGIC_GATE -> true;
                 default -> false;
             };
         }

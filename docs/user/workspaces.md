@@ -65,7 +65,9 @@ jk build -m jk-engine
 jk build -m :server:engine          # Gradle-style colon path
 
 jk build --affected-since=origin/main
-jk test --affected-since=origin/main
+jk test --affected-since=origin/main  # ranked test classes (does not run)
+jk build --affected                 # working-tree module cone (not a git ref)
+jk test --affected                  # ranked test classes as a table (does not run)
 
 # Intersection when both flags set
 jk build -m 'libs/*' --affected-since=origin/main

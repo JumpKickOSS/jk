@@ -133,4 +133,14 @@ class BuildLogicTomlTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no compatibility path");
     }
+
+    @Test
+    void has_stem_sees_gate_kts_and_suffixes() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectory(dir.resolve(".jk"));
+        assertThat(BuildLogicToml.hasStem(dir, "gate")).isFalse();
+        Files.writeString(dir.resolve(".jk/gate.groovy"), "//\n");
+        assertThat(BuildLogicToml.hasStem(dir, "gate")).isTrue();
+        assertThat(BuildLogicToml.hasStem(dir, "after-build")).isFalse();
+    }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
@@ -52,7 +53,9 @@ class HttpApiAuthTest extends HttpEngineServerHarness {
         assertThat(body)
                 .contains("\"activeBuildPlans\":0")
                 .contains("\"maxConcurrentRequests\":16")
-                .contains("\"webRoot\":\"" + webRoot + "\"");
+                // Jsonl.quote, not hand-built quotes: a Windows path's backslashes are escaped in
+                // the JSON the engine emits, so a raw path here only ever matches on POSIX.
+                .contains("\"webRoot\":" + Jsonl.quote(String.valueOf(webRoot)));
     }
 
     @Test

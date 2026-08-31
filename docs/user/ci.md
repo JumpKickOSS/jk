@@ -40,10 +40,23 @@ After restoring cache, a normal `jk build` should hit action cache for unchanged
 
 ```bash
 export JK_AOT_TRAIN=off
+# PR / push: the cheap share-the-commit bar (unit + integration if it exists).
 jk test -j0 -w0
+jk test --suite integration -j0 -w0   # skip if the tree has no integration suite
 # or a subset:
 jk test --modules 'api,worker'
-jk test --affected-since=origin/main
+# jk test --affected / --affected-since=HEAD~2  # ranked list only; does not run
+```
+
+Do **not** make the PR job `jk test --all`. That is the nightly / release job.
+Do **not** clear `[test] exclude-tags` on CI just because `CI` is set — that pulls
+`slow` / `network` / `bench` into a gate that should stay cheap and deterministic.
+[Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
+
+Nightly:
+
+```bash
+jk test --all -j0 -w0          # every suite; still keep bench out of a red gate
 ```
 
 Format gate: `jk format --check`. Outdated deps: parse `jk outdated --output json`

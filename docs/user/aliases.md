@@ -4,6 +4,15 @@ Hidden conveniences for muscle memory from other tools. None appear in `jk --hel
 completion, and product docs always use the canonical name (hidden-surface policy). This table is
 the single source of truth; `JkAliasTest` keeps aliases out of the help screen.
 
+## Flag aliases
+
+Same option, same stamp, not a second story. `--help` lists both names on that one
+option. Product prose always uses the canonical name.
+
+| Alias           | Canonical | Origin                     |
+| --------------- | --------- | -------------------------- |
+| `--pre-merge`   | `--gate`  | share-the-commit test bar  |
+
 ## Verb rewrites (first argument only)
 
 Rewritten before dispatch (`Jk.VERB_ALIASES`); they never join unique-prefix matching. That keeps

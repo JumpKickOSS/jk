@@ -283,6 +283,9 @@ public final class ManifestBuild {
             if (test.contains("include-tag") || test.contains("exclude-tag")) {
                 throw new JkBuildParseException("[test] tag keys are plural: include-tags / exclude-tags");
             }
+            if (test.contains("gate-suite")) {
+                throw new JkBuildParseException("[test] gate suite list is plural: gate-suites");
+            }
         }
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
         UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;

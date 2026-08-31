@@ -62,8 +62,8 @@ class HostedVerbDecodeJobTest {
     void test_selection_rides_the_decoded_line(@TempDir Path dir) throws Exception {
         project(dir);
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(null);
-        String line = verb.decodeJob(
-                new JobSpec("test", dir.toString(), List.of(), List.of("fast"), List.of("slow"), List.of(), false));
+        String line = verb.decodeJob(new JobSpec(
+                "test", dir.toString(), List.of(), List.of("fast"), List.of("slow"), List.of(), false, false));
         var sel = ProtoJobs.testSelectionOf(line);
         assertThat(sel.includeTags()).containsExactly("fast");
         assertThat(sel.excludeTags()).containsExactly("slow");

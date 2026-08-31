@@ -636,7 +636,15 @@ public final class PlannerSupport {
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
         var fromToml = JkBuildParser.parseTestTags(moduleDir.resolve(ManifestPaths.MANIFEST));
         if (fromToml.isEmpty()) return sel;
-        return TestSelection.of(sel.suites(), sel.allSuites(), fromToml.includeTags(), fromToml.excludeTags());
+        return TestSelection.of(
+                sel.suites(),
+                sel.allSuites(),
+                fromToml.includeTags(),
+                fromToml.excludeTags(),
+                false,
+                sel.gate(),
+                sel.scriptsOnly(),
+                sel.noScripts());
     }
 
     /**

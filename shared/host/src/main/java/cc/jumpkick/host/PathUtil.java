@@ -440,16 +440,41 @@ public final class PathUtil {
         if (dos == null) return denied;
         try {
             dos.setReadOnly(false);
-            boolean gone = Files.deleteIfExists(p);
-            if (gone && tally != null && attrs != null && attrs.isRegularFile()) {
-                tally.add(attrs.size());
+        } catch (IOException notTheProblem) {
+            denied.addSuppressed(notTheProblem);
+        }
+        // The other Windows denial is a sharing violation: some process still has the file open.
+        // A handle usually goes moments after its owner is told to exit, and callers stop what
+        // they know about before deleting (engines, then AOT trainers) — so a short retry turns
+        // "the process cannot access the file" into a completed wipe rather than a failed one.
+        // Bounded tightly: a file nobody is releasing must still fail fast, per file.
+        for (int attempt = 0; ; attempt++) {
+            try {
+                boolean gone = Files.deleteIfExists(p);
+                if (gone && tally != null && attrs != null && attrs.isRegularFile()) {
+                    tally.add(attrs.size());
+                }
+                return null;
+            } catch (IOException still) {
+                if (attempt >= SHARING_VIOLATION_RETRIES) {
+                    denied.addSuppressed(still);
+                    return denied;
+                }
+                try {
+                    Thread.sleep(SHARING_VIOLATION_BACKOFF_MILLIS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    denied.addSuppressed(still);
+                    return denied;
+                }
             }
-            return null;
-        } catch (IOException still) {
-            denied.addSuppressed(still);
-            return denied;
         }
     }
+
+    /** Retries for a Windows sharing violation; small on purpose — see {@link #clearReadOnlyAndRetry}. */
+    private static final int SHARING_VIOLATION_RETRIES = 3;
+
+    private static final long SHARING_VIOLATION_BACKOFF_MILLIS = 60;
 
     /** Running tally for {@link #deleteRecursivelyOrThrow(Path, Removed)}. Directories count as 0 files. */
     public static final class Removed {

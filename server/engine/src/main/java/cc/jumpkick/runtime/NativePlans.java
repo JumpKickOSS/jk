@@ -161,6 +161,9 @@ public final class NativePlans {
      */
     public static int failureExitCode(BuildPlan plan, BuildPlanResult result) {
         for (BuildPlanResult.Diagnostic d : result.errors()) {
+            if ("affected-refuse".equals(d.code())) {
+                return Exit.CONFIG;
+            }
             if ("native".equals(d.code()) && d.message() != null && d.message().contains("main class")) {
                 return Exit.USAGE;
             }

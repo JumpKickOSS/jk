@@ -30,7 +30,9 @@ class GitBackendFetchTest {
         GitBackend backend = factory.create(tempDir.resolve("jk-git"));
 
         GitSource source = GitSource.of(
-                "file://" + upstream.workTree(), "file://" + upstream.workTree(), new GitRefSpec.Tag("v1.0.0"));
+                upstream.workTree().toUri().toString(),
+                upstream.workTree().toUri().toString(),
+                new GitRefSpec.Tag("v1.0.0"));
 
         GitFetcher.Fetched fetched = backend.fetch(source, false);
         assertThat(fetched.sha()).isEqualTo(upstream.taggedSha());
@@ -45,7 +47,9 @@ class GitBackendFetchTest {
         UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
         GitBackend backend = factory.create(tempDir.resolve("jk-git"));
         GitSource source = GitSource.of(
-                "file://" + upstream.workTree(), "file://" + upstream.workTree(), new GitRefSpec.Tag("v1.0.0"));
+                upstream.workTree().toUri().toString(),
+                upstream.workTree().toUri().toString(),
+                new GitRefSpec.Tag("v1.0.0"));
 
         GitFetcher.Fetched first = backend.fetch(source, false);
         // Backdate the checkout a clear minute, so ANY rewrite by the second fetch moves the mtime.
@@ -65,8 +69,8 @@ class GitBackendFetchTest {
             throws Exception {
         UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
         GitSource source = GitSource.of(
-                "file://" + upstream.workTree(),
-                "file://" + upstream.workTree(),
+                upstream.workTree().toUri().toString(),
+                upstream.workTree().toUri().toString(),
                 new GitRefSpec.Rev(upstream.taggedSha()));
 
         GitFetcher.Fetched fetched = factory.create(tempDir.resolve("jk-git")).fetch(source, false);
@@ -80,7 +84,9 @@ class GitBackendFetchTest {
         UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
         GitBackend backend = factory.create(tempDir.resolve("jk-git"));
         GitSource source = GitSource.of(
-                "file://" + upstream.workTree(), "file://" + upstream.workTree(), new GitRefSpec.Tag("v1.0.0"));
+                upstream.workTree().toUri().toString(),
+                upstream.workTree().toUri().toString(),
+                new GitRefSpec.Tag("v1.0.0"));
 
         // Initial fetch to populate the bare clone.
         backend.fetch(source, false);
@@ -101,7 +107,9 @@ class GitBackendFetchTest {
     void missing_ref_yields_clear_error(String name, BackendFactory factory, @TempDir Path tempDir) throws Exception {
         UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
         GitSource source = GitSource.of(
-                "file://" + upstream.workTree(), "file://" + upstream.workTree(), new GitRefSpec.Tag("v99.0.0"));
+                upstream.workTree().toUri().toString(),
+                upstream.workTree().toUri().toString(),
+                new GitRefSpec.Tag("v99.0.0"));
 
         assertThatThrownBy(() -> factory.create(tempDir.resolve("jk-git")).fetch(source, false))
                 .isInstanceOf(IOException.class)

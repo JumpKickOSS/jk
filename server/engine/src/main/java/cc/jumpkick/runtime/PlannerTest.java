@@ -33,6 +33,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
@@ -367,17 +368,24 @@ public final class PlannerTest {
                     // when the session selection carries no tags at all, apply this module's
                     // own config here. The effective selection feeds BOTH the stamp and the runner.
                     var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
+                    AffectedTestRun.Outcome affected = null;
+                    if (in.session().affected()) {
+                        try {
+                            affected = AffectedTestRun.apply(ctx, in, effectiveSel);
+                        } catch (AffectedTestRun.RankingRefused e) {
+                            throw new RuntimeException(e.getMessage(), e);
+                        }
+                        if (affected != null && affected.classNames().isEmpty()) {
+                            return; // nothing affected — no stamp store
+                        }
+                    }
+                    List<String> extras = new ArrayList<>(testStampExtras(
+                            workerJars, effectiveSel, projectUnderTest.build().testEnv(), in.dir()));
+                    if (affected != null && !affected.stampToken().isBlank()) {
+                        extras.add("affected:" + affected.stampToken());
+                    }
                     String stampKey = TestStamp.computeKey(
-                            testSrcs,
-                            ctx.require(MAIN_CLASSES),
-                            testResDirs,
-                            in.lockFile(),
-                            testRtCp,
-                            testStampExtras(
-                                    workerJars,
-                                    effectiveSel,
-                                    projectUnderTest.build().testEnv(),
-                                    in.dir()));
+                            testSrcs, ctx.require(MAIN_CLASSES), testResDirs, in.lockFile(), testRtCp, extras);
                     String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -460,22 +468,23 @@ public final class PlannerTest {
                     boolean gated = !in.session().parallelTests();
                     if (gated) TEST_GATE.acquireUninterruptibly();
                     try {
-                        result = new JUnitLauncher()
+                        JUnitLauncher launcher = new JUnitLauncher()
                                 .withModuleLabel(moduleLabel)
                                 .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
                                 // [test] serial-tags: those classes run on one trailing worker
                                 // while the rest shard (JK-2184).
-                                .withSerialTags(projectUnderTest.build().testSerialTags())
-                                .run(
-                                        ctx.require(JAVA_HOME),
-                                        ctx.require(TEST_CLASSES),
-                                        runtimeCp,
-                                        in.cache(),
-                                        testWorkers,
-                                        workerJars,
-                                        testEnv,
-                                        listener,
-                                        ctx.require(LAYOUT).testResultsDir());
+                                .withSerialTags(projectUnderTest.build().testSerialTags());
+                        if (affected != null) launcher.withClassNames(affected.classNames());
+                        result = launcher.run(
+                                ctx.require(JAVA_HOME),
+                                ctx.require(TEST_CLASSES),
+                                runtimeCp,
+                                in.cache(),
+                                testWorkers,
+                                workerJars,
+                                testEnv,
+                                listener,
+                                ctx.require(LAYOUT).testResultsDir());
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         ctx.error("test", "interrupted");

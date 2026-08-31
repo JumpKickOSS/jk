@@ -350,6 +350,13 @@ try {
 
     $script:JkBin = Join-Path $InstallDir $destName
     Park-IfPresent $script:JkBin
+    # PATHEXT prefers .exe over .bat. Installing the thin client must park a leftover
+    # unsigned jk.exe or `jk` still launches the blocked PE (JK-2037).
+    if ($destName -eq "jk.bat") {
+        Park-IfPresent (Join-Path $InstallDir "jk.exe")
+    } elseif ($destName -eq "jk.exe") {
+        Park-IfPresent (Join-Path $InstallDir "jk.bat")
+    }
     try {
         Expand-JkArchive -Archive $ArchiveFile -Destination $script:JkBin
     } catch {

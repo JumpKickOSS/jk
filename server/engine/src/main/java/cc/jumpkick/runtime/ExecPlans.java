@@ -78,14 +78,16 @@ public final class ExecPlans {
      * (empty match is success, not an error). Invalid selectors ride {@code error}.
      */
     public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince) {
-        return projectInfo(dir, modulesSpec, affectedSince, true);
+        return projectInfo(dir, modulesSpec, affectedSince, false, true);
     }
 
     /**
      * {@code counts=false} skips the source/test tree walks — identity/selection callers on hot
      * paths (build/compile/release loops) never need them; only {@code jk status} does (JK-2162).
+     * {@code affectedWip} is {@code --affected}.
      */
-    public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince, boolean counts) {
+    public static ProjectInfo projectInfo(
+            Path dir, String modulesSpec, String affectedSince, boolean affectedWip, boolean counts) {
         try {
             Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile)) {
@@ -138,10 +140,12 @@ public final class ExecPlans {
             }
 
             if ((modulesSpec != null && !modulesSpec.isBlank())
-                    || (affectedSince != null && !affectedSince.isBlank())) {
+                    || (affectedSince != null && !affectedSince.isBlank())
+                    || affectedWip) {
                 Path selectRoot = wsRoot != null ? wsRoot : dir;
                 JkBuild selectBuild = wsRoot != null ? rootBuild : build;
-                var hit = ModuleSelection.resolveOptional(selectRoot, selectBuild, modulesSpec, affectedSince);
+                var hit = ModuleSelection.resolveOptional(
+                        selectRoot, selectBuild, modulesSpec, affectedSince, affectedWip);
                 if (hit != null && !hit.ok()) {
                     return ProjectInfo.error(hit.errorMessage());
                 }

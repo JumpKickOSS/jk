@@ -19,9 +19,10 @@ same module (IntelliJ `.iml`, VS Code/JDT `.classpath`, BSP `buildTarget/sources
 test output directory; no extra IDE module per suite. Named suite resource dirs are test
 resources when present.
 
-Execution still follows the CLI default: `jk test` runs only the **test** suite. After
+Execution still follows the CLI default: `jk test` runs only the **test** (unit) suite. After
 `jk ide`, IntelliJ gains shell run configurations (`jk test`, `jk test (all suites)`, and
-one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries.
+one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries. Treat
+**all suites** as the nightly / release configuration, not the inner loop.
 
 ## BSP
 

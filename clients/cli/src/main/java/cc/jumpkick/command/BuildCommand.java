@@ -75,6 +75,9 @@ public final class BuildCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
+        opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
+        opts.add(Opt.flag("Gate scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip gate scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
@@ -104,6 +107,7 @@ public final class BuildCommand implements CliCommand {
     boolean aotCache;
     String variant;
     String affectedSince;
+    boolean affectedWip;
     String modulesSpec;
     Map<String, String> clientEnv = Map.of();
     /** Best-effort session transcript; null when disabled / no project. */
@@ -126,7 +130,12 @@ public final class BuildCommand implements CliCommand {
         // C2: cross-module tests parallel by default; --serial-tests opts out (TEST_GATE).
         this.parallelTests = ParallelTestsOpts.enabled(in);
         this.affectedSince = in.value("affected-since").orElse(null);
+        this.affectedWip = in.isSet("affected");
         this.modulesSpec = in.value("modules").orElse(null);
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
+            CommandWedge.printFail("Build", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
         // Suite/tag widening rides the session exactly as `jk test` (JK-2182); the wire
         // adapters read it for both workspace and single-project requests.
         TestSelection testSelection;
@@ -136,6 +145,8 @@ public final class BuildCommand implements CliCommand {
             CommandWedge.printFail("Build", e.getMessage());
             return Exit.CONFIG;
         }
+        TestCommand.warnGateOverride(in, global);
+        if (testSelection.scriptsOnly()) this.buildOpts.skipTests = true;
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path startDir = global.workingDir();
@@ -311,9 +322,9 @@ public final class BuildCommand implements CliCommand {
     }
 
     private Selection resolveSelection(Path entryDir) {
-        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
+        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         if (tokens.isEmpty()) return new Selection(null, false, List.of());
-        ProjectInfo info = ProjectInfos.orError(entryDir, modulesSpec, affectedSince);
+        ProjectInfo info = ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip);
         if (info == null) {
             return new Selection("cannot load project summary for module selection", false, List.of());
         }

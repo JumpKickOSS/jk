@@ -27,7 +27,7 @@ public final class ProjectInfos {
 
     /** As {@link #orNull(Path)}; {@code counts=true} adds source/test tree counts. */
     public static @Nullable ProjectInfo orNull(Path dir, boolean counts) {
-        String key = key(dir, null, null, counts);
+        String key = key(dir, null, null, false, counts);
         ProjectInfo cached = MEMO.get(key);
         if (cached != null) return cached;
         try {
@@ -42,12 +42,17 @@ public final class ProjectInfos {
 
     /** Module-selection summary; failures come back as {@link ProjectInfo#error()}, never null. */
     public static ProjectInfo orError(Path dir, @Nullable String modules, @Nullable String affectedSince) {
-        String key = key(dir, modules, affectedSince, false);
+        return orError(dir, modules, affectedSince, false);
+    }
+
+    public static ProjectInfo orError(
+            Path dir, @Nullable String modules, @Nullable String affectedSince, boolean affectedWip) {
+        String key = key(dir, modules, affectedSince, affectedWip, false);
         ProjectInfo cached = MEMO.get(key);
         if (cached != null) return cached;
         ProjectInfo info;
         try {
-            info = EngineClient.projectInfo(EnginePaths.current(), dir, modules, affectedSince);
+            info = EngineClient.projectInfo(EnginePaths.current(), dir, modules, affectedSince, affectedWip, false);
         } catch (Exception e) {
             return ProjectInfo.error(String.valueOf(e.getMessage()));
         }
@@ -60,8 +65,9 @@ public final class ProjectInfos {
         MEMO.clear();
     }
 
-    private static String key(Path dir, @Nullable String modules, @Nullable String affectedSince, boolean counts) {
+    private static String key(
+            Path dir, @Nullable String modules, @Nullable String affectedSince, boolean affectedWip, boolean counts) {
         return dir.toAbsolutePath().normalize() + "\0" + (modules == null ? "" : modules) + "\0"
-                + (affectedSince == null ? "" : affectedSince) + "\0" + counts;
+                + (affectedSince == null ? "" : affectedSince) + "\0" + affectedWip + "\0" + counts;
     }
 }

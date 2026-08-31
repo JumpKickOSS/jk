@@ -25,7 +25,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 | Fix a failing build | [Troubleshooting](troubleshooting.md) |
 | Add or update a dependency | [Dependencies](dependencies.md), [Lockfile](lockfile.md) |
 | Format source | [Format](format.md) |
-| Run tests (suites, tags, parallelism) | [Test](test.md) |
+| Run tests (unit inner loop, integration / e2e rungs, tags) | [Test](test.md) |
 | Understand a rebuild | [Explain](explain.md) |
 | Create a project from a template | [Templates](templates.md) |
 | Import Maven or Gradle | [Migration](migration.md) |

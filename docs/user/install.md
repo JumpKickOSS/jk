@@ -18,17 +18,23 @@ language level — [Concepts](concepts.md).
 
 Windows PATH install dir: `%USERPROFILE%\.local\bin`. `install.ps1` prepends that
 directory to your **User PATH** (visible from cmd and PowerShell) and runs
-`jk activate --yes` for profile hooks. Local dogfood from this repository (after
-`.\gradlew dist`):
+`jk activate --yes` for profile hooks.
+
+Local dogfood from this repository:
 
 ```powershell
+# Thin JVM client (supported on Windows; Smart App Control blocks unsigned jk.exe)
+.\gradlew :cli:installDist installLocal
+.\install.cmd clients\cli\build\install\jk\bin\jk.bat
+
+# Native image — needs unsigned PE runnable (SAC off) or a signed release (JK-2059)
+.\gradlew dist
 .\install.cmd build\dist\jk.exe
-# or, if you prefer invoking PowerShell directly:
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 build\dist\jk.exe
 ```
 
 (`.\install.ps1` alone often fails under the default **Restricted** execution policy;
-`install.cmd` and `irm | iex` do not.) See [Contributing](../../CONTRIBUTING.md).
+`install.cmd` and `irm | iex` do not.) Installing `jk.bat` parks a leftover `jk.exe` so
+`jk` does not keep launching the blocked PE. See [Contributing](../../CONTRIBUTING.md).
 
 Self-update of an installed binary: `jk self update` (verifies the release). Release
 layout and signing: [contributor releases](../contributors/releases.md).

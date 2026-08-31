@@ -18,13 +18,20 @@ import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.AffectedTestsReport;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.command.CliCommand;
@@ -78,10 +85,15 @@ public final class TestCommand implements CliCommand {
         opts.add(CommonOpts.cacheDir());
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.keepGoing());
-        opts.addAll(CommonOpts.moduleSelection());
+        opts.addAll(CommonOpts.moduleSelection(
+                Opt.flag("Ranked WIP tests (does not run)", "--affected"),
+                Opt.value("<git-ref>", "Ranked tests since ref (no run)", "--affected-since")));
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
+        opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
+        opts.add(Opt.flag("Gate scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip gate scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
@@ -102,6 +114,7 @@ public final class TestCommand implements CliCommand {
     GlobalOptions global;
     int jobs;
     String affectedSince;
+    boolean affectedWip;
     String modulesSpec;
     TestSelection testSelection = TestSelection.DEFAULT;
     private CliSessionTranscript session;
@@ -113,7 +126,12 @@ public final class TestCommand implements CliCommand {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.affectedSince = in.value("affected-since").orElse(null);
+        this.affectedWip = in.isSet("affected");
         this.modulesSpec = in.value("modules").orElse(null);
+        if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
+            CommandWedge.printFail("Test", ModuleSelectors.BOTH_MESSAGE);
+            return Exit.CONFIG;
+        }
         this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
@@ -125,6 +143,7 @@ public final class TestCommand implements CliCommand {
             CommandWedge.printFail("Test", e.getMessage());
             return Exit.CONFIG;
         }
+        warnGateOverride(in, global);
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path dir = global.workingDir();
@@ -141,6 +160,10 @@ public final class TestCommand implements CliCommand {
         // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
+        if (affectedWip || (affectedSince != null && !affectedSince.isBlank())) {
+            return finishSession(showAffected(dir));
+        }
+
         var info = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
@@ -155,8 +178,10 @@ public final class TestCommand implements CliCommand {
         }
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
-        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince);
+        if (affectedWip
+                || (affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
+            var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -224,6 +249,9 @@ public final class TestCommand implements CliCommand {
         }
 
         if (result.success()) return finishSession(0);
+        for (var d : result.errors()) {
+            if ("affected-refuse".equals(d.code())) return finishSession(Exit.CONFIG);
+        }
         // Test failures get exit 4; compile / launcher errors are exit 1.
         if (testResult != null && !testResult.allPassed()) return finishSession(4);
         return finishSession(1);
@@ -231,6 +259,54 @@ public final class TestCommand implements CliCommand {
 
     private int finishSession(int code) {
         return CliSessionTranscript.finish(session, code, global != null && global.verbose);
+    }
+
+    /**
+     * {@code --affected} / {@code --affected-since} is a ranked list, not a test run. Write
+     * {@code target/jk-tests-affected.md} and print the same ranking as a table.
+     */
+    private int showAffected(Path dir) {
+        AffectedTestsReport report;
+        try {
+            String since = affectedWip ? null : affectedSince;
+            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since);
+        } catch (IOException e) {
+            CommandWedge.printFail("Test", e.getMessage());
+            if (session != null) session.error(e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (global != null && global.outputIsJson()) {
+            CliOutput.outRaw(report.encode());
+            return report.error() != null ? Exit.CONFIG : Exit.SUCCESS;
+        }
+        if (report.error() != null && !report.error().isBlank()) {
+            CommandWedge.printFail("Test", "cannot rank affected tests: " + report.error() + ". Run jk test");
+            if (session != null) session.error(report.error());
+            return Exit.CONFIG;
+        }
+        if (report.rows().isEmpty()) {
+            CommandWedge.printOk("Test", "nothing affected");
+            if (session != null) session.wedge("nothing affected");
+            return 0;
+        }
+        CommandWedge.envelopeStart();
+        for (String line : renderAffectedTable(report.rows())) {
+            CliOutput.out(line);
+        }
+        if (session != null) session.wedge(report.rows().size() + " affected");
+        return 0;
+    }
+
+    static List<String> renderAffectedTable(List<AffectedTestsReport.Row> rows) {
+        Table table = new Table("Affected tests")
+                .columns(
+                        new Table.Column("Score", Table.Align.RIGHT),
+                        new Table.Column("Class"),
+                        new Table.Column("Reason"));
+        for (AffectedTestsReport.Row r : rows) {
+            table.row(String.valueOf(r.score()), r.className(), r.reason());
+        }
+        return table.render(RenderContext.current());
     }
 
     private List<String> testArgv(Invocation in) {
@@ -248,6 +324,7 @@ public final class TestCommand implements CliCommand {
             argv.add("--affected-since");
             argv.add(r);
         });
+        if (in.isSet("affected")) argv.add("--affected");
         if (in.isSet("serial-tests") || in.isSet("no-parallel-tests")) argv.add("--serial-tests");
         else if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
         in.value("workers").ifPresent(w -> {
@@ -264,9 +341,9 @@ public final class TestCommand implements CliCommand {
      */
     private int runSelectedWorkspaceTests(Path entryDir, ProjectInfo rootInfo, Path cache, int workerCount)
             throws IOException, InterruptedException {
-        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
+        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         if (!tokens.isEmpty()) {
-            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince);
+            var sel = ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
                 if (session != null) session.error(sel.error());
@@ -296,7 +373,8 @@ public final class TestCommand implements CliCommand {
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
         List<String> scopeNames = List.of();
         if (modules != null && !modules.isEmpty()) {
-            scopeNames = ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince));
+            scopeNames =
+                    ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip));
             if (!live) {
                 ModuleScopeHint.print("testing", scopeNames, global != null && global.outputIsJson());
             }
@@ -385,7 +463,7 @@ public final class TestCommand implements CliCommand {
                         jdksDir,
                         workerCount,
                         profileName,
-                        /* skipTests */ false,
+                        /* skipTests */ testSelection.scriptsOnly(),
                         global.verbose,
                         concurrency,
                         null,
@@ -432,9 +510,23 @@ public final class TestCommand implements CliCommand {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
     }
 
+    /** {@code --gate} and its silent alias {@code --pre-merge} share one option identity. */
+    static boolean gateRequested(Invocation in) {
+        return in.isSet("gate") || in.isSet("pre-merge");
+    }
+
+    static final String GATE_SUITE_OVERRIDE_WARNING = "--gate ignored because --suite was set";
+    static final String SCRIPTS_FLAGS_CONFLICT = "--scripts-only and --no-scripts cannot be combined";
+
+    static void warnGateOverride(Invocation in, GlobalOptions global) {
+        if (!gateRequested(in) || in.values("suite").isEmpty()) return;
+        if (global != null && global.outputIsJson()) return;
+        CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + GATE_SUITE_OVERRIDE_WARNING);
+    }
+
     /**
      * CLI + {@code [test]} / profile tags → {@link cc.jumpkick.config.TestSelection}. Throws if
-     * {@code --all} and {@code --suite} are both set.
+     * {@code --all} and {@code --suite} / {@code --gate} are combined.
      *
      * <p>Precedence (each layer replaces the previous for a given list when it speaks):
      *
@@ -445,17 +537,35 @@ public final class TestCommand implements CliCommand {
      * </ol>
      *
      * Auto profile defers when CLI set any tag option so explicit CLI selection is not overridden
-     * by profile filters.
+     * by profile filters. {@code --gate} / {@code --pre-merge} select {@code test} +
+     * {@code integration} (or {@code [test] gate-suites}); {@code --suite} wins over {@code --gate}.
      */
     static TestSelection resolveTestSelection(Invocation in) {
         boolean all = in.isSet("all");
+        boolean gate = gateRequested(in);
+        boolean scriptsOnly = in.isSet("scripts-only");
+        boolean noScripts = in.isSet("no-scripts");
+        if (scriptsOnly && noScripts) {
+            throw new IllegalArgumentException(SCRIPTS_FLAGS_CONFLICT);
+        }
         List<String> suites = new ArrayList<>(in.values("suite"));
         boolean cliInclude = in.has("include-tags");
         boolean cliExclude = in.has("exclude-tags");
         if (all && !suites.isEmpty()) {
             throw new IllegalArgumentException("--all and --suite cannot be combined");
         }
+        if (all && gate) {
+            throw new IllegalArgumentException("--all and --gate cannot be combined");
+        }
         Path wd = GlobalOptions.from(in).workingDir();
+        if (scriptsOnly) {
+            Path root = WorkspaceScan.isWorkspaceRoot(wd)
+                    ? wd
+                    : WorkspaceScan.findRoot(wd).orElse(wd);
+            if (!BuildLogicToml.hasStem(root, "gate")) {
+                throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
+            }
+        }
         Path toml = wd.resolve(ManifestPaths.MANIFEST);
         String explicit = in.value("profile").orElse(null);
         boolean explicitProfile = explicit != null && !explicit.isBlank();
@@ -463,6 +573,7 @@ public final class TestCommand implements CliCommand {
         List<String> scanKeys = new ArrayList<>();
         scanKeys.add("test.include-tags");
         scanKeys.add("test.exclude-tags");
+        scanKeys.add("test.gate-suites");
         if (profileName != null && !profileName.isBlank()) {
             scanKeys.add("profiles." + profileName + ".include-tags");
             scanKeys.add("profiles." + profileName + ".exclude-tags");
@@ -512,6 +623,20 @@ public final class TestCommand implements CliCommand {
             if (!cliExclude) exclude = new ArrayList<>();
             spoke = true;
         }
-        return TestSelection.of(suites, all, include, exclude, spoke);
+        boolean applyGate = gate && suites.isEmpty();
+        if (applyGate) {
+            if (scan.hasKey("test.gate-suites")) {
+                suites = new ArrayList<>(scan.stringArray("test.gate-suites"));
+                if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
+                for (String name : suites) {
+                    if (!TestSuites.isSuiteName(name)) {
+                        throw new IllegalArgumentException("unknown test suite '" + name + "' in [test] gate-suites");
+                    }
+                }
+            } else {
+                suites = new ArrayList<>(TestSuites.GATE);
+            }
+        }
+        return TestSelection.of(suites, all, include, exclude, spoke, applyGate, scriptsOnly, noScripts);
     }
 }

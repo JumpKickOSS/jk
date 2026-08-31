@@ -18,18 +18,17 @@ repo until a deliberate Gradle cut-over (backlog below).
 You need a working `jk` before pure-jk can build the monorepo.
 
 ```bash
-# In this clone (Graal for native dist; thin path in CONTRIBUTING)
+# Native (Graal). Windows thin-client path is in CONTRIBUTING.
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
 export PATH="$HOME/.local/bin:$PATH"
 jk engine status
 ```
 
-There is no supported alternative to the native client. The JVM-mode client behind
-`:cli:installDist` exists for the test harness; it cannot self-heal a missing engine, so
-bootstrapping on it leaves a tree only Gradle can revive (JK-1070). Install a GraalVM-capable JDK
-instead — `sdk install java 25-graalce` is the least ceremony. Engine materialize
-(`:engine:installLocal`) always uses the native client from `./gradlew dist`.
+The native client is preferred (self-heal, sub-50 ms). **Windows also supports the thin JVM
+client** (`:cli:installDist` → `jk.bat`): Smart App Control blocks unsigned `jk.exe`.
+`:engine:installLocal` uses native when `dist` already built one, otherwise the thin launcher.
+The thin client cannot self-heal a missing engine (JK-1070) — materialize from this checkout.
 
 Once a release is published this section shrinks to one line: install with
 `curl -fsSL https://jumpkick.build/install.sh | bash` and let the binary bootstrap its own engine.

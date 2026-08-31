@@ -11,6 +11,7 @@ import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.testing.FakeJdk;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -82,12 +83,7 @@ class IdeIdeaGenerationTest {
     }
 
     private static void fakeJdk(Path jdksRoot, String name, String version) throws IOException {
-        Path home = jdksRoot.resolve(name);
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
-        Files.writeString(
-                home.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"" + version + "\"\n");
+        FakeJdk.create(jdksRoot.resolve(name), version);
     }
 
     private static int runIdea(Path ws, Path jdks, Path ideConfig, Path cache) {

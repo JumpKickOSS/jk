@@ -48,5 +48,31 @@ class ProtoJobsTagArrayTest {
 
         assertThat(back.includeTags()).containsExactly("fast");
         assertThat(back.excludeTags()).containsExactly("slow");
+        assertThat(back.gate()).isFalse();
+    }
+
+    @Test
+    void gate_survives_the_round_trip() {
+        TestSelection sent = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, true);
+        TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");
+        assertThat(back.gate()).isTrue();
+        assertThat(back.suites()).containsExactly("test", "integration");
+        assertThat(back.identityToken()).isEqualTo(sent.identityToken());
+    }
+
+    @Test
+    void scripts_flags_survive_the_round_trip() {
+        TestSelection sent = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
+        TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");
+        assertThat(back.scriptsOnly()).isTrue();
+        assertThat(back.noScripts()).isFalse();
+        assertThat(back.runGateScripts()).isTrue();
+
+        TestSelection skip =
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true, false, true);
+        TestSelection skipBack = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(skip) + "}");
+        assertThat(skipBack.gate()).isTrue();
+        assertThat(skipBack.noScripts()).isTrue();
+        assertThat(skipBack.runGateScripts()).isFalse();
     }
 }

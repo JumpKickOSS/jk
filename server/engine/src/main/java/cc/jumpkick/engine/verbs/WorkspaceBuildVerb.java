@@ -87,28 +87,33 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         }
         boolean testOnly = "test".equals(spec.kind());
         boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind());
-        return ProtoSession.withTrigger(
-                ProtoJobs.buildRequest(
-                        entryDir.toString(),
-                        JkDirs.cache().toString(),
-                        JkDirs.jdks().toString(),
-                        0,
-                        null,
-                        skipTests,
-                        false,
-                        0,
-                        // Parallel module tests: same default as the CLI (JK-2213).
-                        true,
-                        false,
-                        false,
-                        true,
-                        false,
-                        testOnly,
-                        dirty == null
-                                ? null
-                                : dirty.stream().map(Path::toString).sorted().toList(),
-                        JobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites())),
-                "web");
+        return Jsonl.append(
+                ProtoSession.withTrigger(
+                        ProtoJobs.buildRequest(
+                                entryDir.toString(),
+                                JkDirs.cache().toString(),
+                                JkDirs.jdks().toString(),
+                                0,
+                                null,
+                                skipTests,
+                                false,
+                                0,
+                                // Parallel module tests: same default as the CLI (JK-2213).
+                                true,
+                                false,
+                                false,
+                                true,
+                                false,
+                                testOnly,
+                                dirty == null
+                                        ? null
+                                        : dirty.stream()
+                                                .map(Path::toString)
+                                                .sorted()
+                                                .toList(),
+                                JobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites())),
+                        "web"),
+                spec.affected() ? "\"affected\":true" : "");
     }
 
     /**
@@ -219,6 +224,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withJdksDir(jdksDir)
                     .withParallelTests(parallelTests)
                     .withTestSelection(ProtoJobs.testSelectionOf(requestLine))
+                    .withAffected(Jsonl.bool(requestLine, "affected", false))
                     .withCancel(cancelToken)
                     .withJvm(ProtoSession.jvmTuning(requestLine))
                     // The request's env belongs on the session too, not only on the request: it is

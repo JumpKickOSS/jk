@@ -230,14 +230,20 @@ public final class TasksCommand implements CliCommand {
         Path root = startDir.toAbsolutePath().normalize();
         String modulesSpec = in.value("modules").orElse(null);
         String affected = in.value("affected-since").orElse(null);
+        boolean affectedWip = in.isSet("affected");
+        if (ModuleSelectors.bothSelectors(affectedWip, affected)) {
+            throw new IllegalStateException(ModuleSelectors.BOTH_MESSAGE);
+        }
         var peek = ProjectInfos.orNull(root);
         if (peek != null
                 && !peek.workspaceRoot()
                 && !peek.workspaceRootDir().isBlank()
-                && ((modulesSpec != null && !modulesSpec.isBlank()) || (affected != null && !affected.isBlank()))) {
+                && (affectedWip
+                        || (modulesSpec != null && !modulesSpec.isBlank())
+                        || (affected != null && !affected.isBlank()))) {
             root = Path.of(peek.workspaceRootDir()).toAbsolutePath().normalize();
         }
-        var info = ProjectInfos.orError(root, modulesSpec, affected);
+        var info = ProjectInfos.orError(root, modulesSpec, affected, affectedWip);
         if (info.error() != null && !info.error().isBlank()) {
             throw new IllegalStateException(info.error());
         }

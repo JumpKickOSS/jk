@@ -92,16 +92,22 @@ tasks.shadowJar {
  * ({@code ~/.local/share/jk/lib/…} or {@code $JK_HOME/data/lib/…}), and bounce the resident daemon so local dogfood
  * picks up engine-side first-party plugin tables without a hand copy.
  *
- * Always the native client at {@code build/dist/jk} ({@code jk.exe} on Windows) from the root
- * {@code dist} task. Never the thin JVM {@code :cli:installDist} scripts ({@code jk.bat}).
+ * Native client at {@code build/dist/jk} ({@code jk.exe} on Windows) when {@code dist} already
+ * built one; otherwise the thin JVM {@code :cli:installDist} launcher ({@code jk.bat} / {@code
+ * jk}). Windows Smart App Control blocks unsigned {@code jk.exe}, so the thin client is a
+ * supported dogfood path there.
  */
 tasks.register("installLocal") {
     group = "distribution"
     description = "Materialize shadowJar into the product lib and restart the engine"
     dependsOn(tasks.named("shadowJar"))
-    // Native client must exist before materialize. `dist` also copies this module's shadowJar
-    // into build/dist/lib, so `./gradlew dist installLocal` does not race nativeCompile.
-    dependsOn(":dist")
+    // Thin launcher is always cheap. Native {@code dist} is optional: use it when present.
+    dependsOn(":cli:installDist")
+    // Prefer build/dist/jk when present, but do not race a concurrent Sync/native-image write
+    // (ETXTBSY / "Text file busy" on Linux). Order only — do not dependsOn, so plain
+    // installLocal stays cheap when dist is not requested.
+    mustRunAfter(rootProject.tasks.named("dist"))
+    mustRunAfter(":cli:nativeCompile")
     doLast {
         val engineJar =
             tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").get().archiveFile
@@ -110,10 +116,11 @@ tasks.register("installLocal") {
         val client =
             JkLayoutPaths.resolveClient(rootProject.projectDir)
                 ?: throw GradleException(
-                    "cannot find native jk client at build/dist/jk[.exe]. " +
-                        "Build it first: ./gradlew dist")
+                    "cannot find a jk client (native build/dist/jk[.exe] or thin " +
+                        "clients/cli/build/install/jk/bin/jk[.bat]). " +
+                        "Build one: ./gradlew dist  or  ./gradlew :cli:installDist")
         fun runJk(vararg args: String) {
-            val cmd = listOf(client) + args.toList()
+            val cmd = JkLayoutPaths.launchCommand(client, *args)
             val pb = ProcessBuilder(cmd)
             pb.inheritIO()
             pb.directory(rootProject.projectDir)
@@ -122,8 +129,9 @@ tasks.register("installLocal") {
                     pb.start().waitFor()
                 } catch (e: java.io.IOException) {
                     throw GradleException(
-                        "cannot run native jk client '$client' (${e.message}). " +
-                            "Build it first: ./gradlew dist",
+                        "cannot run jk client '$client' (${e.message}). " +
+                            "On Windows, unsigned jk.exe may be blocked by Smart App Control — " +
+                            "use the thin client: ./gradlew :cli:installDist",
                         e)
                 }
             if (code != 0) {

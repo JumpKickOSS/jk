@@ -12,8 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Resolve {@code --affected-since=&lt;git-ref&gt;} to module directories. Shared by {@code jk build},
- * {@code jk test}, and {@code jk explain}.
+ * Resolve {@code --affected-since=&lt;git-ref&gt;} or {@code --affected} (WIP) to module directories.
+ * Shared by {@code jk build}, {@code jk test}, and {@code jk explain}.
  */
 public final class AffectedSelection {
 
@@ -59,6 +59,32 @@ public final class AffectedSelection {
             }
             Set<Path> affected = AffectedModules.fromChangedPaths(root, modules.keySet(), edges, paths);
             return Result.ok(affected);
+        } catch (Exception e) {
+            return Result.fail(e.getMessage() != null ? e.getMessage() : e.toString());
+        }
+    }
+
+    /**
+     * Working-tree module cone: {@link DirtyPaths#wip} then the same reverse-dep closure as
+     * {@link #resolve}. Not a git ref — {@code --affected-since=HEAD} stays empty.
+     */
+    public static Result resolveWip(Path entryDir, JkBuild entryBuild) {
+        try {
+            Path root = entryDir.toAbsolutePath().normalize();
+            List<String> paths = DirtyPaths.wip(root);
+            if (paths == null) {
+                return Result.fail("git working tree could not be read (not a git repo or git failed)");
+            }
+            if (!entryBuild.isWorkspaceRoot()) {
+                for (String p : paths) {
+                    Path abs = root.resolve(p).normalize();
+                    if (abs.startsWith(root)) return Result.ok(Set.of(root));
+                }
+                return Result.ok(Set.of());
+            }
+            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entryBuild);
+            Map<Path, Set<Path>> edges = AffectedModules.edgesFor(modules);
+            return Result.ok(AffectedModules.fromChangedPaths(root, modules.keySet(), edges, paths));
         } catch (Exception e) {
             return Result.fail(e.getMessage() != null ? e.getMessage() : e.toString());
         }

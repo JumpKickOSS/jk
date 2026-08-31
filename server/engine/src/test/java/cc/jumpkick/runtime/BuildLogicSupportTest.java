@@ -523,6 +523,88 @@ class BuildLogicSupportTest {
         assertEquals(3, Files.readString(ran).length(), "target/ is output, not input");
     }
 
+    @Test
+    void gate_stem_runs_at_a_workspace_root(@TempDir Path dir) throws Exception {
+        Path root = dir.resolve("ws");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = []
+                """);
+        Files.writeString(root.resolve(".jk/gate.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'gate'\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));
+        Path out = layout.generatedSourcesDir("jk-logic-out-gate").resolve("verdict.txt");
+        assertEquals("gate", Files.readString(out).trim());
+    }
+
+    @Test
+    void gate_stem_inside_a_member_is_rejected(@TempDir Path dir) throws Exception {
+        Path root = dir.resolve("ws");
+        Path core = root.resolve("core");
+        Files.createDirectories(core.resolve(".jk"));
+        Files.createDirectories(core.resolve("src/main/java/demo"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = ["core"]
+                """);
+        Files.writeString(core.resolve("jk.toml"), """
+                group = "t"
+                name = "core"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(core.resolve("src/main/java/demo/A.java"), "package demo; class A {}\n");
+        Files.writeString(core.resolve(".jk/gate.groovy"), "// wrong scope\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(core, JkBuildParser.parse(core.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> BuildLogicSupport.run(core, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertTrue(ex.getMessage().contains("gate.groovy"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("module"), ex.getMessage());
+    }
+
+    @Test
+    void gate_on_a_standalone_is_legal_and_does_not_run_on_module_anchors(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Path ran = dir.resolve("gate-ran.log");
+        Files.writeString(
+                project.resolve(".jk/gate.groovy"),
+                "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertFalse(Files.exists(ran), "inner module anchors must not run gate");
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));
+        assertEquals(1, Files.readString(ran).length());
+        assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));
+        assertEquals(1, Files.readString(ran).length(), "unchanged tree caches the gate verdict");
+    }
+
     private static Path scaffold(Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -306,10 +307,53 @@ public final class CacheInventoryOps {
             // turns the delete into a sharing violation, and a write landing after the delete
             // recreates the store the nuke just reported gone.
             try (var held = StoreWriteGate.wipe()) {
-                PathUtil.deleteRecursivelyOrThrow(storeRoot);
+                // Readers matter too, and a trainer is the reader closest to hand: its classpath is
+                // store jars, it outlives the request that started it, and stopping the *engines*
+                // never reached it. Kill and reap before deleting.
+                //
+                // Then delete more than once. Warmup decides to train, resolves a classpath, and
+                // only later forks — so a trainer can appear after a quiesce that correctly found
+                // none, and Windows fails the delete on the jar it just opened. The second pass
+                // sees that fork registered and kills it, and hygiene has stood down by then
+                // (StoreWriteGate.wipedSinceStart), so there is no third racer.
+                List<Long> killed = new ArrayList<>();
+                IOException last = null;
+                for (int attempt = 0; attempt < WIPE_ATTEMPTS; attempt++) {
+                    killed.addAll(PluginAot.quiesceTrainers(TRAINER_QUIESCE_MILLIS));
+                    try {
+                        PathUtil.deleteRecursivelyOrThrow(storeRoot);
+                        last = null;
+                        break;
+                    } catch (IOException stillHeld) {
+                        last = stillHeld;
+                    }
+                }
+                if (last != null) throw new IOException(stillHeldMessage(last, killed), last);
             }
         }
         return CacheInventoryAck.wipe(stats.files(), stats.bytes());
+    }
+
+    /** Delete passes; see the wipe loop for why one is not enough. */
+    private static final int WIPE_ATTEMPTS = 3;
+
+    /** How long the wipe waits for killed trainers to actually exit before deleting. */
+    private static final long TRAINER_QUIESCE_MILLIS = 10_000;
+
+    /**
+     * A locked-file failure that names what the wipe already ruled out. "Used by another process"
+     * with only a path leaves the user hunting a JVM in Task Manager — the one thing this codebase
+     * keeps promising not to make them do — so say which of our own processes were stopped first,
+     * and thereby that the holder is something else.
+     */
+    private static String stillHeldMessage(IOException cause, List<Long> killedTrainers) {
+        String base = cause.getMessage() == null ? cause.toString() : cause.getMessage();
+        if (killedTrainers.isEmpty()) {
+            return base + " — the engines were stopped and no jk trainer was running, so the holder"
+                    + " is a process outside jk (an editor, an antivirus scan, or a shell in that directory)";
+        }
+        return base + " — stopped " + killedTrainers.size() + " jk AOT trainer(s) (pid " + killedTrainers
+                + ") first, so the holder is a process outside jk";
     }
 
     private static List<String> repoNames(Path reposRoot) {

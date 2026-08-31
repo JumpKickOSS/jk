@@ -46,24 +46,30 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 ./gradlew classes
 ./gradlew dist                                  # native client + engine jar → build/dist/
 ./install.sh build/dist/jk                      # local install (Unix)
-# Windows:  .\install.cmd build\dist\jk.exe     # bypasses Restricted execution policy
+# Windows native (needs unsigned PE runnable — SAC off, or a signed release):
+#   .\install.cmd build\dist\jk.exe
+# Windows thin client (supported; SAC-safe):
+#   .\gradlew :cli:installDist installLocal
+#   .\install.cmd clients\cli\build\install\jk\bin\jk.bat
 ```
 
-**The native binary is the product.** `jk` is a slim GraalVM native image, and that is the only
-client we ship, endorse or support. Building one needs a GraalVM-capable JDK — install it however
-you like, SDKMAN is the least ceremony:
+**The native binary is the preferred shipped client** — a slim GraalVM native image, sub-50 ms
+cold start, and the only client that can self-heal a missing engine (`EngineJarFetcher`). Building
+one needs a GraalVM-capable JDK (SDKMAN is the least ceremony):
 
 ```bash
 sdk install java 25-graalce && sdk use java 25-graalce
 ```
 
-There is a JVM-mode client behind `:cli:installDist`. It exists for the harness, not for you: it
-cannot self-heal a missing engine (`EngineJarFetcher` fetches for the native client only), so it
-puts a contributor one deleted jar away from a dead tree that only Gradle can revive (JK-1070).
-Do not bootstrap on it.
+**Windows also supports the thin JVM client** (`:cli:installDist` → `jk.bat`). Smart App Control
+blocks unsigned `jk.exe` (JK-2037); Authenticode for released natives is JK-2059. Contributors
+who want unsigned `gradlew dist` / Graal SVM helpers can turn SAC off — it is optional, not
+required. The thin client cannot self-heal a missing engine (JK-1070); materialize from this
+checkout (`./gradlew installLocal` or `jk self materialize`).
 
-Once a release is published, none of this applies to the common case — the endorsed install is
-`curl -fsSL https://jumpkick.build/install.sh | bash`, and the binary bootstraps its own engine.
+Once a release is published, the common install is
+`curl -fsSL https://jumpkick.build/install.sh | bash` (Windows: `irm …/install.ps1 | iex`).
+Signed `jk.exe` is the user-facing Windows path after JK-2059; `jk.bat` remains supported.
 
 ### Black-box examples (sibling repo)
 
@@ -105,7 +111,9 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
 no `[application]` table). Side-load with `jk install`.
 
-#### Native client bootstrap (the only one)
+#### Client bootstrap
+
+Native (Unix, or Windows with SAC off / a signed `jk.exe`):
 
 ```bash
 # 1) Produce a local JumpKick + side-load worker jars into ~/.cache/jk
@@ -118,6 +126,14 @@ jk lock
 jk build --skip-tests
 jk install
 jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+```
+
+Windows thin client (SAC-safe, no Graal):
+
+```powershell
+.\gradlew :cli:installDist installLocal
+.\install.cmd clients\cli\build\install\jk\bin\jk.bat
+# PATH: %USERPROFILE%\.local\bin  (jk.bat; leftover jk.exe is parked)
 ```
 
 The client never embeds the engine. Spawning uses

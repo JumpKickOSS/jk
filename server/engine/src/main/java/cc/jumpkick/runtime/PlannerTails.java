@@ -103,8 +103,11 @@ public final class PlannerTails {
             // out of `jk build` entirely. Joining keeps tests scheduled — concurrently with
             // packaging — while a failure still fails the plan.
             List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
-            if (!in.skipTests()) {
+            if (!PlannerResources.skipJUnit(in)) {
                 joined.add(TaskNames.RUN_TESTS);
+            }
+            if (PlannerResources.runGateScripts(in) && PlannerResources.invocationRoot(in.dir())) {
+                joined.add(TaskNames.BUILD_LOGIC_GATE);
             }
             if (joined.size() == 1 && leaves.isEmpty()) return; // skip-tests, no tails: package-jar stays terminal
             if (joined.size() == 1) {
