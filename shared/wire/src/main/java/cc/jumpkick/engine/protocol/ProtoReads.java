@@ -379,13 +379,18 @@ public final class ProtoReads {
 
     /** Ranked tests for the working tree, or {@code since...HEAD} when {@code affectedSince} is set. */
     public static String affectedTestsRequest(String dir, TestSelection selection) {
-        return affectedTestsRequest(dir, selection, null);
+        return affectedTestsRequest(dir, selection, null, null);
     }
 
-    public static String affectedTestsRequest(String dir, TestSelection selection, String affectedSince) {
+    /** {@code modules} is the raw {@code -m} spec — it intersects the ranked cone (JK-2613). */
+    public static String affectedTestsRequest(
+            String dir, TestSelection selection, String affectedSince, String modules) {
         String extra = ProtoJobs.testSelectionFields(selection);
         if (affectedSince != null && !affectedSince.isBlank()) {
             extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
+        }
+        if (modules != null && !modules.isBlank()) {
+            extra += ",\"modules\":" + Jsonl.quote(modules);
         }
         return "{\"type\":\"" + EngineProtocol.AFFECTED_TESTS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
     }

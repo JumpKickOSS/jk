@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -9,13 +11,17 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.AffectedTestsCompute;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** {@code jk test --affected} / {@code --affected-since} — ranked list, no test run. */
 public final class AffectedTestsVerb implements HostedVerb {
@@ -53,12 +59,28 @@ public final class AffectedTestsVerb implements HostedVerb {
             try {
                 Path dir = Path.of(Jsonl.str(requestLine, "dir"));
                 String since = Jsonl.str(requestLine, "affectedSince");
+                Set<Path> only = null;
+                String modules = Jsonl.str(requestLine, "modules");
+                if (modules != null && !modules.isBlank()) {
+                    // -m intersects the ranked cone, exactly as it does the build cone (JK-2613).
+                    JkBuild entry = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                    ModuleSelection.Result sel = ModuleSelection.resolve(dir, entry, modules);
+                    if (!sel.ok()) {
+                        host.sendQuiet(
+                                writer,
+                                AffectedTestsReport.error("bad-selection", sel.errorMessage())
+                                        .encode());
+                        return JobOutcome.declined();
+                    }
+                    only = new LinkedHashSet<>();
+                    for (Path m : sel.moduleDirs()) only.add(m.toAbsolutePath().normalize());
+                }
                 AffectedTests ranked =
-                        AffectedTestsCompute.fromDisk(dir, ProtoJobs.testSelectionOf(requestLine), null, since);
+                        AffectedTestsCompute.fromDisk(dir, ProtoJobs.testSelectionOf(requestLine), only, since);
                 JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(dir), ranked);
                 report = toReport(ranked);
             } catch (Exception e) {
-                report = AffectedTestsReport.error("", Errors.text(e));
+                report = AffectedTestsReport.error("internal", Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
         } catch (Exception e) {

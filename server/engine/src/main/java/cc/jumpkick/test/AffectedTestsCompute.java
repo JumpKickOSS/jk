@@ -76,12 +76,10 @@ public final class AffectedTestsCompute {
         List<Unit> units = new ArrayList<>();
         AffectedChanged carrier = new AffectedChanged();
         for (Path modDir : cone.moduleDirs()) {
-            Path abs = modDir.toAbsolutePath().normalize();
-            if (onlyModules != null && !onlyModules.isEmpty() && !onlyModules.contains(abs)) continue;
             JkBuild unit = modules.getOrDefault(modDir, build);
             BuildLayout layout =
                     build.isWorkspaceRoot() ? BuildLayout.of(root, modDir, unit) : BuildLayout.of(modDir, unit);
-            boolean dirtyHere = hasLocalDirty(root, abs, dirty);
+            boolean dirtyHere = hasLocalDirty(root, modDir, dirty);
             units.add(new Unit(modDir, unit, layout, dirtyHere));
             if (dirtyHere) {
                 String rel = root.relativize(modDir).toString();
@@ -120,7 +118,14 @@ public final class AffectedTestsCompute {
 
         // Pass 2 — rank each cone module: a dirty module scores its own changed types first, a
         // dependent scores the carrier's foreign types. Dependents keep a "dependent" module row.
+        // -m intersects here, not in pass 1: an unselected dirty module still classifies, so the
+        // selected modules' importers rank against its changed types (JK-2613).
         for (Unit u : units) {
+            if (onlyModules != null
+                    && !onlyModules.isEmpty()
+                    && !onlyModules.contains(u.dir().toAbsolutePath().normalize())) {
+                continue;
+            }
             Map<String, ClassAbi.Fingerprint> current =
                     AbiIndex.scanClasses(u.layout().classesDir());
             Map<String, ClassAbi.Kind> foreign = AffectedChangedPublish.foreignFor(carrier, current.keySet());

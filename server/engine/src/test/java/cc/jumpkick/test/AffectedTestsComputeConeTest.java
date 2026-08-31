@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassWriter;
@@ -95,6 +96,14 @@ class AffectedTestsComputeConeTest {
                     assertThat(m.why()).isEqualTo("dependent");
                 });
         assertThat(rootBuild.isWorkspaceRoot()).isTrue();
+
+        // -m intersects the ranked list (JK-2613): selecting only `app` still ranks BarTest —
+        // the unselected dirty module keeps classifying its changed types — but drops lib's rows.
+        AffectedTests onlyApp = AffectedTestsCompute.fromDisk(
+                ws, TestSelection.DEFAULT, Set.of(app.toAbsolutePath().normalize()), null);
+        assertThat(onlyApp.refused()).isFalse();
+        assertThat(onlyApp.classNames()).containsExactly("com.acme.app.BarTest");
+        assertThat(onlyApp.modules()).allSatisfy(m -> assertThat(m.path()).isEqualTo("app"));
     }
 
     private static void writeClass(Path dir, String rel, byte[] bytes) throws Exception {

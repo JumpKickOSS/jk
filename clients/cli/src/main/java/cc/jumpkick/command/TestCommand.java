@@ -267,7 +267,7 @@ public final class TestCommand implements CliCommand {
         AffectedTestsReport report;
         try {
             String since = affectedWip ? null : affectedSince;
-            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since);
+            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since, modulesSpec);
         } catch (IOException e) {
             CommandWedge.printFail("Test", e.getMessage());
             if (session != null) session.error(e.getMessage());

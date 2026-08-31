@@ -31,13 +31,19 @@ public final class AffectedTestsTool implements McpTool {
                         "exclude_tags",
                         McpSchemas.strings(),
                         "suites",
+                        McpSchemas.strings(),
+                        "modules",
                         McpSchemas.strings())));
     }
 
     @Override
     public Map<String, Object> call(McpCall in) {
         Map<String, Object> data = McpReads.affectedTests(
-                in.requiredDir(), in.strings("include_tags"), in.strings("exclude_tags"), in.strings("suites"));
+                in.requiredDir(),
+                in.strings("include_tags"),
+                in.strings("exclude_tags"),
+                in.strings("suites"),
+                in.strings("modules"));
         Object err = data.get("error");
         String summary = err != null ? "affected-tests refuse: " + err : "affected-tests ranked=" + data.get("ranked");
         return in.ok(McpEnvelope.of("affected-tests", data), summary);

@@ -41,10 +41,11 @@ final class EngineResolveAdapter {
      * one {@code affected-tests-ack}. Read-only — no compile, no test run.
      */
     static AffectedTestsReport runAffectedTests(
-            EnginePaths.Paths paths, Path dir, TestSelection selection, String since) throws IOException {
+            EnginePaths.Paths paths, Path dir, TestSelection selection, String since, String modules)
+            throws IOException {
         return EngineReads.request(
                 paths,
-                ProtoReads.affectedTestsRequest(dir.toString(), selection, since),
+                ProtoReads.affectedTestsRequest(dir.toString(), selection, since, modules),
                 EngineProtocol.AFFECTED_TESTS_ACK,
                 "affected-tests request",
                 AffectedTestsReport::decode);
