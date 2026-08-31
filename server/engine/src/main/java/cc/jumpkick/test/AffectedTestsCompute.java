@@ -14,6 +14,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -83,6 +84,20 @@ public final class AffectedTestsCompute {
             boolean dirtyHere = hasLocalDirty(root, abs, dirty);
             units.add(new Unit(modDir, unit, layout, dirtyHere));
             if (dirtyHere) {
+                String rel = root.relativize(modDir).toString();
+                if (rel.isBlank()) rel = ".";
+                String coord = unit.project().group() + ":" + unit.project().name();
+                var row = List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"));
+                // No compile happens on this path: a dirty source newer than its compiled class
+                // means the bytecode is a lie — refuse rather than rank from it (JK-2612).
+                String stale = staleDirtyMain(root, modDir, dirty, layout.classesDir());
+                if (stale != null) {
+                    return AffectedTests.refused(
+                            new AffectedTests.Refuse(
+                                    "stale", stale + " is newer than its compiled class — build first"),
+                            row,
+                            List.of());
+                }
                 AffectedChangedPublish.classifyInto(
                         carrier,
                         root,
@@ -91,6 +106,16 @@ public final class AffectedTestsCompute {
                         AbiIndex.load(AbiIndex.path(layout.buildDir())),
                         AbiIndex.scanClasses(layout.classesDir()));
             }
+        }
+        long dirtyModules = units.stream().filter(Unit::dirtyHere).count();
+        if (dirtyModules > AffectedTests.MAX_CHANGED_MODULES) {
+            return AffectedTests.refused(
+                    new AffectedTests.Refuse(
+                            "too-many-modules",
+                            dirtyModules + " modules with source changes (max " + AffectedTests.MAX_CHANGED_MODULES
+                                    + ")"),
+                    List.of(),
+                    List.of());
         }
 
         // Pass 2 — rank each cone module: a dirty module scores its own changed types first, a
@@ -125,6 +150,39 @@ public final class AffectedTestsCompute {
             acc = acc.merge(slice);
         }
         return capGlobal(acc);
+    }
+
+    /**
+     * The module-relative path of a dirty main source that is newer than its compiled class, or
+     * {@code null} when every dirty class file is at least as fresh as its source (or absent —
+     * ranking from sources is honest, stale bytecode is not).
+     */
+    static String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
+        Path module = moduleDir.toAbsolutePath().normalize();
+        Path base = root.toAbsolutePath().normalize();
+        SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));
+        for (String raw : dirty) {
+            if (raw == null || raw.isBlank()) continue;
+            Path p = Path.of(raw);
+            if (!p.isAbsolute()) p = base.resolve(p);
+            p = p.normalize();
+            if (!p.startsWith(module) || !Files.isRegularFile(p)) continue;
+            String name = p.getFileName() == null ? "" : p.getFileName().toString();
+            if (!AffectedTestRanker.isClassSource(name)) continue;
+            String rel = module.relativize(p).toString().replace('\\', '/');
+            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
+            if (hit.kind() != SourceFqcs.Kind.MAIN || hit.fqc() == null) continue;
+            Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
+            try {
+                if (Files.isRegularFile(classFile)
+                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0) {
+                    return rel;
+                }
+            } catch (IOException e) {
+                // unreadable timestamps never fabricate a refuse
+            }
+        }
+        return null;
     }
 
     static boolean hasLocalDirty(Path root, Path module, List<String> dirty) {

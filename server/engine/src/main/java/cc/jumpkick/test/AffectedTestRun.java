@@ -5,8 +5,11 @@ import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -58,8 +61,19 @@ public final class AffectedTestRun {
         Set<String> production = new LinkedHashSet<>(current.keySet());
         production.addAll(foreign.keySet());
         List<TestClassIndex.Entry> tests = TestClassIndex.scan(testClasses, production);
-        if (tests.isEmpty() && !Files.isDirectory(testClasses)) {
+        // run-tests only executes when test sources exist (NO_TEST_SOURCES short-circuits), so an
+        // empty scan after compile-test means the classes are missing — refuse, don't guess.
+        if (tests.isEmpty()) {
             throw refuse(ctx, "no-tests", "no compiled test classes");
+        }
+        if (!dirty.isEmpty()) {
+            int dirtyModules = countDirtyModules(wsRoot, dirty);
+            if (dirtyModules > AffectedTests.MAX_CHANGED_MODULES) {
+                throw refuse(
+                        ctx,
+                        "too-many-modules",
+                        dirtyModules + " modules with source changes (max " + AffectedTests.MAX_CHANGED_MODULES + ")");
+            }
         }
 
         @SuppressWarnings("unchecked")
@@ -94,6 +108,21 @@ public final class AffectedTestRun {
         }
         ctx.label("affected " + report.ranked().size() + " classes");
         return new Outcome(report, report.classNames(), report.identityToken());
+    }
+
+    /** Distinct workspace modules owning dirty paths; 1 when not a workspace or unreadable. */
+    private static int countDirtyModules(Path wsRoot, List<String> dirty) {
+        try {
+            JkBuild root = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+            if (!root.isWorkspaceRoot()) return 1;
+            int n = 0;
+            for (Path modDir : WorkspaceLoader.loadModules(wsRoot, root).keySet()) {
+                if (AffectedTestsCompute.hasLocalDirty(wsRoot, modDir, dirty)) n++;
+            }
+            return n;
+        } catch (Exception e) {
+            return 1; // best-effort: an unreadable workspace never fabricates a refuse
+        }
     }
 
     private static RankingRefused refuse(TaskContext ctx, String code, String message) {
