@@ -11,8 +11,8 @@ wins** (the trees are not merged). Prefer plugins for heavy/reusable tools; use
 
 A **module** needs the directory next to *its* `jk.toml`. The **workspace root** has one
 too, with its own anchor — see [Workspace build logic](#workspace-build-logic). There is
-no `.jk-build/` / `jk-build/` compatibility path — leftover those directories fail the
-build.
+no `.jk-build/` / `jk-build/` compatibility path — a leftover directory of either name
+fails the build on sight, even when a valid `jk/` or `.jk/` sits beside it.
 
 ```text
 my-app/
