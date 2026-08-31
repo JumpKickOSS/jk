@@ -5,7 +5,3 @@ java = 25
 
 [application]
 main = "demo.App"
-
-# Optional — omit to use the .jk/ convention directory when present.
-# [build]
-# logic = "tools/codegen"          # only if not using .jk/

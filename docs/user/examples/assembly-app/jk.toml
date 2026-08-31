@@ -4,7 +4,16 @@ version = "0.0.1"
 java = 25
 
 [application]
-main = "demo.App"
-assembly = true
+main     = "demo.App"
+assembly = true # also writes target/assembly-app-0.0.1-all.jar
 
-# Runnable assembly jar: jk assemble (or jk build)
+# Bundled into the fat jar — main hashes with it, so the jar cannot run without it.
+[dependencies]
+commons-codec = "=1.22.1"
+
+# Compile-time only (@NullMarked): present on javac's path, absent from every jar.
+[provided-dependencies]
+jspecify = "=1.0.1"
+
+[test-dependencies]
+junit-jupiter = "=6.1.3"

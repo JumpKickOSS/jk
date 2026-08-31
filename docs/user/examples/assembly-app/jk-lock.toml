@@ -2,12 +2,19 @@ version = 2
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "17cf70ab10b82924a16c5a3c04655936f4a8f3c37bac63d5688f994bdc829ae4"
-project-id = "87100f249c4ed834ecaeaa446fe3a4b7"
+manifests-sha256 = "183e21bce2b62b4a8b4140a2fddace9299ea89e54c73265ac777fb05ca138917"
+project-id = "98ddca599f58eea7287aca4747a0e4b9"
 
 [jdk]
 suggested-vendor = "temurin"
 suggested-version = "25.0.4"
+
+[[artifact]]
+name     = "commons-codec:commons-codec:jar:"
+version  = "1.22.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:78a5d732fbd715e2d10bd7150d2f8030bae57267f8aacc5c88f642cb6c2e5d3f"
+scopes   = ["main"]
 
 [[artifact]]
 name     = "org.apiguardian:apiguardian-api:jar:"
@@ -21,7 +28,7 @@ name     = "org.jspecify:jspecify:jar:"
 version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
-scopes   = ["test"]
+scopes   = ["provided", "test"]
 
 [[artifact]]
 name     = "org.junit.jupiter:junit-jupiter-api:jar:"
@@ -118,7 +125,7 @@ scopes   = ["test"]
 
 [[module]]
 path    = "."
-group   = "demo"
-name    = "line-count-build"
+group   = "com.example"
+name    = "assembly-app"
 version = "0.0.1"
 java    = 25
