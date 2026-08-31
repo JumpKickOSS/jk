@@ -275,11 +275,12 @@ public final class TestCommand implements CliCommand {
         }
         if (global != null && global.outputIsJson()) {
             CliOutput.outRaw(report.encode());
-            return report.error() != null ? Exit.CONFIG : Exit.SUCCESS;
+            return report.refused() ? Exit.CONFIG : Exit.SUCCESS;
         }
-        if (report.error() != null && !report.error().isBlank()) {
-            CommandWedge.printFail("Test", "cannot rank affected tests: " + report.error() + ". Run jk test");
-            if (session != null) session.error(report.error());
+        if (report.refused()) {
+            String why = report.error() == null || report.error().isBlank() ? report.refuseCode() : report.error();
+            CommandWedge.printFail("Test", "cannot rank affected tests: " + why + ". Run jk test");
+            if (session != null) session.error(why);
             return Exit.CONFIG;
         }
         if (report.rows().isEmpty()) {
