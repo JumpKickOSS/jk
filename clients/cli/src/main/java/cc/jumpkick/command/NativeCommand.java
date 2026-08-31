@@ -95,7 +95,7 @@ public final class NativeCommand implements CliCommand {
     BuildOptions buildOpts;
     GlobalOptions global;
     Path graalHome;
-    /** Optional {@code -m}/{@code --affected-since} filter; null = whole workspace. */
+    /** Optional {@code -m}/{@code --affected}/{@code --affected-since} filter; null = whole workspace. */
     String modulesSpec;
 
     String affectedSince;
@@ -149,8 +149,8 @@ public final class NativeCommand implements CliCommand {
             return runWorkspaceNative(cwdScope.workspaceRoot(), cache);
         }
 
-        // Single project: -m/--affected-since still validate.
-        if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
+        // Single project: -m/--affected/--affected-since still validate.
+        if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
             var sel = ProjectInfos.orError(startDir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Native", sel.error());
@@ -206,9 +206,9 @@ public final class NativeCommand implements CliCommand {
             return 0;
         }
 
-        // -m / --affected-since: engine ModuleSelection via projectInfo.
+        // -m / --affected / --affected-since: engine ModuleSelection via projectInfo.
         List<Path> selectedDirs = null;
-        if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
+        if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
             var sel = ProjectInfos.orError(wsRoot, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Native", sel.error());

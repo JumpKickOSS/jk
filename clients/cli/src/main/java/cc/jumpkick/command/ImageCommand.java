@@ -112,9 +112,7 @@ public final class ImageCommand implements CliCommand {
         var peekEarly = ProjectInfos.orNull(projectDir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, modulesSpec, peekEarly);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
-        if (affectedWip
-                || (modulesSpec != null && !modulesSpec.isBlank())
-                || (affectedSince != null && !affectedSince.isBlank())) {
+        if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
             Path selectRoot = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : projectDir;
             var selected = ProjectInfos.orError(selectRoot, modulesSpec, affectedSince, affectedWip);
             if (selected.error() != null && !selected.error().isBlank()) {

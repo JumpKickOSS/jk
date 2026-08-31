@@ -238,9 +238,7 @@ public final class TasksCommand implements CliCommand {
         if (peek != null
                 && !peek.workspaceRoot()
                 && !peek.workspaceRootDir().isBlank()
-                && (affectedWip
-                        || (modulesSpec != null && !modulesSpec.isBlank())
-                        || (affected != null && !affected.isBlank()))) {
+                && ModuleSelectors.anySelector(modulesSpec, affected, affectedWip)) {
             root = Path.of(peek.workspaceRootDir()).toAbsolutePath().normalize();
         }
         var info = ProjectInfos.orError(root, modulesSpec, affected, affectedWip);

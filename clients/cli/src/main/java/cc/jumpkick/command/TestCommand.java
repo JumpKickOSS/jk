@@ -178,9 +178,7 @@ public final class TestCommand implements CliCommand {
         }
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
-        if (affectedWip
-                || (affectedSince != null && !affectedSince.isBlank())
-                || (modulesSpec != null && !modulesSpec.isBlank())) {
+        if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
             var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
