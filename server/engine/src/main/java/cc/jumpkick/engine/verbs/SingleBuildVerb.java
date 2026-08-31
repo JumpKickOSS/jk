@@ -129,6 +129,8 @@ public final class SingleBuildVerb implements HostedVerb {
             host.releaseExclusiveSlot();
             host.accTests(
                     host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+            host.accAffected(
+                    host.eventRequestId(), plan.get(BuildPlanner.AFFECTED_TESTS).orElse(null));
             JobOutcome outcome = result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
             if (result.success() && barWeight > 0) {
                 long moduleMs = (System.nanoTime() - startNanos) / 1_000_000;

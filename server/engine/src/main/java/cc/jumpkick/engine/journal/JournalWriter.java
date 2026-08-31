@@ -17,6 +17,8 @@ import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -110,6 +112,12 @@ public final class JournalWriter {
         if (a != null && tests != null) a.addTests(tests);
     }
 
+    /** One module's {@code --affected} ranking slice; merged per request, written at finish. */
+    public void accAffected(long requestId, @Nullable AffectedTests affected) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null && affected != null) a.addAffected(affected);
+    }
+
     public void write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
         if (a == null) {
@@ -161,6 +169,16 @@ public final class JournalWriter {
                 JkResultsMarkdown.write(record, runDir, latest, tests);
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: jk-results.md write failed: " + e);
+            }
+            // --affected runs: the merged per-module ranking, written once per request so a new
+            // run replaces the file instead of compounding an old one (JK-2607).
+            AffectedTests affected = a.affected();
+            if (affected != null && a.dir() != null && !a.dir().isBlank()) {
+                try {
+                    JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(Path.of(a.dir())), affected);
+                } catch (IOException | RuntimeException e) {
+                    log.accept("jk engine: jk-tests-affected.md write failed: " + e);
+                }
             }
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);

@@ -46,6 +46,9 @@ public interface VerbHost {
 
     void accTests(long rid, @Nullable TestSummary tests);
 
+    /** One plan's {@code --affected} ranking slice; merged per request, written at request-finish. */
+    default void accAffected(long rid, cc.jumpkick.test.@Nullable AffectedTests affected) {}
+
     void finishProgress(long rid);
 
     void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force);

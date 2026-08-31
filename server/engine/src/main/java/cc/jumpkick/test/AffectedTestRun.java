@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
@@ -9,7 +8,6 @@ import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -21,8 +19,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Orchestrates ranking inside {@code run-tests}: scan, rank, write {@code jk-tests-affected.md},
- * refuse or filter the launcher. Ranker stays pure.
+ * Orchestrates ranking inside {@code run-tests}: scan, rank, refuse or filter the launcher. The
+ * ranked slice rides the plan ({@code AFFECTED_TESTS}); the request's journal accumulator merges
+ * slices and writes {@code jk-tests-affected.md} once at request-finish. Ranker stays pure.
  */
 public final class AffectedTestRun {
 
@@ -40,7 +39,6 @@ public final class AffectedTestRun {
         Path wsRoot = WorkspaceLocator.findRoot(moduleDir).orElse(moduleDir);
         JkBuild project = ctx.require(PROJECT);
         String coord = project.project().group() + ":" + project.project().name();
-        BuildLayout layout = ctx.require(LAYOUT);
         Path classesDir = ctx.require(MAIN_CLASSES);
         Path testClasses = ctx.require(TEST_CLASSES);
 
@@ -80,7 +78,6 @@ public final class AffectedTestRun {
                 production,
                 List.of(coneRow)));
         ctx.put(BuildPlanner.AFFECTED_TESTS, report);
-        JkTestsAffectedMarkdown.publish(wsRoot, report);
         if (report.refused()) {
             ctx.error("affected-refuse", report.refuse().message());
             throw new RankingRefused(report.refuse().message());
@@ -93,15 +90,9 @@ public final class AffectedTestRun {
         return new Outcome(report, report.classNames(), report.identityToken());
     }
 
-    private static RankingRefused refuse(TaskContext ctx, String code, String message) throws Exception {
+    private static RankingRefused refuse(TaskContext ctx, String code, String message) {
         AffectedTests report = AffectedTests.refused(new AffectedTests.Refuse(code, message), List.of(), List.of());
         ctx.put(BuildPlanner.AFFECTED_TESTS, report);
-        Path moduleDir =
-                ctx.get(BuildPlanner.LAYOUT).map(BuildLayout::moduleRoot).orElse(null);
-        if (moduleDir != null) {
-            Path ws = WorkspaceLocator.findRoot(moduleDir).orElse(moduleDir);
-            JkTestsAffectedMarkdown.publish(ws, report);
-        }
         ctx.error("affected-refuse", message);
         return new RankingRefused(message);
     }

@@ -129,6 +129,8 @@ public final class TestVerb implements HostedVerb {
             host.releaseExclusiveSlot();
             host.accTests(
                     host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+            host.accAffected(
+                    host.eventRequestId(), plan.get(BuildPlanner.AFFECTED_TESTS).orElse(null));
             if (result.success()) return JobOutcome.ok();
             for (var d : result.errors()) {
                 if ("affected-refuse".equals(d.code())) return JobOutcome.failed(Exit.CONFIG);
