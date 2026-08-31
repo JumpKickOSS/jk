@@ -417,8 +417,20 @@ public final class PlannerCompile {
                     ctx.put(BUILD_OUTCOME, r.outcome());
                     ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
                     Path mainClasses = ctx.require(MAIN_CLASSES);
-                    Map<String, ClassAbi.Fingerprint> currentAbi = AbiIndex.scanClasses(mainClasses);
-                    AbiIndex.write(abiFile, currentAbi);
+                    // The abi idx advances by exactly what this compile did (JK-2610): a cache hit
+                    // or no-op leaves it alone (the restored classes were indexed when first
+                    // compiled), an incremental compile re-hashes only its compiled sources'
+                    // classes, and only a missing/empty idx pays the full tree scan.
+                    Map<String, ClassAbi.Fingerprint> currentAbi;
+                    if (!preAbi.isEmpty() && r.compiledSources().isEmpty()) {
+                        currentAbi = preAbi;
+                    } else if (!preAbi.isEmpty()) {
+                        currentAbi = AbiIndex.updated(preAbi, in.dir(), r.compiledSources(), mainClasses);
+                        AbiIndex.write(abiFile, currentAbi);
+                    } else {
+                        currentAbi = AbiIndex.scanClasses(mainClasses);
+                        if (!currentAbi.isEmpty()) AbiIndex.write(abiFile, currentAbi);
+                    }
                     // Cross-module --affected: publish this module's changed types while the
                     // pre-compile baseline is still in memory; dependents rank against them.
                     AffectedChangedPublish.publish(in.session(), in.dir(), preAbi, currentAbi);
