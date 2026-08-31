@@ -128,7 +128,7 @@ public final class JkWedge implements Widget {
         String tail = tailAnsi(ctx);
         if (tail.isEmpty()) return chip + cap;
         // Plan bar sits flush against the nerd cap so the powerline blends into the bar lead.
-        if (progress != null && progress.isBlockBar() && ctx.wedge()) {
+        if (progress != null && progress.look() == Progress.Look.PLAN && ctx.wedge()) {
             return chip + cap + tail;
         }
         return chip + cap + " " + tail;
@@ -159,10 +159,11 @@ public final class JkWedge implements Widget {
 
     private String paintCap(RenderContext ctx, ChipColors colors) {
         if (!ctx.wedge() || !ctx.ansi()) return "";
-        if (progress != null && progress.isBlockBar()) {
-            // The cap blends into the bar's lead, so it has to ask the SAME bar the tail will paint
-            // with — otherwise a stopped (red) bar gets a green powerline cap.
-            Rgb lead = progress.bar()
+        if (progress != null && progress.look() == Progress.Look.PLAN) {
+            // The cap blends into the bar's lead, so it must ask at the bar's OWN width: cell 0's
+            // gradient index depends on the cell count, so a narrow bar asked at the default width
+            // gets a subtly wrong cap.
+            Rgb lead = ProgressBar.shared()
                     .leadColor(progress.numerator(), Math.max(1L, progress.denominator()), progress.segments());
             return Theme.colorize(
                     Glyphs.SEGMENT_END_NERD,
@@ -191,24 +192,6 @@ public final class JkWedge implements Widget {
      */
     public String renderLiveLine(RenderContext ctx) {
         return RenderContext.truncateVisible(renderLine(ctx), RenderContext.rowColumnBudget(ctx.width()));
-    }
-
-    /**
-     * The line a stopped run settles on: this wedge's chip, the bar frozen where it stopped and
-     * repainted in the failure gradient, and {@code message}. One row, clipped like any live line.
-     */
-    public static String stoppedLine(
-            String title, long numerator, long denominator, int segments, String message, RenderContext ctx) {
-        // The message rides as the wedge's message, not the progress suffix: tailAnsi already
-        // composes `bar + " " + message`, so setting both prints it twice.
-        return new JkWedge(Icon.cross(), title, RichText.plain(message), Variant.FAIL, null)
-                .progress(new Progress(
-                        numerator,
-                        denominator,
-                        RichText.empty(),
-                        Progress.Look.STOPPED,
-                        segments))
-                .renderLiveLine(ctx);
     }
 
     /**
@@ -330,13 +313,28 @@ public final class JkWedge implements Widget {
     }
 
     public static JkWedge cancelled(String title, boolean byUser, String tookTail) {
+        return cancelled(title, "job", byUser, tookTail);
+    }
+
+    /**
+     * The cancelled settle line, with {@code subject} naming what was cancelled — {@code "job"} for
+     * a build, {@code "JDK download"} for a download.
+     *
+     * <p>One chrome for every cancel: the gray scope-badge chip, the {@code ⊛} icon, {@code cancelled}
+     * in bold, and whatever {@code tookTail} the caller measured (already dark-gray italic if it came
+     * from {@code ConsoleSpec.took}). The subject is the only thing that varies, which is why it is a
+     * parameter and not a second renderer — the JDK download had grown its own red wedge and red bar,
+     * a look that appeared nowhere else in the product (JK-2602).
+     */
+    public static JkWedge cancelled(String title, String subject, boolean byUser, String tookTail) {
+        String what = subject == null || subject.isBlank() ? "job" : subject;
         String took = tookTail == null || tookTail.isBlank() ? "" : " " + tookTail;
         String by = byUser ? " by user" : "";
         if (!Theme.active().isAnsi()) {
             return new JkWedge(
-                    Icon.cancelled(), title, RichText.plain("job was cancelled" + by + took), Variant.CANCELLED, null);
+                    Icon.cancelled(), title, RichText.plain(what + " was cancelled" + by + took), Variant.CANCELLED, null);
         }
-        String styled = "job was "
+        String styled = what + " was "
                 + Theme.colorize("cancelled", Theme.active().brightWhite().bold())
                 + by
                 + took;

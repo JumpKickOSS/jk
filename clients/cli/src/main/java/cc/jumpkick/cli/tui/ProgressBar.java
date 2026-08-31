@@ -51,27 +51,6 @@ public final class ProgressBar {
         return s;
     }
 
-    private static volatile ProgressBar stopped;
-
-    /**
-     * Cached failure-gradient instance: the bar a run that <em>stopped</em> keeps — cancelled by
-     * Ctrl-C, or failed — painted in red at whatever fraction it reached.
-     *
-     * <p>Same caching rule as {@link #shared()} and for the same reason: the constructor precomputes
-     * a {@value #SEGMENTS}-step gradient, which is too heavy to rebuild per frame. Having it here
-     * rather than at the call site is what lets a cancel keep the chrome the user was already
-     * watching instead of inventing a second bar look (JK-2602).
-     */
-    public static ProgressBar stopped() {
-        Gradient g = Theme.active().failureGradient();
-        ProgressBar s = stopped;
-        if (s == null || s.gradient != g) {
-            s = new ProgressBar(g);
-            stopped = s;
-        }
-        return s;
-    }
-
     /** Bar in an explicit gradient (e.g. the failure gradient for a stopped run). */
     public ProgressBar(Gradient gradient) {
         this.gradient = gradient;

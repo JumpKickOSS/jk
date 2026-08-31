@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
@@ -10,6 +11,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.terminal.Ansi;
 import java.io.PrintStream;
+import java.time.Duration;
 
 /**
  * Animated JDK download progress bar styled like the {@code jk build} plan header: the blue plan
@@ -28,6 +30,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private final String displayName; // "Eclipse Temurin 26"
     private final NerdFontCaps nerdFont;
     private final boolean silent;
+
+    private final long startedAtMillis = System.currentTimeMillis();
 
     private int frame;
     private long numerator;
@@ -130,15 +134,13 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         // this is the only moment left to unlink what it was streaming into.
         JdkInstaller.reapInFlight();
         if (silent) return false;
-        // One line, the same chip and bar geometry the user was already watching, frozen where it
-        // stopped and repainted in the failure gradient. This used to dump SEGMENTS bare ▰ glyphs —
-        // a third bar look, no wedge, no ERASE_LINE_TO_END, so the previous frame's trailing `%`
-        // survived underneath it (JK-2602).
+        // The same settle a cancelled build gets — gray scope chip, ⊛, bold "cancelled", dark-gray
+        // italic took — differing only in the subject. Wipe the live row first so the bar it
+        // replaces leaves nothing behind, exactly as JkManager does in plan mode.
         out.print("\r");
-        out.print(JkWedge.stoppedLine(
-                "JDK", numerator, denominator, Progress.NARROW_SEGMENTS, "Cancelled by user!", context()));
         out.print(Ansi.ERASE_LINE_TO_END);
-        out.println();
+        String took = ConsoleSpec.took(Duration.ofMillis(Math.max(0L, System.currentTimeMillis() - startedAtMillis)));
+        out.println(JkWedge.cancelled("JDK", "JDK download", true, took).renderLine(context()));
         out.print(Osc.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
