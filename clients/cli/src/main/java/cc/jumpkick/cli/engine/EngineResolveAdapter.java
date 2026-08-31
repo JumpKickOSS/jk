@@ -2,7 +2,9 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.AffectedTestsReport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.engine.protocol.OutdatedReport;
@@ -19,6 +21,7 @@ import java.io.OutputStreamWriter;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +35,20 @@ import org.jspecify.annotations.Nullable;
 final class EngineResolveAdapter {
 
     private EngineResolveAdapter() {}
+
+    /**
+     * Ranked tests for the working tree ({@code jk test --affected}): one synchronous request, one
+     * {@code affected-tests-ack}. Read-only — no compile, no test run.
+     */
+    static AffectedTestsReport runAffectedTests(EnginePaths.Paths paths, Path dir, TestSelection selection)
+            throws IOException {
+        return EngineReads.request(
+                paths,
+                ProtoReads.affectedTestsRequest(dir.toString(), selection),
+                EngineProtocol.AFFECTED_TESTS_ACK,
+                "affected-tests request",
+                AffectedTestsReport::decode);
+    }
 
     /**
      * Run {@code jk outdated} against the engine: one synchronous request, one {@code outdated-ack}

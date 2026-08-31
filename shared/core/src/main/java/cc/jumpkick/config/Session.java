@@ -56,7 +56,7 @@ public record Session(
         @With String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
         @With TestSelection testSelection,
-        /** {@code jk test --affected}: rank and run WIP test classes. */
+        /** {@code jk_run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
         @With IoLedger io) {

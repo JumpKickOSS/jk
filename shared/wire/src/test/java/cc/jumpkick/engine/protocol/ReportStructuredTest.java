@@ -44,4 +44,20 @@ class ReportStructuredTest {
         });
         assertThat(OutdatedReport.error("down").toStructured()).containsEntry("error", "down");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void affected_tests_report_rows_round_trip_to_maps() {
+        AffectedTestsReport r = AffectedTestsReport.of(
+                20, 3, List.of(new AffectedTestsReport.Row(100, "com.acme.FooTest", "name-body:com.acme.Foo")));
+        Map<String, Object> m = r.toStructured();
+        assertThat(m).containsEntry("cap", 20).containsEntry("candidateCount", 3);
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) m.get("ranked");
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row).containsEntry("class", "com.acme.FooTest");
+            assertThat(row).containsEntry("score", 100);
+            assertThat(row).containsEntry("reason", "name-body:com.acme.Foo");
+        });
+        assertThat(AffectedTestsReport.error("stale", "rebuild").toStructured()).containsEntry("error", "rebuild");
+    }
 }

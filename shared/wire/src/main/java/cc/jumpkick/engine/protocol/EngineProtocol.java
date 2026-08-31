@@ -257,6 +257,12 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #OUTDATED_REQUEST}. */
     public static final String OUTDATED_ACK = "outdated-ack";
 
+    /** Client → server: ranked tests for the working tree ({@code jk test --affected}). */
+    public static final String AFFECTED_TESTS_REQUEST = "affected-tests-request";
+
+    /** Server → client, terminal for {@link #AFFECTED_TESTS_REQUEST}. */
+    public static final String AFFECTED_TESTS_ACK = "affected-tests-ack";
+
     /** Client → server: execution plan ({@link ExecPlan}) for {@code dir}; one {@link #EXEC_PLAN_ACK}. */
     public static final String EXEC_PLAN_REQUEST = "exec-plan-request";
 

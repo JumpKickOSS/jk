@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import java.util.Map;
@@ -374,6 +375,13 @@ public final class ProtoReads {
         // the verb never read is gone (JK-2168).
         if (counts) extra += ",\"counts\":true";
         return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
+    }
+
+    /** Ranked tests for the working tree. Selection fields omitted when default. */
+    public static String affectedTestsRequest(String dir, TestSelection selection) {
+        return "{\"type\":\"" + EngineProtocol.AFFECTED_TESTS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+                + ProtoJobs.testSelectionFields(selection)
+                + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {

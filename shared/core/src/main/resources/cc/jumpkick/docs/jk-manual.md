@@ -237,7 +237,7 @@ jk test --all                # nightly / release, not every turn
 jk test --exclude-tags slow,bench
 jk build -m api,worker
 jk build --affected-since=origin/main
-jk test --affected                   # WIP modules + ranked test classes; writes target/jk-tests-affected.md
+jk test --affected                   # ranked classes for WIP; table + target/jk-tests-affected.md; does not run
 jk build -j4                 # cap module concurrency (0 = all effective cores)
 jk test -w4                  # within-module test workers
 jk build --skip-tests

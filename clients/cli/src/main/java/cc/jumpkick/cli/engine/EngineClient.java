@@ -2,7 +2,9 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.AffectedTestsReport;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.engine.protocol.DenyReport;
@@ -845,6 +847,12 @@ public final class EngineClient {
     public static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req)
             throws IOException {
         return EngineResolveAdapter.runOutdated(paths, req);
+    }
+
+    /** Ranked tests for the working tree — no compile, no run. */
+    public static AffectedTestsReport runAffectedTests(EnginePaths.Paths paths, Path dir, TestSelection selection)
+            throws IOException {
+        return EngineResolveAdapter.runAffectedTests(paths, dir, selection);
     }
 
     public static BuildPlanResult runAudit(

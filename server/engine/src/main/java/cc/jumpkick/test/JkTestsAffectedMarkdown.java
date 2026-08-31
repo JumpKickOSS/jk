@@ -52,7 +52,7 @@ public final class JkTestsAffectedMarkdown {
                     .append(report.candidateCount())
                     .append("** candidates (cap ")
                     .append(report.cap())
-                    .append(" per module).\n\n");
+                    .append(").\n\n");
         }
         sb.append("## Modules\n\n");
         if (report.modules().isEmpty()) {

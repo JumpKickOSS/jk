@@ -85,6 +85,17 @@ class TestCommandOptionsTest {
     }
 
     @Test
+    void test_affected_help_says_list_only() {
+        String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
+        assertThat(help).contains("Ranked WIP tests (does not run)");
+        for (String line : help.split("\\R", -1)) {
+            if (line.contains("--affected") && !line.contains("--affected-since")) {
+                assertThat(line).doesNotContain("testing modules");
+            }
+        }
+    }
+
+    @Test
     void scripts_only_and_no_scripts_are_on_test_and_build() {
         assertThat(new TestCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--scripts-only")))
                 .isTrue();
