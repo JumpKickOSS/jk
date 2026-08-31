@@ -133,9 +133,15 @@ public final class JdkService {
         return install(entry, registry, refresh, l);
     }
 
-    /** The human-readable JDK label used in progress + result lines, e.g. {@code "Eclipse Temurin 26"}. */
+    /**
+     * The human-readable JDK label used in progress + result lines, e.g. {@code "Temurin 26"}.
+     *
+     * <p>Product and major only. The vendor is dropped because it is redundant next to the product
+     * every time — "Eclipse Temurin", "Oracle GraalVM", "Amazon Corretto" — and those seven or eight
+     * extra columns come straight off the one line a download has to fit in (JK-2602).
+     */
     public static String displayLabel(JdkCatalog.Entry entry) {
-        return entry.vendor() + " " + entry.product() + " " + entry.majorVersion();
+        return entry.product() + " " + entry.majorVersion();
     }
 
     /** A temp cache path that forces a fresh feed fetch (created, then deleted, and removed on exit). */

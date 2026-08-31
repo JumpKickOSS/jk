@@ -32,6 +32,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.jdk.JdkService;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -283,7 +284,7 @@ public final class JdkUpdateCommand implements CliCommand {
         InstalledJdk already = installer.alreadyInstalled(entry);
         if (already != null) return already;
 
-        String label = entry.vendor() + " " + entry.product() + " " + entry.majorVersion();
+        String label = JdkService.displayLabel(entry);
         long total = entry.archiveSize();
         InstalledJdk installed;
         try (JdkDownloadBar pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
