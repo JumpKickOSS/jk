@@ -52,6 +52,21 @@ widget-core = { workspace = true, kind = "tests" }
 Default kind is `main`. The same key works on published Maven coordinates (type `test-jar`,
 classifier `tests`).
 
+Sibling **fixtures** (Gradle `testFixtures`) are a directory, not a second artifact. The
+producer declares `[test] fixtures = true` (default root `src/fixtures/java`); a consumer
+opts in:
+
+```toml
+[test]
+fixtures = true          # or fixtures = "src/fixtures/java"
+
+[test-dependencies]
+widget-core = { workspace = true, fixtures = true }
+```
+
+`fixtures = true` does not imply `kind = "tests"` and is illegal outside test scopes. The
+output is `{target}/test-fixtures/classes/` — it never enters a POM.
+
 ## Select modules
 
 From a **module directory**, `jk build` / `jk test` is that module plus upstream

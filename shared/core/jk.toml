@@ -13,14 +13,10 @@ lombok = "latest"
 lombok = "latest"
 
 [test-dependencies]
-# `kind = "tests"` reaches jk-host's test classes — where its `[test] extra-src`
-# fixtures compile. Direct edge only, and never in a main jar.
-jk-host = { workspace = true, kind = "tests" }
+jk-host = { workspace = true, fixtures = true }
 assertj-core = "latest"
 junit-jupiter = "latest"
 
 [test]
-# Shared test primitives live here, not in src/test/java: they compile with the test tier (so a
-# sibling reaches them through `kind = "tests"`) and never enter a main jar. Gradle spells the same
-# fact as a `testFixtures` source set. SessionBoundary is what lives here.
-extra-src = ["src/testFixtures/java"]
+# SessionBoundary lives here: compile-test-fixtures, never a main jar.
+fixtures = true

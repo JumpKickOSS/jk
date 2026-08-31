@@ -2,7 +2,7 @@ version = 2
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "2a07e2928bdd7394d9b7ed326d48156729be50ce76578773b4fffd9b50a16738"
+manifests-sha256 = "c8d2299aefba9c148fdfe8a2b9f113aba108afcaf65332a679c98475f0559e38"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -10,8 +10,8 @@ suggested-vendor = "temurin"
 suggested-version = "25.0.4.1"
 
 [native]
-metadata-repository = "1.1.10"
-checksum = "sha256:d347e5ae879b84effc64390f362827eef9b45bbf068c53b6821ece7f0809da6b"
+metadata-repository = "1.1.11"
+checksum = "sha256:0c3bb75c86549ca8a76abfcaad6fe23dbebe496c723840a0e4355510d4a52d11"
 
 [[artifact]]
 name     = "aopalliance:aopalliance:jar:"
@@ -1910,14 +1910,14 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d973c89d6a0036f71501807dd2568f337f501be9dca4e72a7141fae35ba97d7d"
 scopes   = ["main", "test"]
 deps = [
-  "org.scala-sbt:util-interface:jar:@2.0.7",
+  "org.scala-sbt:util-interface:jar:@2.0.8",
 ]
 
 [[artifact]]
 name     = "org.scala-sbt:io_3:jar:"
-version  = "1.13.0"
+version  = "1.13.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:04937038126a47051e324c87d065a822472862fdd68a0343bbcb7f5315471624"
+checksum = "sha256:b09d2825b3bf81be431b03129bcb01cf7550630cf823a31a8ed9f6f1750ee4f6"
 scopes   = ["main"]
 deps = [
   "com.swoval:file-tree-views:jar:@2.1.12",
@@ -1944,9 +1944,9 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-sbt:util-control_3:jar:"
-version  = "2.0.7"
+version  = "2.0.8"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1a5e0dd58e9e06fc05a30520aab21baada6e86078ae6ed98aa64c793fb6b475d"
+checksum = "sha256:bd067a0718aa8d088b30be3b936b898a0a7f1c013cc306288254aa397f556e6d"
 scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
@@ -1954,9 +1954,9 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-sbt:util-core_3:jar:"
-version  = "2.0.7"
+version  = "2.0.8"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:edd307b1a4c4670740b466480ebfce4c99780407ac99b33c11a215df71f7acef"
+checksum = "sha256:22d801061babc7d5971a5e450abff200e37db04f714c4f42126d1a51a7546a8c"
 scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
@@ -1964,16 +1964,16 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-sbt:util-interface:jar:"
-version  = "2.0.7"
+version  = "2.0.8"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:0902abcee0b00979f040f8eca6a59fbcbce6e413c68895d654bbc3c7406f6068"
+checksum = "sha256:afc66909788aec53a34ee66c4fd715645d1d918a2fea454da5024de5b9e9fd25"
 scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "org.scala-sbt:util-logging_3:jar:"
-version  = "2.0.7"
+version  = "2.0.8"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:301ecbd2b2809531c7f2efe93b5fc02a30316087ac2640cb9ed1cd545a68807e"
+checksum = "sha256:13fa9027f7e9418922fe1a02253801f26e0db0ef0c283fe0b3dc5bb0c9987782"
 scopes   = ["main"]
 deps = [
   "com.eed3si9n:sjson-new-core_3:jar:@0.15.1",
@@ -1984,16 +1984,16 @@ deps = [
   "org.jline:jline-terminal:jar:@4.4.0",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt.jline:jline:jar:@2.14.7-sbt-42b717d4418374417765c7651dca69b1b75d8b84",
-  "org.scala-sbt:io_3:jar:@1.13.0",
-  "org.scala-sbt:util-core_3:jar:@2.0.7",
-  "org.scala-sbt:util-interface:jar:@2.0.7",
+  "org.scala-sbt:io_3:jar:@1.13.1",
+  "org.scala-sbt:util-core_3:jar:@2.0.8",
+  "org.scala-sbt:util-interface:jar:@2.0.8",
 ]
 
 [[artifact]]
 name     = "org.scala-sbt:util-relation_3:jar:"
-version  = "2.0.7"
+version  = "2.0.8"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1c4345b44374eedef49689e2f2a859c188cfdc1e8db5966afc1f69b7ee873835"
+checksum = "sha256:838b158747084896ff8faf690d70835fad14a94036d0038251c60c0398b42dd9"
 scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
@@ -2020,8 +2020,8 @@ scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.0",
-  "org.scala-sbt:util-logging_3:jar:@2.0.7",
+  "org.scala-sbt:io_3:jar:@1.13.1",
+  "org.scala-sbt:util-logging_3:jar:@2.0.8",
 ]
 
 [[artifact]]
@@ -2033,7 +2033,7 @@ scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.0",
+  "org.scala-sbt:io_3:jar:@1.13.1",
   "org.scala-sbt:launcher-interface:jar:@1.6.2",
 ]
 
@@ -2047,10 +2047,10 @@ deps = [
   "org.scala-lang.modules:scala-parser-combinators_3:jar:@2.4.0",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.0",
+  "org.scala-sbt:io_3:jar:@1.13.1",
   "org.scala-sbt:launcher-interface:jar:@1.6.2",
-  "org.scala-sbt:util-control_3:jar:@2.0.7",
-  "org.scala-sbt:util-logging_3:jar:@2.0.7",
+  "org.scala-sbt:util-control_3:jar:@2.0.8",
+  "org.scala-sbt:util-logging_3:jar:@2.0.8",
   "org.scala-sbt:zinc-apiinfo_3:jar:@2.0.4",
   "org.scala-sbt:zinc-classfile_3:jar:@2.0.4",
   "org.scala-sbt:zinc-classpath_3:jar:@2.0.4",
@@ -2066,9 +2066,9 @@ deps = [
   "org.scala-lang.modules:scala-parallel-collections_3:jar:@1.2.0",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.0",
-  "org.scala-sbt:util-logging_3:jar:@2.0.7",
-  "org.scala-sbt:util-relation_3:jar:@2.0.7",
+  "org.scala-sbt:io_3:jar:@1.13.1",
+  "org.scala-sbt:util-logging_3:jar:@2.0.8",
+  "org.scala-sbt:util-relation_3:jar:@2.0.8",
   "org.scala-sbt:zinc-apiinfo_3:jar:@2.0.4",
   "org.scala-sbt:zinc-classpath_3:jar:@2.0.4",
   "org.scala-sbt:zinc-compile-core_3:jar:@2.0.4",

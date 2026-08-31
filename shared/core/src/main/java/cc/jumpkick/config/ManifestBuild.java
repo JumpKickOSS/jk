@@ -322,6 +322,7 @@ public final class ManifestBuild {
                     List.of(),
                     List.of(),
                     null,
+                    null,
                     List.of(),
                     platformPolicy,
                     unmappedPolicy,
@@ -334,6 +335,7 @@ public final class ManifestBuild {
         List<String> kspOptions = new ArrayList<>();
         List<String> extraSrc = new ArrayList<>();
         List<String> testExtraSrc = new ArrayList<>();
+        String fixtures = null;
         Integer testWorkers = null;
         List<String> testSerialTags = new ArrayList<>();
 
@@ -412,14 +414,9 @@ public final class ManifestBuild {
             if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
                 testWorkers = 1;
             }
-            // [test] extra-src — the test-scoped twin of [build] extra-src, and the same spelling on
-            // purpose: one vocabulary, two scopes. These roots compile with the test tier, so a
-            // sibling reaches them through an existing `kind = "tests"` edge and no main jar can.
-            // Gradle spells the same fact as a `testFixtures` source set; declaring shared test
-            // helpers under [build] extra-src instead would ship them, which is the mistake this
-            // key exists to make unnecessary. An entry may name a single file where a directory
-            // would over-reach: see clients/cli, which needs one source out of a package whose
-            // other members do not compile without the IntelliJ platform SDK.
+            // [test] extra-src — extra test-tier sources compiled into test classes. A single file
+            // is legal where a directory would over-reach (clients/cli compiling one IntelliJ
+            // parser type). Shared helpers a sibling consumes belong in [test] fixtures.
             TomlArray tes = test.getArray("extra-src");
             if (tes != null) {
                 for (int i = 0; i < tes.size(); i++) {
@@ -427,6 +424,23 @@ public final class ManifestBuild {
                     if (!(val instanceof String str) || str.isBlank())
                         throw new JkBuildParseException("[test].extra-src must be an array of directory or file paths");
                     testExtraSrc.add(str);
+                }
+            }
+            // [test] fixtures — a source root compiled to target/test-fixtures/classes, never an
+            // artifact. `true` means src/fixtures/java; a string names the root.
+            if (test.contains("fixtures")) {
+                Object raw = test.get("fixtures");
+                if (raw instanceof Boolean flag) {
+                    fixtures = flag ? JkBuild.Build.DEFAULT_FIXTURES : null;
+                } else if (raw instanceof String path) {
+                    if (path.isBlank()) {
+                        throw new JkBuildParseException(
+                                "[test].fixtures must be `true` or a non-empty module-relative directory");
+                    }
+                    fixtures = path;
+                } else {
+                    throw new JkBuildParseException(
+                            "[test].fixtures must be `true` or a non-empty module-relative directory");
                 }
             }
             // [test] serial-tags — class-level tags that never share the sharded worker pool.
@@ -448,6 +462,7 @@ public final class ManifestBuild {
                 kspOptions,
                 extraSrc,
                 List.copyOf(testExtraSrc),
+                fixtures,
                 testWorkers,
                 testSerialTags,
                 platformPolicy,

@@ -38,6 +38,40 @@ class PomExporterTest {
     }
 
     @Test
+    void fixtures_are_not_a_published_artifact() {
+        JkBuild producer = parse("""
+                group = "com.example"
+                name  = "helpers"
+                version = "1.0.0"
+                java = 25
+
+                [test]
+                fixtures = true
+                """);
+        String producerXml = PomExporter.export(producer).xml();
+        assertThat(producerXml)
+                .doesNotContain("test-fixtures")
+                .doesNotContain("testFixtures")
+                .doesNotContain("<classifier>fixtures</classifier>");
+
+        JkBuild consumer = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [test-dependencies]
+                helpers = { group = "com.acme", name = "helpers", version = "1.2.3" }
+                """);
+        String consumerXml = PomExporter.export(consumer).xml();
+        assertThat(consumerXml)
+                .contains("<artifactId>helpers</artifactId>")
+                .doesNotContain("<type>test-jar</type>")
+                .doesNotContain("<classifier>tests</classifier>")
+                .doesNotContain("<classifier>fixtures</classifier>");
+    }
+
+    @Test
     void coords_release_and_dependency() {
         JkBuild b = parse("""
                 group = "com.example"

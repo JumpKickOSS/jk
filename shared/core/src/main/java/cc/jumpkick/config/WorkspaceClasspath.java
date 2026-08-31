@@ -24,10 +24,10 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Resolves workspace-sibling dependency jars (and tests kinds) for one module's build. Workspace
- * coords are not in the lockfile; matching siblings contribute their main jar under the shared
- * {@link BuildLayout} {@code target/}, and optionally their test classes when an edge selects
- * {@link DependencyKind#TESTS} (Mill {@code testModuleDeps} / Maven test-jar).
+ * Resolves workspace-sibling dependency jars (and tests kinds / fixtures) for one module's build.
+ * Workspace coords are not in the lockfile; matching siblings contribute their main jar under the
+ * shared {@link BuildLayout} {@code target/}, their test classes when an edge selects
+ * {@link DependencyKind#TESTS}, and their fixtures directory when {@code fixtures = true}.
  */
 public final class WorkspaceClasspath {
 
@@ -77,6 +77,7 @@ public final class WorkspaceClasspath {
         Map<String, Path> siblingJarByModule = new HashMap<>();
         Map<String, Path> siblingTestClassesByModule = new HashMap<>();
         Map<String, Path> siblingTestResourcesByModule = new HashMap<>();
+        Map<String, Path> siblingFixturesByModule = new HashMap<>();
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
         // One load for the whole workspace, not one parse per sibling.
@@ -105,6 +106,7 @@ public final class WorkspaceClasspath {
             siblingJarByModule.put(coord, layout.mainJar());
             siblingTestClassesByModule.put(coord, layout.testClassesDir());
             siblingTestResourcesByModule.put(coord, layout.testResourcesDir());
+            siblingFixturesByModule.put(coord, layout.testFixturesClassesDir());
             siblingManifestByCoord.put(coord, unit);
             siblingCoordByName.put(unit.project().name(), coord);
         }
@@ -115,8 +117,10 @@ public final class WorkspaceClasspath {
         // though the module's jk.toml only declares the direct dep (core).
         // Modules requested with kind=tests also contribute their test
         // classes (direct edges only — tests kind does not ride transitively).
+        // fixtures = true is the same shape for the fixtures directory.
         LinkedHashSet<String> visited = new LinkedHashSet<>();
         Set<String> testsKinds = new HashSet<>();
+        Set<String> fixturesKinds = new HashSet<>();
         Queue<String> queue = new ArrayDeque<>();
         for (Scope scope : scopes) {
             for (Dependency dep : project.dependencies().of(scope)) {
@@ -124,6 +128,9 @@ public final class WorkspaceClasspath {
                 if (!siblingJarByModule.containsKey(module)) continue;
                 if (dep.kind() == DependencyKind.TESTS) {
                     testsKinds.add(module);
+                }
+                if (dep.fixtures()) {
+                    fixturesKinds.add(module);
                 }
                 if (visited.add(module)) {
                     queue.add(module);
@@ -194,6 +201,14 @@ public final class WorkspaceClasspath {
                         jars.add(testResources);
                         closureJars.add(testResources);
                     }
+                }
+            }
+            if (fixturesKinds.contains(module)) {
+                Path fixtures = siblingFixturesByModule.get(module);
+                if (fixtures != null) {
+                    closureJars.add(fixtures);
+                    addIfPresent(
+                            jars, seenPaths, fixtures, missing, module + " fixtures (expected at " + fixtures + ")");
                 }
             }
 

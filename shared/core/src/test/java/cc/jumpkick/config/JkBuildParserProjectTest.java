@@ -268,6 +268,39 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void parses_test_fixtures_true_as_the_default_root() {
+        assertThat(JkBuildParser.parse(PROJECT).build().hasFixtures()).isFalse();
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [test]
+                fixtures = true
+                """);
+        assertThat(parsed.build().hasFixtures()).isTrue();
+        assertThat(parsed.build().fixtures()).isEqualTo(JkBuild.Build.DEFAULT_FIXTURES);
+    }
+
+    @Test
+    void parses_test_fixtures_path_and_rejects_blank() {
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                fixtures = "src/helpers/java"
+                """).build().fixtures()).isEqualTo("src/helpers/java");
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                fixtures = false
+                """).build().hasFixtures()).isFalse();
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                fixtures = ""
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].fixtures");
+    }
+
+    @Test
     void parses_test_serial_tags() {
         assertThat(JkBuildParser.parse(PROJECT).build().testSerialTags()).isEmpty();
         assertThat(JkBuildParser.parse(PROJECT + """

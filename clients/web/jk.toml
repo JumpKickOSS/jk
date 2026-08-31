@@ -2,9 +2,7 @@ name = "jk-web"
 description = "Web dashboard static assets for the engine UI"
 
 [test-dependencies]
-# `kind = "tests"` reaches jk-host's test classes — where its `[test] extra-src`
-# fixtures compile. Direct edge only, and never in a main jar.
-jk-host = { workspace = true, kind = "tests" }
+jk-host = { workspace = true, fixtures = true }
 jk-engine-api.workspace = true
 assertj-core = "latest"
 junit-jupiter = "latest"

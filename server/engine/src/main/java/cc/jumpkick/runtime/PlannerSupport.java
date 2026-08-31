@@ -679,6 +679,42 @@ public final class PlannerSupport {
                 dir);
     }
 
+    /** Lock + workspace sibling classpath the forecast uses for compile-test. */
+    static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
+            throws IOException {
+        WorkspaceClasspath.Result sib =
+                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
+        cp.addAll(sib.jars());
+        for (Path sl : sib.siblingLockfiles()) {
+            try {
+                Lockfile s = LockfileReader.read(sl);
+                for (Path p : resolver.classpathFor(s, ClasspathResolver.COMPILE_MAIN)) if (!cp.contains(p)) cp.add(p);
+            } catch (Exception ignored) {
+                /* best-effort */
+            }
+        }
+        return cp;
+    }
+
+    /** Lock + workspace sibling classpath the forecast uses for run-tests. */
+    static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
+            throws IOException {
+        WorkspaceClasspath.Result sib =
+                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
+        cp.addAll(sib.jars());
+        for (Path sl : sib.siblingLockfiles()) {
+            try {
+                Lockfile s = LockfileReader.read(sl);
+                for (Path p : resolver.classpathFor(s, ClasspathResolver.RUNTIME)) if (!cp.contains(p)) cp.add(p);
+            } catch (Exception ignored) {
+                /* best-effort */
+            }
+        }
+        return cp;
+    }
+
     /**
      * Full {@link cc.jumpkick.task.TestStamp} key for the default {@code jk build} selection
      * single factory for forecast and any offline checker. {@code testRuntimeCp} must match the
@@ -713,13 +749,14 @@ public final class PlannerSupport {
         stampSrcs.addAll(TestSuites.collectJavaSources(dir, compact, suites));
         stampSrcs.addAll(TestSuites.collectKotlinSources(dir, compact, suites));
         stampSrcs.addAll(TestSuites.collectGroovySources(dir, compact, suites));
+        BuildLayout layout = BuildLayout.of(dir, project);
         return TestStamp.computeKey(
                 stampSrcs,
                 mainClasses,
                 mainClassesFingerprint,
                 ModuleLayout.suiteResourceDirs(dir, compact, suites),
                 lockFile,
-                testRuntimeCp,
+                PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp),
                 testStampExtras(dir, project));
     }
 

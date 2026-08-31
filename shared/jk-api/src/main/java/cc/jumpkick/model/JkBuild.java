@@ -650,16 +650,17 @@ public record JkBuild(
             List<String> kspOptions,
             List<String> extraSrc,
             /**
-             * {@code [test] extra-src}: module-relative source roots compiled with the test tier and
-             * placed on every suite's compile classpath. The test-scoped twin of {@code extraSrc},
-             * and the same spelling on purpose — one vocabulary, two scopes.
-             *
-             * <p>This is how a module publishes shared test helpers without shipping them: they
-             * compile into the test classes output, so a sibling reaches them through an existing
-             * {@code kind = "tests"} edge and nothing reaches a main jar. Gradle spells the same
-             * fact as a {@code testFixtures} source set.
+             * {@code [test] extra-src}: extra module-relative source roots (or single files) compiled
+             * with the test tier into test classes. The test-scoped twin of {@code extraSrc}. Use
+             * {@link #fixtures} for a sibling-consumed helper source set.
              */
             List<String> testExtraSrc,
+            /**
+             * {@code [test] fixtures}: module-relative source root compiled by
+             * {@code compile-test-fixtures} into a directory that is never an artifact. {@code null}
+             * means none. Boolean {@code true} in the manifest stores {@link #DEFAULT_FIXTURES}.
+             */
+            String fixtures,
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
             Integer testWorkers,
             /**
@@ -691,6 +692,9 @@ public record JkBuild(
              */
             List<TestEnvDecl> testEnv) {
 
+        /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
+        public static final String DEFAULT_FIXTURES = "src/fixtures/java";
+
         public static final Build EMPTY = new Build(
                 List.of(),
                 List.of(),
@@ -699,6 +703,7 @@ public record JkBuild(
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
                 null,
                 List.of(),
                 PlatformPolicy.ENFORCED,
@@ -711,11 +716,18 @@ public record JkBuild(
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
+            testExtraSrc = testExtraSrc == null ? List.of() : List.copyOf(testExtraSrc);
+            if (fixtures != null && fixtures.isBlank()) fixtures = null;
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
             testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
+        }
+
+        /** True when this module declares a fixtures source root. */
+        public boolean hasFixtures() {
+            return fixtures != null;
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -731,6 +743,7 @@ public record JkBuild(
                     kspOptions,
                     all,
                     testExtraSrc,
+                    fixtures,
                     testWorkers,
                     testSerialTags,
                     platformPolicy,
@@ -747,6 +760,7 @@ public record JkBuild(
                     kspOptions,
                     extraSrc,
                     testExtraSrc,
+                    fixtures,
                     testWorkers,
                     testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,

@@ -12,6 +12,8 @@ import java.util.Objects;
  * Cross-package feature selection: {@link #requestedFeatures()} / {@link #defaultFeatures()}.
  * Edges may select a {@link #kind()} ({@link DependencyKind#MAIN} default, or
  * {@link DependencyKind#TESTS} for Mill-style test-module deps / Maven test-jar).
+ * {@link #fixtures()} is a separate flag: put a sibling's fixtures output on this
+ * module's test classpath. It does not imply {@link DependencyKind#TESTS}.
  */
 public record Dependency(
         String library,
@@ -27,7 +29,12 @@ public record Dependency(
         /** When true, the library's {@code features.default} list is included. */
         boolean defaultFeatures,
         /** Output kind; always {@link DependencyKind#MAIN} unless {@code kind = "tests"}. */
-        DependencyKind kind) {
+        DependencyKind kind,
+        /**
+         * {@code fixtures = true} on a workspace test-dependency: consume the sibling's fixtures
+         * output directory. Independent of {@link #kind()}.
+         */
+        boolean fixtures) {
 
     /** Synthetic {@code module} for an unresolved workspace sibling; rewritten by {@code WorkspaceMerge}. */
     public static final String WORKSPACE_PREFIX = "workspace:";
@@ -63,7 +70,19 @@ public record Dependency(
             String sha256,
             boolean pinned,
             boolean optional) {
-        this(library, module, version, gitSource, sha256, pinned, optional, null, List.of(), true, DependencyKind.MAIN);
+        this(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                null,
+                List.of(),
+                true,
+                DependencyKind.MAIN,
+                false);
     }
 
     /** Defaults optional false, pathSource null, no feature selection, kind main. */
@@ -74,7 +93,19 @@ public record Dependency(
             GitSource gitSource,
             String sha256,
             boolean pinned) {
-        this(library, module, version, gitSource, sha256, pinned, false, null, List.of(), true, DependencyKind.MAIN);
+        this(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                false,
+                null,
+                List.of(),
+                true,
+                DependencyKind.MAIN,
+                false);
     }
 
     /** Defaults feature selection empty / default-features true, kind main. */
@@ -98,7 +129,8 @@ public record Dependency(
                 pathSource,
                 List.of(),
                 true,
-                DependencyKind.MAIN);
+                DependencyKind.MAIN,
+                false);
     }
 
     public Dependency withOptional(boolean optional) {
@@ -113,7 +145,8 @@ public record Dependency(
                 pathSource,
                 requestedFeatures,
                 defaultFeatures,
-                kind);
+                kind,
+                fixtures);
     }
 
     public Dependency withFeatures(List<String> features, boolean defaultFeatures) {
@@ -128,7 +161,8 @@ public record Dependency(
                 pathSource,
                 features == null ? List.of() : features,
                 defaultFeatures,
-                kind);
+                kind,
+                fixtures);
     }
 
     public Dependency withKind(DependencyKind kind) {
@@ -143,7 +177,24 @@ public record Dependency(
                 pathSource,
                 requestedFeatures,
                 defaultFeatures,
-                kind == null ? DependencyKind.MAIN : kind);
+                kind == null ? DependencyKind.MAIN : kind,
+                fixtures);
+    }
+
+    public Dependency withFixtures(boolean fixtures) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures);
     }
 
     /**
@@ -158,6 +209,11 @@ public record Dependency(
     /** True when this edge requests a dependency's tests kind (Mill {@code *.test} / Maven test-jar). */
     public boolean isTestsKind() {
         return kind == DependencyKind.TESTS;
+    }
+
+    /** True when this edge consumes a sibling's fixtures output directory. */
+    public boolean isFixtures() {
+        return fixtures;
     }
 
     /**

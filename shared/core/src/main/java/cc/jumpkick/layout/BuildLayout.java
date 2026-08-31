@@ -274,6 +274,14 @@ public final class BuildLayout {
     }
 
     /**
+     * {@code target/test-fixtures/classes/} — fixtures compile output. A directory, never a jar, so
+     * it cannot leak into a POM.
+     */
+    public Path testFixturesClassesDir() {
+        return moduleTargetDir().resolve("test-fixtures").resolve("classes");
+    }
+
+    /**
      * {@code target/jdt/classes/main/} — main class output for an external IDE language server
      * (Eclipse JDT-LS, used by VS Code's redhat.java). Kept separate from {@link #classesDir} so an
      * IDE's continuous autobuild never collides with jk's incremental compiler, which deletes and

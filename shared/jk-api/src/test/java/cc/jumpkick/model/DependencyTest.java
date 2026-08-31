@@ -51,6 +51,14 @@ class DependencyTest {
     }
 
     @Test
+    void workspace_dep_can_select_fixtures_independently_of_kind() {
+        Dependency d = Dependency.workspace("transport").withFixtures(true);
+        assertThat(d.isFixtures()).isTrue();
+        assertThat(d.isTestsKind()).isFalse();
+        assertThat(d.withKind(DependencyKind.TESTS).isFixtures()).isTrue();
+    }
+
+    @Test
     void package_key_maps_external_tests_kind_to_test_jar() {
         Dependency main = Dependency.of("lib", "com.acme:lib", VersionSelector.parse("=1.0.0"));
         assertThat(main.packageKey()).isEqualTo("com.acme:lib:jar:");

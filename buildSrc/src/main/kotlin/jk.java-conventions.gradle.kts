@@ -23,6 +23,12 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.add("-Xlint:deprecation,unchecked")
 }
 
+// Gradle's java-test-fixtures plugin defaults to src/testFixtures/java. jk's fixtures live in
+// src/fixtures/java — no camelCase directory names.
+pluginManager.withPlugin("java-test-fixtures") {
+    sourceSets.named("testFixtures") { java.setSrcDirs(listOf("src/fixtures/java")) }
+}
+
 // Reach the version catalog from a convention plugin without the buildSrc
 // classpath hack: read it through VersionCatalogsExtension on the project.
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
@@ -402,7 +408,7 @@ tasks.named("jar") { dependsOn(checkNoHandBuiltJavaBinary) }
 // The count is code lines (CodeLines.count): comments, blanks, and package/import lines do not
 // count. A trailing comment on a statement still counts that line. String contents count. Scope
 // includes test sources (JK-2444): `src/main/java`, `src/main/kotlin`, `src/test/java`,
-// `src/test/kotlin`, `src/testFixtures/java`, and `src/{main,test}/**/*.{js,mjs}`.
+// `src/test/kotlin`, `src/fixtures/java`, and `src/{main,test}/**/*.{js,mjs}`.
 // ---------------------------------------------------------------------------
 val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 1200)
 
@@ -428,7 +434,7 @@ val checkFileSizeCaps by tasks.registering {
         include("src/main/resources/**/*.mjs")
         include("src/test/java/**/*.java")
         include("src/test/kotlin/**/*.kt")
-        include("src/testFixtures/java/**/*.java")
+        include("src/fixtures/java/**/*.java")
         include("src/test/js/**/*.js")
         include("src/test/js/**/*.mjs")
     }
@@ -3230,10 +3236,10 @@ val checkTestPathsFromCheckoutRoot by tasks.registering {
     group = "verification"
     description = "Fail the build when a test locates a checkout file from CWD instead of cc.jumpkick.testing.RepoRoot"
     val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
-    val fixtureJava = fileTree(layout.projectDirectory.dir("src/testFixtures/java")) { include("**/*.java") }
+    val fixtureJava = fileTree(layout.projectDirectory.dir("src/fixtures/java")) { include("**/*.java") }
     inputs.files(testJava, fixtureJava).withPropertyName("testSources")
     val owner = rootProject.layout.projectDirectory.file(
-            "shared/host/src/testFixtures/java/cc/jumpkick/testing/RepoRoot.java")
+            "shared/host/src/fixtures/java/cc/jumpkick/testing/RepoRoot.java")
     inputs.file(owner).withPropertyName("repoRoot")
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val stamp = layout.buildDirectory.file("guards/test-paths-from-checkout-root.ok")
@@ -3296,7 +3302,7 @@ tasks.named("check") { dependsOn(checkTestPathsFromCheckoutRoot) }
 // — and vice versa. Measured: thirteen edges out of step at once. `clients/web` had
 // `testImplementation(project(":wire"))` and no manifest entry, so `jk test` could not compile
 // `WireTokenParityTest`; the four plugin modules and the five that consume `:host`'s test fixtures
-// each had a Gradle `testFixtures(...)` edge with no `kind = "tests"` twin; and
+// each had a Gradle `testFixtures(...)` edge with no `fixtures = true` twin; and
 // `plugins/image-builder` still declared `:core` and `:io` to Gradle after JK-2193 removed them
 // from jk.toml as unimported.
 //
@@ -3382,7 +3388,7 @@ val checkManifestDepParity by tasks.registering {
         // Manifest side. `[test-*]` tables are the test bucket; everything else is main.
         val jkMain = mutableSetOf<String>()
         val jkTest = mutableSetOf<String>()
-        val jkTestKind = mutableSetOf<String>()
+        val jkFixtures = mutableSetOf<String>()
         var table = ""
         manifestFile.readLines().forEach { raw ->
             val line = raw.substringBefore('#').trim()
@@ -3394,10 +3400,10 @@ val checkManifestDepParity by tasks.registering {
                     ?: inline?.takeIf { it.groupValues[2].contains("workspace") && it.groupValues[2].contains("true") }
                             ?.groupValues?.get(1)
                     ?: return@forEach
-            val kindTests = inline != null && Regex("""kind\s*=\s*"tests"""").containsMatchIn(inline.groupValues[2])
+            val takesFixtures = inline != null && Regex("""fixtures\s*=\s*true""").containsMatchIn(inline.groupValues[2])
             if (table.startsWith("test-")) {
                 jkTest.add(name)
-                if (kindTests) jkTestKind.add(name)
+                if (takesFixtures) jkFixtures.add(name)
             } else {
                 jkMain.add(name)
             }
@@ -3417,20 +3423,20 @@ val checkManifestDepParity by tasks.registering {
         (jkTest - gradleTest - gradleMain).sorted().forEach {
             problems.add("  jk.toml [test-dependencies] declares $it; build.gradle.kts does not")
         }
-        (fixtures - jkTestKind).sorted().forEach {
+        (fixtures - jkFixtures).sorted().forEach {
             problems.add("  Gradle takes $it's testFixtures; jk.toml needs"
-                    + " `$it = { workspace = true, kind = \"tests\" }` under a [test-*dependencies] table")
+                    + " `$it = { workspace = true, fixtures = true }` under a [test-*dependencies] table")
         }
-        (jkTestKind - fixtures).sorted().forEach {
-            problems.add("  jk.toml takes $it with kind = \"tests\"; build.gradle.kts does not take"
+        (jkFixtures - fixtures).sorted().forEach {
+            problems.add("  jk.toml takes $it with fixtures = true; build.gradle.kts does not take"
                     + " its testFixtures")
         }
         if (problems.isNotEmpty()) {
-            throw GradleException("$projectPath declares different dependencies to its two builds"
-                    + " (JK-2601). This repo builds itself with Gradle and with jk, so an edge in"
+            throw GradleException("$projectPath declares different dependencies to its two builds."
+                    + " This repo builds itself with Gradle and with jk, so an edge in"
                     + " only one of them is green in one build and broken in the other:\n"
                     + problems.joinToString("\n")
-                    + "\n  jk's `kind = \"tests\"` is Gradle's `testFixtures(...)`; jk's"
+                    + "\n  jk's `fixtures = true` is Gradle's `testFixtures(...)`; jk's"
                     + " [test-dependencies] is Gradle's testImplementation. Fix whichever manifest"
                     + " is wrong — do not silence this by deleting the other declaration.")
         }

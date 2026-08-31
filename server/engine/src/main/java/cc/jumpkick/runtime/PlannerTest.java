@@ -53,7 +53,7 @@ public final class PlannerTest {
 
     private PlannerTest() {}
 
-    static Task compileTestStep(BuildPlanner.Ctx cx) {
+    static Task compileTestStep(BuildPlanner.Ctx cx, boolean hasFixtures) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -74,7 +74,19 @@ public final class PlannerTest {
                 // input, not just ordering: the test classpath (and its action-key fingerprint)
                 // includes classes/main, which copy-resources writes — racing it fingerprints a
                 // half-copied dir and intermittently crashes on vanishing files under -r.
-                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)
+                .requires(
+                        hasFixtures
+                                ? new String[] {
+                                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                                    TaskNames.RESOLVE_DEPS,
+                                    TaskNames.COPY_RESOURCES,
+                                    TaskNames.COMPILE_TEST_FIXTURES
+                                }
+                                : new String[] {
+                                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                                    TaskNames.RESOLVE_DEPS,
+                                    TaskNames.COPY_RESOURCES
+                                })
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
@@ -131,6 +143,7 @@ public final class PlannerTest {
                     List<Path> compileCp = (List<Path>) ctx.require(COMPILE_TEST_CP);
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(ctx.require(MAIN_CLASSES));
+                    baseCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), baseCp);
                     baseCp.addAll(compileCp);
                     // A Groovy module's classes (main or test) implement groovy.lang.GroovyObject
                     // javac (and groovyc itself) must resolve it from the version-matched jar.
@@ -329,6 +342,7 @@ public final class PlannerTest {
                     @SuppressWarnings("unchecked")
                     List<Path> testRtCp = (List<Path>) ctx.require(TEST_RUNTIME_CP);
                     testRtCp = new ArrayList<>(testRtCp);
+                    testRtCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp);
                     // Plugin test-classpath contributions (contributesTestClasspath — e.g. the
                     // android plugin's Robolectric test_config dir) join the test runtime cp.
                     testRtCp.addAll(pluginTestClasspath(ctx.require(LAYOUT), pluginDecls));

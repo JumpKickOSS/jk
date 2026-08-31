@@ -243,17 +243,22 @@ public final class WorkspaceMerge {
         if (sibling != null) {
             Project p = sibling.project();
             String module = p.group() + ":" + p.name();
-            // Preserve kind so a tests-kind edge stays distinguishable until classpath
-            // resolution (WorkspaceClasspath keys off kind). For lock, siblings are dropped.
+            // Preserve kind and fixtures so classpath resolution still sees both flags. For lock,
+            // siblings are dropped.
             return Dependency.of(name, module, VersionSelector.parse("=" + p.version()))
-                    .withKind(d.kind());
+                    .withKind(d.kind())
+                    .withFixtures(d.fixtures());
         }
         Workspace.WorkspaceDependency ws = wsDeps.get(name);
         if (ws != null) {
             if (ws.gitSource() != null) {
-                return Dependency.git(name, ws.module(), ws.gitSource()).withKind(d.kind());
+                return Dependency.git(name, ws.module(), ws.gitSource())
+                        .withKind(d.kind())
+                        .withFixtures(d.fixtures());
             }
-            return Dependency.of(name, ws.module(), ws.version()).withKind(d.kind());
+            return Dependency.of(name, ws.module(), ws.version())
+                    .withKind(d.kind())
+                    .withFixtures(d.fixtures());
         }
         throw new IllegalStateException("no workspace dependency or sibling named `" + name + "`");
     }

@@ -578,8 +578,12 @@ public final class BuildPlanner {
         // ---- copy-resources ---------------------------------------------
         Task copyResources = PlannerResources.copyResourcesStep(cx);
 
+        // ---- compile-test-fixtures --------------------------------------
+        boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
+        Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
+
         // ---- compile-test -----------------------------------------------
-        Task compileTest = PlannerTest.compileTestStep(cx);
+        Task compileTest = PlannerTest.compileTestStep(cx, hasFixtures);
 
         // ---- run-tests --------------------------------------------------
         // In testOnly plans no package path exists to anchor the freshness stamps, so
@@ -696,6 +700,7 @@ public final class BuildPlanner {
         b.addTask(copyResources);
         boolean skipJUnit = PlannerResources.skipJUnit(in);
         if (!skipJUnit) {
+            if (hasFixtures) b.addTask(compileTestFixtures);
             b.addTask(compileTest).addTask(runTests);
         }
         // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only

@@ -101,11 +101,17 @@ class ForecastKeyParityTest {
             List.of(
                     "compile-main",
                     "PlannerCompile.java|mainCompileRequest(new MainCompile(",
-                    "TaskForecaster.java|PlannerCompile.mainCompileRequest("));
+                    "TaskForecaster.java|PlannerCompile.mainCompileRequest("),
+            "PlannerFixtures.java|public static CompileRequest fixturesCompileRequest(",
+            List.of(
+                    "compile-test-fixtures",
+                    "PlannerFixtures.java|CompileRequest request = fixturesCompileRequest(",
+                    "PlannerFixtures.java|CompileRequest fxReq = fixturesCompileRequest("));
 
     /** Every builder site and its count, so a new chain must be classified before the build runs. */
     private static final Map<String, Integer> REQUEST_SITES = Map.of(
             "PlannerCompile.java", 1, // shared: the one compile-main body, build + forecast
+            "PlannerFixtures.java", 1, // shared: compile-test-fixtures, build + forecast
             "TestSupport.java", 1, // keyed: compile-test build
             "TaskForecaster.java", 1, // keyed: compile-test forecast
             "LocalProjectBuilder.java", 1, // unkeyed: source-dependency build calls JavacRunner directly
