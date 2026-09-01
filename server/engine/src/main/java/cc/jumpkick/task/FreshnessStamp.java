@@ -5,10 +5,8 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -235,23 +233,12 @@ public final class FreshnessStamp {
             // a deletion bumps the parent and nothing else. The visitor still hands over attributes
             // the walk already read.
             boolean[] newer = {false};
-            Files.walkFileTree(file, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes a) {
-                    if (a.lastModifiedTime().toMillis() >= stampMillis) newer[0] = true;
-                    return newer[0] ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
+            PathUtil.forEachEntry(file, dir -> false, (p, a) -> {
+                if (a.lastModifiedTime().toMillis() >= stampMillis) {
+                    newer[0] = true;
+                    return false;
                 }
-
-                @Override
-                public FileVisitResult visitFile(Path p, BasicFileAttributes a) {
-                    if (a.lastModifiedTime().toMillis() >= stampMillis) newer[0] = true;
-                    return newer[0] ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFileFailed(Path p, IOException failure) {
-                    return FileVisitResult.CONTINUE;
-                }
+                return true;
             });
             return newer[0];
         }

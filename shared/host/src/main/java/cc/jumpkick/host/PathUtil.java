@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 /** Shared filesystem helpers. */
@@ -105,6 +106,7 @@ public final class PathUtil {
     public static void forEachRegularFile(Path root, Predicate<Path> skipDirectory, FileVisit visit)
             throws IOException {
         if (!Files.isDirectory(root)) return;
+        WALKS.incrementAndGet();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -133,6 +135,117 @@ public final class PathUtil {
     public interface FileVisit {
         void accept(Path file, BasicFileAttributes attrs) throws IOException;
     }
+
+    /**
+     * Directories and regular files under {@code root}, attributes the walk already read, links as
+     * non-regular leaves. {@code accept} returning {@code false} terminates. Missing root is a no-op.
+     *
+     * <p>For freshness that needs directory mtimes (a deletion bumps the parent and nothing else).
+     * {@link #forEachRegularFile} never visits directories.
+     */
+    public static void forEachEntry(Path root, Predicate<Path> skipDirectory, EntryVisit visit)
+            throws IOException {
+        if (!Files.isDirectory(root)) return;
+        WALKS.incrementAndGet();
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (!dir.equals(root) && skipDirectory.test(dir)) return FileVisitResult.SKIP_SUBTREE;
+                return visit.accept(dir, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                return visit.accept(file, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /**
+     * Direct children of {@code dir} with listing attributes. Missing dir is a no-op. Does not
+     * recurse. Symlinks are not followed — a link to a directory arrives as a non-directory child.
+     */
+    public static void forEachChild(Path dir, EntryVisit visit) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        WALKS.incrementAndGet();
+        Files.walkFileTree(dir, Set.of(), 1, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path child, BasicFileAttributes attrs) throws IOException {
+                if (child.equals(dir)) return FileVisitResult.CONTINUE;
+                return visit.accept(child, attrs) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.TERMINATE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                return visit.accept(file, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /**
+     * True if any regular file matching {@code filePred} exists under {@code root}. Terminates on
+     * the first hit. Missing root is false. Symlinks are not followed.
+     */
+    public static boolean anyRegularFile(Path root, Predicate<Path> skipDirectory, Predicate<Path> filePred)
+            throws IOException {
+        if (!Files.isDirectory(root)) return false;
+        WALKS.incrementAndGet();
+        boolean[] hit = {false};
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return !dir.equals(root) && skipDirectory.test(dir)
+                        ? FileVisitResult.SKIP_SUBTREE
+                        : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (attrs.isRegularFile() && filePred.test(file)) {
+                    hit[0] = true;
+                    return FileVisitResult.TERMINATE;
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return hit[0];
+    }
+
+    /**
+     * What {@link #forEachEntry} and {@link #forEachChild} hand each path. Return {@code false} to
+     * stop the walk.
+     */
+    @FunctionalInterface
+    public interface EntryVisit {
+        boolean accept(Path path, BasicFileAttributes attrs) throws IOException;
+    }
+
+    /** Walks started by {@link #forEachRegularFile}, {@link #forEachEntry}, {@link #forEachChild}, {@link #anyRegularFile}. Test seam. */
+    static long walks() {
+        return WALKS.get();
+    }
+
+    /** Reset {@link #walks()} so a test can assert one covering walk. */
+    static void resetWalks() {
+        WALKS.set(0);
+    }
+
+    private static final AtomicLong WALKS = new AtomicLong();
 
     /**
      * {@code path}'s attributes, or empty when it does not exist or cannot be read.

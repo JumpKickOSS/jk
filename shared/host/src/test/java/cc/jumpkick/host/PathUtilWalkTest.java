@@ -90,4 +90,73 @@ class PathUtilWalkTest {
         assertThat(PathUtil.stat(tmp.resolve("nope"))).isEmpty();
         assertThat(PathUtil.stat(tmp).map(a -> a.isDirectory())).contains(true);
     }
+
+    @Test
+    void forEachEntry_visits_directories_and_files(@TempDir Path tmp) throws IOException {
+        Files.createDirectories(tmp.resolve("a/b"));
+        Files.writeString(tmp.resolve("a/f.txt"), "x");
+
+        List<String> seen = new ArrayList<>();
+        PathUtil.forEachEntry(tmp, dir -> false, (p, attrs) -> {
+            seen.add(tmp.relativize(p).toString().replace('\\', '/') + (attrs.isDirectory() ? "/" : ""));
+            return true;
+        });
+
+        assertThat(seen).contains("/", "a/", "a/b/", "a/f.txt");
+    }
+
+    @Test
+    void forEachEntry_terminates_when_accept_returns_false(@TempDir Path tmp) throws IOException {
+        Files.writeString(tmp.resolve("a.txt"), "a");
+        Files.writeString(tmp.resolve("b.txt"), "b");
+        int[] n = {0};
+        PathUtil.forEachEntry(tmp, dir -> false, (p, attrs) -> {
+            n[0]++;
+            return false;
+        });
+        assertThat(n[0]).isEqualTo(1);
+    }
+
+    @Test
+    void forEachChild_is_depth_one(@TempDir Path tmp) throws IOException {
+        Files.createDirectories(tmp.resolve("a/deep"));
+        Files.writeString(tmp.resolve("top.txt"), "t");
+        Files.writeString(tmp.resolve("a/mid.txt"), "m");
+        Files.writeString(tmp.resolve("a/deep/leaf.txt"), "l");
+
+        List<String> seen = new ArrayList<>();
+        PathUtil.forEachChild(tmp, (p, attrs) -> {
+            seen.add(p.getFileName().toString());
+            return true;
+        });
+
+        assertThat(seen).containsExactlyInAnyOrder("a", "top.txt");
+    }
+
+    @Test
+    void anyRegularFile_stops_after_a_hit(@TempDir Path tmp) throws IOException {
+        Files.createDirectories(tmp.resolve("a"));
+        Files.writeString(tmp.resolve("a/one.txt"), "1");
+        Files.writeString(tmp.resolve("a/two.txt"), "2");
+
+        PathUtil.resetWalks();
+        assertThat(PathUtil.anyRegularFile(tmp, dir -> false, p -> p.getFileName().toString().endsWith(".txt")))
+                .isTrue();
+        assertThat(PathUtil.walks()).isEqualTo(1);
+        assertThat(PathUtil.anyRegularFile(tmp, dir -> false, p -> p.getFileName().toString().endsWith(".java")))
+                .isFalse();
+    }
+
+    @Test
+    void anyRegularFile_missing_root_is_false(@TempDir Path tmp) throws IOException {
+        assertThat(PathUtil.anyRegularFile(tmp.resolve("absent"), dir -> false, p -> true)).isFalse();
+    }
+
+    @Test
+    void a_missing_root_is_a_no_op_for_child_and_entry(@TempDir Path tmp) throws IOException {
+        List<Path> seen = new ArrayList<>();
+        PathUtil.forEachChild(tmp.resolve("absent"), (p, a) -> seen.add(p));
+        PathUtil.forEachEntry(tmp.resolve("absent"), dir -> false, (p, a) -> seen.add(p));
+        assertThat(seen).isEmpty();
+    }
 }

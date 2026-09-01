@@ -416,10 +416,7 @@ public final class BuildLogicSupport {
 
     /** True when {@code dir} holds no regular file at any depth. */
     private static boolean isEmptyDir(Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) return true;
-        boolean[] seen = {false};
-        PathUtil.forEachRegularFile(dir, (file, attrs) -> seen[0] = true);
-        return !seen[0];
+        return !PathUtil.anyRegularFile(dir, d -> false, p -> true);
     }
 
     /**
