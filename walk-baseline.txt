@@ -16,6 +16,9 @@
 # size the walk had already read), CacheRoots.scanTextFilesRecursively, and
 # BuildLogicSupport.generatedSources. AbiMemo.sweepResidue keeps its Files.list: it deletes
 # directory entries, which is not what forEachRegularFile enumerates.
+#
+# 2026-08-31: server/engine 85 -> 84. Dead CompileSupport.anySourceUnder (private
+# Files.walk; hasSources already uses Languages.anySourceUnder).
 
 clients/cli 14
 plugins/android 10
@@ -31,7 +34,7 @@ plugins/spring-boot 1
 plugins/test-runner 1
 # +1 (JK-2616): AbiIndex.fingerprintWithNested lists ONE package directory (depth-1 siblings
 # Owner$*.class of a recompiled class) — a recursive attribute-carrying walk is the wrong shape.
-server/engine 85
+server/engine 84
 server/toolchain 1
 shared/client-io 15
 shared/core 16

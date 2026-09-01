@@ -17,7 +17,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Pure source-set helpers shared by the build plan and the git-source builder. Extracted out of
@@ -84,20 +83,6 @@ public final class CompileSupport {
      */
     public static boolean isSimpleLayout(Path projectDir) {
         return ModuleLayout.isCompact(projectDir);
-    }
-
-    private static boolean anySourceUnder(Path root, String... extensions) {
-        if (!Files.isDirectory(root)) return false;
-        try (Stream<Path> stream = Files.walk(root)) {
-            return stream.anyMatch(p -> {
-                if (!Files.isRegularFile(p)) return false;
-                String name = p.getFileName().toString();
-                for (String ext : extensions) if (name.endsWith(ext)) return true;
-                return false;
-            });
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     /** All {@code .java} files under {@code root} (empty if it doesn't exist). */
