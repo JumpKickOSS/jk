@@ -58,6 +58,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.FORMAT_STAMPS, root -> in(root, CacheTree.FORMAT_STAMPS, "ab/cd/stamp", "", OLD));
         m.put(CacheTree.FORMAT_FRESHNESS, root -> in(root, CacheTree.FORMAT_FRESHNESS, "orphan.idx", "x", OLD));
         m.put(CacheTree.HASH_MEMO, root -> overStoreBudget(root, CacheTree.HASH_MEMO, "memo.v1", 32L * 1024 * 1024));
+        m.put(CacheTree.ABI_MEMO, root -> overStoreBudget(root, CacheTree.ABI_MEMO, "memo.v1", 32L * 1024 * 1024));
         m.put(CacheTree.KOTLIN_CP_SNAPSHOTS, root -> overByteBudget(root, CacheTree.KOTLIN_CP_SNAPSHOTS));
         m.put(CacheTree.JSHELL_CP, root -> in(root, CacheTree.JSHELL_CP, "alias.jar", "x", FRESH));
         m.put(CacheTree.BASE_JRE, root -> subtree(root, CacheTree.BASE_JRE, "sha256-dead", OLD));

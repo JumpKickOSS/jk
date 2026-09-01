@@ -31,10 +31,19 @@ public final class JdkGarbage {
         return new JdkGarbage(JkDirs.jdks());
     }
 
-    /** Record {@code dir} for later deletion. No-op if it's not under the JDK root. */
+    /**
+     * Record {@code dir} for later deletion. No-op unless it is under the JDK root <em>and</em> jk
+     * installed it.
+     *
+     * <p>Being under the root is not enough. {@link JkDirs#jdks()} is IntelliJ's shared
+     * {@code ~/.jdks}, so the user's own JDKs live there too, and an update that superseded one of
+     * those would have queued somebody else's install for deletion (JK-2624). {@link JdkOwnership}
+     * is the only thing that distinguishes them.
+     */
     public void enqueue(Path dir) {
         Path abs = canonical(dir);
         if (!abs.startsWith(canonicalRoot())) return; // never queue anything outside the managed JDK root
+        if (!JdkOwnership.isJkOwned(abs)) return; // never queue a JDK jk did not install
         try {
             Files.createDirectories(jdksRoot);
             Files.writeString(
@@ -66,6 +75,9 @@ public final class JdkGarbage {
             Path dir = canonical(Path.of(trimmed));
             if (!dir.startsWith(root)) continue; // defensive: never wander outside the managed JDK root
             if (!Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) continue; // already gone
+            // Re-checked at drain, not just at enqueue: the queue is a file that survives across
+            // runs and versions, so a row written by an older jk (or by hand) reaches here too.
+            if (!JdkOwnership.isJkOwned(dir)) continue; // never delete a JDK jk did not install
             deleteRecursively(dir);
             if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) {
                 survivors.add(trimmed); // still locked — try again next run

@@ -14,11 +14,13 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /** {@code jk tool uninstall <name>} — remove an installed CLI tool. */
 public final class ToolUninstallCommand implements CliCommand {
@@ -65,18 +67,43 @@ public final class ToolUninstallCommand implements CliCommand {
         Path winLauncher = bin.resolve(name + ".cmd");
 
         boolean envExists = Files.isDirectory(envDir);
-        boolean launcherExists = Files.exists(launcher) || Files.exists(winLauncher);
-        if (!envExists && !launcherExists) {
-            CliOutput.out(name + " is not installed.");
-            return 0;
+        // Ours only if jk wrote it. `bin` is ~/.local/bin by default — the distro's binaries, pip
+        // and npm shims and symlinks into other tools all live there, so a NAME is not a claim.
+        // This used to delete on existence alone, which removed the user's binary and reported
+        // success (JK-2626); every launcher jk writes says so on line two.
+        List<Path> ours = Stream.of(launcher, winLauncher)
+                .filter(JkOwnership::isGeneratedLauncher)
+                .toList();
+        List<Path> theirs = Stream.of(launcher, winLauncher)
+                .filter(Files::exists)
+                .filter(p -> !JkOwnership.isGeneratedLauncher(p))
+                .toList();
+
+        if (!envExists && ours.isEmpty()) {
+            // Say which of the two it is. "Not installed" over somebody's binary of the same name
+            // reads like jk looked and found nothing, when it looked and found something it must
+            // not touch.
+            if (theirs.isEmpty()) {
+                CliOutput.out(name + " is not installed.");
+                return 0;
+            }
+            CliOutput.err(theirs.getFirst() + " was not created by jk — leaving it alone.");
+            CliOutput.err("Remove it yourself if you meant to; jk only removes launchers it wrote.");
+            return Exit.CONFIG;
         }
 
         if (envExists) {
-            PathUtil.deleteRecursively(envDir);
+            PathUtil.deleteRecursively(envDir); // under the state dir: jk's own, by containment
         }
-        Files.deleteIfExists(launcher);
-        Files.deleteIfExists(winLauncher);
+        for (Path p : ours) {
+            Files.deleteIfExists(p);
+        }
         CommandWedge.printOk("Uninstall", "Removed " + name);
+        // A foreign file left behind while the env dir went is worth a word, or the tool looks
+        // half-removed for a reason the user cannot see.
+        for (Path p : theirs) {
+            CliOutput.err("Left " + p + " in place — jk did not create it.");
+        }
         return 0;
     }
 

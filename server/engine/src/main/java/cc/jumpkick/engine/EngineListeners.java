@@ -141,6 +141,7 @@ public final class EngineListeners {
             @Override
             public void testsFrom(BuildPlan plan) {
                 journal.accTests(rid, plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+                journal.accAffected(rid, plan.get(BuildPlanner.AFFECTED_TESTS).orElse(null));
             }
         };
     }

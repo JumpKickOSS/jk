@@ -15,6 +15,7 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.jdk.JdkService;
 import java.util.List;
 import java.util.Optional;
 
@@ -120,7 +121,7 @@ final class NewJdkChoice {
             var entry = installable.entry();
             var installer = new JdkInstaller(new Http(), new JdkRegistry());
             // Download (progress bar) then extract (spinner).
-            var label = entry.vendor() + " " + entry.product() + " " + entry.majorVersion();
+            var label = JdkService.displayLabel(entry);
             long total = entry.archiveSize();
             try (var pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
                 var dl = installer.download(entry, bytes -> pb.update(bytes, total));

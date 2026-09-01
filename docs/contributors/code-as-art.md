@@ -442,7 +442,7 @@ the hard cap for its own language, and 5.6x its 416-line subject, which it
 had grown around by accretion one config table at a time. No guard could
 see it, and neither could the doc/guard parity check below, which compares
 extensions and is blind to directory scope. JK-2444 extended the scan to
-`src/test/java`, `src/test/kotlin`, `src/test/js` and `src/testFixtures`.
+`src/test/java`, `src/test/kotlin`, `src/test/js` and `src/fixtures`.
 
 The objection to capping tests is real and it is not an exemption:
 splitting a suite can duplicate a fixture, and duplicated scaffolding is
@@ -873,7 +873,7 @@ Letters are allocated when a guard lands and are never reused.
 | G26 | `checkPluginForkOwner` | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express until JK-2493) |
 | G27 | `CliSourceRulesTest` (`:cli`) | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist |
 | G35 | `checkTestPathsFromCheckoutRoot` | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist |
-| G36 | `checkManifestDepParity` | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `kind = "tests"` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist |
+| G36 | `checkManifestDepParity` | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `fixtures = true` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist |
 | G37 | `checkOneRecursiveDelete` | a hand-rolled children-first delete outside `cc.jumpkick.host.PathUtil`, or `FOLLOW_LINKS` in any file that deletes — comment-blind, plus a self-fail arm on the owner still using `walkFileTree` and `NOFOLLOW_LINKS` | ban; four commented exemptions, each a *selective* delete rather than a tree delete |
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1072,7 +1072,7 @@ jk builds jk. Every module carries a `build.gradle.kts` **and** a
 `implementation(project(":core"))` is `jk-core.workspace = true`,
 `testImplementation` is `[test-dependencies]`, and Gradle's
 `testFixtures(project(":host"))` is jk's
-`jk-host = { workspace = true, kind = "tests" }`.
+`jk-host = { workspace = true, fixtures = true }`.
 
 Nothing was checking that they agreed. Thirteen edges were out of step at
 once, all in the direction of "Gradle knows, jk does not", so

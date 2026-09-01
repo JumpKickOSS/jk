@@ -932,9 +932,11 @@ public final class WorkspaceExecute {
         for (Task step : plan.steps()) {
             // compile-test is an artifact too: kind=tests siblings consume this module's
             // classes/test (WorkspaceClasspath testClassesDir), and it never waits on the suite.
+            // compile-test-fixtures is the same for fixtures = true consumers.
             if (TaskNames.PACKAGE_JAR.equals(step.name())
                     || TaskNames.PACKAGE_ASSEMBLY.equals(step.name())
-                    || TaskNames.COMPILE_TEST.equals(step.name())) {
+                    || TaskNames.COMPILE_TEST.equals(step.name())
+                    || TaskNames.COMPILE_TEST_FIXTURES.equals(step.name())) {
                 artifactSteps.add(step.name());
             }
         }

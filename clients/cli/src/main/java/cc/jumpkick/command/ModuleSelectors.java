@@ -36,4 +36,15 @@ final class ModuleSelectors {
     static boolean bothSelectors(boolean affectedWip, String affectedSince) {
         return affectedWip && affectedSince != null && !affectedSince.isBlank();
     }
+
+    /**
+     * True when any module selector is active. Every build-family command guards its selection
+     * resolution with this — a hand-rolled disjunction is how {@code jk native --affected} shipped
+     * accepting the flag and ignoring it (JK-2608).
+     */
+    static boolean anySelector(String modulesSpec, String affectedSince, boolean affectedWip) {
+        return affectedWip
+                || (modulesSpec != null && !modulesSpec.isBlank())
+                || (affectedSince != null && !affectedSince.isBlank());
+    }
 }

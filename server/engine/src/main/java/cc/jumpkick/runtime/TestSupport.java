@@ -41,13 +41,9 @@ public final class TestSupport {
     /**
      * Sources under {@code [test] extra-src}, by extension. These roots belong to the test tier but
      * to no suite: there is nothing in them to run, so they compile with whichever suites were
-     * selected rather than being selectable themselves.
-     *
-     * <p>They land in the module's test classes output, which is what makes a sibling's
-     * {@code kind = "tests"} edge reach them — {@code WorkspaceClasspath} already contributes that
-     * directory. No second artifact, so nothing here can reach a published POM.
-     */
-    /**
+     * selected rather than being selectable themselves. Sibling-consumed helpers use
+     * {@code [test] fixtures} instead.
+     * /**
      * {@link #testExtraSources} for a forecast: {@code .java} only, and degrading to empty rather
      * than throwing, because a forecast reports on a build instead of being one.
      *
@@ -55,7 +51,7 @@ public final class TestSupport {
      * size-baseline invariant is that a forecast key derived <em>there</em> rather than shared with
      * the build is the defect class that file keeps reintroducing — and this is another instance of
      * it: these roots are in {@code compile-test}'s hashed request, so a forecast that cannot see
-     * them keys off a smaller source set than the build and reports a phantom rebuild (JK-2601).
+     * them keys off a smaller source set than the build and reports a phantom rebuild.
      */
     static List<Path> forecastTestExtraSources(JkBuild project, Path moduleDir) {
         try {

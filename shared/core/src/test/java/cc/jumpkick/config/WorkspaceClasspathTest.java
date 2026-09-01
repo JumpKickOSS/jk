@@ -213,7 +213,72 @@ class WorkspaceClasspathTest {
                 [dependencies]
                 lib = { workspace = true, kind = "tests" }
                 """);
-        org.junit.jupiter.api.Assertions.assertThrows(JkBuildParseException.class, () -> JkBuildParser.parse(appToml));
+        assertThatThrownBy(() -> JkBuildParser.parse(appToml)).isInstanceOf(JkBuildParseException.class);
+    }
+
+    @Test
+    void fixtures_puts_sibling_fixtures_dir_on_the_test_classpath(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        module(root, "lib", """
+                [test]
+                fixtures = true
+                """);
+        module(root, "app", """
+                [dependencies]
+                lib = { workspace = true }
+
+                [test-dependencies]
+                lib = { workspace = true, fixtures = true }
+                """);
+        Path libMain = root.resolve("target/lib/lib/lib-0.1.0.jar");
+        Path libFixtures = root.resolve("target/lib/test-fixtures/classes");
+        Files.createDirectories(libMain.getParent());
+        Files.createDirectories(libFixtures);
+        Files.writeString(libMain, "jar");
+        Files.writeString(libFixtures.resolve("Helper.class"), "class");
+
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        var mainOnly = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
+        assertThat(mainOnly.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("test-fixtures"));
+
+        var withFixtures =
+                WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+        assertThat(withFixtures.jars()).anyMatch(p -> p.endsWith(Path.of("test-fixtures/classes")));
+        assertThat(withFixtures.missingSiblingJars()).isEmpty();
+    }
+
+    @Test
+    void fixtures_outside_test_scope_is_rejected(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        module(root, "lib", "");
+        Path appToml = root.resolve("app/jk.toml");
+        Files.createDirectories(appToml.getParent());
+        Files.writeString(appToml, """
+                group = "com.ex"
+                name = "app"
+                version = "0.1.0"
+                jdk = "25"
+
+                [dependencies]
+                lib = { workspace = true, fixtures = true }
+                """);
+        assertThatThrownBy(() -> JkBuildParser.parse(appToml)).isInstanceOf(JkBuildParseException.class);
     }
 
     private static List<String> jarNames(WorkspaceClasspath.Result result) {

@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.task.ClassAbi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,7 +31,37 @@ public final class AffectedTestRanker {
             List<Path> compiledMainSources,
             List<TestClassIndex.Entry> tests,
             Set<String> productionFqcs,
-            List<AffectedTests.ModuleRow> cone) {}
+            List<AffectedTests.ModuleRow> cone,
+            /** Changed types other (dependency) modules classified — FQC → kind. Never refused on. */
+            Map<String, ClassAbi.Kind> foreignChanged) {
+
+        public Inputs(
+                Path moduleDir,
+                String moduleCoord,
+                Path workspaceRoot,
+                TestSelection selection,
+                List<String> dirtyPaths,
+                Map<String, ClassAbi.Fingerprint> preCompileAbi,
+                Map<String, ClassAbi.Fingerprint> currentAbi,
+                List<Path> compiledMainSources,
+                List<TestClassIndex.Entry> tests,
+                Set<String> productionFqcs,
+                List<AffectedTests.ModuleRow> cone) {
+            this(
+                    moduleDir,
+                    moduleCoord,
+                    workspaceRoot,
+                    selection,
+                    dirtyPaths,
+                    preCompileAbi,
+                    currentAbi,
+                    compiledMainSources,
+                    tests,
+                    productionFqcs,
+                    cone,
+                    Map.of());
+        }
+    }
 
     public static AffectedTests rank(Inputs in) {
         List<AffectedTests.ModuleRow> cone = in.cone() == null ? List.of() : in.cone();
@@ -58,6 +89,8 @@ public final class AffectedTestRanker {
                         ? List.of(TestSuites.DEFAULT)
                         : in.selection().suites());
         if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
+        // Layout-aware FQC derivation (compact and traditional); string heuristics as fallback.
+        SourceFqcs fqcs = SourceFqcs.of(module, suites);
 
         for (String raw : in.dirtyPaths() == null ? List.<String>of() : in.dirtyPaths()) {
             if (raw == null || raw.isBlank()) continue;
@@ -71,29 +104,28 @@ public final class AffectedTestRanker {
                 continue;
             }
             if (name.equals("package-info.java") || name.equals("module-info.java")) continue;
-            boolean isJava = name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy");
-            if (!isJava) continue;
+            if (!isClassSource(name)) continue;
             onlyNonClass = false;
             if (module != null && p.startsWith(module)) {
-                Path rel = module.relativize(p);
-                String relStr = rel.toString().replace('\\', '/');
-                if (isTestSource(relStr)) {
-                    if (!suiteContains(relStr, suites)) {
-                        outside = true;
-                    } else {
-                        String fqc = fqcFromSource(relStr);
-                        if (fqc != null) dirtyTestClasses.add(fqc);
+                String relStr = module.relativize(p).toString().replace('\\', '/');
+                SourceFqcs.Hit hit = fqcs.classify(relStr, suites);
+                switch (hit.kind()) {
+                    case TEST_OUTSIDE -> outside = true;
+                    case TEST_SELECTED -> {
+                        if (hit.fqc() != null) dirtyTestClasses.add(hit.fqc());
                     }
-                } else if (isMainSource(relStr)) {
-                    String fqc = fqcFromSource(relStr);
-                    if (fqc != null) {
-                        ClassAbi.Kind kind = kindOf(fqc, in);
-                        changed.merge(
-                                fqc,
-                                kind,
-                                (a, b) -> a == ClassAbi.Kind.ABI || b == ClassAbi.Kind.ABI
-                                        ? ClassAbi.Kind.ABI
-                                        : ClassAbi.Kind.BODY);
+                    case MAIN -> {
+                        if (hit.fqc() != null) {
+                            changed.merge(
+                                    hit.fqc(),
+                                    kindOf(hit.fqc(), in),
+                                    (a, b) -> a == ClassAbi.Kind.ABI || b == ClassAbi.Kind.ABI
+                                            ? ClassAbi.Kind.ABI
+                                            : ClassAbi.Kind.BODY);
+                        }
+                    }
+                    case NONE -> {
+                        /* under no source root — not a classifiable source */
                     }
                 }
             }
@@ -102,19 +134,11 @@ public final class AffectedTestRanker {
             for (Path src : in.compiledMainSources()) {
                 if (src == null) continue;
                 Path p = src.toAbsolutePath().normalize();
-                if (module != null
-                        && p.startsWith(module)
-                        && isMainSource(module.relativize(p).toString())) {
-                    String fqc = fqcFromSource(module.relativize(p).toString().replace('\\', '/'));
-                    if (fqc != null && !changed.containsKey(fqc)) {
-                        changed.put(fqc, kindOf(fqc, in));
-                    }
-                    // Zinc rebuilt a dependent: treat the dirty type as ABI if another source compiled.
-                    if (fqc != null
-                            && in.dirtyPaths() != null
-                            && in.dirtyPaths().size() >= 1) {
-                        // leave kind as classified; extra ABI vote when this source is not itself dirty
-                    }
+                if (module == null || !p.startsWith(module)) continue;
+                String relStr = module.relativize(p).toString().replace('\\', '/');
+                SourceFqcs.Hit hit = fqcs.classify(relStr, suites);
+                if (hit.kind() == SourceFqcs.Kind.MAIN && hit.fqc() != null && !changed.containsKey(hit.fqc())) {
+                    changed.put(hit.fqc(), kindOf(hit.fqc(), in));
                 }
             }
         }
@@ -139,7 +163,9 @@ public final class AffectedTestRanker {
                     cone,
                     toChanged(in, changed));
         }
-        boolean noCode = changed.isEmpty() && dirtyTestClasses.isEmpty();
+        boolean foreignEmpty =
+                in.foreignChanged() == null || in.foreignChanged().isEmpty();
+        boolean noCode = changed.isEmpty() && dirtyTestClasses.isEmpty() && foreignEmpty;
         if (noCode
                 && onlyNonClass
                 && in.dirtyPaths() != null
@@ -152,8 +178,15 @@ public final class AffectedTestRanker {
                 in.selection() == null ? List.of() : in.selection().includeTags();
         List<String> exclude =
                 in.selection() == null ? List.of() : in.selection().excludeTags();
-        Map<String, Set<String>> bySimple =
-                TestClassIndex.productionFqcsBySimple(in.productionFqcs() == null ? Set.of() : in.productionFqcs());
+        // Local changed types score first; a dependency module's classified types (foreign) fill
+        // in behind them so a dependent's importers rank too (JK-2606). Local wins a duplicate.
+        LinkedHashMap<String, ClassAbi.Kind> scoreable = new LinkedHashMap<>(changed);
+        if (in.foreignChanged() != null) {
+            for (var e : in.foreignChanged().entrySet()) scoreable.putIfAbsent(e.getKey(), e.getValue());
+        }
+        Set<String> nameable = new LinkedHashSet<>(in.productionFqcs() == null ? Set.of() : in.productionFqcs());
+        nameable.addAll(scoreable.keySet());
+        Map<String, Set<String>> bySimple = TestClassIndex.productionFqcsBySimple(nameable);
 
         List<Scored> scored = new ArrayList<>();
         for (TestClassIndex.Entry t : in.tests() == null ? List.<TestClassIndex.Entry>of() : in.tests()) {
@@ -166,7 +199,7 @@ public final class AffectedTestRanker {
             }
             Set<String> nameHits =
                     t.nameMatchSimple().isEmpty() ? Set.of() : bySimple.getOrDefault(t.nameMatchSimple(), Set.of());
-            for (var e : changed.entrySet()) {
+            for (var e : scoreable.entrySet()) {
                 boolean imported = t.imports().contains(e.getKey());
                 boolean named = nameHits.contains(e.getKey())
                         || (!t.nameMatchSimple().isEmpty()
@@ -237,6 +270,14 @@ public final class AffectedTestRanker {
             return false;
         }
         return true;
+    }
+
+    /** A source file whose compilation produces classes — the grain the ranker reasons in. */
+    static boolean isClassSource(String fileName) {
+        return fileName.endsWith(".java")
+                || fileName.endsWith(".kt")
+                || fileName.endsWith(".groovy")
+                || fileName.endsWith(".scala");
     }
 
     static boolean isMainSource(String rel) {

@@ -32,6 +32,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.jdk.JdkService;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -173,18 +174,23 @@ public final class JdkUpdateCommand implements CliCommand {
             return 0;
         }
 
-        return apply(registry, updates) ? 0 : 1;
+        // Asked here, before any download, so the whole update runs unattended once answered —
+        // rather than stopping for a question after the user has waited through a fetch.
+        boolean removeOld = assumeYes || confirmRemoveSuperseded(updates);
+
+        return apply(registry, updates, removeOld) ? 0 : 1;
     }
 
     // --- apply --------------------------------------------------------------
 
-    private boolean apply(JdkRegistry registry, List<Update> updates) {
+    private boolean apply(JdkRegistry registry, List<Update> updates, boolean removeOld) {
         JdkInstaller installer = new JdkInstaller(new Http(), registry);
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         Optional<String> currentDefault = defaults.defaultId();
         Optional<String> graalDefault = defaults.graalId();
 
         Map<String, InstalledJdk> built = new HashMap<>(); // dedupe installs by target folder
+        List<String> superseded = new ArrayList<>(); // identifiers queued for removal, for pointer healing
         int updated = 0;
         int failed = 0;
         for (Update u : updates) {
@@ -200,10 +206,11 @@ public final class JdkUpdateCommand implements CliCommand {
                 // stable path never dangles. (install() refreshes it too, but
                 // the alreadyInstalled fast path can skip that.)
                 repointStablePointer(registry, newJdk);
-                if (!oldId.equals(newJdk.identifier())) {
+                if (removeOld && !oldId.equals(newJdk.identifier())) {
                     // Defer-delete the superseded patch: a running JVM may still
                     // hold it open (Windows can't unlink an in-use dir).
                     new JdkGarbage(registry.jdksRoot()).enqueue(IntellijJdkDir.installDirOf(u.old.home()));
+                    superseded.add(oldId);
                 }
                 if (currentDefault.isPresent() && currentDefault.get().equals(oldId)) {
                     defaults.setDefault(newJdk);
@@ -236,8 +243,16 @@ public final class JdkUpdateCommand implements CliCommand {
             }
         }
 
-        // Reap anything just enqueued (and any survivors from prior runs).
-        new JdkGarbage(registry.jdksRoot()).drain();
+        // Reap what this command queued. Draining lives here, in the explicit verb where the user
+        // was asked — never on the provisioning path, where it once fired during an ordinary build
+        // and took the JDK that build was running on (JK-2627).
+        if (removeOld) {
+            new JdkGarbage(registry.jdksRoot()).drain();
+            StableJdkPointer.healAfterRemovals(
+                    registry,
+                    superseded,
+                    m -> CliOutput.out(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + m));
+        }
 
         if (failed == 0) {
             String msg =
@@ -254,9 +269,8 @@ public final class JdkUpdateCommand implements CliCommand {
      * the names from the install identifier ({@code temurin-25.0.4} → pointer {@code temurin-25}).
      */
     private static void repointStablePointer(JdkRegistry registry, InstalledJdk jdk) {
-        JdkSelector.FlexibleQuery q = JdkSelector.parseFlexible(jdk.identifier());
-        if (q.major().isEmpty() || q.hints().isEmpty()) return;
-        String pointer = q.hints().get(0) + "-" + q.major().get();
+        String pointer = StableJdkPointer.pointerNameFor(jdk.identifier()).orElse(null);
+        if (pointer == null) return;
         try {
             new StableJdkPointer(registry.jdksRoot()).ensure(pointer, IntellijJdkDir.installDirOf(jdk.home()));
         } catch (IOException ignored) {
@@ -270,7 +284,7 @@ public final class JdkUpdateCommand implements CliCommand {
         InstalledJdk already = installer.alreadyInstalled(entry);
         if (already != null) return already;
 
-        String label = entry.vendor() + " " + entry.product() + " " + entry.majorVersion();
+        String label = JdkService.displayLabel(entry);
         long total = entry.archiveSize();
         InstalledJdk installed;
         try (JdkDownloadBar pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
@@ -332,6 +346,30 @@ public final class JdkUpdateCommand implements CliCommand {
                             u.target.installFolderName(), Theme.active().focused()));
         }
         return Confirm.of(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " Proceed?", true)
+                .ask();
+    }
+
+    /**
+     * Ask whether the superseded installs should come off disk. Defaults to yes — that was the old
+     * unconditional behaviour and it is what most people want — but it is a question now, because a
+     * JDK is minutes of download and an IDE, a shell, or another project's lockfile may be pinned to
+     * the exact patch directory. Declining keeps the old tree; the stable pointer moves either way.
+     */
+    private boolean confirmRemoveSuperseded(List<Update> updates) {
+        List<String> victims = updates.stream()
+                .map(u -> JdkRegistry.identifierFor(u.old.home()))
+                .distinct()
+                .toList();
+        CliOutput.out("");
+        CliOutput.out("  Also remove the superseded "
+                + (victims.size() == 1 ? "install" : "installs") + ":");
+        for (String v : victims) {
+            CliOutput.out("    " + Theme.colorize(v, Theme.active().warning()));
+        }
+        return Confirm.of(
+                        Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " Remove the old "
+                                + (victims.size() == 1 ? "version" : "versions") + "?",
+                        true)
                 .ask();
     }
 

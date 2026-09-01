@@ -1,0 +1,124 @@
+version = 2
+generated-by = "jk 0.12.0"
+resolution-algorithm = "pubgrub-v1"
+jk-min = "0.12.0"
+manifests-sha256 = "17cf70ab10b82924a16c5a3c04655936f4a8f3c37bac63d5688f994bdc829ae4"
+project-id = "87100f249c4ed834ecaeaa446fe3a4b7"
+
+[jdk]
+suggested-vendor = "temurin"
+suggested-version = "25.0.4"
+
+[[artifact]]
+name     = "org.apiguardian:apiguardian-api:jar:"
+version  = "1.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.jspecify:jspecify:jar:"
+version  = "1.0.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter-api:jar:"
+version  = "6.1.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:555d6cf20fa1710884dd01b86cc5785397ba73e21ada2d4b784f5f1a14dcafc4"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
+]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter-engine:jar:"
+version  = "6.1.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:414559e78bbfa3bdb2eab009ac3ab1e22369ac31117c270a0bd666da115c5c6c"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
+]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter-params:jar:"
+version  = "6.1.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:05c51cedba2c06a9770707391e006cee825876937dea580b94a265ce145d4939"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
+]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter:jar:"
+version  = "6.1.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:6b0a14075c74221de53047e363860b7d19fce802bebc152df2c35c4089c6c379"
+scopes   = ["test"]
+deps = [
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
+  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.3",
+  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.3",
+]
+
+[[artifact]]
+name     = "org.junit.platform:junit-platform-commons:jar:"
+version  = "6.1.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a4774ae923c109544034aeae7c762cf017fbcdd1342403ba90e0921984b608c3"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+]
+
+[[artifact]]
+name     = "org.junit.platform:junit-platform-engine:jar:"
+version  = "6.1.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:21ad7ad3a35beda16387979317be1833a72a71d812f9a66ee4b9a7bafb56334c"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
+]
+
+[[artifact]]
+name     = "org.junit.platform:junit-platform-launcher:jar:"
+version  = "6.1.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1dec64b1fc0b7c47a11302aa5b4d37d8160c041b396e27067709ce775601a7b6"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
+]
+
+[[artifact]]
+name     = "org.opentest4j:opentest4j:jar:"
+version  = "1.3.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
+scopes   = ["test"]
+
+[[module]]
+path    = "."
+group   = "demo"
+name    = "line-count-build"
+version = "0.0.1"
+java    = 25

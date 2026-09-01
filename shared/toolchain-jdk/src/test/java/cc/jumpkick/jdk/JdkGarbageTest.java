@@ -25,6 +25,7 @@ class JdkGarbageTest {
         Path jdks = tmp.resolve("jdks");
         Files.createDirectories(jdks);
         Path old = dir(jdks, "temurin-25.0.3");
+        JdkOwnership.mark(old); // only jk's own installs are collectable
 
         JdkGarbage g = new JdkGarbage(jdks);
         g.enqueue(old);
@@ -47,6 +48,26 @@ class JdkGarbageTest {
         assertThat(jdks.resolve(".to-be-removed")).doesNotExist(); // refused
         g.drain();
         assertThat(outside).exists();
+    }
+
+    @Test
+    void a_jdk_jk_does_not_own_is_never_collected(@TempDir Path tmp) throws IOException {
+        // JK-2624. Under the root is not the same as ours: ~/.jdks is IntelliJ's shared root, so an
+        // update that superseded a JDK the user installed there would have queued their install for
+        // deletion. Refused at enqueue AND at drain — the queue is a file that outlives the process,
+        // so a row written by an older jk reaches drain without ever passing enqueue.
+        Path jdks = tmp.resolve("jdks");
+        Files.createDirectories(jdks);
+        Path theirs = dir(jdks, "temurin-25.0.3"); // no .jk-owned marker
+
+        JdkGarbage g = new JdkGarbage(jdks);
+        g.enqueue(theirs);
+        assertThat(jdks.resolve(".to-be-removed")).as("refused at enqueue").doesNotExist();
+
+        // Hand-written queue row, as an older jk would have left behind.
+        Files.writeString(jdks.resolve(".to-be-removed"), theirs.toRealPath() + System.lineSeparator());
+        g.drain();
+        assertThat(theirs.resolve("bin").resolve("java")).as("refused at drain").exists();
     }
 
     @Test

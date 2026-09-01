@@ -9,8 +9,6 @@ bcpg-jdk18on = "latest"
 sigstore-java = "latest"
 
 [test-dependencies]
-# `kind = "tests"` reaches jk-core's test classes, where SessionBoundary lives — the
-# process-static session boundary this suite is bounded by (JK-1010). Never in a main jar.
-jk-core = { workspace = true, kind = "tests" }
+jk-core = { workspace = true, fixtures = true }
 assertj-core = "latest"
 junit-jupiter = "latest"

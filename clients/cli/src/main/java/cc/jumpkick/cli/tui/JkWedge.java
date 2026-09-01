@@ -127,8 +127,16 @@ public final class JkWedge implements Widget {
         String cap = paintCap(ctx, colors);
         String tail = tailAnsi(ctx);
         if (tail.isEmpty()) return chip + cap;
-        // Plan bar sits flush against the nerd cap so the powerline blends into the bar lead.
-        if (progress != null && progress.look() == Progress.Look.PLAN && ctx.wedge()) {
+        // The plan bar always starts flush against the badge — no separator space.
+        //
+        // With the nerd axis the reason is the powerline cap blending into the bar's lead colour.
+        // Without it there is no cap, and this branch used to fall through to the generic
+        // `chip + " " + tail`, which put THREE spaces before the bar: the chip's own two-space pill
+        // trail (chip() uses "  " where the wedge uses " ") plus the separator. The bar looked
+        // detached from its badge in every no-nerd-font terminal. The chip's trail is painted on the
+        // chip background, so dropping only the separator leaves the bar flush against the badge in
+        // both modes rather than merely closer.
+        if (progress != null && progress.look() == Progress.Look.PLAN) {
             return chip + cap + tail;
         }
         return chip + cap + " " + tail;
@@ -160,12 +168,38 @@ public final class JkWedge implements Widget {
     private String paintCap(RenderContext ctx, ChipColors colors) {
         if (!ctx.wedge() || !ctx.ansi()) return "";
         if (progress != null && progress.look() == Progress.Look.PLAN) {
-            Rgb lead = ProgressBar.shared().leadColor(progress.numerator(), Math.max(1L, progress.denominator()));
+            // The cap blends into the bar's lead, so it must ask at the bar's OWN width: cell 0's
+            // gradient index depends on the cell count, so a narrow bar asked at the default width
+            // gets a subtly wrong cap.
+            Rgb lead = ProgressBar.shared()
+                    .leadColor(progress.numerator(), Math.max(1L, progress.denominator()), progress.segments());
             return Theme.colorize(
                     Glyphs.SEGMENT_END_NERD,
                     ctx.theme().withBackground(ctx.theme().bright(colors.cap), lead));
         }
         return cap(colors.cap, true);
+    }
+
+    /**
+     * The wedge as one row of a live region: {@link #renderLine} clipped so it cannot wrap.
+     *
+     * <p><strong>Why live lines must be clipped and static ones need not be.</strong> A live region
+     * repaints with {@code \r}, which rewinds the cursor to the start of the <em>current physical
+     * row</em> only. Let the line exceed the terminal width and the terminal wraps it onto a second
+     * row; {@code \r} then rewinds the wrong row and every subsequent frame lands on a new line, so
+     * an 80 ms animator turns into a screenful of stacked half-frames. That is exactly what
+     * {@code jk jdk install lts} did: a 40-cell bar plus the {@code JDK} chip plus
+     * {@code NN% · Downloading Eclipse Temurin} is wider than an 80-column terminal (JK-2602).
+     *
+     * <p>A static line, printed once with a newline, may wrap harmlessly — which is why the clip
+     * lives here rather than inside {@link #renderLine}: truncating a settled result would throw
+     * away the tail of a long install path for no gain.
+     *
+     * <p>Every live painter should route through this, so the geometry rule has one owner and a
+     * chrome change cannot fix the wrap in one command and leave it in the next.
+     */
+    public String renderLiveLine(RenderContext ctx) {
+        return RenderContext.truncateVisible(renderLine(ctx), RenderContext.rowColumnBudget(ctx.width()));
     }
 
     /**
@@ -287,13 +321,28 @@ public final class JkWedge implements Widget {
     }
 
     public static JkWedge cancelled(String title, boolean byUser, String tookTail) {
+        return cancelled(title, "job", byUser, tookTail);
+    }
+
+    /**
+     * The cancelled settle line, with {@code subject} naming what was cancelled — {@code "job"} for
+     * a build, {@code "JDK download"} for a download.
+     *
+     * <p>One chrome for every cancel: the gray scope-badge chip, the {@code ⊛} icon, {@code cancelled}
+     * in bold, and whatever {@code tookTail} the caller measured (already dark-gray italic if it came
+     * from {@code ConsoleSpec.took}). The subject is the only thing that varies, which is why it is a
+     * parameter and not a second renderer — the JDK download had grown its own red wedge and red bar,
+     * a look that appeared nowhere else in the product (JK-2602).
+     */
+    public static JkWedge cancelled(String title, String subject, boolean byUser, String tookTail) {
+        String what = subject == null || subject.isBlank() ? "job" : subject;
         String took = tookTail == null || tookTail.isBlank() ? "" : " " + tookTail;
         String by = byUser ? " by user" : "";
         if (!Theme.active().isAnsi()) {
             return new JkWedge(
-                    Icon.cancelled(), title, RichText.plain("job was cancelled" + by + took), Variant.CANCELLED, null);
+                    Icon.cancelled(), title, RichText.plain(what + " was cancelled" + by + took), Variant.CANCELLED, null);
         }
-        String styled = "job was "
+        String styled = what + " was "
                 + Theme.colorize("cancelled", Theme.active().brightWhite().bold())
                 + by
                 + took;

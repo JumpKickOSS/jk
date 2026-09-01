@@ -2,7 +2,7 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.host.Os;
-import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -29,8 +29,12 @@ public final class SymlinkProvisioner {
      * Create a symbolic link {@code target → source}. Caller has already checked {@link
      * #canSymlink()}; this method throws on Windows.
      *
-     * <p>{@code target}'s parent is created if missing. Pre-existing entries at {@code target} are
-     * removed first (idempotent).
+     * <p>{@code target}'s parent is created if missing. A pre-existing entry at {@code target} is
+     * removed first, so the call is idempotent — but only on {@link JkOwnership}'s terms: a link or
+     * an empty directory goes, a <em>populated</em> directory goes only if jk created it. This used
+     * to recurse into whatever was there, which is the shape that destroyed real JDKs from the
+     * pointer path in JK-2624; nothing but the caller's choice of {@code target} kept this copy from
+     * doing the same (JK-2625).
      */
     public static void link(Path target, Path source) throws IOException {
         if (!canSymlink()) {
@@ -39,7 +43,7 @@ public final class SymlinkProvisioner {
         Path parent = target.getParent();
         if (parent != null) Files.createDirectories(parent);
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            removeRecursivelyOrUnlink(target);
+            JkOwnership.removeIfOwned(target);
         }
         Files.createSymbolicLink(target, source);
     }
@@ -60,13 +64,4 @@ public final class SymlinkProvisioner {
         }
     }
 
-    /**
-     * Delete whatever is in the way before a fresh link goes there. A link is unlinked, a real
-     * directory is removed with its contents, anything else is one delete — which is exactly
-     * {@link PathUtil#deleteRecursively}'s contract, so it is not restated here. This used to be a
-     * three-arm copy of it.
-     */
-    private static void removeRecursivelyOrUnlink(Path path) {
-        PathUtil.deleteRecursively(path);
-    }
 }

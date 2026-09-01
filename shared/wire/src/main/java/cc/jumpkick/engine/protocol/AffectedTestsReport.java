@@ -9,19 +9,28 @@ import java.util.Map;
 
 /**
  * Read-only ranked test list for {@code jk test --affected} ({@link
- * EngineProtocol#AFFECTED_TESTS_REQUEST}). Non-null {@code error} is a refuse; {@code rows} is the
- * execute-set ranking. Wire rows are {@code |}-joined {@code score|class|reason}.
+ * EngineProtocol#AFFECTED_TESTS_REQUEST}). A refuse is discriminated by the {@code refused}
+ * boolean — never by the message being non-empty, which turned an empty-message refuse into a
+ * silent success (JK-2617). {@code rows} is the execute-set ranking; wire rows are
+ * {@code |}-joined {@code score|class|reason}.
  */
-public record AffectedTestsReport(String error, String refuseCode, int cap, int candidateCount, List<Row> rows) {
+public record AffectedTestsReport(
+        boolean refused, String error, String refuseCode, int cap, int candidateCount, List<Row> rows) {
+
+    public AffectedTestsReport {
+        // A refuse always names its code — an anonymous refuse is undebuggable.
+        refuseCode = !refused ? "" : (refuseCode == null || refuseCode.isBlank() ? "internal" : refuseCode);
+        error = refused ? (error == null ? "" : error) : null;
+    }
 
     public record Row(int score, String className, String reason) {}
 
     public static AffectedTestsReport error(String code, String message) {
-        return new AffectedTestsReport(message, code == null ? "" : code, 20, 0, List.of());
+        return new AffectedTestsReport(true, message, code, 20, 0, List.of());
     }
 
     public static AffectedTestsReport of(int cap, int candidateCount, List<Row> rows) {
-        return new AffectedTestsReport(null, "", cap, candidateCount, List.copyOf(rows));
+        return new AffectedTestsReport(false, null, "", cap, candidateCount, List.copyOf(rows));
     }
 
     public String encode() {
@@ -30,8 +39,9 @@ public record AffectedTestsReport(String error, String refuseCode, int cap, int 
             encoded.add(r.score() + "|" + r.className() + "|" + r.reason());
         }
         return "{\"type\":\"" + EngineProtocol.AFFECTED_TESTS_ACK + "\""
+                + ",\"refused\":" + refused
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"refuseCode\":" + Jsonl.quote(refuseCode == null ? "" : refuseCode)
+                + ",\"refuseCode\":" + Jsonl.quote(refuseCode)
                 + ",\"cap\":" + cap
                 + ",\"candidateCount\":" + candidateCount
                 + ",\"rows\":" + EngineProtocol.quoteArray(encoded)
@@ -51,16 +61,16 @@ public record AffectedTestsReport(String error, String refuseCode, int cap, int 
             out.add(o);
         }
         m.put("ranked", out);
-        if (error != null) {
+        if (refused) {
             m.put("error", error);
-            m.put("refuse", Map.of("code", refuseCode == null ? "" : refuseCode, "message", error));
+            m.put("refuse", Map.of("code", refuseCode, "message", error));
         }
         return m;
     }
 
     public static AffectedTestsReport decode(String line) {
+        boolean refused = Jsonl.bool(line, "refused", false);
         String error = Jsonl.str(line, "error");
-        if (error != null && (error.isEmpty() || "null".equals(error))) error = null;
         String code = Jsonl.str(line, "refuseCode");
         int cap = Jsonl.intValue(line, "cap", 20);
         int candidates = Jsonl.intValue(line, "candidateCount", 0);
@@ -75,6 +85,6 @@ public record AffectedTestsReport(String error, String refuseCode, int cap, int 
             }
             rows.add(new Row(score, f.length > 1 ? f[1] : "", f.length > 2 ? f[2] : ""));
         }
-        return new AffectedTestsReport(error, code == null ? "" : code, cap, candidates, rows);
+        return new AffectedTestsReport(refused, error, code, cap, candidates, rows);
     }
 }

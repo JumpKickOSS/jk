@@ -14,16 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code [test] extra-src}: test-tier source roots that belong to no suite. Gradle spells the same
- * fact as a {@code testFixtures} source set; the point of both is a helper that a sibling can reach
- * through {@code kind = "tests"} and that no main jar can.
+ * {@code [test] extra-src}: extra test-tier sources compiled into test classes. Sibling-consumed
+ * helpers use {@code [test] fixtures} instead; this is the single-file / extra-root lane
+ * ({@code clients/cli} compiling one IntelliJ parser type).
  *
- * <p>The roots compile into the module's own test classes output, so there is no second artifact and
- * no second action key. That is the property worth pinning: {@code compile-test}'s key has to cover
- * these files, because the whole reason they exist is that another module's tests depend on them.
- * The defect this replaces was the opposite — the roots were collected and then dropped, because
- * {@code TestSupport.compileWithCache} is driven from the primary source <em>directory</em> and
- * only its {@code extraSources} argument reaches {@code CompileRequest.sources}.
+ * <p>The roots compile into the module's own test classes output. {@code compile-test}'s key has
+ * to cover these files because {@code TestSupport.compileWithCache} is driven from the primary
+ * source directory and only its {@code extraSources} argument reaches {@code CompileRequest.sources}.
  */
 class TestExtraSrcTest {
 
@@ -34,14 +31,14 @@ class TestExtraSrcTest {
             java = 25
 
             [test]
-            extra-src = ["src/testFixtures/java"]
+            extra-src = ["src/extra-test/java"]
             """;
 
     private static Path fixtureModule(Path dir, String fixtureBody) throws Exception {
         Files.createDirectories(dir.resolve("src/test/java/com/example"));
         Files.writeString(dir.resolve("src/test/java/com/example/LibTest.java"), "class LibTest {}\n");
-        Files.createDirectories(dir.resolve("src/testFixtures/java/com/example"));
-        Files.writeString(dir.resolve("src/testFixtures/java/com/example/Fix.java"), fixtureBody);
+        Files.createDirectories(dir.resolve("src/extra-test/java/com/example"));
+        Files.writeString(dir.resolve("src/extra-test/java/com/example/Fix.java"), fixtureBody);
         Files.writeString(dir.resolve("jk.toml"), MANIFEST);
         return dir;
     }
@@ -53,12 +50,12 @@ class TestExtraSrcTest {
         JkBuild declared = JkBuildParser.parse(dir.resolve("jk.toml"));
         assertThat(TestSupport.testExtraSources(declared, dir, ".java"))
                 .as("the root named by [test] extra-src")
-                .containsExactly(dir.resolve("src/testFixtures/java/com/example/Fix.java"));
+                .containsExactly(dir.resolve("src/extra-test/java/com/example/Fix.java"));
 
         // Same tree on disk, manifest silent: the directory is not a suite, so nothing else finds
-        // it either. A fixture root only exists because a manifest says so.
+        // it either. An extra-src root only exists because a manifest says so.
         Files.writeString(
-                dir.resolve("jk.toml"), MANIFEST.replace("[test]\nextra-src = [\"src/testFixtures/java\"]\n", ""));
+                dir.resolve("jk.toml"), MANIFEST.replace("[test]\nextra-src = [\"src/extra-test/java\"]\n", ""));
         JkBuild silent = JkBuildParser.parse(dir.resolve("jk.toml"));
         assertThat(TestSupport.testExtraSources(silent, dir, ".java"))
                 .as("no [test] extra-src, so no roots")
@@ -90,7 +87,7 @@ class TestExtraSrcTest {
         // classes DIRECTORY and ActionKey tree-hashes those. But that only helps if the classes
         // were rebuilt, which is this key's job.
         Files.writeString(
-                dir.resolve("src/testFixtures/java/com/example/Fix.java"),
+                dir.resolve("src/extra-test/java/com/example/Fix.java"),
                 "class Fix { static int v() { return 2; } }\n");
         assertThat(compileTestKey(project, dir, suite, out))
                 .as("compile-test key after editing only a fixture")

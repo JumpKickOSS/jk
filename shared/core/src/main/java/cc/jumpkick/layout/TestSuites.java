@@ -276,8 +276,9 @@ public final class TestSuites {
 
     /**
      * Every file under {@code root} with the given extension, sorted. Public because a test source
-     * root need not belong to a suite — {@code [test] extra-src} names roots that compile with the
-     * test tier and are never selected to run — and that collection rule has one owner, here.
+     * root need not belong to a suite — {@code [test] extra-src} and {@code [test] fixtures} name
+     * roots that compile with the test tier and are never selected to run — and that collection
+     * rule has one owner, here.
      */
     public static List<Path> collectExt(Path root, String ext) throws IOException {
         // Once per (root, extension) per request — see CompileSupport for why the same roots are

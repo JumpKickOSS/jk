@@ -2,7 +2,9 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.task.IoLedger;
 import java.util.concurrent.Callable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ambient holder for the current {@link Session}. {@link #current()} prefers a per-thread
@@ -24,20 +26,68 @@ public final class SessionContext {
 
     static {
         // Propagate where()-bound sessions (and their cancel tokens) onto JkThreads pool workers;
-        // ScopedValue does not reach pre-existing shared executors without this.
+        // ScopedValue does not reach pre-existing shared executors without this. The run ledger
+        // rides along for the reason in withLedger.
         ContextPropagator.bind(new ContextPropagator.Propagator() {
             @Override
             public Runnable wrapRunnable(Runnable r) {
                 Session s = current();
-                return () -> runWhere(s, r);
+                IoLedger run = IoLedger.ambient();
+                return () -> runWithLedger(run, () -> runWhere(s, r));
             }
 
             @Override
             public <T> Callable<T> wrapCallable(Callable<T> c) {
                 Session s = current();
-                return () -> where(s, c);
+                IoLedger run = IoLedger.ambient();
+                return () -> withLedger(run, () -> where(s, c));
             }
         });
+    }
+
+    /**
+     * Run {@code body} with {@code run} as the worker thread's ambient ledger, restoring whatever was
+     * there before.
+     *
+     * <p><strong>Why the ledger has to be propagated and not inherited.</strong> {@code IoLedger}'s
+     * ambient holder is an {@code InheritableThreadLocal}, and inheritance is a snapshot taken once,
+     * when a thread is <em>created</em>. {@link cc.jumpkick.run.JkThreads#cpu()} is a process-wide
+     * {@code ForkJoinPool} whose workers are created lazily — on demand, inside whichever request
+     * first widened the pool. Those workers then live for the engine's life still holding that first
+     * request's ledger, and every later request's CPU step read it back as "the ambient request".
+     *
+     * <p>That is not merely mis-billed bytes. {@link RequestScope} keys on the ledger instance
+     * precisely because a ledger cannot outlive its request — so a leaked one handed every
+     * subsequent build the <em>first</em> build's derived facts. A module that had no {@code
+     * src/test/java} when the pool warmed had that scan memoized empty, and {@code jk test} then
+     * reported "no test sources" — a green run — for every test written afterwards, until the engine
+     * restarted (JK-2620).
+     *
+     * <p>Capturing on the submitting thread and binding here makes the worker's ledger the one
+     * belonging to the request that submitted the task. A {@code null} capture (a caller off a
+     * request) <em>clears</em> rather than leaves, so an inherited ledger cannot be mistaken for an
+     * ambient request either: {@code RequestScope} then answers "no request" and recomputes, which is
+     * uncached but never stale.
+     */
+    private static <T> T withLedger(@Nullable IoLedger run, Callable<T> body) throws Exception {
+        IoLedger previous = IoLedger.ambient();
+        IoLedger.open(run);
+        try {
+            return body.call();
+        } finally {
+            IoLedger.open(previous);
+        }
+    }
+
+    /** Void-returning variant of {@link #withLedger}, for the {@code Runnable} hop. */
+    private static void runWithLedger(@Nullable IoLedger run, Runnable body) {
+        IoLedger previous = IoLedger.ambient();
+        IoLedger.open(run);
+        try {
+            body.run();
+        } finally {
+            IoLedger.open(previous);
+        }
     }
 
     private SessionContext() {}

@@ -4,10 +4,23 @@ version = "0.0.1"
 java = 25
 
 [application]
-main = "demo.Cli"
-assembly = true # target/minified-cli-0.0.1-all.jar
-minified = true # target/minified-cli-0.0.1-min.jar via R8 (implies assembly)
+main     = "demo.Cli"
+minified = true # target/minified-cli-0.0.1-min.jar via R8; implies assembly, so -all.jar too
 
-# Keep rules and R8 settings for the minified jar, when it needs them:
-# [minified]
-# keep = ["-keep class demo.** { *; }"]
+# demo.GreetCommand is named only by demo/commands.properties, a shape no by-name index covers,
+# so nothing derives a rule for it and the post-shrink audit cannot see it either: without this
+# line the build is green and the minified jar throws on startup. demo.TitleCommand needs no
+# rule — META-INF/services/demo.Command is an index, and jk derives the keep from the jar.
+[minified]
+keep = ["-keep class demo.GreetCommand { *; }"]
+
+# Title-casing. Most of it is unreachable, which is what the minified jar strips.
+[dependencies]
+commons-text = "=1.15.0"
+
+# Compile-time only (@NullMarked): present on javac's path, absent from every jar.
+[provided-dependencies]
+jspecify = "=1.0.1"
+
+[test-dependencies]
+junit-jupiter = "=6.1.3"

@@ -26,6 +26,7 @@ Web “Layout” does the same for templates that declare both layouts —
 | Main resources | `src/main/resources` | `resources/` |
 | Default tests | `src/test/{java,kotlin,groovy}` | `test/src/` |
 | Default test resources | `src/test/resources` | `test/resources/` |
+| Test fixtures | `src/fixtures/java` (`[test] fixtures`) | — |
 | Named test suite `<name>` | `src/<name>/{java,kotlin,groovy}` | `<name>/src/` (e.g. `integration/src/`) |
 | Named suite resources | `src/<name>/resources` | `<name>/resources` |
 

@@ -21,8 +21,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongConsumer;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -49,6 +51,65 @@ public final class JdkInstaller {
 
     /** Age after which a partial download is treated as orphaned by {@link #sweepStaleDownloads}. */
     private static final long STALE_DOWNLOAD_AGE_MILLIS = Duration.ofHours(6).toMillis();
+
+    /**
+     * Scratch this process created and has not finished with: the archive being streamed, and the
+     * staging tree being unpacked into. Drained by {@link #reapInFlight} when the user cancels.
+     *
+     * <p>Every entry was made by {@code createTempFile} / {@code createTempDirectory} in this
+     * process, so the path in hand <em>is</em> the ownership evidence — there is no shared-root
+     * question of the kind {@code JkOwnership} exists for (JK-2624). Weakly typed as paths rather
+     * than a richer handle because the only thing the cancel path does with them is unlink.
+     */
+    private static final Set<Path> IN_FLIGHT = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Unlink the scratch this process was still using, and report the bytes reclaimed.
+     *
+     * <p>Ctrl-C ends in {@code Runtime.halt}, which neither runs shutdown hooks nor unwinds the
+     * stack, so the {@code finally} blocks that normally delete this scratch never execute. The
+     * download's backstop — {@link #sweepStaleDownloads} — deliberately spares anything younger than
+     * six hours so it cannot yank a concurrent install's archive, which made "leave it for the sweep"
+     * the <em>normal</em> route for a cancel rather than a fallback for a crash: 563&nbsp;MB of
+     * partials accumulated in one session on the reporting machine. The staging tree had no backstop
+     * at all — nothing sweeps {@code .stage-*} — so a cancel mid-extract leaked a whole unpacked JDK.
+     *
+     * <p>Deleting a path we hold from its own creation cannot make that mistake, so this runs
+     * immediately on cancel and the age-based sweep goes back to being a fallback for the case it
+     * was written for: a process that died without getting here.
+     *
+     * <p>Never throws: it runs on the SIGINT thread, moments before the halt. On POSIX an unlink of a
+     * file another thread still has open succeeds (the writer keeps its descriptor); on Windows it
+     * can fail, and a file left for the sweep is the right answer there.
+     */
+    public static long reapInFlight() {
+        long bytes = 0;
+        for (Path p : IN_FLIGHT) {
+            IN_FLIGHT.remove(p);
+            try {
+                if (Files.isDirectory(p)) {
+                    bytes += sizeOfTree(p);
+                    PathUtil.deleteRecursively(p);
+                } else {
+                    bytes += Files.exists(p) ? Files.size(p) : 0L;
+                    Files.deleteIfExists(p);
+                }
+            } catch (IOException | RuntimeException stillOpenOrGone) {
+                // Best-effort by contract; sweepStaleDownloads is the fallback.
+            }
+        }
+        return bytes;
+    }
+
+    private static long sizeOfTree(Path root) {
+        long[] total = {0L};
+        try {
+            PathUtil.forEachRegularFile(root, (f, attrs) -> total[0] += attrs.size());
+        } catch (IOException unreadable) {
+            return total[0];
+        }
+        return total[0];
+    }
 
     private final Http http;
     private final JdkRegistry registry;
@@ -88,9 +149,11 @@ public final class JdkInstaller {
      */
     public InstalledJdk install(JdkCatalog.Entry entry, LongConsumer onBytesRead)
             throws IOException, InterruptedException {
-        // Clean up patches superseded by an earlier upgrade (Windows defers
-        // deletion of in-use JDKs; POSIX drains immediately).
-        new JdkGarbage(registry.jdksRoot()).drain();
+        // Deliberately does NOT drain JdkGarbage. Installing is not collecting, and this method is
+        // on the automatic provisioning path: the queue is a file that outlives the process, so a
+        // row left by an earlier update fired here during an ordinary build and deleted the JDK the
+        // build was running on (JK-2627). Draining belongs to the explicit `jk jdk` verb that
+        // queued the row, where the user has been asked.
         InstalledJdk already = alreadyInstalled(entry);
         if (already != null) return already;
         DownloadedArchive dl = download(entry, onBytesRead);
@@ -117,6 +180,7 @@ public final class JdkInstaller {
             throws IOException, InterruptedException {
         Path downloads = prepareDownloadDir();
         Path archive = Files.createTempFile(downloads, DOWNLOAD_PREFIX, "-" + extensionFor(entry.packageType()));
+        IN_FLIGHT.add(archive);
         boolean keep = false;
         try {
             long bytes =
@@ -126,6 +190,9 @@ public final class JdkInstaller {
             SessionContext.current().io().remoteDown(bytes);
             return new DownloadedArchive(archive, bytes);
         } finally {
+            // Handed to extractInstalled on success, which owns it from here; either way this
+            // method is no longer the one that would have to clean it up on a cancel.
+            IN_FLIGHT.remove(archive);
             if (!keep) Files.deleteIfExists(archive);
         }
     }
@@ -141,18 +208,19 @@ public final class JdkInstaller {
         Path javaHome = javaHomeFor(entry, target);
         try {
             Path stagingDir = Files.createTempDirectory(registry.jdksRoot(), ".stage-");
+            IN_FLIGHT.add(stagingDir);
             try {
                 extract(dl.path(), stagingDir, entry.packageType());
                 Path effectiveRoot = flattenedRoot(stagingDir);
                 Files.move(effectiveRoot, target);
             } catch (IOException | RuntimeException e) {
-                deleteRecursively(stagingDir);
+                discardStaging(stagingDir);
                 throw e;
             }
             // Drop the (now-empty) staging wrapper when flattenedRoot hoisted
             // a child out. If it returned stagingDir itself, the move
             // consumed the dir and this is a no-op.
-            deleteRecursively(stagingDir);
+            discardStaging(stagingDir);
             JdkOwnership.mark(target);
         } finally {
             Files.deleteIfExists(dl.path());
@@ -251,15 +319,16 @@ public final class JdkInstaller {
             // fails with DirectoryNotEmptyException on the first non-empty
             // subdir of the JDK.
             Path stagingDir = Files.createTempDirectory(registry.jdksRoot(), ".stage-");
+            IN_FLIGHT.add(stagingDir);
             try {
                 extract(archive, stagingDir, archiveType);
                 Path effectiveRoot = flattenedRoot(stagingDir);
                 Files.move(effectiveRoot, target);
             } catch (IOException | RuntimeException e) {
-                deleteRecursively(stagingDir);
+                discardStaging(stagingDir);
                 throw e;
             }
-            deleteRecursively(stagingDir);
+            discardStaging(stagingDir);
             JdkOwnership.mark(target);
         } finally {
             Files.deleteIfExists(archive);
@@ -475,6 +544,12 @@ public final class JdkInstaller {
             return children.getFirst();
         }
         return stagingDir;
+    }
+
+    /** Delete a staging tree and stop tracking it — the two always happen together. */
+    private static void discardStaging(Path stagingDir) {
+        IN_FLIGHT.remove(stagingDir);
+        deleteRecursively(stagingDir);
     }
 
     private static void deleteRecursively(Path root) {

@@ -761,7 +761,7 @@ val cappedSources: List<Path> = moduleDirs.flatMap { m ->
         filesUnder(m.resolve("src/main/resources"), ".mjs") +
         filesUnder(m.resolve("src/test/java"), ".java") +
         filesUnder(m.resolve("src/test/kotlin"), ".kt") +
-        filesUnder(m.resolve("src/testFixtures/java"), ".java") +
+        filesUnder(m.resolve("src/fixtures/java"), ".java") +
         filesUnder(m.resolve("src/test/js"), ".js") +
         filesUnder(m.resolve("src/test/js"), ".mjs")
 }
@@ -1936,7 +1936,7 @@ guard("G34", "checkTestFixturesStayOutOfProduction") {
 // ---------------------------------------------------------------------------
 
 guard("G35", "checkTestPathsFromCheckoutRoot") {
-    val ownerPath = "shared/host/src/testFixtures/java/cc/jumpkick/testing/RepoRoot.java"
+    val ownerPath = "shared/host/src/fixtures/java/cc/jumpkick/testing/RepoRoot.java"
     // Raw text, not guardText: a signature probe has to allow for whitespace or be written
     // unreadably as `staticPathfind(`.
     val ownerText = owner(ownerPath)
@@ -2043,7 +2043,7 @@ guard("G36", "checkManifestDepParity") {
         // `[test-*]` tables are the test bucket; everything else is main.
         val jkMain = mutableSetOf<String>()
         val jkTest = mutableSetOf<String>()
-        val jkTestKind = mutableSetOf<String>()
+        val jkFixtures = mutableSetOf<String>()
         var table = ""
         Files.readAllLines(manifest).forEach { raw ->
             val line = raw.substringBefore('#').trim()
@@ -2055,10 +2055,10 @@ guard("G36", "checkManifestDepParity") {
                 ?: inline?.takeIf { it.groupValues[2].contains("workspace") && it.groupValues[2].contains("true") }
                     ?.groupValues?.get(1)
                 ?: return@forEach
-            val kindTests = inline != null && Regex("""kind\s*=\s*"tests"""").containsMatchIn(inline.groupValues[2])
+            val takesFixtures = inline != null && Regex("""fixtures\s*=\s*true""").containsMatchIn(inline.groupValues[2])
             if (table.startsWith("test-")) {
                 jkTest.add(name)
-                if (kindTests) jkTestKind.add(name)
+                if (takesFixtures) jkFixtures.add(name)
             } else {
                 jkMain.add(name)
             }
@@ -2070,11 +2070,11 @@ guard("G36", "checkManifestDepParity") {
         // A test-tier need is satisfied by a main declaration in either build, so compare the union.
         ((gradleTest - fixtures) - jkTest - jkMain).sorted().forEach { lines.add("Gradle declares $it for the test tier; jk.toml [test-dependencies] does not") }
         (jkTest - gradleTest - gradleMain).sorted().forEach { lines.add("jk.toml [test-dependencies] declares $it; build.gradle.kts does not") }
-        (fixtures - jkTestKind).sorted().forEach {
-            lines.add("Gradle takes $it's testFixtures; jk.toml needs `$it = { workspace = true, kind = \"tests\" }`"
+        (fixtures - jkFixtures).sorted().forEach {
+            lines.add("Gradle takes $it's testFixtures; jk.toml needs `$it = { workspace = true, fixtures = true }`"
                 + " under a [test-*dependencies] table")
         }
-        (jkTestKind - fixtures).sorted().forEach { lines.add("jk.toml takes $it with kind = \"tests\"; build.gradle.kts does not take its testFixtures") }
+        (jkFixtures - fixtures).sorted().forEach { lines.add("jk.toml takes $it with fixtures = true; build.gradle.kts does not take its testFixtures") }
         if (lines.isNotEmpty()) {
             faults.add("${rel(module)} declares different dependencies to its two builds:\n" + bullets(lines))
         }
@@ -2082,7 +2082,7 @@ guard("G36", "checkManifestDepParity") {
     if (faults.isNotEmpty()) {
         error("This repo builds itself with Gradle and with jk, so an edge in only one of them is"
             + " green in one build and broken in the other:\n\n" + faults.joinToString("\n\n")
-            + "\n\n  jk's `kind = \"tests\"` is Gradle's `testFixtures(...)`; jk's [test-dependencies]"
+            + "\n\n  jk's `fixtures = true` is Gradle's `testFixtures(...)`; jk's [test-dependencies]"
             + " is Gradle's testImplementation. Fix whichever manifest is wrong — do not silence this"
             + " by deleting the other declaration.")
     }

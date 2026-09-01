@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.task.ClassAbi;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

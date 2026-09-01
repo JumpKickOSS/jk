@@ -6,25 +6,22 @@ import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** {@code target/jk-tests-affected.md} — modules + ranked tests. Does not touch {@code jk-results.md}. */
+/**
+ * {@code target/jk-tests-affected.md} — modules + ranked tests. Does not touch {@code jk-results.md}.
+ *
+ * <p>Stateless renderer. Run paths accumulate per-module slices on the request's
+ * {@code BuildAccumulator} (one per invocation, taken at request-finish), so a new run always
+ * replaces the file instead of merging into a previous run's report (JK-2607).
+ */
 public final class JkTestsAffectedMarkdown {
 
     public static final String FILE_NAME = "jk-tests-affected.md";
-
-    private static final ConcurrentHashMap<Path, AffectedTests> BY_ROOT = new ConcurrentHashMap<>();
 
     private JkTestsAffectedMarkdown() {}
 
     public static Path latestPath(Path workspaceOrProjectRoot) {
         return workspaceOrProjectRoot.resolve(BuildLayout.TARGET).resolve(FILE_NAME);
-    }
-
-    public static void publish(Path workspaceOrProjectRoot, AffectedTests slice) throws IOException {
-        Path root = workspaceOrProjectRoot.toAbsolutePath().normalize();
-        AffectedTests merged = BY_ROOT.merge(root, slice, AffectedTests::merge);
-        write(latestPath(root), merged);
     }
 
     public static void write(Path file, AffectedTests report) throws IOException {

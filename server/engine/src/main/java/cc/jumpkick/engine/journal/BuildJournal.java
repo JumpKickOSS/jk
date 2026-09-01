@@ -30,7 +30,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Stream;
 
 /**
  * Best-effort build history under
@@ -733,19 +732,15 @@ public final class BuildJournal {
     }
 
     private static long sizeOf(Path dir) {
-        try (Stream<Path> w = Files.walk(dir)) {
-            return w.filter(Files::isRegularFile)
-                    .mapToLong(p -> {
-                        try {
-                            return Files.size(p);
-                        } catch (IOException e) {
-                            return 0L;
-                        }
-                    })
-                    .sum();
+        // Guard G45: the walk already read each entry's size, so the old
+        // walk-then-Files.size(p) asked the filesystem twice per file for one answer.
+        long[] total = {0L};
+        try {
+            PathUtil.forEachRegularFile(dir, (f, attrs) -> total[0] += attrs.size());
         } catch (IOException e) {
             return 0L;
         }
+        return total[0];
     }
 
     private static void move(Path from, Path to) throws IOException {

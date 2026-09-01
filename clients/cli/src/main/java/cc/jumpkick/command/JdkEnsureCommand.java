@@ -28,6 +28,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.jdk.JdkService;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -227,7 +228,7 @@ public final class JdkEnsureCommand implements CliCommand {
 
     /** The human label for an entry, matching the download bar's "vendor product major". */
     private static String label(JdkCatalog.Entry e) {
-        return e.vendor() + " " + e.product() + " " + e.majorVersion();
+        return JdkService.displayLabel(e);
     }
 
     /** Pre-download notice shown when nothing installed satisfied the spec. */

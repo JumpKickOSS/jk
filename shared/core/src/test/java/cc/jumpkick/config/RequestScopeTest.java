@@ -3,8 +3,11 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.IoLedger;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -78,6 +81,58 @@ class RequestScopeTest {
         inRequest(() -> seen[0] = RequestScope.current());
         inRequest(() -> seen[1] = RequestScope.current());
         assertThat(seen[0]).isNotSameAs(seen[1]);
+    }
+
+    @Test
+    void a_cpu_pool_task_runs_in_its_own_requests_scope() {
+        // The step bodies that scan for sources are TaskKind.CPU, so they run on JkThreads.cpu() —
+        // a process-wide ForkJoinPool whose workers outlive every request. The scope a task sees
+        // there must be the scope of the request that submitted it, or the memo is answering for
+        // somebody else's build.
+        RequestScope[] onSubmitter = new RequestScope[1];
+        RequestScope[] onWorker = new RequestScope[1];
+
+        inRequest(() -> {
+            onSubmitter[0] = RequestScope.current();
+            onWorker[0] = onCpuPool(RequestScope::current);
+        });
+
+        assertThat(onWorker[0])
+                .as("a CPU pool task shares the submitting request's scope")
+                .isSameAs(onSubmitter[0]);
+    }
+
+    @Test
+    void a_cpu_pool_worker_does_not_carry_one_requests_scope_into_the_next() {
+        // JK-2620. The pool grows lazily, so its workers are created inside whichever request first
+        // needed them, and IoLedger's holder is an InheritableThreadLocal — the worker was born
+        // holding that request's ledger and kept it for the engine's life. Every later build's CPU
+        // steps then read the FIRST build's derived facts: a module with no src/test/java when the
+        // pool warmed had that scan memoized empty, so `jk test` said "no test sources" — and exited
+        // green — for every test written afterwards, until the engine restarted.
+        AtomicInteger computed = new AtomicInteger();
+
+        inRequest(() -> onCpuPool(() -> RequestScope.current().get("scan", k -> computed.incrementAndGet())));
+        inRequest(() -> onCpuPool(() -> RequestScope.current().get("scan", k -> computed.incrementAndGet())));
+
+        assertThat(computed.get())
+                .as("the second request rescans rather than reusing the first request's answer")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void a_cpu_pool_task_submitted_off_a_request_is_unscoped() {
+        // The honest answer off a request is "no request" — uncached, never stale. A worker that
+        // inherited some earlier request's ledger would instead report that request, and cache into
+        // a scope nobody can invalidate.
+        assertThat(onCpuPool(IoLedger::ambient))
+                .as("no request submitted this, so the worker must be bound to none")
+                .isNull();
+    }
+
+    /** Run {@code work} on the shared CPU pool and hand back its result. */
+    private static <T> T onCpuPool(Supplier<T> work) {
+        return CompletableFuture.supplyAsync(work, JkThreads.cpu()).join();
     }
 
     /**

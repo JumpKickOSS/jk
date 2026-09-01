@@ -8,6 +8,17 @@
 # chains. The tail is long and each remaining site needs its own read -- some walks want
 # directories, some want a depth limit, some want ordering -- so this ships as a ratchet
 # rather than a ban, which makes the rule monotonic today instead of unwinnable.
+#
+# 2026-08-31 (JK-2624): server/engine 87 -> 85. JK-2532 landed AbiMemo and ClasspathAbi
+# carrying one blind walk each and did not move this line, so the guard was red at HEAD.
+# Rather than raise it, four walks were converted to PathUtil.forEachRegularFile:
+# ClasspathAbi.extractDir, BuildJournal.sizeOf (which was asking Files.size per file for a
+# size the walk had already read), CacheRoots.scanTextFilesRecursively, and
+# BuildLogicSupport.generatedSources. AbiMemo.sweepResidue keeps its Files.list: it deletes
+# directory entries, which is not what forEachRegularFile enumerates.
+#
+# 2026-08-31: server/engine 85 -> 84. Dead CompileSupport.anySourceUnder (private
+# Files.walk; hasSources already uses Languages.anySourceUnder).
 
 clients/cli 14
 plugins/android 10
@@ -21,7 +32,9 @@ plugins/protobuf 1
 plugins/quarkus 10
 plugins/spring-boot 1
 plugins/test-runner 1
-server/engine 86
+# +1 (JK-2616): AbiIndex.fingerprintWithNested lists ONE package directory (depth-1 siblings
+# Owner$*.class of a recompiled class) — a recursive attribute-carrying walk is the wrong shape.
+server/engine 84
 server/toolchain 1
 shared/client-io 15
 shared/core 16

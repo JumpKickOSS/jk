@@ -2,11 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.model.JkBuild;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,24 +88,9 @@ public final class AffectedSelection {
 
     /** {@code null} on git failure. Paths relative to the process cwd (repo root). */
     public static List<String> gitDiffNameOnly(Path root, String ref) {
-        try {
-            // --end-of-options: a ref like "--output=…" must be read as a revision, not a git
-            // option. Matches the discipline in GitCliExtension.
-            Process p = new ProcessBuilder("git", "diff", "--name-only", "--end-of-options", ref + "...HEAD")
-                    .directory(root.toFile())
-                    .redirectErrorStream(true)
-                    .start();
-            List<String> lines = new ArrayList<>();
-            try (var r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    if (!line.isBlank()) lines.add(line.trim());
-                }
-            }
-            if (p.waitFor() != 0) return null;
-            return lines;
-        } catch (Exception e) {
-            return null;
-        }
+        // --end-of-options: a ref like "--output=…" must be read as a revision, not a git
+        // option. Matches the discipline in GitCliExtension. --relative + stdout-only parsing:
+        // see DirtyPaths.gitDiffNameOnly (JK-2611).
+        return DirtyPaths.gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", ref + "...HEAD");
     }
 }

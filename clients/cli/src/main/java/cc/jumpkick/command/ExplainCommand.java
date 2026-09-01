@@ -164,9 +164,7 @@ public final class ExplainCommand implements CliCommand {
         String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
-        if (affectedWip
-                || (affectedSince != null && !affectedSince.isBlank())
-                || (modulesSpec != null && !modulesSpec.isBlank())) {
+        if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
             try {
                 var selected = ProjectInfos.orError(graphDir, modulesSpec, affectedSince, affectedWip);
                 if (selected.error() != null && !selected.error().isBlank()) {

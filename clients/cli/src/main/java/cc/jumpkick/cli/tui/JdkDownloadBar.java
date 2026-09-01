@@ -2,14 +2,16 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.terminal.Ansi;
-import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
+import java.time.Duration;
 
 /**
  * Animated JDK download progress bar styled like the {@code jk build} plan header: the blue plan
@@ -28,7 +30,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private final String displayName; // "Eclipse Temurin 26"
     private final NerdFontCaps nerdFont;
     private final boolean silent;
-    private final Style[] failColors;
+
+    private final long startedAtMillis = System.currentTimeMillis();
 
     private int frame;
     private long numerator;
@@ -43,8 +46,6 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         this.displayName = displayName;
         this.nerdFont = nerdFont;
         this.silent = silent;
-        this.failColors = SpinnerProgressBar.buildGradient(
-                ProgressBar.SEGMENTS, Theme.active().failureGradient());
     }
 
     /**
@@ -127,12 +128,19 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         closed = true;
         stopAnimator();
         LiveRegion.clearActive(this);
+        // Before the silent check: --no-progress and script mode cancel too, and the bytes on disk
+        // do not care whether anything was painted. Ctrl-C ends in Runtime.halt, which runs no
+        // shutdown hook and unwinds no stack, so the installer's own finally blocks never fire —
+        // this is the only moment left to unlink what it was streaming into.
+        JdkInstaller.reapInFlight();
         if (silent) return false;
-        // Repaint every segment in failure red.
+        // The same settle a cancelled build gets — gray scope chip, ⊛, bold "cancelled", dark-gray
+        // italic took — differing only in the subject. Wipe the live row first so the bar it
+        // replaces leaves nothing behind, exactly as JkManager does in plan mode.
         out.print("\r");
-        for (int i = 0; i < ProgressBar.SEGMENTS; i++) {
-            out.print(Theme.colorize(String.valueOf(ProgressBar.FILLED_CHAR), failColors[i]));
-        }
+        out.print(Ansi.ERASE_LINE_TO_END);
+        String took = ConsoleSpec.took(Duration.ofMillis(Math.max(0L, System.currentTimeMillis() - startedAtMillis)));
+        out.println(JkWedge.cancelled("JDK", "JDK download", true, took).renderLine(context()));
         out.print(Osc.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
@@ -178,17 +186,29 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         drawn = true;
     }
 
+    /** The live row, through the shared wedge geometry so it can never wrap. */
     private String buildLine() {
+        return wedge().renderLiveLine(context());
+    }
+
+    private RenderContext context() {
+        return RenderContext.current().withCaps(nerdFont).withFrame(frame);
+    }
+
+    /** The live wedge: spinner chip, plan bar while downloading, status suffix. */
+    private JkWedge wedge() {
         Theme t = Theme.active();
         String command = installing ? "Installing " : "Downloading ";
         RichText status = RichText.ansi(Theme.colorize(command + displayName, t.normalGray()));
-        RenderContext ctx = RenderContext.current().withCaps(nerdFont).withFrame(frame);
         JkWedge wedge = new JkWedge(Icon.spinner(), "JDK", installing ? status : RichText.empty())
                 .variant(JkWedge.Variant.WORK);
         if (!installing) {
+            // Narrow: the trailing text is a JDK product and version we are handed, so the bar
+            // yields the columns rather than the label losing them.
             wedge = wedge.progress(new Progress(numerator, denominator)
+                    .narrow()
                     .suffix(RichText.of(RichText.parse("[dark-gray]·[/] "), status)));
         }
-        return wedge.renderLine(ctx);
+        return wedge;
     }
 }

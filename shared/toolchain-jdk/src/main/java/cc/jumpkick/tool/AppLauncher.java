@@ -4,6 +4,7 @@ package cc.jumpkick.tool;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,12 +73,24 @@ public final class AppLauncher {
                 : renderPosix(javaHome, mainClass, classpathJars);
     }
 
+    /**
+     * Every launcher jk drops on {@code PATH} says who wrote it, on line two. These scripts had no
+     * attribution at all, which is why {@code jk-cli} and {@code jk-engine} were indistinguishable
+     * from a hand-rolled shim of the same name — and why an uninstall could not tell whether it was
+     * removing jk's file or the user's (JK-2626). The line is the evidence
+     * {@link JkOwnership#isGeneratedLauncher} reads back.
+     */
+    private static final String POSIX_PREAMBLE = "#!/usr/bin/env bash\n# " + JkOwnership.GENERATED_BY + " — do not edit.\n";
+
+    /** {@link #POSIX_PREAMBLE} for {@code cmd.exe}; ASCII only, CRLF. */
+    private static final String WINDOWS_PREAMBLE = "@echo off\r\nREM " + JkOwnership.GENERATED_BY + " -- do not edit.\r\n";
+
     /** Script content for a self-contained-jar launcher — what {@link #installJar} writes. */
     public static String renderJarScript(Path javaHome, Path jar) {
         String java = JdkFingerprint.java(javaHome).toString();
         return Os.isWindows()
-                ? "@echo off\r\n\"" + java + "\" -jar \"" + jar.toAbsolutePath() + "\" %*\r\n"
-                : "#!/usr/bin/env bash\nexec "
+                ? WINDOWS_PREAMBLE + "\"" + java + "\" -jar \"" + jar.toAbsolutePath() + "\" %*\r\n"
+                : POSIX_PREAMBLE + "exec "
                         + shellQuote(java)
                         + " -jar "
                         + shellQuote(jar.toAbsolutePath().toString())
@@ -85,7 +98,7 @@ public final class AppLauncher {
     }
 
     private static String renderPosix(Path javaHome, String mainClass, List<Path> cp) {
-        return "#!/usr/bin/env bash\nexec "
+        return POSIX_PREAMBLE + "exec "
                 + shellQuote(JdkFingerprint.java(javaHome).toString())
                 + " -cp "
                 + shellQuote(Classpaths.join(cp))
@@ -95,7 +108,7 @@ public final class AppLauncher {
     }
 
     private static String renderWindows(Path javaHome, String mainClass, List<Path> cp) {
-        return "@echo off\r\n\""
+        return WINDOWS_PREAMBLE + "\""
                 + JdkFingerprint.java(javaHome)
                 + "\" -cp \""
                 + Classpaths.join(cp)

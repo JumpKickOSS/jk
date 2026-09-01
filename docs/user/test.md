@@ -75,9 +75,11 @@ It is **not** `--affected-since=HEAD` (that range is empty). The two flags canno
 
 Both flags print the ranking as a table (Score · Class · Reason) and write
 `target/jk-tests-affected.md`. They do **not** run tests and do not replace
-`target/jk-results.md`. Ranking refuse exits **2**. When the guess would be dishonest
-(`jk.toml` change, too many types, a dirty test outside the current suite), jk prints
-`cannot rank affected tests` and tells you to run `jk test`.
+`target/jk-results.md`. `-m` intersects the ranked list exactly as it intersects the
+build cone (`jk test --affected -m api`). Ranking refuse exits **2**. When the guess
+would be dishonest (`jk.toml` change, stale class files, too many types or modules, a
+dirty test outside the current suite), jk prints `cannot rank affected tests` and tells
+you to run `jk test`.
 
 ## Tag filters
 

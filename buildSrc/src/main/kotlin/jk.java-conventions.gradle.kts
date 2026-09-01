@@ -23,6 +23,12 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.add("-Xlint:deprecation,unchecked")
 }
 
+// Gradle's java-test-fixtures plugin defaults to src/testFixtures/java. jk's fixtures live in
+// src/fixtures/java — no camelCase directory names.
+pluginManager.withPlugin("java-test-fixtures") {
+    sourceSets.named("testFixtures") { java.setSrcDirs(listOf("src/fixtures/java")) }
+}
+
 // Reach the version catalog from a convention plugin without the buildSrc
 // classpath hack: read it through VersionCatalogsExtension on the project.
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
@@ -402,7 +408,7 @@ tasks.named("jar") { dependsOn(checkNoHandBuiltJavaBinary) }
 // The count is code lines (CodeLines.count): comments, blanks, and package/import lines do not
 // count. A trailing comment on a statement still counts that line. String contents count. Scope
 // includes test sources (JK-2444): `src/main/java`, `src/main/kotlin`, `src/test/java`,
-// `src/test/kotlin`, `src/testFixtures/java`, and `src/{main,test}/**/*.{js,mjs}`.
+// `src/test/kotlin`, `src/fixtures/java`, and `src/{main,test}/**/*.{js,mjs}`.
 // ---------------------------------------------------------------------------
 val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 1200)
 
@@ -428,7 +434,7 @@ val checkFileSizeCaps by tasks.registering {
         include("src/main/resources/**/*.mjs")
         include("src/test/java/**/*.java")
         include("src/test/kotlin/**/*.kt")
-        include("src/testFixtures/java/**/*.java")
+        include("src/fixtures/java/**/*.java")
         include("src/test/js/**/*.js")
         include("src/test/js/**/*.mjs")
     }
@@ -3230,10 +3236,10 @@ val checkTestPathsFromCheckoutRoot by tasks.registering {
     group = "verification"
     description = "Fail the build when a test locates a checkout file from CWD instead of cc.jumpkick.testing.RepoRoot"
     val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
-    val fixtureJava = fileTree(layout.projectDirectory.dir("src/testFixtures/java")) { include("**/*.java") }
+    val fixtureJava = fileTree(layout.projectDirectory.dir("src/fixtures/java")) { include("**/*.java") }
     inputs.files(testJava, fixtureJava).withPropertyName("testSources")
     val owner = rootProject.layout.projectDirectory.file(
-            "shared/host/src/testFixtures/java/cc/jumpkick/testing/RepoRoot.java")
+            "shared/host/src/fixtures/java/cc/jumpkick/testing/RepoRoot.java")
     inputs.file(owner).withPropertyName("repoRoot")
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val stamp = layout.buildDirectory.file("guards/test-paths-from-checkout-root.ok")
@@ -3296,7 +3302,7 @@ tasks.named("check") { dependsOn(checkTestPathsFromCheckoutRoot) }
 // — and vice versa. Measured: thirteen edges out of step at once. `clients/web` had
 // `testImplementation(project(":wire"))` and no manifest entry, so `jk test` could not compile
 // `WireTokenParityTest`; the four plugin modules and the five that consume `:host`'s test fixtures
-// each had a Gradle `testFixtures(...)` edge with no `kind = "tests"` twin; and
+// each had a Gradle `testFixtures(...)` edge with no `fixtures = true` twin; and
 // `plugins/image-builder` still declared `:core` and `:io` to Gradle after JK-2193 removed them
 // from jk.toml as unimported.
 //
@@ -3382,7 +3388,7 @@ val checkManifestDepParity by tasks.registering {
         // Manifest side. `[test-*]` tables are the test bucket; everything else is main.
         val jkMain = mutableSetOf<String>()
         val jkTest = mutableSetOf<String>()
-        val jkTestKind = mutableSetOf<String>()
+        val jkFixtures = mutableSetOf<String>()
         var table = ""
         manifestFile.readLines().forEach { raw ->
             val line = raw.substringBefore('#').trim()
@@ -3394,10 +3400,10 @@ val checkManifestDepParity by tasks.registering {
                     ?: inline?.takeIf { it.groupValues[2].contains("workspace") && it.groupValues[2].contains("true") }
                             ?.groupValues?.get(1)
                     ?: return@forEach
-            val kindTests = inline != null && Regex("""kind\s*=\s*"tests"""").containsMatchIn(inline.groupValues[2])
+            val takesFixtures = inline != null && Regex("""fixtures\s*=\s*true""").containsMatchIn(inline.groupValues[2])
             if (table.startsWith("test-")) {
                 jkTest.add(name)
-                if (kindTests) jkTestKind.add(name)
+                if (takesFixtures) jkFixtures.add(name)
             } else {
                 jkMain.add(name)
             }
@@ -3417,20 +3423,20 @@ val checkManifestDepParity by tasks.registering {
         (jkTest - gradleTest - gradleMain).sorted().forEach {
             problems.add("  jk.toml [test-dependencies] declares $it; build.gradle.kts does not")
         }
-        (fixtures - jkTestKind).sorted().forEach {
+        (fixtures - jkFixtures).sorted().forEach {
             problems.add("  Gradle takes $it's testFixtures; jk.toml needs"
-                    + " `$it = { workspace = true, kind = \"tests\" }` under a [test-*dependencies] table")
+                    + " `$it = { workspace = true, fixtures = true }` under a [test-*dependencies] table")
         }
-        (jkTestKind - fixtures).sorted().forEach {
-            problems.add("  jk.toml takes $it with kind = \"tests\"; build.gradle.kts does not take"
+        (jkFixtures - fixtures).sorted().forEach {
+            problems.add("  jk.toml takes $it with fixtures = true; build.gradle.kts does not take"
                     + " its testFixtures")
         }
         if (problems.isNotEmpty()) {
-            throw GradleException("$projectPath declares different dependencies to its two builds"
-                    + " (JK-2601). This repo builds itself with Gradle and with jk, so an edge in"
+            throw GradleException("$projectPath declares different dependencies to its two builds."
+                    + " This repo builds itself with Gradle and with jk, so an edge in"
                     + " only one of them is green in one build and broken in the other:\n"
                     + problems.joinToString("\n")
-                    + "\n  jk's `kind = \"tests\"` is Gradle's `testFixtures(...)`; jk's"
+                    + "\n  jk's `fixtures = true` is Gradle's `testFixtures(...)`; jk's"
                     + " [test-dependencies] is Gradle's testImplementation. Fix whichever manifest"
                     + " is wrong — do not silence this by deleting the other declaration.")
         }
@@ -3443,7 +3449,7 @@ val checkManifestDepParity by tasks.registering {
 tasks.named("check") { dependsOn(checkManifestDepParity) }
 
 // ---------------------------------------------------------------------------
-// Guard G37 (JK-2602): recursive tree deletion has one owner, and it does not follow links.
+// Guard G37 (JK-2603): recursive tree deletion has one owner, and it does not follow links.
 //
 // Defect it prevents: a delete that empties whatever a symbolic link points at. jk discovers
 // host-installed toolchains and links its registry entries to them — an sdkman or IntelliJ JDK is
@@ -3534,7 +3540,7 @@ val checkOneRecursiveDelete by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("Recursive tree deletion belongs to cc.jumpkick.host.PathUtil,"
-                    + " which removes a symbolic link instead of entering it (JK-2602). These do it"
+                    + " which removes a symbolic link instead of entering it (JK-2603). These do it"
                     + " themselves, so each one decides that question again:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  PathUtil is on every module's classpath — :host is the floor the CLI, the"
@@ -3549,6 +3555,111 @@ val checkOneRecursiveDelete by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkOneRecursiveDelete) }
 tasks.named("jar") { dependsOn(checkOneRecursiveDelete) }
+
+// ---------------------------------------------------------------------------
+// Guard G46 (JK-2627): a JDK is removed only by an explicit `jk jdk` verb.
+//
+// Defect it prevents: an ordinary build deleting the JDK it is running on. This one is not
+// hypothetical and it is not cheap — it happened twice in one afternoon on a developer machine and
+// took four JDK installs with it, including both GraalVMs, which are minutes of download each and
+// may be pinned by an IDE, a shell, a `.sdkmanrc`, or another project's lockfile.
+//
+// Both incidents were the same shape: `JdkInstaller.install()` drained `JdkGarbage` before
+// installing, so a row queued by an earlier `jk jdk update` fired on the next *unrelated* build —
+// and `StableJdkPointer.ensure` deleted whatever populated directory occupied the
+// `<vendor>-<major>` pointer name to make room for a link. Neither was reachable from a `jk jdk`
+// verb the user typed; both were on the automatic provisioning path.
+//
+// Removing a JDK is not a cache eviction, so the rule is about WHO may do it rather than how:
+//
+//   Arm A — `JdkGarbage` is named only by the explicit verb that queues into it. Anything else,
+//           and in particular anything under `server/`, is on a build path by construction.
+//   Arm B — `StableJdkPointer` performs no recursive delete. It owns the pointer, which is a link
+//           or an empty directory; a populated directory at that path is an install and belongs to
+//           somebody, possibly us, and either way not to a name-claiming routine.
+//
+// Ownership (`JkOwnership`, JK-2624/2625) is the other half and is deliberately NOT what this
+// guard checks: it answers "is this ours", which stopped jk deleting a neighbour's JDK but still
+// let it delete its own automatically. This arm is about the trigger, not the target.
+val jdkRemovalCallers = mapOf(
+        "clients/cli/src/main/java/cc/jumpkick/command/JdkUpdateCommand.java"
+                to "`jk jdk update` queues the superseded install and drains it, after asking (default yes)")
+
+val checkJdkRemovalConfined by tasks.registering {
+    group = "verification"
+    description = "Fail the build when JDK removal is reachable from anything but an explicit `jk jdk` verb"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val garbage = rootProject.layout.projectDirectory.file(
+            "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkGarbage.java")
+    val pointer = rootProject.layout.projectDirectory.file(
+            "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/StableJdkPointer.java")
+    inputs.file(garbage).withPropertyName("jdkGarbage")
+    inputs.file(pointer).withPropertyName("stableJdkPointer")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val allowed = jdkRemovalCallers
+    val stamp = layout.buildDirectory.file("guards/jdk-removal-confined.ok")
+    outputs.file(stamp)
+    doLast {
+        // Self-fail arm: the guard has to keep pointing at code that still exists and still carries
+        // the ownership re-check, or it silently guards nothing.
+        val garbageText = garbage.asFile.readText()
+        val missing = listOf("isJkOwned", "drain", "enqueue").filterNot { garbageText.contains(it) }
+        if (missing.isNotEmpty()) {
+            throw GradleException("JdkGarbage no longer has ${missing.joinToString(", ")}, so guard G46"
+                    + " is guarding a shape that has moved. Update or retire it deliberately.")
+        }
+        // treeRoot.resolve, not java.io.File(...): in the Kotlin DSL `java` resolves to the
+        // JavaPluginExtension accessor, so the package name is shadowed inside a build script.
+        val allowedMissing = allowed.keys.filterNot { treeRoot.resolve(it).isFile }
+        if (allowedMissing.isNotEmpty()) {
+            throw GradleException("G46's allowlist names files that no longer exist:"
+                    + " ${allowedMissing.joinToString(", ")}. The verb was renamed or removed —"
+                    + " update the allowlist in the same change.")
+        }
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (rel.endsWith("/jdk/JdkGarbage.java")) return@forEach
+            // Comments blanked so the javadoc that explains this rule is not itself a violation.
+            val lines = blankNonCode(f.readText(), blankStrings = false).lines()
+
+            if (rel.endsWith("/jdk/StableJdkPointer.java")) {
+                lines.forEachIndexed { i, line ->
+                    if (line.contains("deleteRecursively")) {
+                        hits += "$rel:${i + 1}: the stable pointer must not delete a tree —" +
+                                " a populated directory at the pointer name is an install"
+                    }
+                }
+                return@forEach
+            }
+
+            if (allowed.containsKey(rel)) return@forEach
+            lines.forEachIndexed { i, line ->
+                if (line.contains("JdkGarbage")) {
+                    hits += "$rel:${i + 1}: JdkGarbage is reachable from here"
+                }
+            }
+        }
+
+        if (hits.isNotEmpty()) {
+            throw GradleException("G46: JDK removal reached from outside an explicit `jk jdk` verb.\n\n"
+                    + hits.joinToString("\n") { "  $it" }
+                    + "\n\nRemoving a JDK is minutes of download and may be pinned by an IDE, a shell,"
+                    + " a .sdkmanrc, or another project's lockfile, so it happens only when the user"
+                    + " asked for it. Provisioning installs; it does not collect."
+                    + "\nIf a new verb legitimately removes JDKs, add it to `jdkRemovalCallers` in the"
+                    + " same change and say why."
+                    + "\n\nAllowed today:\n"
+                    + allowed.entries.joinToString("\n") { "  ${it.key}\n      ${it.value}" })
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
+tasks.named("check") { dependsOn(checkJdkRemovalConfined) }
+tasks.named("jar") { dependsOn(checkJdkRemovalConfined) }
 
 // JK-1017: serial execution when shuffling, applied after the modules have had their say.
 //

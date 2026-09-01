@@ -3,12 +3,18 @@ package com.example.app;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.example.lib.Greet;
 import org.junit.jupiter.api.Test;
 
+/** Asserts that {@code app} really is compiled and run against the sibling {@code lib}. */
 class MainTest {
+
     @Test
-    void greets() {
-        assertEquals("hello jk", Greet.hello("jk"));
+    void greetsTheFirstArgument() {
+        assertEquals("hello ada", Main.greeting(new String[] {"ada"}));
+    }
+
+    @Test
+    void greetsTheWorldWithoutArguments() {
+        assertEquals("hello world", Main.greeting(new String[0]));
     }
 }

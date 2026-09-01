@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.util.JkOwnership;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.MinimalTar;
@@ -89,6 +90,10 @@ public final class ToolInstaller {
                     if (!Files.isDirectory(target)) throw moveFailed;
                 }
                 ensureBinaryExecutable(target, dist.tool());
+                // Claim the tree as ours, so a later purge of a broken entry is allowed to
+                // recurse into it (JkOwnership). Written after the atomic rename, so a partial
+                // tree is never marked.
+                JkOwnership.mark(target);
             } finally {
                 deleteRecursively(stagingDir); // leftover shell when the root was nested, or on failure
             }

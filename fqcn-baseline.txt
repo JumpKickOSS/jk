@@ -169,7 +169,6 @@
     1  shared/core/src/test/java/cc/jumpkick/config/ModuleDotGraphTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/NerdFontDetectCostTest.java
     1  shared/core/src/test/java/cc/jumpkick/config/ManifestTrainTest.java
-    1  shared/core/src/test/java/cc/jumpkick/config/WorkspaceClasspathTest.java
     4  shared/core/src/test/java/cc/jumpkick/diagnostic/CompilerLocusTest.java
     1  shared/core/src/test/java/cc/jumpkick/layout/BuildLayoutTest.java
     4  shared/core/src/test/java/cc/jumpkick/lock/LockManifestDigestTest.java

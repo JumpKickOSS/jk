@@ -92,6 +92,11 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
+    public void accAffected(long rid, cc.jumpkick.test.@Nullable AffectedTests affected) {
+        journalWriter.accAffected(rid, affected);
+    }
+
+    @Override
     public void finishProgress(long rid) {
         sessions.tracker(rid).finish();
     }

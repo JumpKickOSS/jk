@@ -205,6 +205,7 @@ public final class ManifestDeps {
         Dependency dep =
                 parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
         dep = applyDependencyKind(dep, entry, scope, name);
+        dep = applyFixtures(dep, entry, scope, name);
         // Cross-package features: only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
@@ -256,6 +257,30 @@ public final class ManifestDeps {
             }
         }
         return dep.withKind(kind);
+    }
+
+    /**
+     * {@code fixtures = true} — consume a workspace sibling's fixtures output directory. Legal only
+     * on workspace edges in test scopes, and independent of {@code kind}.
+     */
+    static Dependency applyFixtures(Dependency dep, TomlTable entry, Scope scope, String name) {
+        if (!entry.contains("fixtures")) return dep;
+        String displayPath = scope.tomlSection() + "." + name;
+        Boolean flag = entry.getBoolean("fixtures");
+        if (!Boolean.TRUE.equals(flag)) {
+            throw new JkBuildParseException(displayPath + ".fixtures must be `true` (the only legal value)");
+        }
+        if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
+            throw new JkBuildParseException(displayPath
+                    + ".fixtures = true is only legal under [test-dependencies] or"
+                    + " [test-dev-dependencies] (got ["
+                    + scope.tomlSection()
+                    + "])");
+        }
+        if (!dep.isWorkspace()) {
+            throw new JkBuildParseException(displayPath + ".fixtures = true requires `workspace = true`");
+        }
+        return dep.withFixtures(true);
     }
 
     static Dependency parseDepEntryForm(

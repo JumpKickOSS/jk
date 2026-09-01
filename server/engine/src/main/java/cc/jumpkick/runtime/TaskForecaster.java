@@ -562,13 +562,34 @@ public final class TaskForecaster {
             List<Path> scTest = allTestSrc.stream()
                     .filter(p -> p.getFileName().toString().endsWith(".scala"))
                     .toList();
-            // No suite owns a `[test] extra-src` root, but compile-test hashes one (JK-2601).
+            // No suite owns a `[test] extra-src` root, but compile-test hashes one.
             List<Path> javaTestExtra = TestSupport.forecastTestExtraSources(project, dir);
             boolean haveTests = !allTestSrc.isEmpty() || !javaTestExtra.isEmpty();
-            sourceCount = mainSrc.size() + ktSrc.size() + gvSrc.size() + allTestSrc.size() + javaTestExtra.size();
+            sourceCount = mainSrc.size()
+                    + ktSrc.size()
+                    + gvSrc.size()
+                    + allTestSrc.size()
+                    + javaTestExtra.size()
+                    + PlannerFixtures.forecastSources(project, dir).size();
             boolean testDirty = false;
             // --skip-tests composes no compile-test/run-tests steps, so don't forecast
             // (or content-hash the inputs of) steps the build will not run.
+            List<Path> testCompileCp = PlannerSupport.testCompileClasspath(dir, project, lock, resolver);
+            testDirty = PlannerFixtures.addForecast(
+                    steps,
+                    skipTests,
+                    compileDirty,
+                    project,
+                    dir,
+                    layout,
+                    processorCp,
+                    release,
+                    javacArgs,
+                    javaHome,
+                    cache,
+                    actionCache,
+                    workerJar,
+                    testCompileCp);
             if (haveTests && !skipTests) {
                 if (compileDirty) {
                     steps.add(new TaskForecast.Task(
@@ -577,7 +598,8 @@ public final class TaskForecaster {
                 } else if (!javaTest.isEmpty() || !scTest.isEmpty() || !javaTestExtra.isEmpty()) {
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(layout.classesDir());
-                    baseCp.addAll(testCompileClasspath(dir, project, lock, resolver));
+                    baseCp.addAll(testCompileCp);
+                    baseCp = PlannerFixtures.withOwnFixtures(project, layout, baseCp);
                     Path testOut = layout.testClassesDir();
                     ScalaCompile.Setup testScala = scTest.isEmpty() ? null : ScalaCompile.prepare(project, lock, cas);
                     if (testScala != null) {
@@ -645,7 +667,7 @@ public final class TaskForecaster {
                     // stored green marker. After jk clean, project the main: fingerprint from the
                     // compile action record — ClasspathFingerprint.entry(empty classes) is
                     // missing:… and would falsely forecast a full suite.
-                    List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
+                    List<Path> testRt = PlannerSupport.testRuntimeClasspath(dir, project, lock, resolver);
                     long ts = Perf.start();
                     String mainFp = null;
                     if (!classesDirHasContent(layout.classesDir())) {
@@ -1012,7 +1034,7 @@ public final class TaskForecaster {
     }
 
     /** Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. */
-    private static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {
+    static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
                 // Only force RUN when a *compile-scope* sibling is dirty (action key still sees
@@ -1043,40 +1065,6 @@ public final class TaskForecaster {
     }
 
     // --- the build's test classpaths, mirrored (best-effort; misses fail safe) ---
-
-    private static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
-            throws IOException {
-        WorkspaceClasspath.Result sib =
-                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
-        cp.addAll(sib.jars());
-        for (Path sl : sib.siblingLockfiles()) {
-            try {
-                Lockfile s = LockfileReader.read(sl);
-                for (Path p : resolver.classpathFor(s, ClasspathResolver.COMPILE_MAIN)) if (!cp.contains(p)) cp.add(p);
-            } catch (Exception ignored) {
-                /* best-effort */
-            }
-        }
-        return cp;
-    }
-
-    private static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
-            throws IOException {
-        WorkspaceClasspath.Result sib =
-                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
-        cp.addAll(sib.jars());
-        for (Path sl : sib.siblingLockfiles()) {
-            try {
-                Lockfile s = LockfileReader.read(sl);
-                for (Path p : resolver.classpathFor(s, ClasspathResolver.RUNTIME)) if (!cp.contains(p)) cp.add(p);
-            } catch (Exception ignored) {
-                /* best-effort */
-            }
-        }
-        return cp;
-    }
 
     /**
      * True when the stamp-language compile ({@code compile-kotlin} / {@code compile-groovy}) has a

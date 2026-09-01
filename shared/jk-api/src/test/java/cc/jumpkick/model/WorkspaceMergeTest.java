@@ -141,6 +141,22 @@ class WorkspaceMergeTest {
     }
 
     @Test
+    void resolve_sibling_coordinates_preserves_fixtures_flag() {
+        JkBuild root = workspaceRoot("jk", List.of("lib", "app"));
+        JkBuild lib = newProject("lib", Map.of());
+        Dependency fixturesEdge = workspacePlaceholder("lib").withFixtures(true);
+        JkBuild app = newProject(
+                "app",
+                Map.of(
+                        Scope.MAIN, List.of(workspacePlaceholder("lib")),
+                        Scope.TEST, List.of(fixturesEdge)));
+
+        JkBuild rewritten = WorkspaceMerge.resolveSiblingCoordinates(root, app, List.of(lib, app));
+        assertThat(rewritten.dependencies().of(Scope.TEST))
+                .anyMatch(d -> d.isFixtures() && d.module().equals("cc.jumpkick:lib"));
+    }
+
+    @Test
     void variants_survive_apply_to_module_and_union_into_lock_scopes() {
         // A flavored module: its [variants] block must ride through the merge (the finding-5
         // class of bug), and lock scopes must see the UNION of every value's dep overlays —

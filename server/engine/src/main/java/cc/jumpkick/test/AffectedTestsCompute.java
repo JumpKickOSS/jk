@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.JkBuildParser;
@@ -12,7 +13,9 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.ClassAbi;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -67,34 +70,125 @@ public final class AffectedTestsCompute {
         AffectedTests acc = AffectedTests.empty(List.of(), List.of());
         Map<Path, JkBuild> modules =
                 build.isWorkspaceRoot() ? WorkspaceLoader.loadModules(root, build) : Map.of(root, build);
+
+        // Pass 1 — classify every dirty module's changed types into one carrier, so pass 2 can
+        // rank *dependent* cone modules against them (abi-import across modules, JK-2606).
+        record Unit(Path dir, JkBuild build, BuildLayout layout, boolean dirtyHere) {}
+        List<Unit> units = new ArrayList<>();
+        AffectedChanged carrier = new AffectedChanged();
         for (Path modDir : cone.moduleDirs()) {
-            Path abs = modDir.toAbsolutePath().normalize();
-            if (onlyModules != null && !onlyModules.isEmpty() && !onlyModules.contains(abs)) continue;
-            if (!hasLocalDirty(root, abs, dirty)) continue;
             JkBuild unit = modules.getOrDefault(modDir, build);
             BuildLayout layout =
                     build.isWorkspaceRoot() ? BuildLayout.of(root, modDir, unit) : BuildLayout.of(modDir, unit);
-            Map<String, ClassAbi.Fingerprint> current = AbiIndex.scanClasses(layout.classesDir());
-            Map<String, ClassAbi.Fingerprint> pre = AbiIndex.load(AbiIndex.path(layout.buildDir()));
-            var tests = testsFor(modDir, layout.testClassesDir(), current.keySet(), sel);
-            String coord = unit.project().group() + ":" + unit.project().name();
-            String rel = root.relativize(modDir).toString();
+            boolean dirtyHere = hasLocalDirty(root, modDir, dirty);
+            units.add(new Unit(modDir, unit, layout, dirtyHere));
+            if (dirtyHere) {
+                String rel = root.relativize(modDir).toString();
+                if (rel.isBlank()) rel = ".";
+                String coord = unit.project().group() + ":" + unit.project().name();
+                var row = List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"));
+                // No compile happens on this path: a dirty source newer than its compiled class
+                // means the bytecode is a lie — refuse rather than rank from it (JK-2612).
+                String stale = staleDirtyMain(root, modDir, dirty, layout.classesDir());
+                if (stale != null) {
+                    return AffectedTests.refused(
+                            new AffectedTests.Refuse(
+                                    "stale", stale + " is newer than its compiled class — build first"),
+                            row,
+                            List.of());
+                }
+                AffectedChangedPublish.classifyInto(
+                        carrier,
+                        root,
+                        modDir,
+                        dirty,
+                        AbiIndex.load(AbiIndex.path(layout.buildDir())),
+                        AbiIndex.scanClasses(layout.classesDir()));
+            }
+        }
+        long dirtyModules = units.stream().filter(Unit::dirtyHere).count();
+        if (dirtyModules > AffectedTests.MAX_CHANGED_MODULES) {
+            return AffectedTests.refused(
+                    new AffectedTests.Refuse(
+                            "too-many-modules",
+                            dirtyModules + " modules with source changes (max " + AffectedTests.MAX_CHANGED_MODULES
+                                    + ")"),
+                    List.of(),
+                    List.of());
+        }
+
+        // Pass 2 — rank each cone module: a dirty module scores its own changed types first, a
+        // dependent scores the carrier's foreign types. Dependents keep a "dependent" module row.
+        // -m intersects here, not in pass 1: an unselected dirty module still classifies, so the
+        // selected modules' importers rank against its changed types (JK-2613).
+        for (Unit u : units) {
+            if (onlyModules != null
+                    && !onlyModules.isEmpty()
+                    && !onlyModules.contains(u.dir().toAbsolutePath().normalize())) {
+                continue;
+            }
+            Map<String, ClassAbi.Fingerprint> current =
+                    AbiIndex.scanClasses(u.layout().classesDir());
+            Map<String, ClassAbi.Kind> foreign = AffectedChangedPublish.foreignFor(carrier, current.keySet());
+            Set<String> production = new LinkedHashSet<>(current.keySet());
+            production.addAll(foreign.keySet());
+            Map<String, ClassAbi.Fingerprint> pre =
+                    u.dirtyHere() ? AbiIndex.load(AbiIndex.path(u.layout().buildDir())) : Map.of();
+            var tests = testsFor(u.dir(), u.layout().testClassesDir(), production, sel);
+            String coord =
+                    u.build().project().group() + ":" + u.build().project().name();
+            String rel = root.relativize(u.dir()).toString();
             if (rel.isBlank()) rel = ".";
+            String why = u.dirtyHere() ? "dirty" : "dependent";
             AffectedTests slice = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
-                    modDir,
+                    u.dir(),
                     coord,
                     root,
                     sel,
-                    dirty,
+                    u.dirtyHere() ? dirty : List.of(),
                     pre,
                     current,
                     List.of(),
                     tests,
-                    current.keySet(),
-                    List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"))));
+                    production,
+                    List.of(new AffectedTests.ModuleRow(rel, coord, why)),
+                    foreign));
             acc = acc.merge(slice);
         }
         return capGlobal(acc);
+    }
+
+    /**
+     * The module-relative path of a dirty main source that is newer than its compiled class, or
+     * {@code null} when every dirty class file is at least as fresh as its source (or absent —
+     * ranking from sources is honest, stale bytecode is not).
+     */
+    static String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
+        Path module = moduleDir.toAbsolutePath().normalize();
+        Path base = root.toAbsolutePath().normalize();
+        SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));
+        for (String raw : dirty) {
+            if (raw == null || raw.isBlank()) continue;
+            Path p = Path.of(raw);
+            if (!p.isAbsolute()) p = base.resolve(p);
+            p = p.normalize();
+            if (!p.startsWith(module) || !Files.isRegularFile(p)) continue;
+            String name = p.getFileName() == null ? "" : p.getFileName().toString();
+            if (!AffectedTestRanker.isClassSource(name)) continue;
+            String rel = module.relativize(p).toString().replace('\\', '/');
+            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
+            if (hit.kind() != SourceFqcs.Kind.MAIN || hit.fqc() == null) continue;
+            Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
+            try {
+                if (Files.isRegularFile(classFile)
+                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0) {
+                    return rel;
+                }
+            } catch (IOException e) {
+                // unreadable timestamps never fabricate a refuse
+            }
+        }
+        return null;
     }
 
     static boolean hasLocalDirty(Path root, Path module, List<String> dirty) {

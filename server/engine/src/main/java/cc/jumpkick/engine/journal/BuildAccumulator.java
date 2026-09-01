@@ -14,6 +14,7 @@ import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.test.AffectedTests;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -69,6 +70,7 @@ public final class BuildAccumulator {
     private final List<BuildRecord.Diag> diagnostics = new ArrayList<>();
     private int droppedDiagnostics;
     private volatile BuildRecord.Tests tests;
+    private @Nullable AffectedTests affected;
     private volatile boolean anyFailure;
     // Whether this run recorded anything it can be judged on: a module outcome, a finished plan,
     // a finished step, a test summary. A started-but-unfinished step is not one — it is exactly
@@ -573,6 +575,22 @@ public final class BuildAccumulator {
                         tests.succeeded() + t.succeeded(),
                         tests.failed() + t.failed(),
                         tests.skipped() + t.skipped());
+    }
+
+    /**
+     * Fold in one plan's affected-tests slice ({@code --affected} runs). Workspace builds call it
+     * per module; the merged report is written to {@code jk-tests-affected.md} at request-finish.
+     * The accumulator lives exactly one request, so a later run never inherits this run's rows
+     * (JK-2607).
+     */
+    public synchronized void addAffected(@Nullable AffectedTests slice) {
+        if (slice == null) return;
+        anyFact = true; // a ranking (even "nothing affected") is a fact — never a synthetic record
+        affected = affected == null ? slice : affected.merge(slice);
+    }
+
+    public synchronized @Nullable AffectedTests affected() {
+        return affected;
     }
 
     /**

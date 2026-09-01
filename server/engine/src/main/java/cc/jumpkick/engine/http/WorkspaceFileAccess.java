@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -12,11 +13,9 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -588,26 +587,15 @@ final class WorkspaceFileAccess {
         }
         Path dir = file.getParent();
         if (dir == null) return new WriteResult.Failed("no parent directory");
-        Path tmp = null;
         try {
-            tmp = Files.createTempFile(dir, ".jk-write-", ".tmp");
-            Files.write(tmp, bytes);
-            try {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-            tmp = null;
+            // Was a hand-rolled copy of AtomicWrites.replace — temp sibling, atomic move, cleanup in
+            // a finally — and it carried that pattern's permission bug (JK-2623): the JDK creates a
+            // temp file 0600, the rename hands those bits to the target, and this target is the
+            // user's own source file. An agent editing through the API left the file readable by
+            // nobody but its owner. The owner also gets the Windows retry it never had.
+            AtomicWrites.replace(file, bytes);
         } catch (IOException e) {
             return new WriteResult.Failed(e.getMessage() == null ? "write failed" : e.getMessage());
-        } finally {
-            if (tmp != null) {
-                try {
-                    Files.deleteIfExists(tmp);
-                } catch (IOException ignored) {
-                    // best-effort cleanup
-                }
-            }
         }
         return new WriteResult.Ok(
                 new WrittenBody(absRoot, rel, lang, bytes.length, countLines(content), etagOf(bytes)));

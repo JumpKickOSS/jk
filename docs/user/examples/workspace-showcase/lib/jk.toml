@@ -1,1 +1,6 @@
+# `name` is the only required field in a member: group, version and java
+# inherit from the workspace root.
 name = "lib"
+
+[test-dependencies]
+junit-jupiter.workspace = true

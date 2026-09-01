@@ -24,8 +24,10 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
@@ -53,7 +55,7 @@ public final class PlannerTest {
 
     private PlannerTest() {}
 
-    static Task compileTestStep(BuildPlanner.Ctx cx) {
+    static Task compileTestStep(BuildPlanner.Ctx cx, boolean hasFixtures) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -74,7 +76,19 @@ public final class PlannerTest {
                 // input, not just ordering: the test classpath (and its action-key fingerprint)
                 // includes classes/main, which copy-resources writes — racing it fingerprints a
                 // half-copied dir and intermittently crashes on vanishing files under -r.
-                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)
+                .requires(
+                        hasFixtures
+                                ? new String[] {
+                                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                                    TaskNames.RESOLVE_DEPS,
+                                    TaskNames.COPY_RESOURCES,
+                                    TaskNames.COMPILE_TEST_FIXTURES
+                                }
+                                : new String[] {
+                                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                                    TaskNames.RESOLVE_DEPS,
+                                    TaskNames.COPY_RESOURCES
+                                })
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
@@ -116,6 +130,7 @@ public final class PlannerTest {
                     if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty() && scTest.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
+                        warnDeclaredTestDepsButNoSources(ctx, ctx.require(PROJECT), in.dir());
                         ctx.cached(); // SKIPPED — nothing to compile
                         ctx.progress(1);
                         return;
@@ -131,6 +146,7 @@ public final class PlannerTest {
                     List<Path> compileCp = (List<Path>) ctx.require(COMPILE_TEST_CP);
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(ctx.require(MAIN_CLASSES));
+                    baseCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), baseCp);
                     baseCp.addAll(compileCp);
                     // A Groovy module's classes (main or test) implement groovy.lang.GroovyObject
                     // javac (and groovyc itself) must resolve it from the version-matched jar.
@@ -329,6 +345,7 @@ public final class PlannerTest {
                     @SuppressWarnings("unchecked")
                     List<Path> testRtCp = (List<Path>) ctx.require(TEST_RUNTIME_CP);
                     testRtCp = new ArrayList<>(testRtCp);
+                    testRtCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp);
                     // Plugin test-classpath contributions (contributesTestClasspath — e.g. the
                     // android plugin's Robolectric test_config dir) join the test runtime cp.
                     testRtCp.addAll(pluginTestClasspath(ctx.require(LAYOUT), pluginDecls));
@@ -541,5 +558,34 @@ public final class PlannerTest {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * Say out loud that a module which asked for a test framework contributed no tests.
+     *
+     * <p>"No test sources" is a legitimate answer — plenty of modules have none — so the step
+     * skipping is not itself news. It becomes news when the module declares
+     * {@code [test-dependencies]}: somebody wrote down that this module has tests, and the build
+     * just found none. That combination is either a layout mistake or the shape of JK-2620, where a
+     * stale scan made a module's real suite invisible and {@code jk test} exited green over tests it
+     * never compiled. The propagation fix closes that particular hole; this note is what makes the
+     * next one loud instead of silent, because a skip with a plausible label reads exactly like
+     * success.
+     *
+     * <p>Raised through {@link TaskContext#warn} rather than a log line, so it is attributed to this
+     * module and this step and lands in the {@code jk-results.md} warnings an agent already reads —
+     * a note only the engine log carries is a note nobody sees.
+     */
+    private static void warnDeclaredTestDepsButNoSources(TaskContext ctx, JkBuild project, Path dir) {
+        if (project == null) return;
+        if (project.dependencies().of(Scope.TEST).isEmpty()
+                && project.dependencies().of(Scope.TEST_DEV).isEmpty()) {
+            return;
+        }
+        ctx.warn(
+                "no-test-sources",
+                dir + " declares [test-dependencies] but has no test sources — nothing was compiled "
+                        + "or run for it. Check the test roots (src/test/java, or the suite dirs under "
+                        + "src/) and that they hold files this module's languages compile.");
     }
 }

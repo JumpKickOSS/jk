@@ -122,6 +122,7 @@ class ConfigShapeTest {
                 .withAssemblyOverride("fat")
                 .withTestSelection(TestSelection.DEFAULT)
                 .withAffected(true)
+                .withAffectedChanged(new AffectedChanged())
                 .withIo(new IoLedger());
     }
 
@@ -143,6 +144,7 @@ class ConfigShapeTest {
                         new Object[] {TestSelection.DEFAULT.withIncludeTags(List.of("integration"))},
                         List.of("testSelection")),
                 new Wither("withAffected", new Object[] {false}, List.of("affected")),
+                new Wither("withAffectedChanged", new Object[] {new AffectedChanged()}, List.of("affectedChanged")),
                 new Wither("withIo", new Object[] {new IoLedger()}, List.of("io")),
                 // Two components, one fact — the pairs that are only meaningful together.
                 new Wither("withVariant", new Object[] {"beta", Map.of("B", "2")}, List.of("variant", "clientEnv")),

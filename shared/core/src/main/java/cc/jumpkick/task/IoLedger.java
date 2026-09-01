@@ -38,8 +38,19 @@ public final class IoLedger {
 
     /**
      * Inheritable so a request's runner thread — and any thread it forks — sees the run's ledger.
-     * Shared {@code JkThreads} pool threads pre-date the request and inherit nothing; they get the
-     * ledger through the propagated {@link cc.jumpkick.config.Session} instead.
+     *
+     * <p><strong>Inheritance is not enough for the shared pools, and must not be relied on there.</strong>
+     * This used to say that {@code JkThreads} pool threads pre-date the request and so inherit
+     * nothing. They do not: {@code JkThreads.cpu()} is a {@code ForkJoinPool} that grows lazily, so
+     * its workers are born inside whichever request first needed them and inherit <em>that</em>
+     * request's ledger for the engine's whole life. Because {@link cc.jumpkick.config.RequestScope}
+     * keys on the ledger to decide "which request am I in", that stale binding served one build's
+     * memoized directory scans to every build after it (JK-2620).
+     *
+     * <p>So the pool hop is explicit: {@code SessionContext}'s {@code ContextPropagator} captures the
+     * ambient ledger on the submitting thread and binds it around the task, clearing it when the
+     * submitter had none. Treat a value read on a pool thread as coming from that propagation, never
+     * from inheritance.
      */
     private static final InheritableThreadLocal<IoLedger> AMBIENT = new InheritableThreadLocal<>();
 
@@ -59,8 +70,11 @@ public final class IoLedger {
         }
     }
 
-    /** Bind {@code ledger} as the ambient run ledger for this thread (and threads it forks). */
-    public static void open(IoLedger ledger) {
+    /**
+     * Bind {@code ledger} as the ambient run ledger for this thread (and threads it forks); a
+     * {@code null} unbinds, which is how a pool task restores a worker that had no request.
+     */
+    public static void open(@Nullable IoLedger ledger) {
         if (ledger == null) AMBIENT.remove();
         else AMBIENT.set(ledger);
     }

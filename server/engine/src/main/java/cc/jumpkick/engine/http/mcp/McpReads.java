@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
@@ -25,9 +26,11 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Sync reads (why / explain / outdated): the same domain results the wire verbs serve
@@ -209,7 +212,7 @@ public final class McpReads {
      * not compile. Stale class files → refuse {@code stale}.
      */
     public static Map<String, Object> affectedTests(
-            String dir, List<String> includeTags, List<String> excludeTags, List<String> suites) {
+            String dir, List<String> includeTags, List<String> excludeTags, List<String> suites, List<String> modules) {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> m = new LinkedHashMap<>();
         try {
@@ -219,7 +222,19 @@ public final class McpReads {
                     includeTags == null ? List.of() : includeTags,
                     excludeTags == null ? List.of() : excludeTags,
                     true);
-            AffectedTests acc = AffectedTestsCompute.fromDisk(root, sel, null);
+            Set<Path> only = null;
+            if (modules != null && !modules.isEmpty()) {
+                // Same intersection semantics as jk test --affected -m … (JK-2613).
+                var entry = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+                var msel = ModuleSelection.resolve(root, entry, String.join(",", modules));
+                if (!msel.ok()) {
+                    m.put("error", msel.errorMessage());
+                    return m;
+                }
+                only = new LinkedHashSet<>();
+                for (Path p : msel.moduleDirs()) only.add(p.toAbsolutePath().normalize());
+            }
+            AffectedTests acc = AffectedTestsCompute.fromDisk(root, sel, only);
             JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(root), acc);
             Map<String, Object> out = acc.toStructured();
             if (acc.ranked().size() < acc.candidateCount()) out.put("truncated", true);

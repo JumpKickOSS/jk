@@ -178,9 +178,7 @@ public final class TestCommand implements CliCommand {
         }
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
-        if (affectedWip
-                || (affectedSince != null && !affectedSince.isBlank())
-                || (modulesSpec != null && !modulesSpec.isBlank())) {
+        if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
             var sel = ProjectInfos.orError(dir, modulesSpec, affectedSince, affectedWip);
             if (sel.error() != null && !sel.error().isBlank()) {
                 CommandWedge.printFail("Test", sel.error());
@@ -269,7 +267,7 @@ public final class TestCommand implements CliCommand {
         AffectedTestsReport report;
         try {
             String since = affectedWip ? null : affectedSince;
-            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since);
+            report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since, modulesSpec);
         } catch (IOException e) {
             CommandWedge.printFail("Test", e.getMessage());
             if (session != null) session.error(e.getMessage());
@@ -277,11 +275,12 @@ public final class TestCommand implements CliCommand {
         }
         if (global != null && global.outputIsJson()) {
             CliOutput.outRaw(report.encode());
-            return report.error() != null ? Exit.CONFIG : Exit.SUCCESS;
+            return report.refused() ? Exit.CONFIG : Exit.SUCCESS;
         }
-        if (report.error() != null && !report.error().isBlank()) {
-            CommandWedge.printFail("Test", "cannot rank affected tests: " + report.error() + ". Run jk test");
-            if (session != null) session.error(report.error());
+        if (report.refused()) {
+            String why = report.error() == null || report.error().isBlank() ? report.refuseCode() : report.error();
+            CommandWedge.printFail("Test", "cannot rank affected tests: " + why + ". Run jk test");
+            if (session != null) session.error(why);
             return Exit.CONFIG;
         }
         if (report.rows().isEmpty()) {
