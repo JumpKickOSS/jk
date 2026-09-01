@@ -18,6 +18,7 @@ import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.jdk.JdkProgressLabel;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
@@ -154,6 +155,7 @@ public final class PlannerSetup {
                                     profile == null ? List.of() : profile.javacArgs()));
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
+                    InputTrees.coverModule(in.dir());
                     List<Path> javaMainSrcs = javaMainSrcRef.get();
                     if (javaMainSrcs == null) {
                         javaMainSrcs = CompileSupport.collectJavaSources(javaMainSrcDir);

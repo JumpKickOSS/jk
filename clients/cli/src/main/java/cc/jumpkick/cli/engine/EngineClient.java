@@ -93,7 +93,42 @@ public final class EngineClient {
             String httpUrl,
             String httpError,
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
-            String mcpUrl) {}
+            String mcpUrl,
+            /** Last-job VFS object from {@code status-ack}, or {@code null} when none yet. */
+            String vfsJson) {
+        public Status(
+                String version,
+                long pid,
+                long startedAtMillis,
+                int activeRequests,
+                int activeBuildPlans,
+                boolean draining,
+                long heapUsedBytes,
+                long heapCommittedBytes,
+                long heapMaxBytes,
+                long rssBytes,
+                long aotTrainingPid,
+                String httpUrl,
+                String httpError,
+                String mcpUrl) {
+            this(
+                    version,
+                    pid,
+                    startedAtMillis,
+                    activeRequests,
+                    activeBuildPlans,
+                    draining,
+                    heapUsedBytes,
+                    heapCommittedBytes,
+                    heapMaxBytes,
+                    rssBytes,
+                    aotTrainingPid,
+                    httpUrl,
+                    httpError,
+                    mcpUrl,
+                    null);
+        }
+    }
 
     /**
      * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
@@ -168,7 +203,8 @@ public final class EngineClient {
                     Jsonl.longValue(ack, "aotTrainingPid", -1),
                     httpUrl,
                     Jsonl.str(ack, "httpError"),
-                    mcpUrl));
+                    mcpUrl,
+                    Jsonl.nested(ack, "vfs")));
         } catch (IOException e) {
             return Optional.empty();
         }

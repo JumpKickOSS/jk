@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
@@ -169,11 +169,7 @@ public final class WorkspaceClasspath {
             closureJars.add(siblingJar);
             String missingLabel = module + " (expected at " + siblingJar + ")";
             Path missingSibDir = siblingDirByModule.get(module);
-            if (missingSibDir != null
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".java")
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".kt")
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".scala")) {
+            if (missingSibDir != null && !hasAnySource(missingSibDir.resolve("src"))) {
                 // Name the real cause: the sibling was never going to compile anything — its jar
                 // only appears once the module is scheduled and packages empty.
                 missingLabel = module + " has no sources — jk packages an empty jar for it once the"
@@ -277,6 +273,21 @@ public final class WorkspaceClasspath {
                 List<Path> siblingLockfiles,
                 List<Path> siblingClosureJars) {
             this(jars, missingSiblingJars, siblingLockfiles, siblingClosureJars, List.of());
+        }
+    }
+
+    /** Existence probe — does not retain a listing. */
+    private static boolean hasAnySource(Path src) {
+        try {
+            return PathUtil.anyRegularFile(src, d -> false, p -> {
+                String n = p.getFileName().toString();
+                return n.endsWith(".java")
+                        || n.endsWith(".kt")
+                        || n.endsWith(".groovy")
+                        || n.endsWith(".scala");
+            });
+        } catch (IOException e) {
+            return false;
         }
     }
 }

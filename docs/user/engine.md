@@ -50,4 +50,4 @@ existing `.aot` caches). Worker AOT is HotSpot 25+ only. Knobs:
 
 ## Related
 
-[Install](install.md) · [Agents](agents.md) · [Architecture](../contributors/architecture.md)
+[Install](install.md) · [Agents](agents.md) · [Architecture](../contributors/architecture.md) · [Per-job VFS](../contributors/vfs.md)

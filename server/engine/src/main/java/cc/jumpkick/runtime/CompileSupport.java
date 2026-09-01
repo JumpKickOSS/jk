@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.RequestScope;
-import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.SourceLayout;
@@ -218,19 +217,6 @@ public final class CompileSupport {
         // Request-scoped, so there is nothing to invalidate: a source tree is fixed for the length of
         // the build it was launched against, and a jk watch iteration is a new request with a new
         // scope.
-        return RequestScope.current().get(new ScanKey(root.toAbsolutePath().normalize(), extension), key -> {
-            List<Path> result = new ArrayList<>();
-            try {
-                PathUtil.forEachRegularFile(key.root(), (file, attrs) -> {
-                    if (file.getFileName().toString().endsWith(key.extension())) result.add(file);
-                });
-            } catch (IOException unreadable) {
-                return List.<Path>of();
-            }
-            return List.copyOf(result);
-        });
+        return InputTrees.of(root).withExtension(extension);
     }
-
-    /** Memo key for a source scan: one enumeration per directory per extension per request. */
-    private record ScanKey(Path root, String extension) {}
 }

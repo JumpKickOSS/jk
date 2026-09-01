@@ -20,6 +20,7 @@ import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -386,6 +387,7 @@ public final class TaskForecaster {
             PackagingKeys.Owner plugin = PackagingKeys.pluginFor(project, layout, cache);
             PluginBuild.Declarations pkgDecls = plugin == null ? null : plugin.decls();
             Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
+            InputTrees.coverModule(dir);
             // The source set the build compiles, derived by its owner: the src walk plus the
             // [build] extra-src overlay, plugin source roots, every .scala (one Zinc session
             // compiles both languages) and the generated roots. Walking src/main/java alone keyed

@@ -2,10 +2,8 @@
 package cc.jumpkick.layout;
 
 import cc.jumpkick.model.Project;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.stream.Stream;
 
 /**
  * Which languages a module compiles — one shared answer for the engine's lane wiring and the
@@ -46,11 +44,6 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
     /** True if any regular file ending in {@code ext} exists anywhere under {@code root}. */
     public static boolean anySourceUnder(Path root, String ext) {
         if (!Files.isDirectory(root)) return false;
-        try (Stream<Path> stream = Files.walk(root)) {
-            return stream.anyMatch(
-                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(ext));
-        } catch (IOException e) {
-            return false; // unreadable tree — treat as absent
-        }
+        return InputTrees.of(root).anyExtension(ext);
     }
 }

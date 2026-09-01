@@ -70,6 +70,7 @@ Contributor TUI rules: [TUI](../contributors/tui.md).
 ```toml
 [engine]
 jobs = 0
+# vfs-max-mb = 32     # per-job input-tree retain; 0 = off. Does not follow CI=1.
 # auto-warmup = false
 
 [http]

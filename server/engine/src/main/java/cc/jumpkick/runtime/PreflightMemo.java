@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockPaths;
@@ -641,6 +642,7 @@ public final class PreflightMemo {
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
+            InputTrees.coverModule(moduleDir);
             MessageDigest md = Hashing.newSha256();
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
@@ -658,44 +660,61 @@ public final class PreflightMemo {
             }
             for (Path r : roots) {
                 if (!Files.isDirectory(r)) continue;
-                Files.walkFileTree(r, new SimpleFileVisitor<>() {
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        if (attrs.isRegularFile()) {
-                            feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
-                            if (mtimeMode) {
-                                feed(md, Long.toString(attrs.size()));
-                                feed(md, Long.toString(attrs.lastModifiedTime().toMillis()));
-                            } else {
-                                // Stream, don't slurp: this is the DEFAULT path (mtime mode is
-                                // opt-in), it runs over every file under the module including
-                                // resources, and the engine's heap budget is 256 MB SerialGC — a
-                                // single large resource was a transient allocation of its full
-                                // size.
-                                try (var in = Files.newInputStream(file)) {
-                                    byte[] buf = HASH_BUFFER.get();
-                                    int n;
-                                    while ((n = in.read(buf)) > 0) {
-                                        md.update(buf, 0, n);
-                                    }
-                                    md.update((byte) 0);
-                                } catch (IOException e) {
-                                    feed(md, "unreadable");
-                                }
+                var snap = InputTrees.of(r);
+                if (snap.overflow()) {
+                    Files.walkFileTree(r, new SimpleFileVisitor<>() {
+                        @Override
+                        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                            if (attrs.isRegularFile()) {
+                                feedFingerprint(md, moduleDir, file, attrs, mtimeMode);
                             }
+                            return FileVisitResult.CONTINUE;
                         }
-                        return FileVisitResult.CONTINUE;
+                    });
+                    continue;
+                }
+                for (var ref : snap.files()) {
+                    feed(md, moduleDir.relativize(ref.path()).toString().replace('\\', '/'));
+                    if (mtimeMode) {
+                        feed(md, Long.toString(ref.size()));
+                        feed(md, Long.toString(ref.mtimeMillis()));
+                    } else {
+                        try (var in = Files.newInputStream(ref.path())) {
+                            byte[] buf = HASH_BUFFER.get();
+                            int n;
+                            while ((n = in.read(buf)) > 0) {
+                                md.update(buf, 0, n);
+                            }
+                        } catch (IOException e) {
+                            feed(md, "unreadable");
+                        }
+                        md.update((byte) 0);
                     }
-
-                    @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
+                }
             }
             return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
+        }
+    }
+
+    private static void feedFingerprint(
+            MessageDigest md, Path moduleDir, Path file, BasicFileAttributes attrs, boolean mtimeMode) {
+        feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
+        if (mtimeMode) {
+            feed(md, Long.toString(attrs.size()));
+            feed(md, Long.toString(attrs.lastModifiedTime().toMillis()));
+            return;
+        }
+        try (var in = Files.newInputStream(file)) {
+            byte[] buf = HASH_BUFFER.get();
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                md.update(buf, 0, n);
+            }
+            md.update((byte) 0);
+        } catch (IOException e) {
+            feed(md, "unreadable");
         }
     }
 

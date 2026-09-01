@@ -93,10 +93,17 @@ public final class FileHashMemo {
      * build. {@code file} must already be absolute and normalized.
      */
     public static String contentHash(Path file, BasicFileAttributes attrs) throws IOException {
+        return contentHash(
+                file,
+                attrs.size(),
+                attrs.lastModifiedTime().toMillis(),
+                attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
+    }
+
+    /** As {@link #contentHash(Path, BasicFileAttributes)} from already-extracted stamp fields. */
+    public static String contentHash(Path file, long size, long mtimeMillis, long nanos) throws IOException {
         CONTENT_HASH_INVOCATIONS.incrementAndGet();
-        long size = attrs.size();
-        long mtime = attrs.lastModifiedTime().toMillis();
-        long nanos = attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS);
+        long mtime = mtimeMillis;
 
         Store store = store();
         if (store != null) {

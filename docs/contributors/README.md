@@ -11,6 +11,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | Page | Contents |
 |------|----------|
 | [Architecture](architecture.md) | Client/engine split, modules, resolve, cache, schema freeze |
+| [Per-job VFS](vfs.md) | Job-scoped input tree, `vfs-max-mb` vs `max-heap-mb`, PathUtil memo |
 | [Plugin authoring](plugins.md) | `jk-plugin.toml`, workers, private pins (first-party + vendored) |
 | [Code as Art](code-as-art.md) | Size budgets, Typed Envelope, JSpecify, fluent Lombok |
 | [TUI](tui.md) | CommandWedge, envelope, nerd/ansi/plain, script-mode allowlist |

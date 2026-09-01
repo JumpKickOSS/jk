@@ -22,6 +22,9 @@
 #
 # 2026-08-31: server/engine 84 -> 83. FreshnessStamp.newerThan directory walk now
 # PathUtil.forEachEntry (attrs the walk already read, including directory mtimes).
+#
+# Per-job VFS: Languages.anySourceUnder, ExecPlans.countSources, TestSupport estimates
+# read InputTrees. PreflightMemo still live-walks on Overflow.
 
 clients/cli 14
 plugins/android 10
@@ -37,10 +40,10 @@ plugins/spring-boot 1
 plugins/test-runner 1
 # +1 (JK-2616): AbiIndex.fingerprintWithNested lists ONE package directory (depth-1 siblings
 # Owner$*.class of a recompiled class) — a recursive attribute-carrying walk is the wrong shape.
-server/engine 83
+server/engine 80
 server/toolchain 1
 shared/client-io 15
-shared/core 16
+shared/core 15
 shared/dynamic-surface 2
 # +3: PathUtil.forEachEntry / forEachChild / anyRegularFile — the owner itself, not callers.
 shared/host 7

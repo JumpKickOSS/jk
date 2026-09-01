@@ -36,11 +36,14 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
   `~/.config/jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`.
-  **Three budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
+  **Four budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
   200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency via
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
   cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap — JK-1084),
-  still RAM-clamped by `PluginSlots`. Do not grow the non-CI engine default toward multi-GiB
+  still RAM-clamped by `PluginSlots`; (4) **per-job input-tree retain**
+  (`[engine] vfs-max-mb` / `JK_ENGINE_VFS_MAX_MB`, default 32 MiB per job, live sum
+  capped at 75% of engine heap; further jobs stream). Does **not** follow `CI=1`; extra
+  heap is concurrency headroom, extra VFS is a huge-tree knob. See [vfs.md](vfs.md). Do not grow the non-CI engine default toward multi-GiB
   “just in case”; set `max-heap-mb` or run under CI for a higher default.
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.

@@ -21,6 +21,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.LockFreshness;
@@ -41,11 +42,8 @@ import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -340,20 +338,10 @@ public final class ExecPlans {
         }
         for (Path root : roots.stream().distinct().toList()) {
             if (!Files.isDirectory(root)) continue;
-            try {
-                Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        String name = file.getFileName().toString();
-                        if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy")) {
-                            n.incrementAndGet();
-                        }
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-            } catch (IOException ignored) {
-                // best-effort counts
-            }
+            var snap = InputTrees.of(root);
+            n.addAndGet(snap.countExtension(".java"));
+            n.addAndGet(snap.countExtension(".kt"));
+            n.addAndGet(snap.countExtension(".groovy"));
         }
         return n.get();
     }

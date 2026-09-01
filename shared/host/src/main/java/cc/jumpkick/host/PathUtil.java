@@ -235,13 +235,13 @@ public final class PathUtil {
         boolean accept(Path path, BasicFileAttributes attrs) throws IOException;
     }
 
-    /** Walks started by {@link #forEachRegularFile}, {@link #forEachEntry}, {@link #forEachChild}, {@link #anyRegularFile}. Test seam. */
-    static long walks() {
+    /** Walks started by {@link #forEachRegularFile}, {@link #forEachEntry}, {@link #forEachChild}, {@link #anyRegularFile}. */
+    public static long walks() {
         return WALKS.get();
     }
 
     /** Reset {@link #walks()} so a test can assert one covering walk. */
-    static void resetWalks() {
+    public static void resetWalks() {
         WALKS.set(0);
     }
 

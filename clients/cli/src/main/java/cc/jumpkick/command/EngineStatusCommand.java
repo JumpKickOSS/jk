@@ -98,6 +98,7 @@ public final class EngineStatusCommand implements CliCommand {
                     + ",\"httpUrl\":" + (s.httpUrl() != null ? Jsonl.quote(s.httpUrl()) : "null")
                     + ",\"httpError\":" + (s.httpError() != null ? Jsonl.quote(s.httpError()) : "null")
                     + ",\"mcpUrl\":" + (s.mcpUrl() != null ? Jsonl.quote(s.mcpUrl()) : "null")
+                    + (s.vfsJson() != null ? ",\"vfs\":" + s.vfsJson() : "")
                     + ",\"engines\":" + enginesJson(EngineFleet.list())
                     + "}");
             return Exit.SUCCESS;

@@ -25,6 +25,7 @@ import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.util.JkDirs;
@@ -619,25 +620,24 @@ public final class EngineServer implements AutoCloseable {
                 case EngineProtocol.STATUS -> {
                     StatusSnapshot s = statusSnapshot();
                     HttpEngineServer hs = http.server();
-                    WireWriter.send(
-                            writer,
-                            ProtoLifecycle.statusAck(
-                                    s.version(),
-                                    s.pid(),
-                                    s.startedAtMillis(),
-                                    s.activeRequests(),
-                                    s.activeBuildPlans(),
-                                    draining,
-                                    s.heapUsedBytes(),
-                                    s.heapCommittedBytes(),
-                                    s.heapMaxBytes(),
-                                    s.rssBytes(),
-                                    s.aotTrainingPid(),
-                                    hs != null ? hs.url() : null,
-                                    http.error(),
-                                    hs != null && hs.mcpEnabled(),
-                                    s.peakActiveRequests(),
-                                    s.peakActiveBuildPlans()));
+                    String ack = ProtoLifecycle.statusAck(
+                            s.version(),
+                            s.pid(),
+                            s.startedAtMillis(),
+                            s.activeRequests(),
+                            s.activeBuildPlans(),
+                            draining,
+                            s.heapUsedBytes(),
+                            s.heapCommittedBytes(),
+                            s.heapMaxBytes(),
+                            s.rssBytes(),
+                            s.aotTrainingPid(),
+                            hs != null ? hs.url() : null,
+                            http.error(),
+                            hs != null && hs.mcpEnabled(),
+                            s.peakActiveRequests(),
+                            s.peakActiveBuildPlans());
+                    WireWriter.send(writer, InputTrees.appendToStatusAck(ack));
                 }
                 case EngineProtocol.SHUTDOWN -> {
                     handleShutdown(line, writer);

@@ -17,6 +17,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
@@ -293,6 +294,7 @@ public final class JobEnvelope {
                 if (acc != null) acc.stamp(outcome);
             } finally {
                 RunNotices.closeSink(io);
+                InputTrees.finishJob();
                 IoLedger.close();
                 // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
                 // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
