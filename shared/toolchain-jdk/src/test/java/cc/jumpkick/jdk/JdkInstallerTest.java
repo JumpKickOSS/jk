@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
@@ -275,6 +276,43 @@ class JdkInstallerTest {
                         jdksRoot.resolve("temurin-21.0.5").resolve("Contents").resolve("Home"));
         assertThat(installed.home().resolve("bin/java")).exists();
         assertThat(installed.home().resolve("release")).exists();
+    }
+
+    @Test
+    void installing_does_not_collect_a_superseded_jdk(@TempDir Path tempDir) throws Exception {
+        // JK-2627. install() used to drain JdkGarbage before installing, so a row queued by an
+        // earlier `jk jdk update` fired on the next UNRELATED build. That is how an ordinary
+        // `./gradlew checkAll` came to delete two JDKs, one of them the JDK it was running on.
+        // Provisioning installs; collecting belongs to the verb the user typed.
+        Path jdksRoot = Files.createDirectories(tempDir.resolve("jdks"));
+        Path older = fakeJdk(jdksRoot, "temurin-21.0.4", "21.0.4");
+        JdkOwnership.mark(older); // ours, and therefore collectable — by the update verb, not here
+        Path current = fakeJdk(jdksRoot, "temurin-21.0.5", "21.0.5");
+        JdkOwnership.mark(current);
+        Path queue = jdksRoot.resolve(".to-be-removed");
+        Files.writeString(queue, older.toRealPath() + System.lineSeparator());
+
+        // The entry resolves to temurin-21.0.5, which is already on disk: no network, no download.
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        InstalledJdk got = installer.install(entry("linux", "x64", "", URI.create("https://example.invalid/x.tar.gz"), null));
+
+        assertThat(got.identifier()).isEqualTo("temurin-21.0.5");
+        assertThat(JdkFingerprint.java(older))
+                .as("the superseded install is untouched by a provisioning call")
+                .exists();
+        assertThat(queue)
+                .as("and its queue row is left for `jk jdk update`, which asked the user")
+                .exists();
+    }
+
+    /** A JDK-shaped tree: enough for alreadyInstalled and JdkFingerprint to recognise it. */
+    private static Path fakeJdk(Path root, String name, String version) throws IOException {
+        Path home = root.resolve(name);
+        Files.createDirectories(home.resolve("bin"));
+        Files.writeString(home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\n");
+        Files.writeString(JdkFingerprint.java(home), "#!/fake");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake");
+        return home;
     }
 
     private static JdkCatalog.Entry entry(String os, String arch, String javaHomeSubpath, URI url, String sha256) {
