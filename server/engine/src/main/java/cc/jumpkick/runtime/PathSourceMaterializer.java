@@ -5,7 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
@@ -19,7 +19,6 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Stream;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -39,9 +38,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 final class PathSourceMaterializer {
 
-    /** Directory names never contributing to the fingerprint (build outputs, VCS/tool metadata). */
-    private static final Set<String> IGNORED_DIRS =
-            Set.of("build", BuildLayout.TARGET, "out", ".git", ".gradle", ".idea", "node_modules");
+
 
     /** Outcome: the published coordinate and the {@code file://} repo. */
     record Materialized(String group, String artifact, String version, URI repoUrl) {
@@ -142,7 +139,7 @@ final class PathSourceMaterializer {
 
     private static boolean isIgnored(Path relativePath) {
         for (Path segment : relativePath) {
-            if (IGNORED_DIRS.contains(segment.toString())) return true;
+            if (WalkSkip.pathSource(segment)) return true;
         }
         return false;
     }

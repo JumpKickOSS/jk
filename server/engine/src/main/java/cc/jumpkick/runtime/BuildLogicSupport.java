@@ -10,6 +10,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskNames;
@@ -28,7 +29,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -361,14 +361,6 @@ public final class BuildLogicSupport {
     }
 
     /**
-     * Directories a workspace-wide key must not descend into: build outputs, VCS metadata, and
-     * tool state. Everything here is either derived from the inputs being hashed — so including it
-     * would make the key a function of its own result — or churn no script is reading.
-     */
-    private static final Set<String> WORKSPACE_KEY_SKIP =
-            Set.of(BuildLayout.TARGET, "build", ".git", ".gradle", ".idea", "node_modules");
-
-    /**
      * What a workspace-root script can read, as cache-key tokens: <strong>every file in the
      * checkout</strong> except build output and VCS metadata.
      *
@@ -387,8 +379,7 @@ public final class BuildLogicSupport {
     private static List<String> workspaceInputTokens(Path rootDir) throws IOException {
         Path root = rootDir.toAbsolutePath().normalize();
         List<String> tokens = new ArrayList<>();
-        PathUtil.forEachRegularFile(
-                root, dir -> WORKSPACE_KEY_SKIP.contains(dir.getFileName().toString()), (file, attrs) -> {
+        PathUtil.forEachRegularFile(root, WalkSkip::workspaceKey, (file, attrs) -> {
                     Path abs = file.toAbsolutePath().normalize();
                     tokens.add("ws:" + root.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
                 });

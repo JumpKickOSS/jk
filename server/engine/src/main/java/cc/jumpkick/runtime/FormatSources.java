@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.WalkSkip;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -40,7 +40,7 @@ final class FormatSources {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 if (dir.equals(root)) return FileVisitResult.CONTINUE;
-                return excludedSegment(dir.getFileName().toString())
+                return WalkSkip.formatSegment(dir.getFileName().toString())
                         ? FileVisitResult.SKIP_SUBTREE
                         : FileVisitResult.CONTINUE;
             }
@@ -76,7 +76,7 @@ final class FormatSources {
 
     static boolean notExcluded(Path p) {
         for (Path seg : p) {
-            if (excludedSegment(seg.toString())) return false;
+            if (WalkSkip.formatSegment(seg.toString())) return false;
         }
         return true;
     }
@@ -87,15 +87,6 @@ final class FormatSources {
      * segment is not excluded — this repo's {@code cc.jumpkick.templates} package is real source.
      */
     static boolean excludedSegment(String s) {
-        if (s.equals(BuildLayout.TARGET)
-                || s.equals("build")
-                || s.equals(".jk")
-                || s.equals("jk")
-                || s.equals(".git")
-                || s.equals("node_modules")) {
-            return true;
-        }
-        if (s.endsWith(".g8") || s.equals("g8")) return true;
-        return s.length() > 1 && s.startsWith("$") && s.endsWith("$");
+        return WalkSkip.formatSegment(s);
     }
 }
