@@ -127,8 +127,16 @@ public final class JkWedge implements Widget {
         String cap = paintCap(ctx, colors);
         String tail = tailAnsi(ctx);
         if (tail.isEmpty()) return chip + cap;
-        // Plan bar sits flush against the nerd cap so the powerline blends into the bar lead.
-        if (progress != null && progress.look() == Progress.Look.PLAN && ctx.wedge()) {
+        // The plan bar always starts flush against the badge — no separator space.
+        //
+        // With the nerd axis the reason is the powerline cap blending into the bar's lead colour.
+        // Without it there is no cap, and this branch used to fall through to the generic
+        // `chip + " " + tail`, which put THREE spaces before the bar: the chip's own two-space pill
+        // trail (chip() uses "  " where the wedge uses " ") plus the separator. The bar looked
+        // detached from its badge in every no-nerd-font terminal. The chip's trail is painted on the
+        // chip background, so dropping only the separator leaves the bar flush against the badge in
+        // both modes rather than merely closer.
+        if (progress != null && progress.look() == Progress.Look.PLAN) {
             return chip + cap + tail;
         }
         return chip + cap + " " + tail;
