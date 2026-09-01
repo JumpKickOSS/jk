@@ -3556,6 +3556,111 @@ val checkOneRecursiveDelete by tasks.registering {
 tasks.named("check") { dependsOn(checkOneRecursiveDelete) }
 tasks.named("jar") { dependsOn(checkOneRecursiveDelete) }
 
+// ---------------------------------------------------------------------------
+// Guard G46 (JK-2627): a JDK is removed only by an explicit `jk jdk` verb.
+//
+// Defect it prevents: an ordinary build deleting the JDK it is running on. This one is not
+// hypothetical and it is not cheap — it happened twice in one afternoon on a developer machine and
+// took four JDK installs with it, including both GraalVMs, which are minutes of download each and
+// may be pinned by an IDE, a shell, a `.sdkmanrc`, or another project's lockfile.
+//
+// Both incidents were the same shape: `JdkInstaller.install()` drained `JdkGarbage` before
+// installing, so a row queued by an earlier `jk jdk update` fired on the next *unrelated* build —
+// and `StableJdkPointer.ensure` deleted whatever populated directory occupied the
+// `<vendor>-<major>` pointer name to make room for a link. Neither was reachable from a `jk jdk`
+// verb the user typed; both were on the automatic provisioning path.
+//
+// Removing a JDK is not a cache eviction, so the rule is about WHO may do it rather than how:
+//
+//   Arm A — `JdkGarbage` is named only by the explicit verb that queues into it. Anything else,
+//           and in particular anything under `server/`, is on a build path by construction.
+//   Arm B — `StableJdkPointer` performs no recursive delete. It owns the pointer, which is a link
+//           or an empty directory; a populated directory at that path is an install and belongs to
+//           somebody, possibly us, and either way not to a name-claiming routine.
+//
+// Ownership (`JkOwnership`, JK-2624/2625) is the other half and is deliberately NOT what this
+// guard checks: it answers "is this ours", which stopped jk deleting a neighbour's JDK but still
+// let it delete its own automatically. This arm is about the trigger, not the target.
+val jdkRemovalCallers = mapOf(
+        "clients/cli/src/main/java/cc/jumpkick/command/JdkUpdateCommand.java"
+                to "`jk jdk update` queues the superseded install and drains it, after asking (default yes)")
+
+val checkJdkRemovalConfined by tasks.registering {
+    group = "verification"
+    description = "Fail the build when JDK removal is reachable from anything but an explicit `jk jdk` verb"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val garbage = rootProject.layout.projectDirectory.file(
+            "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkGarbage.java")
+    val pointer = rootProject.layout.projectDirectory.file(
+            "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/StableJdkPointer.java")
+    inputs.file(garbage).withPropertyName("jdkGarbage")
+    inputs.file(pointer).withPropertyName("stableJdkPointer")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val allowed = jdkRemovalCallers
+    val stamp = layout.buildDirectory.file("guards/jdk-removal-confined.ok")
+    outputs.file(stamp)
+    doLast {
+        // Self-fail arm: the guard has to keep pointing at code that still exists and still carries
+        // the ownership re-check, or it silently guards nothing.
+        val garbageText = garbage.asFile.readText()
+        val missing = listOf("isJkOwned", "drain", "enqueue").filterNot { garbageText.contains(it) }
+        if (missing.isNotEmpty()) {
+            throw GradleException("JdkGarbage no longer has ${missing.joinToString(", ")}, so guard G46"
+                    + " is guarding a shape that has moved. Update or retire it deliberately.")
+        }
+        // treeRoot.resolve, not java.io.File(...): in the Kotlin DSL `java` resolves to the
+        // JavaPluginExtension accessor, so the package name is shadowed inside a build script.
+        val allowedMissing = allowed.keys.filterNot { treeRoot.resolve(it).isFile }
+        if (allowedMissing.isNotEmpty()) {
+            throw GradleException("G46's allowlist names files that no longer exist:"
+                    + " ${allowedMissing.joinToString(", ")}. The verb was renamed or removed —"
+                    + " update the allowlist in the same change.")
+        }
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (rel.endsWith("/jdk/JdkGarbage.java")) return@forEach
+            // Comments blanked so the javadoc that explains this rule is not itself a violation.
+            val lines = blankNonCode(f.readText(), blankStrings = false).lines()
+
+            if (rel.endsWith("/jdk/StableJdkPointer.java")) {
+                lines.forEachIndexed { i, line ->
+                    if (line.contains("deleteRecursively")) {
+                        hits += "$rel:${i + 1}: the stable pointer must not delete a tree —" +
+                                " a populated directory at the pointer name is an install"
+                    }
+                }
+                return@forEach
+            }
+
+            if (allowed.containsKey(rel)) return@forEach
+            lines.forEachIndexed { i, line ->
+                if (line.contains("JdkGarbage")) {
+                    hits += "$rel:${i + 1}: JdkGarbage is reachable from here"
+                }
+            }
+        }
+
+        if (hits.isNotEmpty()) {
+            throw GradleException("G46: JDK removal reached from outside an explicit `jk jdk` verb.\n\n"
+                    + hits.joinToString("\n") { "  $it" }
+                    + "\n\nRemoving a JDK is minutes of download and may be pinned by an IDE, a shell,"
+                    + " a .sdkmanrc, or another project's lockfile, so it happens only when the user"
+                    + " asked for it. Provisioning installs; it does not collect."
+                    + "\nIf a new verb legitimately removes JDKs, add it to `jdkRemovalCallers` in the"
+                    + " same change and say why."
+                    + "\n\nAllowed today:\n"
+                    + allowed.entries.joinToString("\n") { "  ${it.key}\n      ${it.value}" })
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
+tasks.named("check") { dependsOn(checkJdkRemovalConfined) }
+tasks.named("jar") { dependsOn(checkJdkRemovalConfined) }
+
 // JK-1017: serial execution when shuffling, applied after the modules have had their say.
 //
 // The orderer decides order WITHIN a JVM; Gradle decides which classes go to which fork, and that
