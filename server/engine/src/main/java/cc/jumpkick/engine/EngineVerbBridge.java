@@ -200,7 +200,7 @@ public final class EngineVerbBridge implements VerbHost {
     static Session resolve(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
         Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
         // Read-only verbs need no cache path and no longer send one (project-info dropped the
-        // field in JK-2168, before JK-1040 gave the verb a session at all). Absent means "the
+        // field in, before gave the verb a session at all). Absent means "the
         // engine's own", which is what Session.defaults() already holds — not a null Path.
         String cacheStr = Jsonl.str(requestLine, "cache");
         JkConfig config = JkConfig.empty()
@@ -215,7 +215,7 @@ public final class EngineVerbBridge implements VerbHost {
                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                 // The request's toolchain selection, resolved once for every verb that takes a
                 // session from here. Without it the engine's SWITCH tier is permanently empty and a
-                // resident daemon ignores both --jdk and JK_JDK (JK-1021).
+                // resident daemon ignores both --jdk and JK_JDK.
                 .withToolchainSpecs(
                         ProtoSession.jdkSpecOf(requestLine),
                         ProtoSession.graalSpecOf(requestLine),

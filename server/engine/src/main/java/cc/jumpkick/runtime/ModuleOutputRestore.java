@@ -37,7 +37,7 @@ public final class ModuleOutputRestore {
     public static boolean packageOutputsMissing(Path workspaceRoot, Path moduleDir, JkBuild build) {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         // Sources-less modules (jk-web: resources/test-only) plan no package-jar step at all —
-        // demanding one flagged them restore-needed on every fully-cached build (JK-2214).
+        // demanding one flagged them restore-needed on every fully-cached build.
         boolean hasSources = hasMainSources(moduleDir, build);
         if (hasSources && !Files.isRegularFile(layout.mainJar())) return true;
         if (hasSources && !classesDirHasContent(layout.classesDir())) return true;

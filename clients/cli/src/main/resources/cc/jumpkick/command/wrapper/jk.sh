@@ -7,24 +7,11 @@
 # operator — there is no version pin here and none in jk-lock.toml.
 set -eu
 
-# Where jk lives / gets installed — the SAME resolution as install.sh and JkDirs
-# (JK_INSTALL_DIR > JK_BIN_DIR > $JK_HOME/bin > XDG bin > data-home sibling > ~/.local/bin).
-# The wrapper must never invent its own layout: it used to cache into ~/.jk/bin — a root
-# JkDirs never resolves — shadowing the real install forever, so `jk self update` (which
-# replaces the bin-dir binary) never reached wrapper users.
-if [ -n "${JK_INSTALL_DIR:-}" ]; then
-  BIN_DIR="$JK_INSTALL_DIR"
-elif [ -n "${JK_BIN_DIR:-}" ]; then
-  BIN_DIR="$JK_BIN_DIR"
-elif [ -n "${JK_HOME:-}" ]; then
-  BIN_DIR="$JK_HOME/bin"
-elif [ -n "${XDG_BIN_HOME:-}" ]; then
-  BIN_DIR="$XDG_BIN_HOME"
-elif [ -n "${XDG_DATA_HOME:-}" ]; then
-  BIN_DIR="$(dirname "$XDG_DATA_HOME")/bin"
-else
-  BIN_DIR="$HOME/.local/bin"
-fi
+# Where jk lives / gets installed — the SAME answer as install.sh and JkDirs, which is now
+# one expression rather than a cascade. The wrapper must never invent its own layout: an
+# earlier one cached into a directory the resolver did not name, shadowing the real install
+# forever, so `jk self update` (which replaces the bin-dir binary) never reached its users.
+BIN_DIR="${JK_HOME:-$HOME/.jk}/bin"
 RELEASES="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 case "$0" in */*) DIR="${0%/*}" ;; *) DIR="." ;; esac
 
@@ -66,7 +53,7 @@ if [ -x "$BIN" ]; then
     exec "$BIN" "$@"
   fi
 fi
-# A jk already on PATH (an install.sh layout the env vars above didn't name) beats a
+# A jk already on PATH (a distro package, or a home this JK_HOME did not name) beats a
 # bootstrap download; a current jk enforces the lock floor itself. Never re-exec the very
 # binary the floor check above just rejected.
 if command -v jk >/dev/null 2>&1; then

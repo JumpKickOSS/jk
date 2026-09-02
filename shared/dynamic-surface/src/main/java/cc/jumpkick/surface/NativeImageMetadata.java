@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 /**
  * Library-published GraalVM metadata, read into a {@link DynamicSurface}.
  *
- * <p>Libraries ship `META-INF/native-image/<group>/<artifact>/` describing their own reflective
+ * <p>Libraries ship {@code META-INF/native-image/<group>/<artifact>/} describing their own reflective
  * surface. `native-image` finds it on the classpath by itself; R8 has no equivalent and ignores
  * it, so the same facts have to reach it as keep rules. Composing this is free — the data is
  * already in the jars, and no application run is involved.

@@ -16,7 +16,7 @@
 #
 # Env:
 # JK_VERSION default: from JkVersion.java
-# JK_STORE_DIR / JK_HOME / JK_DATA_DIR — artifact store (see JkDirs)
+# JK_STORE_DIR / JK_HOME — artifact store (see JkDirs)
 # JK_MAVEN_BUCKET default: jumpkick
 # JK_MAVEN_PREFIX default: repo
 # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE SA key for CI
@@ -28,15 +28,7 @@ if [[ -z "$VERSION" ]]; then
   VERSION="$(grep -E 'VERSION = "' "$ROOT/shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 fi
 
-if [[ -n "${JK_STORE_DIR:-}" ]]; then
-  STORE="$JK_STORE_DIR"
-elif [[ -n "${JK_DATA_DIR:-}" ]]; then
-  STORE="$JK_DATA_DIR/store"
-elif [[ -n "${JK_HOME:-}" ]]; then
-  STORE="$JK_HOME/data/store"
-else
-  STORE="${XDG_DATA_HOME:-$HOME/.local/share}/jk/store"
-fi
+STORE="${JK_STORE_DIR:-${JK_HOME:-$HOME/.jk}/store}"
 BUCKET="${JK_MAVEN_BUCKET:-jumpkick}"
 PREFIX="${JK_MAVEN_PREFIX:-repo}"
 LOCAL="$STORE/repos/jk-local/cc/jumpkick"

@@ -51,7 +51,7 @@ class SelfHostingTomlTest {
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
         // host is the S1/S7 codec + host-primitive leaf; plugin-sdk sits above it. jk-api is a
-        // zero-dep model (PluginConfig lives there — JK-2139).
+        // zero-dep model (PluginConfig lives there —).
         // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
         assertThat(root.workspace().modules())
                 .containsExactly(
@@ -283,7 +283,7 @@ class SelfHostingTomlTest {
         List<String> mainModules =
                 cli.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList();
         // The slim client (Stage 5): the wire contract + the :host leaf, never the engine itself
-        // and never the plugin SPI (JK-2138).
+        // and never the plugin SPI.
         assertThat(mainModules)
                 .contains(
                         "cc.jumpkick:jk-core",
@@ -314,7 +314,7 @@ class SelfHostingTomlTest {
         List<String> mergedRootMain = merged.dependencies().of(Scope.MAIN).stream()
                 .map(d -> d.module())
                 .toList();
-        // :cli's last external dep was JLine; after JK-2377 it is gone. Workspace
+        // :cli's last external dep was JLine; after it is gone. Workspace
         // merge still has other externals (zinc, jgit, …) — just not JLine.
         assertThat(mergedRootMain).doesNotContain("org.jline:jline-terminal-ffm");
     }

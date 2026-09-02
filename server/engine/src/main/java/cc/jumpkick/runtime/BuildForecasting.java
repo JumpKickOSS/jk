@@ -59,7 +59,7 @@ public final class BuildForecasting {
     /**
      * Read-only variant for pure estimates (ForecastVerb, post-clean ETA): consults the memo but
      * NEVER stores one. A query that writes {@code target/.jk/preflight} resurrects the target
-     * dir right after {@code jk clean --force} wiped it (JK-2205).
+     * dir right after {@code jk clean --force} wiped it.
      */
     public static Set<Path> forecastDirtyDirsReadOnly(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
@@ -122,7 +122,7 @@ public final class BuildForecasting {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, true);
     }
 
-    /** {@code persistMemo=false}: consult but never store — read-only estimates (JK-2205). */
+    /** {@code persistMemo=false}: consult but never store — read-only estimates. */
     static Preflight forecastWithFingerprints(
             BuildGraph.Result graph,
             Path cache,
@@ -140,7 +140,7 @@ public final class BuildForecasting {
         // run (jk build && jk install would no-op to success).
         // The memo is also keyed without the test selection: a widened run (`jk build --all`,
         // tag flags) must take the real forecast walk — its run-tests stamps differ from the
-        // default tier the memo's clean claim covered (JK-2203).
+        // default tier the memo's clean claim covered.
         boolean defaultSelection = SessionContext.current().testSelection().equals(TestSelection.DEFAULT);
         boolean memoSafe = (t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST) && defaultSelection;
         Set<Path> all = new HashSet<>();
@@ -178,7 +178,7 @@ public final class BuildForecasting {
             fps = Map.of();
         }
         try {
-            Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
+            Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
             List<TaskForecast.Module> modules = TaskForecaster.of(
                     graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs);
@@ -276,10 +276,45 @@ public final class BuildForecasting {
                 return fullyCachedExplainPlan(graph);
             }
         }
-        Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
-        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-        List<TaskForecast.Module> modules = TaskForecaster.of(graph, cas, actionCache, cache, skipTests);
-        return new ExplainPlan(modules, graph.edges(), graph.maxReadyWidth(), List.of());
+        // Which modules will `jk build` actually schedule? That is the question explain answers, so
+        // it has to ask it the same way the build does — through the memo-aware preflight, read-only
+        // so a query never resurrects `target/.jk/preflight` after `jk clean --force`.
+        //
+        // Asking it the other way is what made explain a forecast of `jk test`. A bare
+        // TaskForecaster walk reports every module whose action-cache entries are missing, and
+        // reinstalling worker/engine jars invalidates every module's run-tests stamp — so one edit
+        // to `server/engine` read as 30 modules dirty and priced their suites, while `jk build`
+        // scheduled 7 and never touched them. Both statements were true; only one is the plan for
+        // the command the user is about to run.
+        Preflight pf = forecastWithFingerprints(
+                graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of(), /* persistMemo= */ false);
+        Set<Path> scheduled = new HashSet<>(pf.dirty());
+        scheduled.addAll(pf.restoreNeeded());
+        if (scheduled.isEmpty()) return fullyCachedExplainPlan(graph);
+        List<TaskForecast.Module> modules = pf.modules();
+        if (modules.isEmpty()) {
+            // Memo hit, or --force/--redo: no walk happened, so the step lists come from one here.
+            Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
+            ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
+            modules = TaskForecaster.of(graph, cas, actionCache, cache, skipTests);
+        }
+        return new ExplainPlan(onlyScheduled(modules, scheduled), graph.edges(), graph.maxReadyWidth(), List.of());
+    }
+
+    /**
+     * Report a module the build will not schedule as having no work: nothing is going to happen to
+     * it, which is what a plan for this build should say. Its steps may well be stale — a later
+     * {@code jk test} would run them — but naming that here prices a different command.
+     */
+    private static List<TaskForecast.Module> onlyScheduled(List<TaskForecast.Module> modules, Set<Path> scheduled) {
+        List<TaskForecast.Module> out = new ArrayList<>(modules.size());
+        for (TaskForecast.Module m : modules) {
+            out.add(
+                    scheduled.contains(m.dir())
+                            ? m
+                            : new TaskForecast.Module(m.dir(), m.coord(), List.of(), 0, 0, false, false));
+        }
+        return out;
     }
 
     /**

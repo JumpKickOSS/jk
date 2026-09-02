@@ -82,6 +82,37 @@ class JkEngineConfigTest {
     }
 
     @Test
+    void vfs_max_mb_defaults_to_32_and_ci_does_not_bump(@TempDir Path tempDir) {
+        assertThat(JkEngineConfig.DEFAULT_VFS_MAX_MB).isEqualTo(32);
+        assertThat(JkEngineConfig.DEFAULTS.vfsMaxMb()).isEqualTo(32);
+        assertThat(JkEngineConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "1")::get)
+                        .vfsMaxMb())
+                .isEqualTo(32);
+    }
+
+    @Test
+    void vfs_max_mb_zero_means_off(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nvfs-max-mb = 0\n");
+        assertThat(JkEngineConfig.fromToml(toml).vfsMaxMb()).isZero();
+    }
+
+    @Test
+    void vfs_max_mb_env_overrides_file(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nvfs-max-mb = 64\n");
+        JkEngineConfig c = JkEngineConfig.resolve(toml, Map.of("JK_ENGINE_VFS_MAX_MB", "16")::get);
+        assertThat(c.vfsMaxMb()).isEqualTo(16);
+    }
+
+    @Test
+    void negative_vfs_max_mb_falls_back_to_default(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nvfs-max-mb = -8\n");
+        assertThat(JkEngineConfig.fromToml(toml).vfsMaxMb()).isEqualTo(JkEngineConfig.DEFAULT_VFS_MAX_MB);
+    }
+
+    @Test
     void max_heap_env_overrides_file() throws IOException {
         Path toml = Files.createTempFile("jk-engine-", ".toml");
         try {

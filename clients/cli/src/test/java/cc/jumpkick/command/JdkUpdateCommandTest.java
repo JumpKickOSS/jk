@@ -8,8 +8,8 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.HostPlatform;
-import cc.jumpkick.testing.FakeJdk;
 import cc.jumpkick.jdk.JdkOwnership;
+import cc.jumpkick.testing.FakeJdk;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,21 +55,23 @@ class JdkUpdateCommandTest {
 
     @Test
     void declining_the_prompt_updates_and_keeps_the_old_install(@TempDir Path tempDir) throws Exception {
-        // JK-2627. Removal is a question now (default yes), because a JDK is minutes of download and
+        // . Removal is a question now (default yes), because a JDK is minutes of download and
         // an IDE, a shell or another project's lockfile may be pinned to the exact patch directory.
         Path jdks = tempDir.resolve("jdks");
         makeJdkInstall(jdks.resolve("temurin-25.0.2"), "25.0.2", "Eclipse Adoptium");
         serveFeed(tempDir, vendorEntry("Eclipse", "Temurin", "temurin", 25, "25.0.3"));
 
         // "y" to the plan, "n" to removing the old one.
-        int exit = withStdin("y\nn\n", () -> run(
-                "jdk",
-                "update",
-                "25",
-                "--jdks-dir",
-                jdks.toString(),
-                "--feed-url",
-                maven.base().resolve("/feed/jdks.json").toString()));
+        int exit = withStdin(
+                "y\nn\n",
+                () -> run(
+                        "jdk",
+                        "update",
+                        "25",
+                        "--jdks-dir",
+                        jdks.toString(),
+                        "--feed-url",
+                        maven.base().resolve("/feed/jdks.json").toString()));
 
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
@@ -85,7 +87,7 @@ class JdkUpdateCommandTest {
 
     @Test
     void an_update_never_removes_a_jdk_jk_did_not_install(@TempDir Path tempDir) throws Exception {
-        // JK-2624. --jdks-dir defaults to ~/.jdks, IntelliJ's shared root, so the JDK being
+        // . --jdks-dir defaults to ~/.jdks, IntelliJ's shared root, so the JDK being
         // superseded is quite often one the user or the IDE installed. Updating past it is fine;
         // deleting it is not ours to do. It goes only under an explicit `jk jdk uninstall`.
         Path jdks = tempDir.resolve("jdks");
@@ -361,7 +363,7 @@ class JdkUpdateCommandTest {
 
     /**
      * A JDK that jk installed. The ownership marker is what a real {@code extractInstalled} writes,
-     * and since JK-2624 it is also what makes the superseded install collectable — without it jk
+     * and since it is also what makes the superseded install collectable — without it jk
      * must leave the directory alone, because it belongs to somebody else.
      */
     private static void makeJdkInstall(Path home, String version, String implementor) throws IOException {

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.util.Locale;
+
 /**
  * Which output of a dependency coordinate (or workspace sibling) an edge selects.
  *
@@ -29,7 +31,7 @@ public enum DependencyKind {
      */
     public static DependencyKind parse(String raw) {
         if (raw == null || raw.isBlank()) return MAIN;
-        String s = raw.trim().toLowerCase();
+        String s = raw.trim().toLowerCase(Locale.ROOT);
         for (DependencyKind k : values()) {
             if (k.toml.equals(s)) return k;
         }

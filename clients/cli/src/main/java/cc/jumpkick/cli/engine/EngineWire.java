@@ -31,7 +31,7 @@ import java.nio.file.Path;
  *
  * <p>That framing was written out nine times inside the old {@code EngineBuildListenerAdapter}
  * alone, and twice more in each of {@link EnginePluginAdapter} and {@link EngineResolveAdapter}
- * (JK-2436). Thirteen copies of "ensure, connect, write, read" is thirteen chances for one of them
+ *. Thirteen copies of "ensure, connect, write, read" is thirteen chances for one of them
  * to skip the ensure or leak the channel; it exists once now.
  */
 public final class EngineWire {
@@ -85,7 +85,7 @@ public final class EngineWire {
      * request. {@code jk build} issues three or four RPCs, so that was six to eight connects, six to
      * eight endpoint-file reads and three to four wasted round trips per invocation, on a native
      * binary with no JIT to amortise any of it. On Windows each connect additionally reads the port
-     * file and the token file (JK-1042).
+     * file and the token file.
      *
      * <p>Ensuring once per process is safe because the thing it establishes — that a live,
      * version-matched engine is listening here — is exactly what a failed connect disproves. So the

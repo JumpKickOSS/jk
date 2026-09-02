@@ -122,7 +122,7 @@ Details: [Migration](migration.md).
 | `AGENTS.md` | Points coding agents at `jk manual` |
 | `target/` | Build outputs (gitignored). Report: `target/jk-results.md` |
 | `.jdk-version` | Optional JDK pin |
-| `~/.config/jk/config.toml` | Machine config |
+| `~/.jk/config.toml` | Machine config |
 
 Layout details: [Install](install.md), [Projects](projects.md).
 
@@ -152,7 +152,7 @@ Index with one-liners: [Commands](commands.md). Hidden aliases (Maven/Gradle mus
 ## Configuration layers
 
 Precedence for most knobs: **CLI flag > environment variable > project `jk.toml` > machine
-`~/.config/jk/config.toml`**. Details: [Config](config.md).
+`~/.jk/config.toml`**. Details: [Config](config.md).
 
 The resident **engine** (capped JVM) does the heavy work; the CLI is a slim native client.
 It starts on first use. `jk engine status` / `jk engine stop`. Details: [Engine](engine.md).

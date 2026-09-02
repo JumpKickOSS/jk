@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>`LockFreshness`'s own javadoc says the digest is workspace-wide, "so a per-module loop would
  * recompute the identical digest N times" — and three per-module call sites did exactly that, on top
- * of three per build, each reading every contributing manifest in full (JK-1028).
+ * of three per build, each reading every contributing manifest in full.
  */
 class LockManifestDigestBudgetTest {
 

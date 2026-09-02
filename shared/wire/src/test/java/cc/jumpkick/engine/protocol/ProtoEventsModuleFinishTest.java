@@ -7,7 +7,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.ModuleOutcome;
 import org.junit.jupiter.api.Test;
 
-/** JK-2100: image-terminal outcome rides module-finish as additive nullable fields. */
+/**: image-terminal outcome rides module-finish as additive nullable fields. */
 class ProtoEventsModuleFinishTest {
 
     @Test

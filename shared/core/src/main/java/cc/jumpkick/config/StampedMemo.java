@@ -59,7 +59,7 @@ public final class StampedMemo<K, S, V> {
      * <em>not</em> right for a memo whose values are large — a parsed {@code Lockfile} can be
      * megabytes, and the engine runs on a 256&nbsp;MB heap. Two readers hand-rolled this rule with
      * their own bounds rather than use this class, which is a fair sign the class was missing it
-     * (JK-1048).
+     *.
      */
     private final int maxEntries;
 
@@ -119,7 +119,7 @@ public final class StampedMemo<K, S, V> {
      * cheaper than the parse it guards.
      *
      * <p>The mtime is kept as a {@link FileTime}, not truncated to milliseconds. Two readers used to
-     * stamp {@code ~/.config/jk/config.toml} independently, one at each resolution; the finer one is
+     * stamp {@code ~/.jk/config.toml} independently, one at each resolution; the finer one is
      * the safe merge, because a coarser stamp can only ever serve a stale parse.
      */
     public record FileStamp(long size, FileTime modified) {
@@ -131,7 +131,7 @@ public final class StampedMemo<K, S, V> {
                 // No exists() first: readAttributes throws NoSuchFileException for an absent file and
                 // the catch below already answers null, so the guard was a second syscall answering a
                 // question this one answers — 21.4 us instead of 11.1 on NTFS, on every jk.toml parse
-                // (JK-1033). PathUtil.deleteTree shows the same shape.
+                // . PathUtil.deleteTree shows the same shape.
                 BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
                 return new FileStamp(attrs.size(), attrs.lastModifiedTime());
             } catch (IOException e) {

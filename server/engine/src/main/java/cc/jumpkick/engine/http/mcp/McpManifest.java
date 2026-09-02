@@ -11,9 +11,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /** Surgical jk.toml edits (preview by default). */
 public final class McpManifest {
@@ -106,12 +109,19 @@ public final class McpManifest {
         return out;
     }
 
-    private static Scope parseScope(String raw) {
-        if (raw == null || raw.isBlank() || "main".equalsIgnoreCase(raw)) return Scope.MAIN;
+    /**
+     * An unparseable scope from an agent is an error, not a default: swallowing it into
+     * {@code MAIN} silently rewrote a {@code runtime} request into a main dependency. The throw
+     * rides the caller's {@code error} field back to the MCP client.
+     */
+    static Scope parseScope(String raw) {
+        if (raw == null || raw.isBlank()) return Scope.MAIN;
+        String canonical = raw.trim().toLowerCase(Locale.ROOT);
         try {
-            return Scope.valueOf(raw.trim().toUpperCase());
+            return Scope.fromCanonical(canonical);
         } catch (IllegalArgumentException e) {
-            return Scope.MAIN;
+            throw new IllegalArgumentException("unknown scope '" + raw + "' — use one of "
+                    + Arrays.stream(Scope.values()).map(Scope::canonical).collect(Collectors.joining(", ")));
         }
     }
 

@@ -14,8 +14,8 @@ import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.model.Project;
 import cc.jumpkick.jdk.JdkService;
+import cc.jumpkick.model.Project;
 import java.util.List;
 import java.util.Optional;
 

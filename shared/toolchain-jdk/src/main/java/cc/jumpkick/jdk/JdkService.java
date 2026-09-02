@@ -138,7 +138,7 @@ public final class JdkService {
      *
      * <p>Product and major only. The vendor is dropped because it is redundant next to the product
      * every time — "Eclipse Temurin", "Oracle GraalVM", "Amazon Corretto" — and those seven or eight
-     * extra columns come straight off the one line a download has to fit in (JK-2602).
+     * extra columns come straight off the one line a download has to fit in.
      */
     public static String displayLabel(JdkCatalog.Entry entry) {
         return entry.product() + " " + entry.majorVersion();

@@ -118,7 +118,7 @@ class NewGroupGuessTest {
     void falls_back_to_home_gitconfig(@TempDir Path tempDir) throws IOException {
         // `work` must be walk-clean: readEmail walks its ancestors to the filesystem root, and a
         // @TempDir under the checkout would hit the repo's (or the dev's ~/.gitconfig) config before
-        // reaching the home fallback (JK-2314).
+        // reaching the home fallback.
         var work = walkCleanDir();
         var home = tempDir.resolve("home");
         try {

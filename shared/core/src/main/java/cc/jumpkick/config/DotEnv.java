@@ -9,12 +9,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code.env} files family,so a project needs no {@code direnv},
+ * {@code .env} files family,so a project needs no {@code direnv},
  * {@code dotenv-cli}, or wrapper script to set its own variables.
  *
  * <h2>Dialect</h2>
  *
- * There is no {@code.env} specification and implementations disagree, so jk's is stated rather
+ * There is no {@code .env} specification and implementations disagree, so jk's is stated rather
  * than inferred:
  *
  * <ul>

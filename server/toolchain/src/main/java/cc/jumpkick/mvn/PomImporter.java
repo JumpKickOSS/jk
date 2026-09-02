@@ -29,6 +29,7 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -497,7 +498,7 @@ public final class PomImporter {
         if (mavenScope == null || mavenScope.isBlank() || "compile".equalsIgnoreCase(mavenScope)) {
             return Scope.MAIN;
         }
-        return switch (mavenScope.toLowerCase()) {
+        return switch (mavenScope.toLowerCase(Locale.ROOT)) {
             case "runtime" -> Scope.RUNTIME;
             case "provided" -> Scope.PROVIDED;
             case "test" -> Scope.TEST;

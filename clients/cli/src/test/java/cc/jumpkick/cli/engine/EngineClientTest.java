@@ -187,7 +187,7 @@ class EngineClientTest {
             long ms = (System.nanoTime() - t0) / 1_000_000L;
             // LIVENESS, not performance: the exchange watchdog is 2s and the alternative is the
             // stream-idle timeout, which is minutes. 8s is 4x the watchdog on purpose — a tighter
-            // budget would be measuring this machine rather than the watchdog (JK-2446).
+            // budget would be measuring this machine rather than the watchdog.
             assertThat(ms)
                     .as("gave up on the 2s exchange watchdog, not after the minutes-long stream idle")
                     .isLessThan(8_000L);
@@ -253,7 +253,7 @@ class EngineClientTest {
         materialize(install, dir, "0.1.0");
         assertThat(EngineSpawn.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
 
-        // <data>/lib/jk-engine/<jar>: the JVM-hosted engine's fat jar
+        // <home>/lib/jk-engine/<jar>: the JVM-hosted engine's fat jar
         Path engineJar = materialize(install, dir, "1.2.3");
         EngineSpawn.EngineArtifact viaLib =
                 EngineSpawn.resolveEngineArtifact(null, "1.2.3", install).orElseThrow();

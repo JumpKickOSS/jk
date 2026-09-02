@@ -21,6 +21,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.LockFreshness;
@@ -39,17 +40,16 @@ import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.tool.AppLauncher;
+import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -83,7 +83,7 @@ public final class ExecPlans {
 
     /**
      * {@code counts=false} skips the source/test tree walks — identity/selection callers on hot
-     * paths (build/compile/release loops) never need them; only {@code jk status} does (JK-2162).
+     * paths (build/compile/release loops) never need them; only {@code jk status} does.
      * {@code affectedWip} is {@code --affected}.
      */
     public static ProjectInfo projectInfo(
@@ -95,7 +95,7 @@ public final class ExecPlans {
             }
             // parse() is already applyWorkspace(dir, parseLocal(file)) — calling it again here walked
             // for the root, re-parsed it and re-loaded every member a second time, per request
-            // (JK-1042).
+            // .
             JkBuild build = JkBuildParser.parse(buildFile);
             build = applyLockModulePin(dir, build);
 
@@ -340,20 +340,9 @@ public final class ExecPlans {
         }
         for (Path root : roots.stream().distinct().toList()) {
             if (!Files.isDirectory(root)) continue;
-            try {
-                Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        String name = file.getFileName().toString();
-                        if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy")) {
-                            n.incrementAndGet();
-                        }
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-            } catch (IOException ignored) {
-                // best-effort counts
-            }
+            n.addAndGet(InputTrees.of(root)
+                    .withExtensions(".java", ".kt", ".groovy")
+                    .size());
         }
         return n.get();
     }
@@ -442,7 +431,7 @@ public final class ExecPlans {
             return ExecPlan.error("jshell", "no jk-lock.toml — lock refresh did not produce one");
         }
         Lockfile lock = LockfileReader.read(lockFile);
-        Cas cas = JkStores.cas(cache.resolve("cas"));
+        Cas cas = JkStores.storeCas();
         List<Path> depCp = new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN);
         List<String> paths = new ArrayList<>();
         paths.add(classes.toAbsolutePath().toString());
@@ -484,7 +473,7 @@ public final class ExecPlans {
      * jshell only loads {@code *.jar}/{@code *.zip}, but CAS classpath entries are extensionless
      * content hashes — alias them under a stable {@code <cache>/jshell-cp/} dir instead of a
      * fresh temp dir per request: this runs in the resident engine, where per-request
-     * {@code deleteOnExit} temp dirs accumulate until engine exit (JK-2159). Aliases are hard
+     * {@code deleteOnExit} temp dirs accumulate until engine exit. Aliases are hard
      * links keyed by source path, so repeat requests are idempotent and cost nothing.
      */
     static List<Path> jarAliased(Path cache, List<Path> jars) throws IOException {
@@ -492,7 +481,7 @@ public final class ExecPlans {
         Path aliasDir = CacheTree.JSHELL_CP.under(cache);
         for (Path jar : jars) {
             if (jar == null) continue;
-            String name = jar.getFileName().toString().toLowerCase();
+            String name = jar.getFileName().toString().toLowerCase(Locale.ROOT);
             if (Files.isDirectory(jar) || name.endsWith(".jar") || name.endsWith(".zip")) {
                 out.add(jar);
                 continue;
@@ -642,7 +631,7 @@ public final class ExecPlans {
         Path lockFile = LockPaths.lockFile(dir);
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
-            classpath.addAll(new ClasspathResolver(JkStores.cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
+            classpath.addAll(new ClasspathResolver(JkStores.storeCas()).classpathFor(lock, ClasspathResolver.RUN));
             if (dev) {
                 hotReload = lock.artifacts().stream().anyMatch(a -> {
                     String n = a.name();
@@ -837,7 +826,7 @@ public final class ExecPlans {
     /**
      * {@code jk install}'s application half. Preference among the artifacts the manifest
      * <em>declares</em>, by what exists after the build: native binary (ALWAYS mode) → {@code
-     * ~/.local/bin}; else minified/fat → {@code <data>/lib/&lt;bin&gt;/} + {@code java -jar}; else
+     * ~/.jk/bin}; else minified/fat → {@code <home>/lib/&lt;bin&gt;/} + {@code java -jar}; else
      * thin jar stays in the local repo and the script uses {@code java -cp}. Declared-only on
      * purpose: {@code target/} can hold leftovers from before a declaration was removed, and a
      * bare exists-check would install those stale bytes with every step looking honest.
@@ -870,14 +859,14 @@ public final class ExecPlans {
         if (InstallPlans.installsNativeBinary(project, layout)) {
             Path nativeBin = layout.nativeBinary();
             String bin = firstNonBlank(binName, nativeName, p.name());
-            Path dest = binDir.resolve(BuildLayout.nativeExecutableFileName(bin));
+            Path dest = LauncherName.resolveChild(binDir, BuildLayout.nativeExecutableFileName(bin));
             return installAck(
                     List.of(nativeBin.toAbsolutePath().toString()), List.of(dest.toString()), "", "", dest.toString());
         }
 
         String bin = firstNonBlank(binName, p.name());
-        Path libDir = libRoot.resolve(bin);
-        Path launcherPath = binDir.resolve(AppLauncher.launcherFileName(bin));
+        Path libDir = LauncherName.resolveChild(libRoot, bin);
+        Path launcherPath = LauncherName.resolveChild(binDir, AppLauncher.launcherFileName(bin));
 
         Optional<Path> fatJar = InstallPlans.declaredFatJar(project, layout);
         if (fatJar.isPresent()) {
@@ -891,7 +880,7 @@ public final class ExecPlans {
         }
 
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        Path repoJar = JkStores.storeRootFor(cache)
+        Path repoJar = JkStores.store()
                 .resolve("repos")
                 .resolve(RepoArtifactResolver.JK_LOCAL)
                 .resolve(MavenLayout.artifactPath(coord));
@@ -904,7 +893,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
-                    new ClasspathResolver(JkStores.cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
+                    new ClasspathResolver(JkStores.storeCas()).entriesFor(lock, ClasspathResolver.RUNTIME)) {
                 if (Files.exists(entry.jar())) classpath.add(entry.jar());
             }
         }
@@ -930,7 +919,7 @@ public final class ExecPlans {
 
     private static String firstNonBlank(String... values) {
         for (String v : values) {
-            if (v != null && !v.isBlank()) return v;
+            if (v != null && !v.isBlank()) return LauncherName.requireValid(v);
         }
         return "app";
     }
@@ -983,7 +972,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
-                    new ClasspathResolver(JkStores.cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
+                    new ClasspathResolver(JkStores.storeCas()).entriesFor(lock, ClasspathResolver.RUNTIME)) {
                 if (!Files.exists(entry.jar())) continue;
                 libNames.add(entry.artifact().moduleArtifact() + "-"
                         + entry.artifact().version() + ".jar");
@@ -1050,7 +1039,7 @@ public final class ExecPlans {
                     .flatMap(c -> c.stringOpt("version"))
                     .orElse(null);
             if (bootVersion == null) return null;
-            Cas cas = JkStores.cas(cache);
+            Cas cas = JkStores.storeCas();
             return RepoGroupBuilder.buildFor(project, null, cas)
                     .tryFetchArtifact(Coordinate.of("org.springframework.boot", "spring-boot-devtools", bootVersion))
                     .map(hit -> hit.fetched().cachePath())

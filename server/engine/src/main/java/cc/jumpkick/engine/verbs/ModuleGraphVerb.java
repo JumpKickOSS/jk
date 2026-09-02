@@ -47,7 +47,7 @@ public final class ModuleGraphVerb implements HostedVerb {
             try {
                 String dir = Jsonl.str(requestLine, "dir");
                 if (dir == null || dir.isBlank()) {
-                    // A resident server has no meaningful cwd to fall back to (JK-2166).
+                    // A resident server has no meaningful cwd to fall back to.
                     throw new IllegalArgumentException("module-graph request names no dir");
                 }
                 ack = ModuleGraphOps.render(

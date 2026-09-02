@@ -107,7 +107,7 @@ class CacheCommandTest {
         writeBlob(
                 cache.resolve("actions/keys/test-key"),
                 "TASK run-tests@mod\nKEY test-key\nOUTPUT 3 tests.total\n".getBytes(StandardCharsets.UTF_8));
-        writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[0]);
+        writeBlob(cache.resolve("format/stamps/ab/stamp1"), new byte[0]);
         // Outside the budget denominator: hash-memo has its own retention and the prune cannot
         // touch it, so it must not inflate the Total the Utilization bar is measured against.
         writeBlob(cache.resolve("hash-memo/memo.v1"), new byte[4096]);
@@ -135,7 +135,7 @@ class CacheCommandTest {
     /**
      * {@code jk status}'s "Size on Disk" is the cache root, so a tier nobody thought to list is in
      * it. The hand-written list this replaced named the action index, the cache CAS and
-     * {@code format-stamps} and stopped, which dropped {@code hash-memo} and (before JK-2476 moved
+     * {@code format/stamps} and stopped, which dropped {@code hash-memo} and (before moved
      * it to the store) {@code graal-reachability} — a sixth of the live dogfood cache — out of the
      * one number a user reads to decide whether to prune.
      */
@@ -164,7 +164,7 @@ class CacheCommandTest {
      * bookkeeping, so the sum describes nothing — it is not "actions", not "tasks", not "files
      * worth keeping", and it moves when an unrelated tier grows.
      *
-     * <p>This is the assertion whose absence let 315 ship. JK-2488 knowingly left the number as the
+     * <p>This is the assertion whose absence let 315 ship. knowingly left the number as the
      * whole-tree count because the {@code keys} directory had no owner to count off; {@link
      * ActionTree} is that owner.
      */
@@ -202,7 +202,7 @@ class CacheCommandTest {
     /**
      * {@code GET /api/cache}'s {@code totalBytes} and {@code jk status}'s "Size on Disk" are two
      * readers of one fact, so they have to return one number. They did not: the CLI moved to a
-     * single walk of the cache root in JK-2488 while {@code CacheSnapshot} kept summing five named
+     * single walk of the cache root in while {@code CacheSnapshot} kept summing five named
      * section fields — three cache tiers plus the artifact store's CAS and {@code repos/}. That sum
      * is wrong in both directions at once. It counts store bytes a nuke leaves, and it misses every
      * cache tier nobody added to the list; on the fixture below that is {@code hash-memo} and a
@@ -275,7 +275,7 @@ class CacheCommandTest {
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[256]);
         Path fresh = writeBlob(cache.resolve("actions/keys/new"), new byte[256]);
         Path cacheTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[128]);
-        Path storeCas = JkStores.resolve(cache, "sha256");
+        Path storeCas = JkStores.resolve("sha256");
         Path storeTmp = writeBlob(storeCas.resolve("ab/cd/.put-jk1531.tmp"), new byte[128]);
         try {
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
@@ -338,7 +338,7 @@ class CacheCommandTest {
     }
 
     /**
-     * The nuke leaves the engine up on purpose — JK-1773 built the local fallback so a cache purge
+     * The nuke leaves the engine up on purpose — built the local fallback so a cache purge
      * would never boot or bounce one — so the root has to stay gone with an engine still running.
      * It did not: the shared maintenance lock created the cache tree unconditionally, to have
      * somewhere to put {@code .prune.lock}, and the next pass through it minted the directory
@@ -450,7 +450,7 @@ class CacheCommandTest {
     void repo_search_lists_cached_coordinates_with_versions(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
         // Overlay a private store BEFORE seeding: seedRepo materializes into the ambient
-        // store (post-JK-2176, repos live store-side and search walks only the store), and
+        // store (post-, repos live store-side and search walks only the store), and
         // the suite-shared store legitimately holds jackson artifacts of its own — this test
         // must see exactly the rows it seeds.
         String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
@@ -554,7 +554,7 @@ class CacheCommandTest {
 
     private static final List<String> SEEDED_PATHS = new ArrayList<>();
 
-    /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks (JK-2179). */
+    /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks. */
     @org.junit.jupiter.api.AfterEach
     void scrubSeededRepoArtifacts() {
         Path repos = JkStores.store().resolve("repos");
@@ -578,7 +578,7 @@ class CacheCommandTest {
             Path blob = cas.put(bytes);
             var coord = Coordinate.of(group, artifact, version);
             SEEDED_PATHS.add(MavenLayout.artifactPath(coord));
-            // repos/ lives under the STORE root — where MavenRepo writes (JK-2176); the old
+            // repos/ lives under the STORE root — where MavenRepo writes; the old
             // cache-rooted seed only matched the pre-fix search's wrong walk root.
             RepoArtifactStore.forRepoName(JkStores.store(), "central")
                     .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));

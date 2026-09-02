@@ -27,7 +27,7 @@ import org.junit.platform.launcher.TestPlan;
  * one process, one command. Under a shared test JVM the same write has no owner and outlives the
  * class that made it: worker JVMs pull test classes off a shared queue, so which class inherits a
  * leak, and therefore whether anything fails, changes run to run. The failure surfaces in the
- * victim carrying no trace of the culprit, which is the archaeology JK-1011 was filed to end.
+ * victim carrying no trace of the culprit, which is the archaeology was filed to end.
  *
  * <p>Globals are registered by their owners through {@link BoundedGlobal} and discovered with
  * {@link ServiceLoader}, so each lives beside the code that can actually reach it.
@@ -44,11 +44,11 @@ import org.junit.platform.launcher.TestPlan;
  *
  * <p>Containers are bounded as well as tests. An install from a {@code @BeforeAll} would otherwise
  * outlive its class and reach every class scheduled after it in the same worker — which is what the
- * per-class {@code @AfterEach reset()} hooks JK-1010 deleted were papering over.
+ * per-class {@code @AfterEach reset} hooks deleted were papering over.
  *
  * <p>Deliberately a platform {@link TestExecutionListener} rather than a Jupiter {@code Extension}:
  * extension autodetection is a single per-task switch and the unit tier keeps it off on purpose so
- * {@code EngineTestExtension} stays unloaded (JK-2447). A listener is discovered unconditionally, so
+ * {@code EngineTestExtension} stays unloaded. A listener is discovered unconditionally, so
  * every tier gets the boundary and no tier gains an engine. The cost is that a listener cannot fail
  * a test — the platform isolates listener exceptions — so this reports rather than fails. Turning
  * the report into a build failure needs a mechanism decision and is left to its own change.

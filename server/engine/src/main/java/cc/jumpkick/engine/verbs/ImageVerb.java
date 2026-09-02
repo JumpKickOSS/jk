@@ -10,8 +10,8 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ImageRequest;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
@@ -70,19 +70,20 @@ public final class ImageVerb implements HostedVerb {
     public String decodeJob(JobSpec spec) {
         // No test toggle on the dashboard/agent surface: an image job's deliverable is the image.
         return ProtoSession.withTrigger(
-                ProtoJobs.imageRequest(
-                        spec.dir(),
-                        JkDirs.cache().toString(),
-                        JkDirs.jdks().toString(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        true,
-                        false,
-                        false,
-                        false),
+                new ImageRequest(
+                                spec.dir(),
+                                JkDirs.cache().toString(),
+                                JkDirs.jdks().toString(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                true,
+                                false,
+                                false,
+                                false)
+                        .encode(),
                 "web");
     }
 
@@ -90,17 +91,16 @@ public final class ImageVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
+                ImageRequest body = ImageRequest.decode(requestLine);
+                Path entryDir = Path.of(body.dir());
+                Path cache = Path.of(body.cache());
+                String jdksDirStr = body.jdksDir();
                 Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-                boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-                boolean verbose = Jsonl.bool(requestLine, "verbose", false);
                 JkConfig config = JkConfig.empty()
-                        .withOffline(Jsonl.bool(requestLine, "offline", false))
+                        .withOffline(body.offline())
                         .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
-                        .withVerbose(verbose)
-                        .withForce(Jsonl.bool(requestLine, "force", false));
+                        .withVerbose(body.verbose())
+                        .withForce(body.force());
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)
@@ -109,7 +109,7 @@ public final class ImageVerb implements HostedVerb {
                         .withCancel(cancelToken)
                         .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                         // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                        // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                        // empty and a resident engine ignores both --jdk and JK_JDK.
                         .withToolchainSpecs(
                                 ProtoSession.jdkSpecOf(requestLine),
                                 ProtoSession.graalSpecOf(requestLine),
@@ -122,15 +122,25 @@ public final class ImageVerb implements HostedVerb {
                         // Workspace member: same orchestrator as jk build; image terminal on this
                         // module; prereqs package. Events are workspace-progress (not single-plan).
                         WorkspaceRequest req = new WorkspaceRequest(
-                                        wsRoot.get(), cache, jdksDir, 0, null, skipTests, verbose, 0, null, true, true)
+                                        wsRoot.get(),
+                                        cache,
+                                        jdksDir,
+                                        0,
+                                        null,
+                                        body.skipTests(),
+                                        body.verbose(),
+                                        0,
+                                        null,
+                                        true,
+                                        true)
                                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                                 .withSpec(WorkspaceSpec.image(
                                         Set.of(entryDir.toAbsolutePath().normalize()),
-                                        Jsonl.str(requestLine, "mainClass"),
-                                        Jsonl.str(requestLine, "registry"),
-                                        Jsonl.str(requestLine, "tag"),
-                                        Jsonl.str(requestLine, "tarball"),
-                                        Jsonl.str(requestLine, "dockerExecutable")));
+                                        body.mainClass(),
+                                        body.registry(),
+                                        body.tag(),
+                                        body.tarball(),
+                                        body.dockerExecutable()));
                         long rid = host.eventRequestId();
                         if (rid > 0) host.putProgressRoot(rid, wsRoot.get().toString());
                         WorkspaceResult result = SessionContext.where(
@@ -153,13 +163,13 @@ public final class ImageVerb implements HostedVerb {
                                 entryDir,
                                 cache,
                                 jdksDir,
-                                skipTests,
-                                verbose,
-                                Jsonl.str(requestLine, "mainClass"),
-                                Jsonl.str(requestLine, "registry"),
-                                Jsonl.str(requestLine, "tag"),
-                                Jsonl.str(requestLine, "tarball"),
-                                Jsonl.str(requestLine, "dockerExecutable")));
+                                body.skipTests(),
+                                body.verbose(),
+                                body.mainClass(),
+                                body.registry(),
+                                body.tag(),
+                                body.tarball(),
+                                body.dockerExecutable()));
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
                     ImageConfig cfg = plan.get(ImagePlans.CONFIG).orElse(null);

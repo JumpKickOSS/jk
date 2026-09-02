@@ -7,6 +7,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.resolver.ResolveObserver;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -123,13 +124,16 @@ class AutoLockWorkspaceTest {
                 rootLock,
                 tmp.resolve("cache"),
                 repo.toUri(),
-                "test",
                 List.of(),
                 true,
                 ResolveObserver.NOOP,
                 null);
 
         assertThat(updated).as("stale member relock produced a lock").isNotNull();
+        // The committed header carries the PRODUCT version. This path once stamped
+        // cacheKeyVersion() — `jk 0.12.0#1` — leaking the cache-key salt into version control
+        // and churning the file depending on which verb last wrote it.
+        assertThat(updated.generatedBy()).contains(JkVersion.VERSION).doesNotContain("#");
         List<String> names =
                 updated.artifacts().stream().map(Lockfile.Artifact::name).toList();
         // The union: app's own dep AND the sibling-only dep — a member-scoped closure would
@@ -177,7 +181,6 @@ class AutoLockWorkspaceTest {
                 lockFile,
                 tmp.resolve("cache"),
                 repo.toUri(),
-                "test",
                 List.of(),
                 true,
                 ResolveObserver.NOOP,

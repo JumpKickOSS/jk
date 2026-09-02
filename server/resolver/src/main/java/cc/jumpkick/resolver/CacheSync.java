@@ -58,7 +58,7 @@ public final class CacheSync {
         this.http = Objects.requireNonNull(http, "http");
         this.creds = Objects.requireNonNull(creds, "creds");
         // Effective policy is project AND the machine kill switch — mirror MavenRepo, so a global
-        // [m2] integration = false is honored here too (JK-2306).
+        // [m2] integration = false is honored here too.
         boolean effectiveM2 = m2integration && JkM2Config.resolve().integration();
         this.m2integration = effectiveM2;
         this.locator = new ArtifactLocator(cas.root(), effectiveM2 ? M2Dirs.localRepository() : null, effectiveM2);
@@ -249,7 +249,7 @@ public final class CacheSync {
             // non-reentrant HostRateLimiter once concurrent fetchers hold all permits.
             // Pass the pin so a stale local-mirror copy that no longer matches (republished GAV +
             // re-lock) is evicted and re-fetched, rather than dead-ending in a checksum mismatch that
-            // never touches the network (JK-2305).
+            // never touches the network.
             MavenRepo.Fetched f = p.repo.fetchArtifact(coord, p.expectedHex, () -> false);
             if (!f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name()

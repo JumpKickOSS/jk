@@ -353,7 +353,7 @@ class SpinnerTest {
 
     @Test
     void the_pin_decides_the_glyph_even_with_the_static_left_in_plain() throws Exception {
-        // The mechanism, stated the way JK-1003 stated its stamp boundary: poison the process
+        // The mechanism, stated the way stated its stamp boundary: poison the process
         // static in the plain direction, then assert the pinned scope still renders ANSI. If the
         // pin ever stopped out-ranking the static, every paired case above would quietly assert
         // whatever the last test to write the global happened to leave behind.
@@ -373,7 +373,7 @@ class SpinnerTest {
 
     @Test
     void a_plain_build_does_not_poison_the_pulse_cache_for_a_later_ansi_build() throws Exception {
-        // JK-1012. PULSE_CACHE memoizes Style[] and Theme.bright() bakes the colour decision into
+        // . PULSE_CACHE memoizes Style[] and Theme.bright bakes the colour decision into
         // every Style it returns — a colourless one has an empty SGR body. The key carried
         // Theme.active(), which looks like it carries the mode and does not: one JkDarkTheme
         // instance serves both modes and re-derives the answer per call. So the FIRST caller's mode

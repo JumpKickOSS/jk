@@ -63,7 +63,7 @@ class ScalaBuildE2eTest {
 
     @Test
     void scala_only_under_extra_src_gets_a_compiler(@TempDir Path tmp) throws Exception {
-        // JK-2302: .scala living only under a [build] extra-src overlay (no standard main root) must
+        // :.scala living only under a [build] extra-src overlay (no standard main root) must
         // still get a Scala toolchain — the gate reads the merged source set, not the main-roots walk.
         Path project = Files.createDirectories(tmp.resolve("sextra"));
         Path cache = cache();

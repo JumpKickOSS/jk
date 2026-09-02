@@ -1,9 +1,9 @@
-# fqcn-baseline.txt — the ratchet behind `checkNoFqcn` (JK-2412).
+# fqcn-baseline.txt — the ratchet behind `checkNoFqcn`.
 #
 # The house rule is "no FQCN except collisions" (docs/contributors/code-as-art.md, House rules ->
 # Java 25). It was never enforced: `jk format`'s `optimize-imports` pass built its OpenRewrite
 # parser with no classpath, so it resolved nothing and shortened nothing, and twelve module audits
-# each filed the same finding independently. JK-2408 threaded the classpath in; JK-2412 swept the
+# each filed the same finding independently. One pass threaded the classpath in; the next swept the
 # tree. 4,306 package-qualified references across 622 files became 878 across 253, and the
 # round-3 owner sweeps took it to 598 across 135 — the count below, which the guard prints
 # whenever a listed file shrinks. Retighten from that printout; never retype it.
@@ -50,7 +50,7 @@
 # `JavaCompiler` is claimed twice by Zinc's own API surface: `xsbti.compile.JavaCompiler`
 # (imported, because it is the type this worker hands Zinc) and `sbt.internal.inc.javac.JavaCompiler`,
 # whose `local()`/`fork()` build one. Both remaining references are that second name. Was 13 before
-# JK-2439 split the Zinc SPI adapters and the scalac construction into their own files; the
+# A later pass split the Zinc SPI adapters and the scalac construction into their own files; the
 # `javax.tools.JavaCompiler` half of the collision left with ProvenanceJavac and the `Javadoc` half
 # with ScalaBridge above.
     2  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java
@@ -77,7 +77,7 @@
 # These are the 56 of those 111 that carry a reference. `jk format` will shrink them for free on
 # the day the printer is fixed; nothing else will.
 #
-# THIS SECTION IS MEASURED, NOT CURATED (JK-2477). Until JK-2477 `jk format` reported a file it
+# THIS SECTION IS MEASURED, NOT CURATED. `jk format` used to report a file it
 # could not parse as already clean — a skipped pass and "nothing to shorten" were the same answer —
 # so the only way to know which files these were was to run the parser by hand, and the list here
 # was typed. `jk format` now reports them, and regenerating this section is two commands:
@@ -112,7 +112,7 @@
 #     (add the import, drop the package) and `jk format` will never undo one.
 #   * An annotation type — `@org.jspecify.annotations.NullMarked` on a package-info, and a handful
 #     of `@org.junit.jupiter.api.*` in tests.
-#   * A third-party type. JK-2408 measured the lock's 150 dependency jars at 4.6x the format time
+#   * A third-party type. The lock's 150 dependency jars measured at 4.6x the format time
 #     (8m14s vs 2m07s) for 1.4% more shortenings, and they crashed the worker JVM in 2 of 4 runs,
 #     so they are deliberately off the format classpath and their types cannot be resolved.
 #

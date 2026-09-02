@@ -60,31 +60,32 @@ final class HttpHistoryApi {
                             new HashMap<>()));
             return;
         }
-        // Single pass, single parse, streamed out: the kind gate and the "does this row
-        // even need enrichment" checks are lexical scans over the raw JSON, so a finished,
-        // id-stamped record — the overwhelming majority — is written through verbatim without ever
-        // being parsed; only in-flight or legacy rows pay MiniJson. The response is chunked
-        // straight to the socket instead of join-then-copy (a 200-row page was previously joined
-        // into one String and then copied again to bytes).
-        List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT * 4);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        // HEAD before the journal read: headers are the whole answer, so it must not pay for a
+        // 200-row scan it will never send.
         if (exchange.getRequestMethod().equals("HEAD")) {
             exchange.sendResponseHeaders(200, -1);
             return;
         }
+        // Single pass, no parse, streamed out: the kind gate rides into the journal as a lexical
+        // filter, so exactly one page of survivors is read (this used to load 4x and discard),
+        // and the raw loader never builds a record graph — the "does this row even need
+        // enrichment" check is lexical too, so a finished, id-stamped record — the overwhelming
+        // majority — is written through verbatim; only in-flight or legacy rows pay MiniJson. The
+        // response is chunked straight to the socket instead of join-then-copy.
+        List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT, HttpHistoryApi::isBuildLikeHistoryJson);
         exchange.sendResponseHeaders(200, 0);
         Map<String, SecretRedactor> redactors = new HashMap<>();
         try (var out = exchange.getResponseBody()) {
             out.write('[');
             int sent = 0;
             for (String r : raw) {
-                if (!isBuildLikeHistoryJson(r)) continue;
                 String part = needsEnrichment(r) ? enrichHistoryJson(r) : r;
                 part = redactRecordJson(part, redactors);
                 if (sent > 0) out.write(',');
                 out.write(part.getBytes(StandardCharsets.UTF_8));
-                if (++sent >= HISTORY_LIST_LIMIT) break;
+                sent++;
             }
             out.write(']');
         }

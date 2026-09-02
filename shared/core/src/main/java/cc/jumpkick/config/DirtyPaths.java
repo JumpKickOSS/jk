@@ -53,7 +53,7 @@ public final class DirtyPaths {
      *
      * <p>{@code --relative}: diff prints repo-root-relative paths by default while {@code
      * ls-files} prints cwd-relative ones — resolved against a workspace root nested inside a
-     * larger repo, the two bases disagree and diff lines point at nonexistent files (JK-2611).
+     * larger repo, the two bases disagree and diff lines point at nonexistent files.
      * With it, both commands speak workspace-root-relative, and dirt outside the root (which no
      * module can own) drops out instead of mis-resolving.
      */
@@ -68,7 +68,7 @@ public final class DirtyPaths {
     /**
      * {@code null} on failure; otherwise one trimmed non-blank line per path — from stdout only.
      * stderr is discarded, never parsed: a {@code warning:}/{@code hint:} line merged into the
-     * output would otherwise be taken for a dirty path (JK-2611).
+     * output would otherwise be taken for a dirty path.
      */
     static List<String> gitLines(Path root, String... gitArgs) {
         try {

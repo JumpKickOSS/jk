@@ -81,7 +81,7 @@ class ForecastKeyParityTest {
 
     /**
      * {@code compileStep} is the one forecast helper naming its step from a parameter; both call
-     * sites pass a literal. Any OTHER unresolvable step name is a step the scan cannot see.
+     * sites pass a literal. Any OTHER unresolvable step name is a step the scan cannot.
      */
     private static final List<String> STEP_INDIRECTIONS = List.of("String name", "name");
 

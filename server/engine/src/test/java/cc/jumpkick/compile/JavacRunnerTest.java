@@ -72,7 +72,7 @@ class JavacRunnerTest {
                 .isFalse();
         assertThat(JavacRunner.isJvmHostNoise("error: error reading corrupt.jar; zip END header not found"))
                 .isFalse();
-        // JK-2095: lowercase warning: = javac / annotation-processor Messager channel — a
+        // : lowercase warning: = javac / annotation-processor Messager channel — a
         // processor warning that mentions the banner phrases must reach diagnostics.
         assertThat(JavacRunner.isJvmHostNoise(
                         "warning: generated code calls a terminally deprecated method in sun.misc.Unsafe"))

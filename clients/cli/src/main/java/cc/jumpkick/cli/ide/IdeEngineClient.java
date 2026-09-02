@@ -47,7 +47,7 @@ import java.util.function.Consumer;
  * </ol>
  *
  * <p>File generation ({@code jk ide}) remains a separate offline/export path; this class does not
- * write {@code.iml} / {@code.vscode} files. The engine stays out-of-process.
+ * write {@code .iml} / {@code .vscode} files. The engine stays out-of-process.
  */
 public class IdeEngineClient {
 
@@ -207,7 +207,7 @@ public class IdeEngineClient {
                 null);
         for (var d : r.errors()) errors.add(d.message());
         progress.onModuleFinish(coord, r.success());
-        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors), warningMessages(r));
     }
 
     /**
@@ -229,7 +229,7 @@ public class IdeEngineClient {
                 null);
         for (var d : r.errors()) errors.add(d.message());
         progress.onModuleFinish(coord, r.success());
-        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors), warningMessages(r));
     }
 
     /**
@@ -272,6 +272,7 @@ public class IdeEngineClient {
         int modules = 0;
         int failed = 0;
         List<String> errors = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
         for (String d : dirs) {
             if (d == null || d.isBlank()) continue;
             Path mod = Path.of(d);
@@ -281,8 +282,9 @@ public class IdeEngineClient {
                 failed++;
                 if (o.errors() != null) errors.addAll(o.errors());
             }
+            if (o.warnings() != null) warnings.addAll(o.warnings());
         }
-        return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors));
+        return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors), List.copyOf(warnings));
     }
 
     private BuildOutcome testOneModule(Path mod, BuildListener progress, TestSelection selection) throws IOException {
@@ -312,7 +314,7 @@ public class IdeEngineClient {
             errors.add("tests failed: " + testOut[0].failed() + " failed / " + testOut[0].total() + " total");
         }
         progress.onModuleFinish(coord, r.success());
-        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors), warningMessages(r));
     }
 
     /**
@@ -462,7 +464,21 @@ public class IdeEngineClient {
         default void onModuleFinish(String coord, boolean success) {}
     }
 
+    /** {@code BuildPlanResult} keeps warnings as a second list; dropping it hid every compiler warning from the IDE. */
+    private static List<String> warningMessages(BuildPlanResult r) {
+        List<String> warnings = new ArrayList<>();
+        for (var d : r.warnings()) warnings.add(d.message());
+        return List.copyOf(warnings);
+    }
+
     public record SyncOutcome(boolean success, long fetched, long upToDate, List<String> errors) {}
 
-    public record BuildOutcome(boolean success, int modules, int failedModules, List<String> errors) {}
+    public record BuildOutcome(
+            boolean success, int modules, int failedModules, List<String> errors, List<String> warnings) {
+
+        /** Error-only outcome (setup failures, runs): no compiler warnings to carry. */
+        public BuildOutcome(boolean success, int modules, int failedModules, List<String> errors) {
+            this(success, modules, failedModules, errors, List.of());
+        }
+    }
 }

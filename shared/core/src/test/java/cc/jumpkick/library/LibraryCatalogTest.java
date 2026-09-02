@@ -10,7 +10,7 @@ class LibraryCatalogTest {
 
     @Test
     void pipe_in_name_or_coord_is_rejected_at_parse_time() {
-        // `|` is CatalogReadAck's packed-field separator (JK-2169).
+        // `|` is CatalogReadAck's packed-field separator.
         assertThatThrownBy(() -> LibraryCatalog.parseTable("""
                         [libraries]
                         "weird|name" = "g:a"

@@ -20,6 +20,7 @@ import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -355,7 +356,7 @@ public final class TaskForecaster {
             BuildLayout layout = BuildLayout.of(dir, project);
             int release = project.project().javaRelease();
             // ActionKey.forJavac hashes the project JDK, so the forecast has to resolve the same
-            // one the build will compile with (JK-2460). Never installs: a forecast that could
+            // one the build will compile with. Never installs: a forecast that could
             // download a JDK is not read-only, and an unresolvable JDK throws out of this block
             // and is reported as a step that will run, which is the pessimistic answer.
             Path javaHome = forecastJavaHome(dir, project, lock);
@@ -386,11 +387,12 @@ public final class TaskForecaster {
             PackagingKeys.Owner plugin = PackagingKeys.pluginFor(project, layout, cache);
             PluginBuild.Declarations pkgDecls = plugin == null ? null : plugin.decls();
             Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
+            InputTrees.coverModule(dir);
             // The source set the build compiles, derived by its owner: the src walk plus the
             // [build] extra-src overlay, plugin source roots, every .scala (one Zinc session
             // compiles both languages) and the generated roots. Walking src/main/java alone keyed
             // a request the build never makes, so every Scala module and every extra-src module
-            // forecast a rebuild that was not due (JK-2479).
+            // forecast a rebuild that was not due.
             List<Path> mainSrc = PlannerCompile.mainJavaSources(
                     PlannerCompile.javaAndScalaSources(
                             project, dir, compact, CompileSupport.collectJavaSources(mainSrcDir)),
@@ -431,7 +433,7 @@ public final class TaskForecaster {
                     }
                 }
                 // The Scala toolchain is a compile-main input on both sides: its stdlib jars are
-                // freshness-stamp inputs (JK-2295) and its version and compiler closure are hashed
+                // freshness-stamp inputs and its version and compiler closure are hashed
                 // by ActionKey.forJavac. Resolving it here is what stops a Scala module keying a
                 // request with no Scala in it at all.
                 ScalaCompile.Setup scalaSetup =
@@ -681,6 +683,9 @@ public final class TaskForecaster {
                             dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
                     boolean hit = stampKey != null && present(actionCache, stampKey);
+                    if (Perf.ENABLED) {
+                        System.err.println("[jk-perf] forecast-test-stamp " + dir + " key=" + stampKey + " hit=" + hit);
+                    }
                     steps.add(
                             hit
                                     ? new TaskForecast.Task(
@@ -739,7 +744,7 @@ public final class TaskForecaster {
                 // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android).
                 // The build runs the packager, not JarPackager, under a token bag that has nothing
                 // in common with the plain jar's — so forecasting the plain-jar key here described
-                // a step the build never runs and reported "repackage" forever (JK-2491). The key
+                // a step the build never runs and reported "repackage" forever. The key
                 // comes from the same body the build calls; anything that stops us reproducing it
                 // (an unfetchable packager tool, an untrusted worker) forecasts RUN, never a hit.
                 steps.add(PackagingKeys.pluginPackagerStep(
@@ -832,7 +837,7 @@ public final class TaskForecaster {
             // eligibility from the [native] table made fallback (table-less unique-main) modules
             // invisible (jar clean + binary missing ⇒ skipped ⇒ "success" with no binary) and
             // priced unselected cone prereqs WITH tables as perpetually dirty (their plans get
-            // allowNative=false, so the binary they were dirty "for" never appears) — JK-2088.
+            // allowNative=false, so the binary they were dirty "for" never appears) —.
             boolean nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
             if ((nativeOnBuild || nativeOnNativeCmd) && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
@@ -857,7 +862,7 @@ public final class TaskForecaster {
             // ImagePlans' contract: a registry push/docker load/tarball write is a side-effect,
             // never a cacheable output — an up-to-date module still runs its image tail. Without
             // this step a clean workspace member forecast "not dirty", was never scheduled, and
-            // jk image reported success having pushed nothing (JK-2084).
+            // jk image reported success having pushed nothing.
             if (target == WorkspaceTarget.IMAGE && terminalDirs.contains(dir)) {
                 steps.add(new TaskForecast.Task(
                         TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
@@ -975,20 +980,19 @@ public final class TaskForecaster {
     }
 
     static boolean classesDirHasContent(Path classesDir) throws IOException {
-        if (!Files.isDirectory(classesDir)) return false;
-        try (var walk = Files.walk(classesDir)) {
-            return walk.anyMatch(p -> {
-                if (!Files.isRegularFile(p)) return false;
-                return !BuildStamps.isStampFile(p.getFileName().toString());
-            });
-        }
+        // Terminates on the first hit with the attrs the walk already read — Files.walk's
+        // anyMatch re-stats every entry to ask isRegularFile.
+        return PathUtil.anyRegularFile(
+                classesDir,
+                d -> false,
+                p -> !BuildStamps.isStampFile(p.getFileName().toString()));
     }
 
     /** True when a module-root {@code jk-plugin.toml} differs from its copy at the classes root. */
     static boolean pluginManifestOutOfSync(Path dir, Path outDir) {
         Path src = dir.resolve(ManifestPaths.PLUGIN_MANIFEST);
         Path copy = outDir.resolve(ManifestPaths.PLUGIN_MANIFEST);
-        // A deleted (or renamed-away) manifest with a copy still in classes/ is the JK-2174
+        // A deleted (or renamed-away) manifest with a copy still in classes/ is the
         // orphan: the jar stays "self-describing" with an obsolete manifest until a clean build.
         if (!Files.isRegularFile(src)) return Files.isRegularFile(copy);
         try {
@@ -1007,7 +1011,7 @@ public final class TaskForecaster {
     static boolean resourcesOutOfSync(Path resDir, Path outDir) {
         // Two readAttributes per resource, not six metadata ops. The source's come from the walk for
         // free; the copy's answer presence, size and mtime together — where isRegularFile + size +
-        // size + mtime + mtime each re-resolved a path (JK-1031).
+        // size + mtime + mtime each re-resolved a path.
         boolean[] dirty = {false};
         try {
             PathUtil.forEachRegularFile(resDir, (source, attrs) -> {

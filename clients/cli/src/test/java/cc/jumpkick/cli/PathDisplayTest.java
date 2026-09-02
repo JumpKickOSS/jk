@@ -66,7 +66,7 @@ class PathDisplayTest {
     void absolute_when_outside_all_scopes() throws IOException {
         // Sandbox OUTSIDE the repo: the build's java.io.tmpdir is build/tmp (inside the checkout),
         // so a @TempDir path shares the process CWD (repo) as an anchor and renders repo-relative
-        // instead of absolute (JK-2314).
+        // instead of absolute.
         Path tmp = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-pd-test-");
         try {
             Path project = Files.createDirectories(tmp.resolve("project"));

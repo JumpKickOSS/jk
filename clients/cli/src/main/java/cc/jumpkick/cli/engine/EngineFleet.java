@@ -181,7 +181,7 @@ public final class EngineFleet {
     private static List<Member> untracked(Set<Long> known, boolean allHomes) {
         long self = ProcessHandle.current().pid();
         String me = ProcessHandle.current().info().user().orElse("");
-        Path data = JkDirs.data();
+        Path home = JkDirs.home();
         Path state = JkDirs.state();
         List<Member> out = new ArrayList<>();
         try {
@@ -191,7 +191,7 @@ public final class EngineFleet {
                 if (!sameUser(me, h)) return;
                 String cmd = commandLineOf(h);
                 if (!isResidentEngineProcess(h, cmd)) return;
-                if (!allHomes && !belongsToThisHome(cmd, data, state)) return;
+                if (!allHomes && !belongsToThisHome(cmd, home, state)) return;
                 out.add(memberForProcess(pid, cmd));
             });
         } catch (RuntimeException e) {
@@ -201,43 +201,54 @@ public final class EngineFleet {
     }
 
     /**
-     * True when {@code commandLine} names this data root or state dir (jar path, AOT path, or the
-     * data root inferred from the jar). A test JVM under {@code target/test-jk-home/data} must not
-     * match the developer's {@code ~/.local/share/jk} engine.
+     * True when {@code commandLine} names this home or state dir (jar path, AOT path, or the home
+     * inferred from the jar). A test JVM under {@code target/test-jk-home} must not match the
+     * developer's {@code ~/.jk} engine.
      */
-    static boolean belongsToThisHome(String commandLine, Path dataDir, Path state) {
-        if (commandLine == null || commandLine.isBlank() || dataDir == null) return false;
+    static boolean belongsToThisHome(String commandLine, Path homeDir, Path state) {
+        if (commandLine == null || commandLine.isBlank() || homeDir == null) return false;
         String cmd = commandLine.replace('\\', '/');
-        String homeStr = dataDir.toAbsolutePath().normalize().toString().replace('\\', '/');
+        String homeStr = homeDir.toAbsolutePath().normalize().toString().replace('\\', '/');
         if (!homeStr.isEmpty() && cmd.contains(homeStr)) return true;
         if (state != null) {
             String stateStr = state.toAbsolutePath().normalize().toString().replace('\\', '/');
             if (!stateStr.isEmpty() && cmd.contains(stateStr)) return true;
         }
-        Path inferred = dataDirFromCommandLine(commandLine);
+        Path inferred = homeFromCommandLine(commandLine);
         return inferred != null
                 && inferred.toAbsolutePath()
                         .normalize()
-                        .equals(dataDir.toAbsolutePath().normalize());
+                        .equals(homeDir.toAbsolutePath().normalize());
     }
 
     /**
-     * Best-effort <em>data root</em> from a spawn line ({@code …/<data>/lib/jk-engine/<jar>}). Null
+     * Best-effort <em>home root</em> from a spawn line ({@code …/<home>/lib/jk-engine/<jar>}). Null
      * when the command line is not that shape.
      */
-    static Path dataDirFromCommandLine(String commandLine) {
+    static Path homeFromCommandLine(String commandLine) {
         if (commandLine == null || commandLine.isBlank()) return null;
         String norm = commandLine.replace('\\', '/');
         int marker = norm.indexOf("/lib/jk-engine/");
         if (marker <= 0) return null;
-        int start = marker;
-        while (start > 0) {
-            char c = norm.charAt(start - 1);
-            if (c == ' ' || c == '\t') break;
-            start--;
+        int start = quotedTokenStart(norm, marker, '"');
+        if (start < 0) start = quotedTokenStart(norm, marker, '\'');
+        if (start < 0) {
+            start = marker;
+            while (start > 0 && !Character.isWhitespace(norm.charAt(start - 1))) start--;
         }
         String parent = norm.substring(start, marker);
         return parent.isBlank() ? null : Path.of(parent);
+    }
+
+    private static int quotedTokenStart(String commandLine, int before, char quote) {
+        boolean inside = false;
+        int opening = -1;
+        for (int i = 0; i < before; i++) {
+            if (commandLine.charAt(i) != quote) continue;
+            inside = !inside;
+            opening = inside ? i : -1;
+        }
+        return inside ? opening + 1 : -1;
     }
 
     private static Member memberForProcess(long pid, String cmd) {
@@ -254,17 +265,15 @@ public final class EngineFleet {
     }
 
     /**
-     * State dirs worth scanning for an untracked engine's socket. All a spawn line names is the
-     * data root; state is a separate root, and only the {@code JK_HOME} umbrella makes the two
-     * siblings ({@code $JK_HOME/data} + {@code $JK_HOME/state}) — under XDG they live in unrelated
-     * trees, so this client's own state dir is the second candidate. Scanning a directory that does
-     * not exist costs nothing ({@link EnginePaths#identitiesIn} returns empty).
+     * State dirs worth scanning for an untracked engine's socket: {@code <home>/state} read
+     * straight off the spawn line, then this client's own — which differ only when
+     * {@code JK_STATE_DIR} moved state out of the home tree. Scanning a directory that does not
+     * exist costs nothing ({@link EnginePaths#identitiesIn} returns empty).
      */
     private static List<Path> candidateStateDirs(String commandLine) {
         List<Path> out = new ArrayList<>(2);
-        Path data = dataDirFromCommandLine(commandLine);
-        Path umbrella = data == null ? null : data.getParent();
-        if (umbrella != null) out.add(umbrella.resolve("state"));
+        Path home = homeFromCommandLine(commandLine);
+        if (home != null) out.add(home.resolve("state"));
         Path own = JkDirs.state();
         if (own != null && !out.contains(own)) out.add(own);
         return out;
@@ -409,6 +418,45 @@ public final class EngineFleet {
             results.add(stop(m, now));
         }
         return List.copyOf(results);
+    }
+
+    /**
+     * Retire engines positively identified in the superseded platform-default product location.
+     */
+    public static List<StopResult> retireOldDefaultLayoutEngines() {
+        RetiredEngineLayouts.Layout layout = RetiredEngineLayouts.currentPlatformDefault();
+        List<Member> candidates = list(layout.stateDir(), "", true);
+        return retireOldDefaultLayoutEngines(candidates, JkDirs.home(), layout);
+    }
+
+    static List<StopResult> retireOldDefaultLayoutEngines(
+            List<Member> candidates, Path currentHome, RetiredEngineLayouts.Layout retired) {
+        List<StopResult> results = new ArrayList<>();
+        for (Member member : candidates) {
+            String commandLine = ProcessHandle.of(member.pid())
+                    .map(EngineFleet::commandLineOf)
+                    .orElse("");
+            if (!isRetiredDefaultEngine(commandLine, currentHome, retired)) continue;
+            results.add(retire(member));
+        }
+        return List.copyOf(results);
+    }
+
+    static boolean isRetiredDefaultEngine(String commandLine, Path currentHome, RetiredEngineLayouts.Layout retired) {
+        if (!isResidentEngine(commandLine)) return false;
+        Path engineHome = homeFromCommandLine(commandLine);
+        if (engineHome == null) return false;
+        Path normalized = engineHome.toAbsolutePath().normalize();
+        return normalized.equals(retired.engineHome().toAbsolutePath().normalize())
+                && !normalized.equals(currentHome.toAbsolutePath().normalize());
+    }
+
+    private static StopResult retire(Member member) {
+        StopResult result = stop(member, false);
+        if (result.outcome() != Outcome.DRAINING) return result;
+        if (waitForExit(member.pid())) return new StopResult(member, Outcome.STOPPED);
+        EngineClient.hardKill(member.pid());
+        return new StopResult(member, waitForExit(member.pid()) ? Outcome.KILLED : Outcome.SURVIVED);
     }
 
     /** Stop the engine with this pid, or empty when no running engine has it. */

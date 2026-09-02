@@ -83,21 +83,13 @@ class JdkInventoryTest {
                 nerd-font = "auto"
                 """.formatted(MinimalToml.quote(javaHome.toString()), MinimalToml.quote(graalHome.toString())),
                 StandardCharsets.UTF_8);
-        Path data = Files.createDirectories(tmp.resolve("data"));
-        Files.createSymbolicLink(data.resolve("default-jdk"), javaHome);
-        Files.createSymbolicLink(data.resolve("current-jdk"), javaHome);
-        Files.createSymbolicLink(data.resolve("default-graal-jdk"), graalHome);
-
-        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config, data);
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config);
         assertThat(inv.defaultId()).contains("temurin-25.0.3");
         assertThat(inv.graalId()).contains("graalvm-25.0.3");
 
         String leftover = Files.readString(config);
         assertThat(leftover).contains("color = \"auto\"").contains("nerd-font = \"auto\"");
         assertThat(leftover).doesNotContain("default-jdk").doesNotContain("default-graal");
-        assertThat(Files.exists(data.resolve("default-jdk"))).isFalse();
-        assertThat(Files.exists(data.resolve("current-jdk"))).isFalse();
-        assertThat(Files.exists(data.resolve("default-graal-jdk"))).isFalse();
         assertThat(Files.readString(inv.file())).doesNotContain("sha256 =");
     }
 
@@ -233,7 +225,7 @@ class JdkInventoryTest {
                 nerd-font = "auto"
                 """.formatted(MinimalToml.quote(external.toString())), StandardCharsets.UTF_8);
 
-        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config, null);
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config);
         assertThat(inv.defaultId()).contains("25.0.4-tem");
         // The pre-upgrade explicit default keeps resolving — the old scheme recorded the home
         // for exactly this case, and migration must not strand a bare id.
@@ -263,7 +255,7 @@ class JdkInventoryTest {
                 integration = true
                 """;
         Files.writeString(config, original, StandardCharsets.UTF_8);
-        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config, null);
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config);
         inv.defaultId(); // trigger migrate
         assertThat(Files.readString(config)).isEqualTo(original);
     }

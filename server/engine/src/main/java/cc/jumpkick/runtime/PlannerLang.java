@@ -169,7 +169,7 @@ public final class PlannerLang {
      * Groovy has no incremental state). Shared by the main {@code compile-groovy} and {@code
      * compile-test} steps. The caller owns freshness stamps, output assembly, and outcome reporting.
      *
-     * @param javaSourceRoots when non-empty, joint mode: the worker sweeps {@code.java} under them
+     * @param javaSourceRoots when non-empty, joint mode: the worker sweeps {@code .java} under them
      * for resolution only (jk's javac worker owns the real Java outputs)
      * @param stubsOut when non-null, Java-visible stubs are retained there for javac's sourcepath
      */
@@ -209,10 +209,8 @@ public final class PlannerLang {
         }
         // Joint mode sweeps.java sources through a real javac pass — annotation processors
         // must run there or generated members fail resolution.
-        @SuppressWarnings("unchecked")
-        List<Path> processorCp = javaSourceRoots == null
-                ? List.of()
-                : (List<Path>) ctx.get(PROCESSOR_CP).orElse(List.of());
+        List<Path> processorCp =
+                javaSourceRoots == null ? List.of() : ctx.get(PROCESSOR_CP).orElse(List.of());
         GroovycRequest req = GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)

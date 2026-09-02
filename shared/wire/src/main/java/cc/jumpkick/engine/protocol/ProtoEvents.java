@@ -947,7 +947,7 @@ public final class ProtoEvents {
 
     /**
      * @param image image-terminal outcome (workspace {@code jk image}); additive nullable fields —
-     * older clients ignore them, non-image modules omit them entirely (JK-2100).
+     * older clients ignore them, non-image modules omit them entirely.
      */
     public static String moduleFinish(
             String dir,
@@ -994,7 +994,7 @@ public final class ProtoEvents {
      * rows are raw worker output, {@code .env} values are secret by source, and this line reaches
      * the user's terminal verbatim. Three of the four engine verbs that emit this event used to
      * forget the masking call, which a {@code List<String>} parameter could not distinguish from
-     * the one that remembered (JK-2387). {@link cc.jumpkick.config.SecretRedactor#redactAll} is the
+     * the one that remembered. {@link cc.jumpkick.config.SecretRedactor#redactAll} is the
      * only mint, so forgetting is now a compile error.
      */
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {

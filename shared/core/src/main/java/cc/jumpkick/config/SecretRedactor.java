@@ -13,21 +13,21 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Masks {@code.env}-sourced values in text that leaves the process.
+ * Masks {@code .env}-sourced values in text that leaves the process.
  *
  * <p>Masking is by <em>declaration</em>, not by name heuristics ({@code *_TOKEN}, {@code
- * *_PASSWORD}, …): a name a {@code.env} file declares is a secret name, and its effective value is
+ * *_PASSWORD}, …): a name a {@code .env} file declares is a secret name, and its effective value is
  * secret whichever layer supplied it.
  *
  * <p>The narrower rule — only values that {@link EnvLookup#isFromFile} attributes to the file —
- * left the common case unmasked. {@code.env} supplies the default and CI exports the real one, so
+ * left the common case unmasked. {@code .env} supplies the default and CI exports the real one, so
  * {@code NEXUS_TOKEN=…} in the file plus {@code NEXUS_TOKEN} in the environment meant the value
  * that actually reached the wire was the one value never masked. In the degenerate case the two are
  * the same string and it went unmasked purely because the shell also exported it. Precedence
  * decides which value wins; it does not decide whether the name holds a credential.
  *
  * <p>The reach is still bounded by what {@link EnvLookup} can enumerate. A credential that appears
- * only in the real environment, with no {@code.env} line naming it, is invisible here — nothing
+ * only in the real environment, with no {@code .env} line naming it, is invisible here — nothing
  * can list the host environment's secrets, and guessing by name is the heuristic this class exists
  * to avoid. The way in for such a value is to hold it and say so: jk's repository-credential
  * resolution declares what it resolved through {@link ResolvedSecrets}, which {@link #and} folds
@@ -50,7 +50,7 @@ public final class SecretRedactor {
 
     /**
      * Values shorter than this are treated as configuration, not credentials. Masking is
-     * by declaration, so without a floor a {@code.env} holding {@code NODE_ENV=test} or
+     * by declaration, so without a floor a {@code .env} holding {@code NODE_ENV=test} or
      * {@code PORT=8080} turns every {@code test} / {@code 8080} in build output into {@code ***}
      * and hashes unrelated cache-key text that contains the substring. Real tokens are comfortably
      * longer; a deliberately short secret is outside what declaration-based masking can protect.
@@ -98,7 +98,7 @@ public final class SecretRedactor {
     private static final ConcurrentHashMap<Set<String>, SecretRedactor> MEMO = new ConcurrentHashMap<>();
 
     /**
-     * Build a redactor from an {@link EnvLookup}: the effective value of every name a {@code.env}
+     * Build a redactor from an {@link EnvLookup}: the effective value of every name a {@code .env}
      * file declares, whether the file or the real environment supplied it.
      */
     public static SecretRedactor from(EnvLookup env) {
@@ -128,7 +128,7 @@ public final class SecretRedactor {
 
     /**
      * This redactor plus {@code extra} secret values — the composition point for a secret that no
-     * {@code.env} declares because it came from somewhere else entirely, such as a repository
+     * {@code .env} declares because it came from somewhere else entirely, such as a repository
      * credential jk resolved from {@code JK_REPO_<ID>_TOKEN} (see {@link ResolvedSecrets}).
      *
      * <p>Masking stays by declaration either way: {@code extra} is values a caller <em>states</em>
@@ -173,7 +173,7 @@ public final class SecretRedactor {
      * Redact every element and carry the proof in the type: {@link Redacted} has no other mint.
      *
      * <p>This is the shape a terminal event wants — {@code ProtoEvents.workspaceFinish} takes
-     * {@code List<Redacted>} precisely so a verb cannot pass raw worker output (JK-2387). A null
+     * {@code List<Redacted>} precisely so a verb cannot pass raw worker output. A null
      * row becomes the empty string; error rows are display text and a null on the wire is not a
      * thing.
      */
@@ -215,7 +215,7 @@ public final class SecretRedactor {
     /**
      * JSON string-body escaping, delegated to {@code Jsonl.quote} (the writer this redaction
      * must stay in lock-step with) minus its surrounding quotes — the module is a direct
-     * dependency now, so the old hand-copied twin is gone (JK-2172).
+     * dependency now, so the old hand-copied twin is gone.
      */
     private static String jsonEscape(String s) {
         String quoted = Jsonl.quote(s);

@@ -125,7 +125,7 @@ public final class Http {
      * propagate to the caller (no resume).
      *
      * <p>The per-request timeout is generous (15 min) because JDK archives commonly run 100–250 MB
-     * and the standard {@code.get} 60s ceiling would cut them off on slow links.
+     * and the standard {@code .get} 60s ceiling would cut them off on slow links.
      */
     public HttpResponse<InputStream> getStream(URI uri) throws IOException, InterruptedException {
         return getStream(uri, Map.of());

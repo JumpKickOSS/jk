@@ -171,7 +171,7 @@ public final class Spinner implements AutoCloseable {
         this.wedgeCommand = wedge ? (wedgeCommand == null ? "" : wedgeCommand) : null;
         this.nerdFont = wedge ? GlobalConfig.nerdFont() : NerdFontCaps.NONE;
         // Script mode is no-progress: cursor-control ANSI/OSC and heartbeat lines must never
-        // enter a stream a program is parsing (JK-2330's rule, applied at the primitive so no
+        // enter a stream a program is parsing ('s rule, applied at the primitive so no
         // call site can route around it the way Spinner.show(CliOutput.stdout()) did).
         this.silent = SessionContext.current().config().noProgressOr(false) || CliOutput.scriptMode();
         if (wedge) {
@@ -293,7 +293,7 @@ public final class Spinner implements AutoCloseable {
         RenderContext ctx = RenderContext.current().withCaps(nerdFont).withFrame(frame);
         // renderLiveLine, not renderLine: this frame is repainted with \r, and \r rewinds one
         // physical row. A message long enough to wrap turns every frame into a new line — the same
-        // defect JK-2602 filed against the JDK bar, latent here for any long `jk install` label.
+        // defect filed against the JDK bar, latent here for any long `jk install` label.
         return new JkWedge(
                         Icon.spinner(), command == null ? "" : command, RichText.ansi(message == null ? "" : message))
                 .variant(JkWedge.Variant.WORK)

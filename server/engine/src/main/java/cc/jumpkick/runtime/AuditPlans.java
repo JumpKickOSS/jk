@@ -48,7 +48,7 @@ public final class AuditPlans {
             URI osvBatchUrl,
             URI osvVulnsUrl,
             FindingObserver observer) {
-        Path workerJar = PluginJar.AUDITOR.locate(JkStores.cas(cache));
+        Path workerJar = PluginJar.AUDITOR.locate(JkStores.storeCas());
 
         Task readLock = Task.builder(TaskNames.READ_LOCK)
                 .ticks(1)

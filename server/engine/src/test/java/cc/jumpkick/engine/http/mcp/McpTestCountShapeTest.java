@@ -10,7 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * MCP and the dashboard read the same test-count field (JK-2424).
+ * MCP and the dashboard read the same test-count field.
  *
  * <p>{@code McpHistoryViews.summarize} used to flatten the journal's nested
  * {@code tests:{total,succeeded,failed,skipped}} into a private scalar {@code testFailed}, so an
@@ -21,7 +21,7 @@ class McpTestCountShapeTest {
 
     /**
      * Verbatim from a real journal record — a jk self-host run:
-     * {@code ~/.local/state/jk/builds/projects/a66f86e5…/runs/1/record.json}. Truncated to the fields
+     * {@code ~/.jk/state/builds/projects/a66f86e5…/runs/1/record.json}. Truncated to the fields
      * {@code summarize} reads; the {@code tests} block is byte-for-byte what the engine wrote.
      */
     private static final String REAL_RECORD = """

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildLogicStems;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -9,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -38,16 +40,30 @@ import java.util.Optional;
  */
 final class BuildLogicScripts {
 
+    /**
+     * Built from {@link BuildLogicStems#ALL} — the table {@code jk tasks} reads too — so the two
+     * cannot disagree. A stem added there without an anchor here fails at class load, not by
+     * silently dropping the script.
+     */
     private static final Map<String, BuildLogicAnchor> STEMS;
 
     static {
         Map<String, BuildLogicAnchor> m = new LinkedHashMap<>();
-        m.put("before-compile", BuildLogicAnchor.BEFORE_COMPILE);
-        m.put("after-compile", BuildLogicAnchor.AFTER_COMPILE);
-        m.put("after-resources", BuildLogicAnchor.AFTER_RESOURCES);
-        m.put("before-package", BuildLogicAnchor.BEFORE_PACKAGE);
-        m.put("after-build", BuildLogicAnchor.AFTER_BUILD);
-        m.put("gate", BuildLogicAnchor.GATE);
+        for (String stem : BuildLogicStems.ALL) {
+            m.put(
+                    stem,
+                    switch (stem) {
+                        case "before-compile" -> BuildLogicAnchor.BEFORE_COMPILE;
+                        case "after-compile" -> BuildLogicAnchor.AFTER_COMPILE;
+                        case "after-resources" -> BuildLogicAnchor.AFTER_RESOURCES;
+                        case "before-package" -> BuildLogicAnchor.BEFORE_PACKAGE;
+                        case "after-build" -> BuildLogicAnchor.AFTER_BUILD;
+                        case "gate" -> BuildLogicAnchor.GATE;
+                        default ->
+                            throw new IllegalStateException(
+                                    "BuildLogicStems.ALL grew '" + stem + "' without an anchor here — add the mapping");
+                    });
+        }
         STEMS = Map.copyOf(m);
     }
 
@@ -60,13 +76,24 @@ final class BuildLogicScripts {
 
     private BuildLogicScripts() {}
 
-    /** Discover top-level {@code *.groovy} / {@code *.kts} stem scripts under {@code logicDir}. */
+    /**
+     * Discover top-level {@code *.groovy} / {@code *.kts} stem scripts under {@code logicDir}.
+     *
+     * <p>A script the engine will not run is reported, never swallowed — the same principle
+     * {@code rejectMisplacedStems} states: a script that does not run and does not complain is
+     * indistinguishable from one that passed. An unrecognized top-level stem warns and names the
+     * valid stems (with the closest as a suggestion); a recognized stem sitting in a subdirectory
+     * warns that only top-level scripts run.
+     */
     static List<ScriptTask> discover(Path logicDir) throws IOException {
         if (!Files.isDirectory(logicDir)) return List.of();
         Map<String, ScriptTask> byName = new LinkedHashMap<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(logicDir)) {
             for (Path p : stream) {
-                if (!Files.isRegularFile(p)) continue;
+                if (!Files.isRegularFile(p)) {
+                    if (Files.isDirectory(p)) warnNestedStems(logicDir, p);
+                    continue;
+                }
                 String file = p.getFileName().toString();
                 ScriptKind kind;
                 String stem;
@@ -80,7 +107,10 @@ final class BuildLogicScripts {
                     continue;
                 }
                 Optional<BuildLogicAnchor> anchor = matchAnchor(stem);
-                if (anchor.isEmpty()) continue;
+                if (anchor.isEmpty()) {
+                    warnUnknownStem(logicDir, p, stem);
+                    continue;
+                }
                 String name = normalizeName(stem);
                 ScriptTask next = new ScriptTask(name, anchor.get(), p, kind);
                 ScriptTask prev = byName.get(name);
@@ -102,25 +132,47 @@ final class BuildLogicScripts {
     }
 
     static Optional<BuildLogicAnchor> matchAnchor(String stem) {
-        if (stem == null || stem.isBlank()) return Optional.empty();
-        String n = stem.trim().toLowerCase(Locale.ROOT).replace('_', '-');
-        BuildLogicAnchor exact = STEMS.get(n);
-        if (exact != null) return Optional.of(exact);
-        for (Map.Entry<String, BuildLogicAnchor> e : STEMS.entrySet()) {
-            String prefix = e.getKey() + "-";
-            if (n.startsWith(prefix) && n.length() > prefix.length()) {
-                return Optional.of(e.getValue());
-            }
-        }
-        return Optional.empty();
+        return BuildLogicStems.match(stem).map(STEMS::get);
     }
 
     /** Canonical task name (underscores → hyphens, lower-case). */
     static String normalizeName(String stem) {
-        return stem.trim().toLowerCase(Locale.ROOT).replace('_', '-');
+        return BuildLogicStems.normalize(stem);
     }
 
-    static Map<String, BuildLogicAnchor> stems() {
-        return STEMS;
+    private static void warnUnknownStem(Path logicDir, Path file, String stem) {
+        RunNotices.warnOnce("build-logic-unknown-stem:" + file.getFileName(), () -> {
+            String suggest = BuildLogicStems.closest(stem)
+                    .map(s -> " Did you mean " + s + "?")
+                    .orElse("");
+            return "[build] " + logicDir.getFileName() + "/" + file.getFileName()
+                    + " is not a recognized build-logic stem, so it will not run." + suggest
+                    + " Module stems: " + String.join(" / ", BuildLogicStems.MODULE)
+                    + "; invocation-root stems: " + String.join(" / ", BuildLogicStems.ROOT) + ".";
+        });
+    }
+
+    /** One level down is where a misplaced script actually lands ({@code .jk/scripts/gate.kts}). */
+    private static void warnNestedStems(Path logicDir, Path subDir) {
+        try {
+            PathUtil.forEachChild(subDir, (p, attrs) -> {
+                if (!attrs.isRegularFile()) return true;
+                String file = p.getFileName().toString();
+                String stem = null;
+                if (file.endsWith(".groovy")) stem = file.substring(0, file.length() - ".groovy".length());
+                else if (file.endsWith(".kts")) stem = file.substring(0, file.length() - ".kts".length());
+                if (stem == null || BuildLogicStems.match(stem).isEmpty()) return true;
+                Path rel = logicDir.relativize(p);
+                RunNotices.warnOnce(
+                        "build-logic-nested-stem:" + rel,
+                        () -> "[build] "
+                                + logicDir.getFileName() + "/" + rel
+                                + " will not run: build-logic scripts are discovered at the top level of "
+                                + logicDir.getFileName() + "/ only — move it up a level.");
+                return true;
+            });
+        } catch (IOException ignored) {
+            // reporting is best-effort; discovery of runnable scripts is unaffected
+        }
     }
 }

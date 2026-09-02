@@ -31,7 +31,7 @@ class WorkspaceLocatorTest {
      * A sandbox OUTSIDE the repo tree. The build points {@code java.io.tmpdir} at {@code build/tmp}
      * (inside the checkout), so a plain {@code @TempDir} has the repo's own workspace {@code jk.toml}
      * as an ancestor — which strict-ancestor "no enclosing workspace" assertions would wrongly find
-     * (JK-2314). Rooting under the user home escapes the checkout.
+     *. Rooting under the user home escapes the checkout.
      */
     private static Path isolatedRoot() throws IOException {
         return Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-wsl-test-");

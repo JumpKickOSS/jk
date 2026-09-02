@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>An audit has no cached answer to fall back on, so degrading quietly would mean reporting
  * "no known vulnerabilities" without having asked — the same class of untrue safety claim
- * JK-2382 fixed. It refuses and names the endpoint instead.
+ * fixed. It refuses and names the endpoint instead.
  *
  * <p>{@code jk audit --offline} is also rejected client-side, before the engine hears about it.
  * That check does not cover the web/MCP trigger, and a guard in one client is not a property of

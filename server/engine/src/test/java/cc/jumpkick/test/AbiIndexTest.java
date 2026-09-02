@@ -14,7 +14,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-/** The abi idx advances incrementally (JK-2610): compiled sources re-hash, the rest carry over. */
+/** The abi idx advances incrementally: compiled sources re-hash, the rest carry over. */
 class AbiIndexTest {
 
     @Test

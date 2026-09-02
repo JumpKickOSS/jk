@@ -188,7 +188,7 @@ public final class BuildGraph {
             // A sourceless root with `jk/` or `.jk/` is a unit too. Its plan compiles and packages
             // nothing, but it has an `after-build` script to run, and the only way to run that
             // once — after every member, with the scheduler and the report it already has — is to
-            // be in the graph. Without this the directory is silently ignored (JK-1058).
+            // be in the graph. Without this the directory is silently ignored.
             boolean rootHasLogicDir = BuildLogicToml.resolve(rootDir).isPresent();
             boolean rootHasBuildLogic = !rootHasSources && rootHasLogicDir;
             boolean rootHasGate = rootHasLogicDir && BuildLogicToml.hasStem(rootDir, "gate");
@@ -265,7 +265,7 @@ public final class BuildGraph {
      * Successful {@code toRealPath} resolutions, memoized — the preflight path canonicalizes the
      * same module dirs repeatedly (restrict: per unit + per edge endpoint; assemblePlan:
      * selection × dirty modules; GraalHomes: per lookup miss), each an uncached syscall
-     * (JK-2104). Failed resolutions (path does not exist yet) are NOT cached so a later create
+     *. Failed resolutions (path does not exist yet) are NOT cached so a later create
      * resolves fresh; clear-on-overflow bounds the map (ProjectIds idiom). Mid-build symlink
      * retargeting was never supported — the syscall answer would have changed mid-build anyway.
      */

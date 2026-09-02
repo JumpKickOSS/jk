@@ -189,7 +189,7 @@ class LiveVitalsTest {
      * "Hydrate did not walk the store" is a <em>negative</em>, and it used to be inferred from the
      * clock: the capture supplier slept 1s and the test asserted the hydrate returned in under
      * 900ms. 100ms of headroom on a machine running 59 test tasks in parallel is not a measurement,
-     * and a sleep that is "long enough" here is how a fake green hides (JK-2446).
+     * and a sleep that is "long enough" here is how a fake green hides.
      *
      * <p>This trips instead of timing. The supplier counts down a latch when it is <em>entered</em>,
      * so the test observes the walk itself rather than its duration; re-arming the latch after the

@@ -8,7 +8,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Per-worker env isolation (JK-2183): with W&gt;1 each worker JVM gets its own temp root and —
+ * Per-worker env isolation: with W&gt;1 each worker JVM gets its own temp root and —
  * for nested-engine suites — its own {@code JK_STATE_DIR}, so engine identity (keyed on state +
  * store) differs per worker and one worker's engine stop cannot abort a sibling's request.
  */
@@ -22,7 +22,7 @@ class JUnitLauncherWorkerEnvTest {
         Map<String, String> w1 = JUnitLauncher.workerEnv(base, 1, Path.of("/tmp/t1"));
 
         // Children, not siblings. `<base>-w0` sat outside the directory the run deletes, so every
-        // worker's state survived cleanup and piled up under /tmp (JK-1067).
+        // worker's state survived cleanup and piled up under /tmp.
         assertThat(w0.get("JK_STATE_DIR"))
                 .isEqualTo(Path.of("/tmp/jk-cli-abc/w0").toString());
         assertThat(w1.get("JK_STATE_DIR"))

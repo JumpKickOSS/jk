@@ -42,8 +42,8 @@ jk inspect compile-java          # phase + path + on-disk status
 jk tasks show package-jar --modules 'libs/*'
 ```
 
-Stages are a closed set: `resolve`, `generate`, `compile`, `test`, `package`, `native`,
-`image`, `other`.
+Stages are a closed set, in pipeline order: `resolve`, `generate`, `compile`, `test`,
+`package`, `train`, `native`, `image`, `publish`, `other`.
 
 ## Timeline
 

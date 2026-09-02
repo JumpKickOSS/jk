@@ -226,9 +226,9 @@ public final class PlannerNative {
                             }
                         }
                         cc.jumpkick.repo.RepoGroup metaRepos =
-                                RepoGroupBuilder.buildFor(project, null, JkStores.cas(cache));
+                                RepoGroupBuilder.buildFor(project, null, JkStores.storeCas());
                         metadataDirs = ReachabilityMetadata.configDirs(
-                                JkStores.storeRootFor(cache),
+                                JkStores.store(),
                                 metaRepos,
                                 metaLock.nativeMetadata(),
                                 runtimeArtifacts,
@@ -502,7 +502,7 @@ public final class PlannerNative {
             // re-resolves the path for a stat (10.3 us on NTFS); isExecutable is the worst operation
             // in the tree at 64x Linux, because Windows answers it with a security-descriptor read
             // plus an AccessCheck. Ordering it last means a directory listing of jars and .args files
-            // never pays for it (JK-1030).
+            // never pays for it.
             return list.filter(p -> !p.getFileName().toString().endsWith(".jar"))
                     .filter(p -> !p.getFileName().toString().endsWith(".args"))
                     .filter(p -> !p.getFileName().toString().endsWith(".json"))
@@ -513,14 +513,12 @@ public final class PlannerNative {
         }
     }
 
-    @SuppressWarnings("unchecked")
     static List<Path> javaSources(TaskContext ctx) {
-        return (List<Path>) ctx.get(JAVA_SOURCES).orElse(List.of());
+        return ctx.get(JAVA_SOURCES).orElse(List.of());
     }
 
-    @SuppressWarnings("unchecked")
     static List<Path> kotlinSources(TaskContext ctx) {
-        return (List<Path>) ctx.get(KOTLIN_SOURCES).orElse(List.of());
+        return ctx.get(KOTLIN_SOURCES).orElse(List.of());
     }
 
     /**
@@ -535,7 +533,7 @@ public final class PlannerNative {
             return graalHome;
         }
         // The request's GRAALVM_HOME, carried as a typed field rather than sampled from this
-        // process's environment — the engine is a daemon (JK-1039).
+        // process's environment — the engine is a daemon.
         var buildEnv = BuildEnv.forModule(projectDir);
         Path fromRequest = SessionContext.current().graalHome();
         if (fromRequest != null
@@ -552,8 +550,7 @@ public final class PlannerNative {
         }
     }
 
-    @SuppressWarnings("unchecked")
     static List<Path> groovySources(TaskContext ctx) {
-        return (List<Path>) ctx.get(GROOVY_SOURCES).orElse(List.of());
+        return ctx.get(GROOVY_SOURCES).orElse(List.of());
     }
 }

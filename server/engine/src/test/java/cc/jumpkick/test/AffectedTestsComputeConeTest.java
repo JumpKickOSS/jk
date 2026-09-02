@@ -23,7 +23,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 /**
- * Cross-module list path (JK-2606): an ABI edit in a dirty module ranks the *dependent* module's
+ * Cross-module list path: an ABI edit in a dirty module ranks the *dependent* module's
  * importing test, and the module table carries both {@code dirty} and {@code dependent} rows.
  */
 class AffectedTestsComputeConeTest {
@@ -98,7 +98,7 @@ class AffectedTestsComputeConeTest {
                 });
         assertThat(rootBuild.isWorkspaceRoot()).isTrue();
 
-        // -m intersects the ranked list (JK-2613): selecting only `app` still ranks BarTest —
+        // -m intersects the ranked list: selecting only `app` still ranks BarTest —
         // the unselected dirty module keeps classifying its changed types — but drops lib's rows.
         AffectedTests onlyApp = AffectedTestsCompute.fromDisk(
                 ws, TestSelection.DEFAULT, Set.of(app.toAbsolutePath().normalize()), null);

@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@code jk jdk update-shell} — append a line to the user's shell rc file so {@code $JK_BIN_DIR}
+ * {@code jk jdk update-shell} — append a line to the user's shell rc file so {@code <home>/bin}
  * ends up on the {@code PATH}.
  */
 public final class JdkUpdateShellCommand implements CliCommand {

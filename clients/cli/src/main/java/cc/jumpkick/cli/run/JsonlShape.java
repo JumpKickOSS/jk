@@ -126,6 +126,29 @@ public final class JsonlShape {
     }
 
     /** ETA estimate event (ms wall). */
+    /**
+     * Workspace preflight verdict — the stage, its unit counts, and the engine's own label, which
+     * is where the dirty-module count is spelled ({@code "7 module(s) dirty"}).
+     *
+     * <p>Journalled because it was not, and that is very likely why `jk explain` and `jk build`
+     * could disagree about how much work a build would do without anyone noticing: the engine
+     * decides, tells the TUI, and the decision was gone the moment the bar redrew. An agent reading
+     * `details.jsonl` could see every step that ran but not the verdict that chose them.
+     */
+    public static String preflight(String stage, int done, int totalUnits, String label) {
+        return open(EngineProtocol.PREFLIGHT)
+                .append(",\"stage\":")
+                .append(js(stage == null ? "" : stage))
+                .append(",\"done\":")
+                .append(Math.max(0, done))
+                .append(",\"totalUnits\":")
+                .append(Math.max(0, totalUnits))
+                .append(",\"label\":")
+                .append(js(label == null ? "" : label))
+                .append('}')
+                .toString();
+    }
+
     public static String eta(long etaMs) {
         return open(EngineProtocol.ETA)
                 .append(",\"etaMs\":")

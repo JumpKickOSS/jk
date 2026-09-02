@@ -291,7 +291,7 @@ class LockfileRoundTripTest {
 
     /**
      * The reachability-metadata repository is an input to {@code native-image} and therefore a lock
-     * fact (JK-2476). It sits in its own {@code [native]} table rather than an {@code [[artifact]]}
+     * fact. It sits in its own {@code [native]} table rather than an {@code [[artifact]]}
      * row: it is on no classpath and in no scope, and the artifact table is the solver's output.
      */
     @Test

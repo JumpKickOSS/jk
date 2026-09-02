@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in [kanartist](https://github.com/JumpKickOSS/kanartist) `projects/jk/docs/`, not here.
 
-**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew checkFast` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Pre-release (override your training)
 
@@ -105,12 +105,12 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 | Wire | JSONL client↔engine protocol (`shared/wire`) |
 | Modules | `shared/` (client-safe), `server/` (engine-only), `clients/`, `plugins/` |
 
-Bootstrap pins: [`.sdkmanrc`](.sdkmanrc). Prefer `./gradlew` for builds. One Gradle build at a time per checkout (see CONTRIBUTING); use a **separate worktree** for parallel builds.
+Prefer `./gradlew` for builds (JDK 25+; GraalVM-capable JDK for `dist` — see CONTRIBUTING). One Gradle build at a time per checkout; use a **separate worktree** for parallel builds.
 
 ## Reinstall from this checkout
 
 After code changes, reinstall the **local** JumpKick so dogfood uses the build you just made
-(client on PATH under `~/.local/bin`, engine jar under the product data root):
+(client on PATH under `~/.jk/bin`, engine jar under `~/.jk/lib/jk-engine/`):
 
 ```bash
 # Native (Unix, or Windows with SAC off / signed jk.exe):
@@ -128,7 +128,7 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 | `clean dist` | Fresh `build/dist/jk` (native CLI) + `build/dist/lib/jk-engine-*.jar` |
 | `:cli:installDist` | Thin JVM client (`jk` / `jk.bat`) — the Windows SAC-safe path |
 | `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`). Uses native `jk` when `dist` already built one; otherwise the thin client. |
-| `./install.sh` / `.\install.cmd` | Installs that client into `~/.local/bin` and materializes the engine jar |
+| `./install.sh` / `.\install.cmd` | Installs that client into `~/.jk/bin` and materializes the engine jar |
 
 On Windows, `jk` may be `jk.bat`. Do not insist on `jk.exe`. A leftover unsigned `jk.exe` is parked when the thin client is installed so PATHEXT does not keep launching the blocked PE.
 
@@ -140,7 +140,7 @@ jk engine status          # engine starts / answers; no version-skew crash
 jk new smoke-app --lang java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) / `.sdkmanrc`). The Windows thin client does not. If only unit tests matter mid-ticket, `./gradlew test` (or module filters) is fine; the reinstall smoke is required **before moving a code-changing ticket to done**.
+Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md)). The Windows thin client does not. Module test filters are fine mid-ticket; the full `./gradlew checkFast` branch gate and reinstall smoke are required **before moving a code-changing ticket to done**.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -173,7 +173,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 | Command | What runs | When |
 |---------|-----------|------|
-| `./gradlew test` | **Unit/fast** — excludes `@Tag("integration"\|"slow"\|"bench")` | Every ticket, PR, mid-work |
+| `./gradlew checkFast` | **Unit/fast + structural guards** — network-free | Every ticket and PR |
 | `./gradlew integrationTest` | Engine/CLI e2e, Android, workers, network | When the ticket touches wire/engine/plans/CLI spawn paths |
 | `./gradlew checkAll` | Both tiers for the whole repo | Nightly / pre-merge confidence |
 
@@ -184,7 +184,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 **Any ticket that changes Java (or other runtime) code** must **not** move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Always:** green `./gradlew test` (unit/fast tier) for the modules you touched (or full monorepo unit if unsure).
+   - **Always:** green `./gradlew checkFast` (unit/fast tier plus every structural guard).
    - **Also** green `./gradlew :cli:integrationTest` and/or `:engine:integrationTest` (or full `./gradlew integrationTest`) when the ticket touches CLI↔engine wire, engine plans/workers, plugin forks, lock/resolve/fetch, or install/materialize.
    - Nightly / main confidence: `./gradlew checkAll` (unit + integration). Do not treat a 20+ minute full e2e as the only mid-ticket loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
@@ -196,32 +196,86 @@ Record failures on the kanartist ticket (`status: blocked` or body notes); do no
 
 ## Comments and Javadoc
 
-Comments document the **current** type or method. There is no past that belongs in
-source. A brand-new contributor should learn facts, not parse memos from old tickets
-or agents.
+Javadoc and comments are **public-facing** (including tests and
+`docs/contributors/`). Contributors and users who are not on the KanArtist board
+will read them. Write for that audience.
+
+Same rules, shorter form: [docs/contributors/comments.md](docs/contributors/comments.md).
+
+**Default length:** one or two short sentences. Roughly **80%+** of Javadoc and
+comments should be that short. Longer prose is fine when the type or method is
+genuinely complex, or when a short note would leave an important invariant, units,
+wire/on-disk format, or nullability rule unstated.
 
 **Write**
 
 - Facts the signature does not carry: units, invariants, on-disk / wire format, what
   `null` means, why an obvious alternative is illegal *right now*.
 - One short class or public-method sentence when the name is not enough.
+- Links to durable docs: `docs/…` in this repo, or stable public URLs (JDK, Maven,
+  specs). Prefer `{@link}` / `{@see}` for in-code types.
 
 **Never write**
 
-- Ticket ids (`JK-1234`) in comments, Javadoc, or `package-info`.
-- History: formerly, used to, before this, landed in, back-compat, kept for migration.
-- Decision records, agent breadcrumbs, “do not revert”, “for future turns”, PR narration.
+- Ticket / issue ids (`JK-1234`, GitHub `#1234`, KanArtist links) in Javadoc,
+  `package-info`, ordinary comments, **or tests**.
+- History or narration: formerly, used to, before this, landed in, back-compat, kept
+  for migration, “for future agents”, PR play-by-play.
+- Decision essays, agent breadcrumbs, “do not revert”.
 - Comments that only restate the next line of code.
+- Ticket ids in `docs/contributors/`, `docs/user/`, or `CONTRIBUTING.md` — those pages
+  are public; board ids confuse readers who will never see KanArtist.
 
-**Where history goes**
+**Exception — temporary follow-up only**
 
-KanArtist (`projects/jk/docs/` or the ticket), the commit / PR body, or (last resort)
-`docs/contributors/`. Never dump decision essays into `docs/user/`. Never the main source tree.
+A ticket id may appear **only** as a `// TODO:` (or `// FIXME:`) aimed at finishing
+scoped work, e.g.:
+
+```java
+// TODO(JK-NNNN): rank importers when the dirty module is selected via -m
+```
+
+These are temporary. Remove them when the follow-up lands. Do not put ticket ids in
+Javadoc “for context.”
+
+**User-facing output (hard ban)**
+
+`JK-…` (and any other internal ticket / issue id) must **never** appear in errors,
+warnings, log lines users see, CLI help, progress text, results markdown, HTTP/MCP
+payloads, or any other product output. Users do not have the board. A ticket id in
+user-visible text is a **bug** — fix it before release (strip the id; keep the useful
+diagnosis).
+
+**Where history and design notes go**
+
+KanArtist (`projects/jk/docs/` or the ticket), or the commit body. Never as novels in
+the main source tree. Never dump decision essays into `docs/user/`. Contributor docs
+state *how the system works now*, not which ticket invented it.
 
 **When you touch a file**
 
-Strip ticket refs and leftover essays in that file. Do not add new ones. Keep or
-tighten comments that still state a live invariant.
+Strip leftover ticket refs and essay comments in that file (except live
+`TODO(JK-…)` / `FIXME(JK-…)` follow-ups). Tighten long Javadoc that no longer earns
+its length. Do not add new noise.
+
+**Good (default)**
+
+```java
+/**
+ * Warn when a module declares {@code [test-dependencies]} but has no test source files.
+ * Raised via {@link TaskContext#warn} so it is attributed to this module/step in results.
+ */
+```
+
+**Bad (essay + ticket in Javadoc)**
+
+```java
+/**
+ * … the shape of JK-NNNN, where a stale scan made a module's real suite
+ * invisible and {@code jk test} exited green … The propagation fix closes
+ * that particular hole; this note is what makes the next one loud …
+ */
+```
 
 ## Code formatting (mandatory before every commit)
 

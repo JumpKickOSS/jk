@@ -34,7 +34,7 @@ public final class McpHistoryViews {
         m.put("failedModules", failedModules(rec));
         m.put("diagnosticCount", listSize(rec.get("diagnostics")));
         // The same nested counts object the journal stores and the dashboard renders — MCP does not
-        // get a private flattened spelling of "how many tests failed" (JK-2424).
+        // get a private flattened spelling of "how many tests failed".
         m.put(TestSummary.WIRE_KEY, map(rec.get(TestSummary.WIRE_KEY)));
         return m;
     }

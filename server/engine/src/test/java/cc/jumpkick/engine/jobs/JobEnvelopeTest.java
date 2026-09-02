@@ -173,7 +173,7 @@ class JobEnvelopeTest {
     }
 
     /**
-     * The row a Ctrl-C leaves behind. The CLI has exited {@code 130} since JK-2417 while the
+     * The row a Ctrl-C leaves behind. The CLI has exited {@code 130} since while the
      * journal wrote {@code 1} for the same run, and no cancelled row said who stopped it — a user
      * interrupt and a wall deadline both read as a bare {@code cancelled=true}. Asserted on the
      * persisted record, because the process exit was already right; the journal is what lied.

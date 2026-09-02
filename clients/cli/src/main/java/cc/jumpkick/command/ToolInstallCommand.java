@@ -25,6 +25,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.runtime.HostedEvents;
 import cc.jumpkick.script.ScriptHeaderParser;
+import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
 import cc.jumpkick.tool.ToolProvenance;
@@ -47,7 +48,7 @@ import java.util.Optional;
 /**
  * {@code jk tool install [<target>]} — install a catalog name, Maven coord, script/jar, project dir,
  * or git URL ({@code jk install} is the hidden alias). Resolve/fetch is engine-hosted; launcher
- * write under {@code $JK_BIN_DIR} stays client-side.
+ * write under {@code <home>/bin} stays client-side.
  */
 public final class ToolInstallCommand implements CliCommand {
 
@@ -64,7 +65,7 @@ public final class ToolInstallCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<name>", "Launcher name under $JK_BIN_DIR. Default: the artifact id.", "--bin"),
+                Opt.value("<name>", "Launcher name under ~/.jk/bin. Default: the artifact id.", "--bin"),
                 Opt.value("<class>", "Override Main-Class (from jar manifest)", "--main"),
                 Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
                         .repeat(),
@@ -75,7 +76,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.flag("Download a build tool rather than linking a host install.", "--no-discover"),
                 Opt.value(
                                 "<dir>",
-                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
+                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
                                 "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
@@ -229,6 +230,8 @@ public final class ToolInstallCommand implements CliCommand {
             return Exit.USAGE;
         }
         String bin = binName != null && !binName.isBlank() ? binName : resolved.defaultBin();
+        Integer invalidBin = rejectInvalidLauncherName(bin);
+        if (invalidBin != null) return invalidBin;
 
         Path cacheDir = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
@@ -350,6 +353,8 @@ public final class ToolInstallCommand implements CliCommand {
         String bin = binName != null && !binName.isBlank()
                 ? binName
                 : name.substring(0, name.lastIndexOf('.')).toLowerCase(Locale.ROOT);
+        Integer invalidBin = rejectInvalidLauncherName(bin);
+        if (invalidBin != null) return invalidBin;
 
         Path cacheDir = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
@@ -373,7 +378,7 @@ public final class ToolInstallCommand implements CliCommand {
         if (!prep.result().success() || (prep.mainClass() == null && !"kts".equals(mode))) return 1;
 
         // Snapshot into the env dir so the launcher survives the source moving/vanishing.
-        Path envDir = envsRoot.resolve(bin);
+        Path envDir = LauncherName.resolveChild(envsRoot, bin);
         List<Path> classpath = new ArrayList<>();
         if ("kts".equals(mode)) {
             // Kotlin script: snapshot a neutralized copy (jk resolved its @file:DependsOn) and
@@ -485,5 +490,12 @@ public final class ToolInstallCommand implements CliCommand {
 
     private static void copyTree(Path from, Path to) throws IOException {
         PathUtil.copyTree(from, to);
+    }
+
+    private static Integer rejectInvalidLauncherName(String name) {
+        var error = LauncherName.validationError(name);
+        if (error.isEmpty()) return null;
+        CommandWedge.printFail("Tool", error.get());
+        return Exit.USAGE;
     }
 }

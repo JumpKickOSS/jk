@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 public sealed interface JobTransport {
 
     /**
-     * CLI: connection owns the job; watch BUILD_CANCEL / EOF; join before return.
+     * CLI: connection owns the job; watch for EOF (cancel is out-of-band CANCEL_REQUEST); join before return.
      *
      * <p>{@code channel} is the same socket {@code reader}/{@code writer} sit on, carried so the
      * job can wake the connection thread off client-readLine by half-closing the read direction —

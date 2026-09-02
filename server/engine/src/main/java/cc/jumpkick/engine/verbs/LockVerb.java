@@ -7,7 +7,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.LockRequest;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
@@ -53,29 +53,27 @@ public final class LockVerb implements HostedVerb {
     @Override
     public String decodeJob(JobSpec spec) {
         return ProtoSession.withTrigger(
-                ProtoJobs.lockRequest(
-                        spec.dir(),
-                        JkDirs.cache().toString(),
-                        List.of(),
-                        false,
-                        false,
-                        null,
-                        false,
-                        false,
-                        false,
-                        false),
+                new LockRequest(
+                                spec.dir(),
+                                JkDirs.cache().toString(),
+                                List.of(),
+                                false,
+                                false,
+                                null,
+                                false,
+                                false,
+                                false,
+                                false)
+                        .encode(),
                 "web");
     }
 
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            List<String> features = Jsonl.strArray(requestLine, "features");
-            boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
-            boolean sources = Jsonl.bool(requestLine, "sources", false);
-            boolean conservative = Jsonl.bool(requestLine, "conservative", false);
+            LockRequest body = LockRequest.decode(requestLine);
             Session session = host.resolveSession(requestLine, cancelToken, false);
-            URI repoUrl = repoUrlOf(requestLine);
+            URI repoUrl = body.repoUrl() == null ? null : URI.create(body.repoUrl());
             return SessionContext.where(
                     session,
                     () -> LockCascade.run(
@@ -83,12 +81,12 @@ public final class LockVerb implements HostedVerb {
                             session.workingDir(),
                             session.cacheDir(),
                             repoUrl,
-                            features,
-                            withDefaults,
-                            sources,
+                            body.features(),
+                            !body.noDefaultFeatures(),
+                            body.sources(),
                             false,
                             null,
-                            conservative,
+                            body.conservative(),
                             writer));
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));

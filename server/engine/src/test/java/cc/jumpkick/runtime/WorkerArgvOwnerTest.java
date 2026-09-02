@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * One worker argv assembly in the engine, and it is {@link PluginLoader#command} (JK-2432).
+ * One worker argv assembly in the engine, and it is {@link PluginLoader#command}.
  *
  * <p>There were three. {@code PluginLaunch} open-coded the same six elements next to a comment
  * reading "Reuse PluginLoader.command shape", and {@code WorkerCompileDriver} open-coded them a

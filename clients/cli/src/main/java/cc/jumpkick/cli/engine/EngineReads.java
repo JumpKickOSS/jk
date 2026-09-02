@@ -36,7 +36,7 @@ import java.util.Set;
  * <p>{@link #request} is the whole shape, and every verb below is one call to it. The discriminator
  * is therefore matched in exactly one place: a verb cannot quietly decide that some other line type
  * is close enough to its ack, and cannot forget that an {@code error} line is a legitimate answer
- * (JK-2158 — reading to EOF instead reports a generic disconnect and loses the engine's message).
+ * (— reading to EOF instead reports a generic disconnect and loses the engine's message).
  */
 final class EngineReads {
 
@@ -62,7 +62,7 @@ final class EngineReads {
                 if (EngineProtocol.ERROR.equals(type)) {
                     // A verb that failed before producing its ack answers with an error line;
                     // surface the engine's message instead of reading to EOF and reporting a
-                    // generic disconnect (JK-2158).
+                    // generic disconnect.
                     throw EngineWireException.fromJsonLine(line);
                 }
                 if (!ackType.equals(type)) continue;
@@ -84,7 +84,7 @@ final class EngineReads {
                     if (error != null) throw new IOException(error);
                     return Jsonl.bool(line, "changed", false);
                 });
-        // Manifest just changed — drop memoized project summaries for this invocation (JK-2162).
+        // Manifest just changed — drop memoized project summaries for this invocation.
         if (changed) ProjectInfos.forget();
         return changed;
     }
@@ -336,7 +336,7 @@ final class EngineReads {
                 paths,
                 // project-info used to ride bare, with no session envelope at all — so the engine
                 // resolved this project's layout, test tags and toolchain against the daemon's own
-                // state rather than the caller's (JK-1040).
+                // state rather than the caller's.
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
                                 ProtoReads.projectInfoRequest(

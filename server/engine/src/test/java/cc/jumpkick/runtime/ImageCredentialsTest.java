@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The engine half of JK-2464: an image worker that pulls (and maybe pushes) a private registry has
+ * The engine half of: an image worker that pulls (and maybe pushes) a private registry has
  * to be handed a credential, and the credential has to travel where a secret is allowed to travel.
  *
  * <p>"Allowed" means three things, each asserted below rather than asserted about: it rides a

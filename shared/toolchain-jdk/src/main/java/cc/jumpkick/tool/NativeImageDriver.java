@@ -331,7 +331,7 @@ public final class NativeImageDriver {
      * <p>Both tiers below read the environment, and inside the engine {@link System#getenv} is the
      * daemon's — whichever shell started it, possibly days ago. A caller on a build path passes
      * {@code BuildEnv.forModule(dir)} so {@code GRAALVM_HOME} and {@code PATH} are the ones the
-     * user actually invoked jk with (JK-1021).
+     * user actually invoked jk with.
      */
     public static Optional<Path> resolve(Path javaHome, UnaryOperator<String> env) {
         // 1. Project-pinned JDK
@@ -400,7 +400,7 @@ public final class NativeImageDriver {
         attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
         attrs.putValue("Class-Path", cp.toString());
         // A manifest-only classpath jar: tiny, but it goes through the one owner like every
-        // other archive so the buffering question is not re-decided here (JK-1029).
+        // other archive so the buffering question is not re-decided here.
         try (OutputStream out = DeterministicZip.archiveStream(jar);
                 JarOutputStream jos = new JarOutputStream(out, mf)) {
             // manifest-only

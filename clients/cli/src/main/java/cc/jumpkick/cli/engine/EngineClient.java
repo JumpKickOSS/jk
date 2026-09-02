@@ -52,7 +52,7 @@ import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 
 /**
- * CLI-side counterpart to {@link cc.jumpkick.engine.EngineServer}: connects, ensures a live
+ * CLI-side counterpart to the engine's {@code EngineServer}: connects, ensures a live
  * version-matched engine, and exposes hosted verbs. Spawn/takeover/AOT live in {@link
  * EngineSpawn}; request records in {@link EngineRequests}; fat hosted bodies in {@link
  * EngineHosted}. This type stays the one command-facing facade (scoreboard 800–1,200) so adding
@@ -93,7 +93,42 @@ public final class EngineClient {
             String httpUrl,
             String httpError,
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
-            String mcpUrl) {}
+            String mcpUrl,
+            /** Last-job VFS object from {@code status-ack}, or {@code null} when none yet. */
+            String vfsJson) {
+        public Status(
+                String version,
+                long pid,
+                long startedAtMillis,
+                int activeRequests,
+                int activeBuildPlans,
+                boolean draining,
+                long heapUsedBytes,
+                long heapCommittedBytes,
+                long heapMaxBytes,
+                long rssBytes,
+                long aotTrainingPid,
+                String httpUrl,
+                String httpError,
+                String mcpUrl) {
+            this(
+                    version,
+                    pid,
+                    startedAtMillis,
+                    activeRequests,
+                    activeBuildPlans,
+                    draining,
+                    heapUsedBytes,
+                    heapCommittedBytes,
+                    heapMaxBytes,
+                    rssBytes,
+                    aotTrainingPid,
+                    httpUrl,
+                    httpError,
+                    mcpUrl,
+                    null);
+        }
+    }
 
     /**
      * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
@@ -168,7 +203,8 @@ public final class EngineClient {
                     Jsonl.longValue(ack, "aotTrainingPid", -1),
                     httpUrl,
                     Jsonl.str(ack, "httpError"),
-                    mcpUrl));
+                    mcpUrl,
+                    Jsonl.nested(ack, "vfs")));
         } catch (IOException e) {
             return Optional.empty();
         }
@@ -269,7 +305,7 @@ public final class EngineClient {
     }
 
     /**
-     * Read the engine pid from the socket's sibling {@code.pid} file (generation-scoped). {@code -1}
+     * Read the engine pid from the socket's sibling {@code .pid} file (generation-scoped). {@code -1}
      * when missing or unreadable.
      */
     static long readPidForSocket(Path socket) {
@@ -687,7 +723,7 @@ public final class EngineClient {
         return projectInfo(paths, dir, modules, affectedSince, false);
     }
 
-    /** {@code counts=true} adds the source/test tree-walk counts — jk status only (JK-2162). */
+    /** {@code counts=true} adds the source/test tree-walk counts — jk status only. */
     public static ProjectInfo projectInfo(
             EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
             throws IOException {

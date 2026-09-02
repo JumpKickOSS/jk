@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The number printed beside {@code cancelled}. {@code jk history} has always been able to say a run
  * was cancelled; what it could not say is anything useful in {@code exitCode}, which was {@code 1}
- * for every cancel and therefore indistinguishable from an ordinary failed build (JK-2485).
+ * for every cancel and therefore indistinguishable from an ordinary failed build.
  *
  * <p>One derivation, so the table is total: a row labelled cancelled carries {@link
  * Exit#INTERRUPTED}, every other row keeps the code its own verdict earned, and the abandoned row —
@@ -84,7 +84,7 @@ class CancelledExitCodeTest {
     }
 
     /**
-     * JK-2417's row, re-asserted from the other side: now that a genuine cancel owns {@code 130},
+     *'s row, re-asserted from the other side: now that a genuine cancel owns {@code 130},
      * an abandoned run must still be the one thing that is neither cancelled nor an interrupt.
      */
     @Test

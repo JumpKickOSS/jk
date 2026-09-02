@@ -17,6 +17,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
@@ -150,7 +151,7 @@ public final class JobEnvelope {
 
     /**
      * One submit path for every transport. {@link JobTransport.SocketWatch} forks the job and keeps
-     * reading the connection for a {@link EngineProtocol#BUILD_CANCEL} or EOF, joining before
+     * reading the connection for EOF (cancellation arrives out-of-band as\n     * {@link EngineProtocol#CANCEL_REQUEST}), joining before
      * return; {@link JobTransport.FireAndForget} returns the jid immediately (progress is the
      * sink) and throws {@link AlreadyRunning} / {@link IllegalStateException} on refusal.
      */
@@ -293,10 +294,11 @@ public final class JobEnvelope {
                 if (acc != null) acc.stamp(outcome);
             } finally {
                 RunNotices.closeSink(io);
+                InputTrees.finishJob();
                 IoLedger.close();
                 // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
                 // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
-                // burn its full 15s join before this force-kill ran (JK-2299). Killing the process
+                // burn its full 15s join before this force-kill ran. Killing the process
                 // first unblocks readLine, so end()'s join returns promptly.
                 // Never clear() the registry without shutdown, or a racing cancel thread's
                 // shutdownForRequest finds an empty set and plugin/javac children keep running.
@@ -313,7 +315,7 @@ public final class JobEnvelope {
                 host.inFlight().release(eventRequestId);
                 done.countDown();
                 // Unblock the connection thread only if it is parked on client readLine
-                // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without
+                // waiting for EOF — remote cancel finishes the runner without
                 // the client writing anything. Only while actually parked: a wake that lands
                 // after the read loop poisons teardown I/O instead (a stray interrupt once killed
                 // journal completion with ClosedByInterruptException, leaving a permanent
@@ -379,10 +381,8 @@ public final class JobEnvelope {
                                 beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                                 break;
                             }
-                            if (EngineProtocol.BUILD_CANCEL.equals(EngineProtocol.typeOf(line))) {
-                                // Explicit cancel on this socket: cooperative flag + worker grace→force.
-                                beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, true);
-                            }
+                            // Any in-band line while a job runs is noise: cancellation arrives
+                            // out-of-band as CANCEL_REQUEST on its own connection, or as EOF here.
                         } catch (IOException e) {
                             parkedOnRead.set(false);
                             // Interrupt during read (ClosedByInterruptException, etc.) or a real error.
@@ -497,8 +497,8 @@ public final class JobEnvelope {
                     // Last write under the project's target/ is the journal's jk-results.md copy,
                     // so this is the moment the engine is provably done with the tree. The client
                     // blocks on this line rather than the plan terminal — otherwise `jk build`
-                    // returns mid-write and a following `jk clean` races the memo/journal writers
-                    // (JK-2451). In a finally so a throwing journal can never strand the client.
+                    // returns mid-write and a following `jk clean` races the memo/journal writers.
+                    // In a finally so a throwing journal can never strand the client.
                     if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(eventRequestId));
                 }
                 host.clearProgress(eventRequestId);
@@ -541,9 +541,8 @@ public final class JobEnvelope {
      * User / EOF cancel: set cooperative flag and shut down workers with a short
      * grace→force window on a helper thread so the connection reader is not blocked. Idempotent.
      *
-     * <p>Also stamps the accumulator as user-cancelled <em>immediately</em>. Without that, a force-
-     * killed runner that never emits userCancelled was journaled as a plain
-     * success/failure with the truncated wall-clock — and truncated successes poisoned ETA history.
+     * <p>Stamps the accumulator as user-cancelled immediately so a force-killed runner that never
+     * emits userCancelled is journaled as cancelled, not as a truncated success/failure.
      */
     public void beginUserCancel(
             long eventRequestId,
@@ -575,7 +574,7 @@ public final class JobEnvelope {
      *
      * <p>Half-closing the read direction is the gentle wake: the blocked read sees EOF while the
      * write direction stays usable, so the tail can still deliver {@code job-finish} — the line the
-     * client waits for before it may delete {@code target/} (JK-2451). {@link Thread#interrupt} is
+     * client waits for before it may delete {@code target/}. {@link Thread#interrupt} is
      * the fallback, and it is blunt: on a thread blocked in an InterruptibleChannel read it closes
      * the whole channel, so the client learns the job ended one journal-write too early. A platform
      * whose half-close does not wake a blocked read is still covered — the client half-closes its
@@ -684,7 +683,7 @@ public final class JobEnvelope {
     /**
      * Stamp the cancel <em>and</em> why, so the journal can name who stopped the run. {@code
      * cancelled=true} alone reads the same for a Ctrl-C and for a wall deadline, and only the
-     * deadline recorded a reason (JK-2485) — the flag that already tells the two user paths apart
+     * deadline recorded a reason — the flag that already tells the two user paths apart
      * is the one that picks the sentence, so there is one mapping rather than a literal per caller.
      */
     private void markUserCancelled(long requestId, boolean explicit) {
@@ -738,7 +737,7 @@ public final class JobEnvelope {
      *
      * <p>{@code cancelToken.cancelled} alone is unreliable — it also trips on the benign
      * end-of-request EOF (client closes the socket the instant it reads the terminal message). For a
-     * request with an accumulator we trust an explicit stamp from BUILD_CANCEL / mid-job EOF /
+     * request with an accumulator we trust an explicit stamp from CANCEL_REQUEST / mid-job EOF /
      * deadline. A runner that already stamped a terminal outcome is never re-labelled cancelled by
      * that race.
      */

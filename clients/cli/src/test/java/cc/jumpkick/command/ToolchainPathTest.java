@@ -11,13 +11,13 @@ class ToolchainPathTest {
 
     private static final String SEP = File.pathSeparator;
     /** Unrelated PATH neighbor under the fake home — not a toolchain bin. */
-    private static final String LOCAL_BIN = "/home/u/.local/bin";
+    private static final String LOCAL_BIN = "/home/u/.jk/bin";
 
     private static final String NVM = "/home/u/.nvm/versions/node/v24/bin";
-    private static final String OLD_JDK = "/home/u/.local/share/jk/jdks/old";
-    private static final String NEW_JDK = "/home/u/.local/share/jk/jdks/new";
-    private static final String JDK = "/home/u/.local/share/jk/jdks/temurin-25";
-    private static final String GRAAL = "/home/u/.local/share/jk/jdks/graalvm-25";
+    private static final String OLD_JDK = "/home/u/.jdks/old";
+    private static final String NEW_JDK = "/home/u/.jdks/new";
+    private static final String JDK = "/home/u/.jdks/temurin-25";
+    private static final String GRAAL = "/home/u/.jdks/graalvm-25";
 
     /** Host-normalized {@code home/bin} — same form {@link ToolchainPath#binOf} emits. */
     private static String bin(String home) {

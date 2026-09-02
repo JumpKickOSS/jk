@@ -12,7 +12,7 @@ description = "jk dynamic surface: the parts of a program static analysis cannot
 // :host only. This module used to declare no dependency at all and paid for it with a private
 // JSON parser and two private escapers — the "dependency-free" it was protecting was never
 // available, since :host is the JDK-only floor :plugin-sdk already puts on the minified worker
-// and :cli puts inside the native image (JK-2422).
+// and :cli puts inside the native image.
 dependencies {
     api(project(":host"))
 }

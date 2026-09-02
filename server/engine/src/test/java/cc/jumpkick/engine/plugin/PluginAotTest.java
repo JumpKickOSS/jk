@@ -32,7 +32,7 @@ class PluginAotTest {
      * underneath the fixture. The teardown then loses a race with it and the tier goes red on a
      * {@code DirectoryNotEmptyException} rather than on anything the test asserts. Waiting here
      * fixes the fixture's lifetime; it deliberately does not make production join its trainers,
-     * which are fire-and-forget by design (JK-1072).
+     * which are fire-and-forget by design.
      */
     @AfterEach
     void awaitTrainersQuiescent() throws InterruptedException {
@@ -116,7 +116,7 @@ class PluginAotTest {
         // The sweep runs inside runTrainer, between publishing the cache and dropping the claim —
         // so the claim's disappearance is the "trainer done, sweep included" signal. Waiting on
         // Files.exists(cache) alone races the sweep, which is why this used to carry a bare
-        // Thread.sleep(100): a guess about this machine, and no assertion at all (JK-2446).
+        // Thread.sleep(100): a guess about this machine, and no assertion at all.
         Path claim = cache.resolveSibling(cache.getFileName() + ".training");
         Await.until(Duration.ofSeconds(30), () -> Files.exists(cache) && !Files.exists(claim));
         for (Path p : runner) assertThat(p).exists();
@@ -210,7 +210,7 @@ class PluginAotTest {
         // Observe the forbidden ACTION, not a side effect of it three steps downstream. The trainer
         // command is only ever built inside runTrainer, i.e. only if trainAsync spawned a thread —
         // so the latch firing IS "training started". Sleeping 300ms and then checking the cache file
-        // could not tell "never spawned" from "spawned but slow" (JK-2446).
+        // could not tell "never spawned" from "spawned but slow".
         CountDownLatch trainerBuilt = new CountDownLatch(1);
         PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> {
             trainerBuilt.countDown();

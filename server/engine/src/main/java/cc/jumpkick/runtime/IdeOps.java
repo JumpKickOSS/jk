@@ -72,7 +72,7 @@ public final class IdeOps {
 
     private static IdeWireModel build(Path startDir, Path cache, Path jdksDir, boolean fetchMissing)
             throws IOException {
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
 
         Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {

@@ -47,8 +47,8 @@ public final class CacheInventoryOps {
         // Every store-tier query honors the client's store root; repos/ lives under the
         // STORE (production passes cas.root() — the store — to RepoArtifactStore), so the
         // repo queries must too: pointing them at <cache>/repos made jk repo search return
-        // nothing and jk repo refresh never evict (JK-2176).
-        Path store = req.store() != null ? req.store() : JkStores.storeRootFor(cache);
+        // nothing and jk repo refresh never evict.
+        Path store = req.store() != null ? req.store() : JkStores.store();
         return switch (query) {
             case "usage" -> cacheUsage(cache);
             case "store-usage" -> storeUsage(store);
@@ -92,7 +92,7 @@ public final class CacheInventoryOps {
                             nativeBins,
                             ociImages);
                     // Unbucketed keys must not consume seenShas: a blob shared with a bucketed
-                    // key would then count (or not) by directory-stream order (JK-2161).
+                    // key would then count (or not) by directory-stream order.
                     if (bucket == null) continue;
                     if (bucket == testResults) {
                         testResults[0]++;
@@ -281,21 +281,7 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.repoRefresh(lines, evicted, missed);
     }
 
-    /**
-     * {@code jk storage nuke} / the store leg of {@code jk self nuke --data}: the store root goes,
-     * not only its children. Both commands print that path under <strong>Path to Delete</strong>,
-     * and a row in a confirm table has to name something that is actually gone afterwards —
-     * JK-2455 made that true for the cache and state roots and left this one emptied.
-     *
-     * <p>Nothing guarded lives under the store. Of {@code SelfNukeCommand.Guards}, only
-     * {@code <store>/lib} (installed tools) is a child, and this pass already deletes it; the two
-     * the nuke really keeps — {@code <data>/lib}, the live engine jar, and the forge/repo
-     * credential stores — are siblings of the store, under the data root, which is not a row.
-     *
-     * <p>Removing the directory is safe for the same reason a fresh install is: every writer under
-     * the store creates its own subtree ({@code sha256/ab/…}, {@code repos/<name>/…}), which
-     * creates the root along with it.
-     */
+    /** Delete the store root; its writers recreate their own subtrees on demand. */
     private static CacheInventoryAck wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         if (storeRoot == null || !Files.isDirectory(storeRoot)) return CacheInventoryAck.wipe(0, 0);
         // Unique-inode bytes (POSIX ino/dev or Windows fileKey) so leftover hard links under
@@ -448,7 +434,7 @@ public final class CacheInventoryOps {
     }
 
     private static ArtifactKind sniffArtifactKind(Path file) {
-        String name = file.getFileName() != null ? file.getFileName().toString().toLowerCase() : "";
+        String name = file.getFileName() != null ? file.getFileName().toString().toLowerCase(Locale.ROOT) : "";
         if (name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".war") || name.endsWith(".ear")) {
             return ArtifactKind.JAR;
         }

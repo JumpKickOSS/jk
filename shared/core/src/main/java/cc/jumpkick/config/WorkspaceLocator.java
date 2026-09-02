@@ -10,7 +10,7 @@ import java.util.Optional;
  * {@code workspace.modules} lists that module.
  *
  * <p>Delegates to {@link WorkspaceScan} (bootstrap TOML only). A full {@code JkBuildParser} walk
- * would pull plugin schemas onto every CLI path that locates a lockfile (JK-2151).
+ * would pull plugin schemas onto every CLI path that locates a lockfile.
  */
 public final class WorkspaceLocator {
 

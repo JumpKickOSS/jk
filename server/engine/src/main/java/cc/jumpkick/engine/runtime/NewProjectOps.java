@@ -14,6 +14,7 @@ import cc.jumpkick.giter8.PluginTemplates;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
@@ -115,7 +116,7 @@ public final class NewProjectOps {
             Path target,
             String group,
             NewInputs.Language lang,
-            String layout,
+            Layout layout,
             String template,
             boolean executable,
             Request req) {}
@@ -237,16 +238,16 @@ public final class NewProjectOps {
                     spec = resolveIndexed(prep.template(), langName, prep.parent());
                 }
             }
-            if ("simple".equalsIgnoreCase(prep.layout())) {
+            if (prep.layout() == Layout.SIMPLE) {
                 if (spec.isPresent() && !spec.get().supportsLayout(Giter8ShortNames.LAYOUT_SIMPLE)) {
-                    throw new IOException(
-                            "template " + prep.template() + " does not support --layout simple" + " (declared layouts: "
-                                    + String.join(", ", spec.get().layouts()) + ")");
+                    throw new IOException("template " + prep.template() + " does not support --layout "
+                            + Layout.SIMPLE.token() + " (declared layouts: "
+                            + String.join(", ", spec.get().layouts()) + ")");
                 }
                 // Set for path/remote templates too (no indexed metadata): a dual-layout
                 // template honors it, a single-layout one ignores it — never a silent drop
                 // that renders a different tree than the flag asked for.
-                params.putIfAbsent("simple", "yes");
+                params.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "yes");
             }
             try {
                 Giter8Apply.apply(templateRoot, target, params, Giter8Maven.central(offline));
@@ -272,7 +273,7 @@ public final class NewProjectOps {
         }
         Optional<String> main = Optional.empty();
         if (prep.executable() && !req.plugin()) {
-            boolean compact = "simple".equalsIgnoreCase(prep.layout());
+            boolean compact = prep.layout() == Layout.SIMPLE;
             main = Optional.of(
                     switch (prep.lang()) {
                         case JAVA -> prep.group() + ".Main";
@@ -353,7 +354,7 @@ public final class NewProjectOps {
         }
 
         NewInputs.Language lang = parseLang(req.lang());
-        String layout = parseLayout(req.layout());
+        Layout layout = parseLayout(req.layout());
         String template = req.template() == null || req.template().isBlank()
                 ? null
                 : req.template().strip();
@@ -594,11 +595,10 @@ public final class NewProjectOps {
         };
     }
 
-    private static String parseLayout(String layout) {
-        if (layout == null || layout.isBlank()) return "traditional";
-        String l = layout.strip().toLowerCase(Locale.ROOT);
-        if ("simple".equals(l) || "traditional".equals(l)) return l;
-        throw new IllegalArgumentException("layout must be traditional|simple");
+    /** Scaffold default is traditional placement; blank → {@link Layout#TRADITIONAL}. */
+    private static Layout parseLayout(String layout) {
+        if (layout == null || layout.isBlank()) return Layout.TRADITIONAL;
+        return Layout.parse(layout);
     }
 
     private static String nullToEmpty(String s) {

@@ -41,7 +41,7 @@ public final class DenyCommand implements CliCommand {
         return "Apply the project's license / source / yanked policy";
     }
 
-    private static final BuildPlanKey<DenyReport> REPORT = BuildPlanKey.of("deny-report", DenyReport.class);
+    private static final BuildPlanKey<DenyReport> REPORT = BuildPlanKey.scalar("deny-report", DenyReport.class);
 
     @Override
     public int run(Invocation in) throws IOException {
@@ -74,7 +74,8 @@ public final class DenyCommand implements CliCommand {
                 })
                 .build();
 
-        BuildPlan plan = BuildPlan.builder("deny").addTask(check).build();
+        BuildPlan plan =
+                BuildPlan.builder("deny").stateKeys(REPORT).addTask(check).build();
         BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
 

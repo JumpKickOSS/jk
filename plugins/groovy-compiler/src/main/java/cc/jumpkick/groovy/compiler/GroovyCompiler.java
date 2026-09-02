@@ -12,15 +12,11 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilationUnit;
@@ -37,13 +33,13 @@ import org.codehaus.groovy.tools.javac.JavaAwareCompilationUnit;
  * <p>jk launches this as {@code java -cp <worker.jar>:<groovy-closure>
  * cc.jumpkick.plugin.process.PluginMain @&lt;spec&gt;}. The plugin reads the {@link CompileSpec},
  * runs a full JVM compile ({@link CompilationUnit}, or {@link JavaAwareCompilationUnit} when the
- * source set carries {@code.java} files — joint mode), streams diagnostics back as JSONL, and
+ * source set carries {@code .java} files — joint mode), streams diagnostics back as JSONL, and
  * exits {@link Exit#SUCCESS}, {@link Exit#FAILURE} on a compilation error,
  * {@link CompilerProtocol#COMPILER_FAULT} on an OOM/internal compiler error, or
  * {@link Exit#SOFTWARE} for a bad spec / unexpected failure.
  *
  * <p>Joint mode uses the Java sources for resolution only: Groovy-class stubs are written to
- * {@code stubsOut} (kept only when the spec names one) and javac's {@code.class} output is
+ * {@code stubsOut} (kept only when the spec names one) and javac's {@code .class} output is
  * diverted to a discard dir under the workdir — the real Java outputs are owned by jk's javac
  * step, never this worker. Depends only on the Groovy compiler at compile time — the Groovy jar
  * arrives on the classpath at runtime, version-matched by jk, so the plugin never leaks compiler
@@ -65,7 +61,10 @@ public final class GroovyCompiler implements Plugin {
     static int compile(CompileSpec spec, CompilerProtocol proto) throws Exception {
         spec.outputDir.mkdirs();
 
-        List<File> files = allSources(spec);
+        // The engine's SOURCE lines are the whole joint compile set (explicit sources plus the
+        // Java neighborhood) — the exact set its action key hashed. Never re-walk here: this jar
+        // must not grow a tree cache, and a walk would compile files the key never saw.
+        List<File> files = spec.sources;
         boolean joint = files.stream().anyMatch(CompileSpec::isJava);
 
         CompilerConfiguration cfg = configure(spec, proto);
@@ -133,26 +132,6 @@ public final class GroovyCompiler implements Plugin {
         emitDiagnostics(unit.getErrorCollector(), proto);
         proto.result("COMPILATION_SUCCESS");
         return Exit.SUCCESS;
-    }
-
-    /**
-     * Explicit sources plus every {@code.java} under the spec's Java source roots — joint
-     * resolution needs the whole Java neighborhood on javac's compile set, since only stubs (not
-     * the roots) ride its sourcepath. Deduped by absolute path, spec order first.
-     */
-    static List<File> allSources(CompileSpec spec) throws IOException {
-        Set<File> out = new LinkedHashSet<>();
-        for (File f : spec.sources) out.add(f.getAbsoluteFile());
-        for (File root : spec.javaSourceRoots) {
-            if (!root.isDirectory()) continue;
-            try (Stream<Path> walk = Files.walk(root.toPath())) {
-                walk.filter(p -> p.toString().endsWith(".java"))
-                        .filter(Files::isRegularFile)
-                        .sorted()
-                        .forEach(p -> out.add(p.toFile().getAbsoluteFile()));
-            }
-        }
-        return new ArrayList<>(out);
     }
 
     /**

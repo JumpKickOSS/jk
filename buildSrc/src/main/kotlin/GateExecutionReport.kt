@@ -18,11 +18,11 @@ import org.gradle.tooling.events.task.TaskSuccessResult
  * Says which test tiers this build actually ran, and reads their counts out of `TEST-*.xml` rather than believing the
  * task outcome.
  *
- * Why it exists (JK-1018): a `checkAll` run reported nine failures when there were ten, because `:cli:test` was
- * `UP-TO-DATE` and never executed — a red tier was invisible in the gate that was supposed to be the merge bar. A later
- * run of the same gate finished in three seconds with 899 of 928 tasks up-to-date and results served from the build
- * cache, and printed `BUILD SUCCESSFUL`. Both are correct Gradle behaviour and both are useless as evidence, because
- * the thing a human reads off a gate is "the tests passed", and what the gate said was "nothing needed doing".
+ * Why it exists: a `checkAll` run reported nine failures when there were ten, because `:cli:test` was `UP-TO-DATE` and
+ * never executed — a red tier was invisible in the gate that was supposed to be the merge bar. A later run of the same
+ * gate finished in three seconds with 899 of 928 tasks up-to-date and results served from the build cache, and printed
+ * `BUILD SUCCESSFUL`. Both are correct Gradle behaviour and both are useless as evidence, because the thing a human
+ * reads off a gate is "the tests passed", and what the gate said was "nothing needed doing".
  *
  * A cached pass is a fine answer to "is this input already known good". It is not an answer to "did this tier run", and
  * the two are indistinguishable in the default output.

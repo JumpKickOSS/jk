@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
@@ -43,8 +43,8 @@ public final class WorkspaceClasspath {
     private WorkspaceClasspath() {}
 
     /**
-     * @param moduleDir the module being built
-     * @param module the parsed manifest of {@code moduleDir}
+     * @param projectDir the module being built
+     * @param project the parsed manifest of {@code projectDir}
      * @param scopes the scopes whose deps should contribute (typically {@code MAIN} for compile,
      *     {@code MAIN}+{@code TEST} for tests)
      */
@@ -87,7 +87,7 @@ public final class WorkspaceClasspath {
         // classpath was O(N) work per sibling over N siblings, and the forecast calls resolve up to
         // four times per module. On a 31-module workspace that is ~3,800 whole-workspace resolutions
         // for one command. loadModules already returns every member with root inheritance applied,
-        // which is exactly what the index below needs (JK-1046).
+        // which is exactly what the index below needs.
         //
         // It cannot change the missing-member behaviour: loadModules throws for a member with no
         // manifest, but parse on the *consumer* already went through applyWorkspace and rethrew for
@@ -169,11 +169,7 @@ public final class WorkspaceClasspath {
             closureJars.add(siblingJar);
             String missingLabel = module + " (expected at " + siblingJar + ")";
             Path missingSibDir = siblingDirByModule.get(module);
-            if (missingSibDir != null
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".java")
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".kt")
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")
-                    && !Languages.anySourceUnder(missingSibDir.resolve("src"), ".scala")) {
+            if (missingSibDir != null && !hasAnySource(missingSibDir.resolve("src"))) {
                 // Name the real cause: the sibling was never going to compile anything — its jar
                 // only appears once the module is scheduled and packages empty.
                 missingLabel = module + " has no sources — jk packages an empty jar for it once the"
@@ -277,6 +273,18 @@ public final class WorkspaceClasspath {
                 List<Path> siblingLockfiles,
                 List<Path> siblingClosureJars) {
             this(jars, missingSiblingJars, siblingLockfiles, siblingClosureJars, List.of());
+        }
+    }
+
+    /** Existence probe — does not retain a listing. */
+    private static boolean hasAnySource(Path src) {
+        try {
+            return PathUtil.anyRegularFile(src, d -> false, p -> {
+                String n = p.getFileName().toString();
+                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy") || n.endsWith(".scala");
+            });
+        } catch (IOException e) {
+            return false;
         }
     }
 }

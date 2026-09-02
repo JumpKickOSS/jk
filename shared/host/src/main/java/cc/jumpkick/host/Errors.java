@@ -9,7 +9,7 @@ public final class Errors {
     /**
      * Human text for {@code t}: its message, or {@code t.toString()} when the message is null or
      * blank — {@code String.valueOf(e.getMessage())} turned a message-less NPE into the literal
-     * {@code jk: null} with no class name (JK-2170).
+     * {@code jk: null} with no class name.
      */
     public static String text(Throwable t) {
         if (t == null) return "unknown error";

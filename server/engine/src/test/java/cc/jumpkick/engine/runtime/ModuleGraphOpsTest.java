@@ -31,8 +31,7 @@ class ModuleGraphOpsTest {
 
     @Test
     void empty_affected_match_renders_the_empty_graph_not_the_module(@TempDir Path dir) throws Exception {
-        // JK-2167: a selector that validates but matches nothing used to fall through to the
-        // unconditional single-module render.
+        // A selector that validates but matches nothing renders the empty graph, not the full module.
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.example"
                 name = "app"

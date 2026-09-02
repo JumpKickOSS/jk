@@ -221,7 +221,7 @@ public final class JavacRunner {
      * another; match all of them so none leak into the UI.
      *
      * <p>Anchored case-sensitively to HotSpot's uppercase {@code WARNING: } prefix and exact
-     * banner phrases (JK-2095): javac and annotation-processor {@code Messager} warnings use
+     * banner phrases: javac and annotation-processor {@code Messager} warnings use
      * lowercase {@code warning:}, and a processor warning that merely mentions
      * {@code sun.misc.Unsafe} or a deprecated method must reach the diagnostics channel. (The
      * banner's "terminally deprecated method" line also names {@code sun.misc.Unsafe}, so the

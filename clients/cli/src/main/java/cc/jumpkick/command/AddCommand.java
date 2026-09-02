@@ -30,6 +30,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -326,7 +327,8 @@ public final class AddCommand implements CliCommand {
 
         // Auto-detect coordinates from JAR metadata (best-effort).
         Optional<Coordinate> detected = Optional.empty();
-        boolean isJar = filePath.getFileName().toString().toLowerCase().endsWith(".jar");
+        boolean isJar =
+                filePath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar");
         if (isJar) {
             try {
                 detected = JarManifest.coordinateFrom(filePath);

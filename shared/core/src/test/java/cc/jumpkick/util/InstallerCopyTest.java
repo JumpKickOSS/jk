@@ -30,6 +30,20 @@ class InstallerCopyTest {
         }
     }
 
+    @Test
+    void every_install_path_retires_old_engines_before_materialization() throws IOException {
+        Path repo = findRepoRoot();
+
+        for (String name : new String[] {"install.sh", "install.ps1"}) {
+            String installer = Files.readString(repo.resolve(name));
+            String command = "self" + (name.endsWith(".sh") ? " retire-old-engines" : "\", \"retire-old-engines");
+            assertThat(installer).containsOnlyOnce(command);
+            assertThat(installer.indexOf(command))
+                    .as("%s retires the old engine before the local-only materialization branch", name)
+                    .isLessThan(installer.indexOf("product-lib engine"));
+        }
+    }
+
     /**
      * {@code scripts/install.ps1} predates the repo-root entrypoint and was once a full duplicate
      * — a third copy to keep in step. It must stay a forwarder.

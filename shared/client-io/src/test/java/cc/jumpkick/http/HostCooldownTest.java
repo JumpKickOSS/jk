@@ -39,7 +39,7 @@ class HostCooldownTest {
      * an exact arithmetic fact ("expiry = now + window") into a range that has to be loose enough to
      * absorb however long the test itself took. That is why one of them read
      * {@code isBetween(80s, 95s)} for a 90-second {@code Retry-After}. With the clock pinned the
-     * same four facts are equalities (JK-2446).
+     * same four facts are equalities.
      */
     private static final Instant NOW = fixed("2026-07-30T10:00:00Z");
 

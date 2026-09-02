@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewJkBuildRenderer;
 import java.nio.file.Path;
@@ -27,7 +28,7 @@ class NewJkBuildRendererTest {
                 false,
                 false,
                 NewInputs.Language.JAVA,
-                "simple",
+                Layout.SIMPLE,
                 Optional.empty(),
                 List.of("guava", "com.google.code.gson:gson"),
                 true,
@@ -52,7 +53,7 @@ class NewJkBuildRendererTest {
                 false,
                 false,
                 NewInputs.Language.JAVA,
-                "traditional",
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 List.of(),
                 true,
@@ -74,7 +75,7 @@ class NewJkBuildRendererTest {
                 false,
                 false,
                 NewInputs.Language.JAVA,
-                null,
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 List.of(),
                 true,
@@ -96,7 +97,7 @@ class NewJkBuildRendererTest {
                 false,
                 false,
                 NewInputs.Language.SCALA,
-                "traditional",
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 List.of(),
                 true,
@@ -126,7 +127,7 @@ class NewJkBuildRendererTest {
                 false,
                 false,
                 NewInputs.Language.JAVA,
-                "simple",
+                Layout.SIMPLE,
                 Optional.empty(),
                 List.of(),
                 true,

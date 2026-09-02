@@ -45,7 +45,7 @@ dependencies {
 
     // The tree's one poll-until-true helper (`cc.jumpkick.testing.Await`), so this module's tests
     // do not carry a private copy of the loop. Test-only source set: nothing here reaches `main`,
-    // the fat jar or a worker (JK-2443/JK-2446).
+    // the fat jar or a worker.
     testImplementation(testFixtures(project(":host")))
 }
 
@@ -88,8 +88,8 @@ tasks.shadowJar {
 }
 
 /**
- * Materialize the freshly-built engine fat jar into the product lib, {@code <data>/lib/jk-engine/}
- * ({@code ~/.local/share/jk/lib/…} or {@code $JK_HOME/data/lib/…}), and bounce the resident daemon so local dogfood
+ * Materialize the freshly-built engine fat jar into the product lib, {@code <home>/lib/jk-engine/}
+ * ({@code ~/.jk/lib/…}), and bounce the resident daemon so local dogfood
  * picks up engine-side first-party plugin tables without a hand copy.
  *
  * Native client at {@code build/dist/jk} ({@code jk.exe} on Windows) when {@code dist} already
@@ -178,7 +178,7 @@ fun Test.seedWorkerRepos(vararg projects: String) {
     projects.forEach { dependsOn("$it:stageWorkerRepo") }
     doFirst {
         val home = environment["JK_HOME"] as? String ?: return@doFirst
-        val store = file("$home/data/store") // JK_HOME mirrors XDG: store is <data>/store
+        val store = file("$home/store")
         projects.forEach { p ->
             val src = project(p).layout.buildDirectory.dir("worker-repo").get().asFile
             if (src.isDirectory) src.copyRecursively(store, overwrite = true)
@@ -206,7 +206,7 @@ tasks.withType<Test>().configureEach {
 // Worker jars only integration/slow tests fork (Boot/Grails/Android/protobuf/R8/Kotlin/
 // Groovy e2e, EngineServerTest's audit round-trip). Scoped to integrationTest so the unit
 // `test` task — the PR gate — stops building eight plugin projects and downloading apksig
-// it never uses (JK-2195). java-compiler/test-runner above stay on every Test task: they
+// it never uses. java-compiler/test-runner above stay on every Test task: they
 // are direct engine collaborators and PluginLoaderTest assume-skips without them.
 val integrationWorkerJars = listOf(
     "jk.spring-boot.plugin.jar" to ":spring-boot",
@@ -230,7 +230,7 @@ val integrationWorkerJars = listOf(
 
 // apksig for the spike test's APK verification. The worker jar is deliberately non-transitive
 // (the plugin resolves its own deps from the store at run time), so the test needs apksig
-// separately rather than loading it out of the plugin jar (JK-1449).
+// separately rather than loading it out of the plugin jar.
 val testApksig by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true
 }
@@ -239,7 +239,7 @@ dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
 // networkTest and slowTest get the same wiring: the shipped-template scaffold-and-build tests and
 // the framework e2e suites fork the same plugin workers, and a nightly run of either builds nothing
 // else first — without the dependsOn the jars are simply absent there and the tier skips its way
-// green. slowTest joined the list when JK-1023 moved @Tag("slow") off the gate; AndroidSpikeTest
+// green. slowTest joined the list when @Tag("slow") moved off the gate; AndroidSpikeTest
 // does not skip, it asserts the property is non-blank, so the tier failed on a missing jar rather
 // than quietly covering nothing.
 listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
@@ -250,7 +250,7 @@ listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
             // orders the tasks, and a doFirst systemProperty is set at execution time — so without
             // this, editing a plugin's source left integrationTest UP-TO-DATE and Gradle replayed
             // the previous run's results. Revert checks against a plugin change came back green as
-            // no-ops until `--rerun` was passed by hand (JK-2404).
+            // no-ops until `--rerun` was passed by hand.
             inputs.files(cfg).withPropertyName(prop).withPathSensitivity(PathSensitivity.NONE)
             doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
         }
@@ -271,7 +271,7 @@ listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
 }
 
 // ---------------------------------------------------------------------------
-// Guard G14 (JK-2410): a forecast key must hash the same facts as the build key.
+// Guard G14: a forecast key must hash the same facts as the build key.
 //
 // `jk explain` re-derives every cache key the build computes. When the two derivations disagree the
 // forecast either reports a phantom rebuild (the visible symptom) or blesses a stale artifact (the
@@ -289,7 +289,7 @@ listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
 //                               `"<prefix>:"` literals may not, because a prefix on one side only
 //                               means one side hashes a fact the other ignores.
 //        - `forArtifactShared`  ONE body, called by the build and by the forecast. A prefix set
-//                               cannot see a value drift behind an agreed prefix — JK-2480 was
+//                               cannot see a value drift behind an agreed prefix — one such drift was
 //                               exactly that, two sites both emitting `main:` from different
 //                               sources — and extending the scan to values is not possible, since
 //                               values legitimately differ per module. So the durable answer is one
@@ -298,7 +298,7 @@ listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
 //                               the word.
 //        - `forArtifactUnpaired` no forecast key, with the reason — AND whether the forecast emits a
 //                               *step* for that task at all. Those are different claims, and the
-//                               difference is where JK-2491 lived: `PlannerPlugin|pkgKey` was
+//                               difference is where the forecast bug lived: `PlannerPlugin|pkgKey` was
 //                               exempted as "plugin packager: not forecast", which was true of the
 //                               key and false of the step. explain emitted `package-jar` for every
 //                               Boot/Grails/Quarkus/minified module and priced it against the plain
@@ -307,10 +307,10 @@ listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
 //                               against what TaskForecaster actually constructs.
 //
 //   B. `CompileRequest` builder chains, restricted to the fields `ActionKey.forJavac` actually
-//      reads — now including `javaHome`, which it hashes since JK-2460. The scan follows the WHOLE
+//      reads — now including `javaHome`, which it hashes. The scan follows the WHOLE
 //      chain: the fluent primary chain plus every later statement on the same builder variable, up
 //      to its `build()`. It used to stop at the first `;`, which hid the conditional Scala
-//      continuation both keyed build sites carry and the forecast set on neither (JK-2479).
+//      continuation both keyed build sites carry and the forecast set on neither.
 //
 //   C. `compileRequestShared` — the compile-main request has one body (`PlannerCompile
 //      .mainCompileRequest`) that the build step and the forecast both call, for the same reason
@@ -335,7 +335,7 @@ val forArtifactShared = mapOf(
 
 // forArtifact sites with no forecast twin. Triple(task name, does the forecast emit a step for that
 // task, why there is nothing to compare). The boolean is checked against TaskForecaster: claiming
-// "not forecast" for a task the forecast does step is what hid JK-2491 for a whole release.
+// "not forecast" for a task the forecast does step is what hid the drift for a whole release.
 val forArtifactUnpaired = mapOf(
         "PlannerTails.java|key" to Triple(
                 "package-sources", false, "explain does not forecast the sources jar at all"),
@@ -617,7 +617,7 @@ val checkForecastKeyParity by tasks.registering {
         }
 
         // --- arm A3: an unpaired key must be honest about the forecast STEP -----
-        // The exemption that hid JK-2491 said "not forecast", which was true of the key and false
+        // The exemption that hid it said "not forecast", which was true of the key and false
         // of the step: explain emitted package-jar for every plugin-packaged module and keyed it
         // against the plain jar. So the claim is checked against what TaskForecaster constructs.
         val forecaster = read("TaskForecaster.java")
@@ -720,7 +720,7 @@ val checkForecastKeyParity by tasks.registering {
             // Past the primary chain. The fluent chain ends at the first `;`, but a builder held in
             // a local keeps taking setters afterwards — both keyed build sites add the Scala fields
             // in a following `if`, and stopping at the `;` is why the guard could not see the
-            // forecast setting none of them (JK-2479). Follow the variable to its build().
+            // forecast setting none of them. Follow the variable to its build().
             if (!setters.contains("build")) {
                 val assignedTo = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*=\s*$""")
                         .find(src.substring(maxOf(0, start - 200), start))
@@ -816,7 +816,7 @@ val checkForecastKeyParity by tasks.registering {
         }
 
         if (problems.isNotEmpty()) {
-            throw GradleException("Build/forecast key parity (JK-2410):\n\n" + problems.joinToString("\n\n"))
+            throw GradleException("Build/forecast key parity:\n\n" + problems.joinToString("\n\n"))
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
@@ -829,7 +829,7 @@ tasks.named("jar") { dependsOn(checkForecastKeyParity) }
 //
 // The spike cache under `build/` persists across runs so the *network* stays warm. A test that
 // also fixes its PROJECT path re-derives the same action key every run, the action cache replays
-// the stored record, and the code under test never executes — the JK-2462 replay shape
+// the stored record, and the code under test never executes — the replay shape
 // (MinifiedPluginTest's javadoc: "The warm part is the network, not the work"). So every file
 // under `src/test/java` naming the spike cache must also take a `@TempDir` somewhere, which
 // qualifies the action id with a fresh absolute path per method.
@@ -838,10 +838,10 @@ tasks.named("jar") { dependsOn(checkForecastKeyParity) }
 //
 // Detection-shape honesty: `@TempDir` presence does not prove the project ROOT lives inside it.
 // This closes the cheap regression (a spike test born with no @TempDir at all), not every replay;
-// the throw-probe from JK-2462 (make the code under test throw — a green run is a replay) remains
+// the throw-probe (make the code under test throw — a green run is a replay) remains
 // the strong check.
 // ---------------------------------------------------------------------------
-// Guard G32 (JK-2462).
+// Guard G32.
 val checkSpikeCacheTempDir by tasks.registering {
     group = "verification"
     description = "Fail the build when a spike-cache test does not root its project in a @TempDir"

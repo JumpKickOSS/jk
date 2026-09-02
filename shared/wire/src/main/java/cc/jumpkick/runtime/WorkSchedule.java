@@ -17,8 +17,8 @@ import java.util.Set;
  *
  * <p>Admission policy matches the bounded live scheduler: among ready modules, admit the
  * <strong>first in declaration / topo order</strong> (not longest-first), with at most
- * {@code concurrency} in flight, and a module ready only when every dirty prereq has fully
- * finished.
+ * {@code concurrency} in flight, and a module ready when every dirty prereq has published its
+ * artifacts — not when every prereq has fully finished.
  */
 public final class WorkSchedule {
 
@@ -33,8 +33,14 @@ public final class WorkSchedule {
         long serialSum = 0;
         long testSum = 0;
         for (ModuleWorkCost m : mods) {
-            serialSum += m.weight();
-            testSum += m.testWeight();
+            // Even at -j1 a module's own wall is its longer branch: -j bounds how many MODULES run
+            // at once, it does not put a module's suite and its packaging tail back in series.
+            long tw = Math.max(0, m.testWeight());
+            // Even at -j1 a module's own wall is prefix + its longer branch: -j bounds how many
+            // MODULES run at once, it does not put a module's suite and its packaging tail back in
+            // series. With no tail this is exactly m.weight(), as it was.
+            serialSum += moduleWall(m);
+            testSum += tw;
         }
         if (serial || concurrency <= 1) return serialSum;
         long scheduled = listSchedule(mods, Math.max(1, concurrency));
@@ -59,9 +65,10 @@ public final class WorkSchedule {
         }
         if (byDir.isEmpty()) return 0;
 
-        // Phase-gated admission (JK-2210/2211): dependents wait on the upstream ARTIFACT point
-        // (weight minus the run-tests slice — packaging no longer gates on tests), never on the
-        // upstream's full plan. The slot itself stays occupied for the full weight.
+        // Phase-gated admission: dependents wait on the upstream ARTIFACT point (its weight minus
+        // the run-tests slice — packaging does not gate on tests), never on the upstream's full
+        // plan. The slot stays occupied until the module's own finish, which is now its longer
+        // branch rather than the sum of its steps (see below).
         Map<Path, Long> artifactAt = new HashMap<>();
         // Two event kinds: an artifact landing (wakes admission, frees nothing) and a flight
         // finishing (frees the slot). Without artifact events a dependent could only start at
@@ -86,8 +93,17 @@ public final class WorkSchedule {
                 if (next == null) break;
                 remaining.remove(next);
                 ModuleWorkCost m = byDir.get(next);
-                long fin = t + Math.max(0, m.weight());
-                long art = t + Math.max(0, m.weight() - Math.max(0, m.testWeight()));
+                // A module's own wall is its LONGER branch, not the sum of its steps. Inside a
+                // plan, `run-tests` is a leaf and packaging requires only the jar, so the suite
+                // and the packaging tail (assembly, native-image, sources) run at the same time —
+                // BuildPlan admits first-ready. Pricing a module with a 10 s suite and a 37 s
+                // native-image at 47 s says the executor serializes them, which is the bug that
+                // executor no longer has.
+                long fin = t + moduleWall(m);
+                // Dependents need the jar, which lands with the compile prefix — before either
+                // branch. Without a known tail this degrades to "everything but the suite", the
+                // pre-tail behaviour.
+                long art = t + Math.max(0, m.weight() - Math.max(0, m.testWeight()) - Math.max(0, m.tailWeight()));
                 artifactAt.put(next, art);
                 if (art < fin) events.add(new Event(art, next, false));
                 events.add(new Event(fin, next, true));
@@ -108,6 +124,22 @@ public final class WorkSchedule {
             }
         }
         return end;
+    }
+
+    /**
+     * One module's own wall: the compile prefix both branches share, plus whichever branch is
+     * longer. {@code run-tests} is a plan leaf and the packaging tail requires only the jar, so
+     * {@code BuildPlan} admits them together — pricing a module with a 10 s suite and a 37 s
+     * native-image at 47 s would claim a serialization the executor no longer has.
+     *
+     * <p>A module with no tail prices at exactly {@code weight()}, so this is a no-op for the
+     * ordinary compile-test-package module and only bites where a real tail exists.
+     */
+    static long moduleWall(ModuleWorkCost m) {
+        long test = Math.max(0, m.testWeight());
+        long tail = Math.max(0, m.tailWeight());
+        long prefix = Math.max(0, Math.max(0, m.weight()) - test - tail);
+        return prefix + Math.max(test, tail);
     }
 
     private static boolean prereqArtifactsReady(

@@ -11,7 +11,7 @@ description = "jk-audit-runner: child-JVM worker that queries the OSV vulnerabil
 // No JSON library. OSV's batch and vuln documents are read with MiniJson, which :plugin-sdk
 // already puts on this worker's classpath via :host — Jackson 3 was a second tree reader worth
 // 2.65 MB and three jars on a 14 KB worker whose POM-rebuilt launch classpath has to download
-// every one of them (JK-2422).
+// every one of them.
 dependencies {
     implementation(project(":core"))
     implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)
@@ -21,7 +21,7 @@ dependencies {
 // `stageWorkerRepo` writes, which is what `installLocal` copies into store/repos/jk-local and what
 // scripts/publish-maven-repo.sh uploads. This module is the sample: its closure spans all four
 // first-party rungs (:core, :plugin-sdk, :host, :jk-api) plus third-party jars, so a coordinate
-// rendered from a Gradle default shows up here first (JK-2497).
+// rendered from a Gradle default shows up here first.
 val stagedWorkerRepo = layout.buildDirectory.dir("worker-repo/repos/jk-local")
 
 tasks.named<Test>("test") {

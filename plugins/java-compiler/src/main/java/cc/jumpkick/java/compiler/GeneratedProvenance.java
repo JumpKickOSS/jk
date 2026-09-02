@@ -149,8 +149,8 @@ final class GeneratedProvenance {
             String[] parts = line.split("\t");
             if (parts.length < 2) continue;
             Set<Path> origins = new HashSet<>();
-            for (int i = 1; i < parts.length; i++) origins.add(canonical(Path.of(parts[i])));
-            out.put(canonical(Path.of(parts[0])), origins);
+            for (int i = 1; i < parts.length; i++) origins.add(canonical(Path.of(unescape(parts[i]))));
+            out.put(canonical(Path.of(unescape(parts[0]))), origins);
         }
         return out;
     }
@@ -158,10 +158,51 @@ final class GeneratedProvenance {
     private void write(Map<Path, Set<Path>> prov) throws IOException {
         List<String> lines = new ArrayList<>(prov.size());
         for (Map.Entry<Path, Set<Path>> e : prov.entrySet()) {
-            StringBuilder sb = new StringBuilder(e.getKey().toString());
-            for (Path origin : e.getValue()) sb.append('\t').append(origin);
+            StringBuilder sb = new StringBuilder(escape(e.getKey().toString()));
+            for (Path origin : e.getValue()) sb.append('\t').append(escape(origin.toString()));
             lines.add(sb.toString());
         }
         Files.write(file, lines, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * TSV needs its delimiters out of the data: a tab or newline is legal in a POSIX path, and
+     * unescaped it split the record into bogus columns (or across lines) — the row read as
+     * malformed, was silently skipped, and the prune this class exists to perform stopped for
+     * that file.
+     */
+    static String escape(String s) {
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\' -> out.append("\\\\");
+                case '\t' -> out.append("\\t");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                default -> out.append(c);
+            }
+        }
+        return out.toString();
+    }
+
+    static String unescape(String s) {
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c != '\\' || i + 1 == s.length()) {
+                out.append(c);
+                continue;
+            }
+            char next = s.charAt(++i);
+            switch (next) {
+                case '\\' -> out.append('\\');
+                case 't' -> out.append('\t');
+                case 'n' -> out.append('\n');
+                case 'r' -> out.append('\r');
+                default -> out.append(c).append(next); // pre-escaping rows pass through untouched
+            }
+        }
+        return out.toString();
     }
 }

@@ -597,7 +597,7 @@ public final class PluginBuild {
             throws IOException {
         List<Path> classpath = new ArrayList<>();
         if (Files.exists(lockFile)) {
-            var resolver = new ClasspathResolver(JkStores.cas(cache));
+            var resolver = new ClasspathResolver(JkStores.storeCas());
             classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME));
         }
         try {
@@ -609,7 +609,7 @@ public final class PluginBuild {
                 try {
                     var sib = LockfileReader.read(sibLock);
                     for (Path pth :
-                            new ClasspathResolver(JkStores.cas(cache)).classpathFor(sib, ClasspathResolver.RUNTIME)) {
+                            new ClasspathResolver(JkStores.storeCas()).classpathFor(sib, ClasspathResolver.RUNTIME)) {
                         if (!classpath.contains(pth)) classpath.add(pth);
                     }
                 } catch (Exception ignored) {
@@ -652,7 +652,7 @@ public final class PluginBuild {
     public static List<ProdEntry> productionEntries(Path projectDir, Path cache, Path lockFile, JkBuild project)
             throws IOException {
         List<ProdEntry> out = new ArrayList<>();
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(cas);
             for (var entry : resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME)) {
@@ -750,7 +750,7 @@ public final class PluginBuild {
             PluginJar workerJar = PluginJar.byArtifactId(worker)
                     .orElseThrow(() -> new IllegalStateException(
                             "plugin " + active.manifest().id() + " names unregistered worker " + worker));
-            return workerJar.locate(JkStores.cas(cache));
+            return workerJar.locate(JkStores.storeCas());
         }
         throw new IOException("plugin " + active.manifest().id()
                 + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
@@ -776,15 +776,15 @@ public final class PluginBuild {
         for (var e : lock.plugins()) {
             if (!coord.equals(e.coordinate())) continue;
             var pinned = PluginDescriptorOps.pinnedLayoutJar(
-                    JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex());
+                    JkStores.storeCas(), e.coordinate(), e.version(), e.sha256Hex());
             if (pinned.isPresent()) return pinned.get();
             String fetchFailure = null;
             try {
                 PluginJar.fetchOfficial(
-                        JkStores.cas(cache),
+                        JkStores.storeCas(),
                         MavenLayout.artifactPath(Coordinate.ofModule(e.coordinate(), e.version())));
                 pinned = PluginDescriptorOps.pinnedLayoutJar(
-                        JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex());
+                        JkStores.storeCas(), e.coordinate(), e.version(), e.sha256Hex());
                 if (pinned.isPresent()) return pinned.get();
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();

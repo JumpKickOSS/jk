@@ -42,16 +42,16 @@ public final class CachePlans {
     private CachePlans() {}
 
     /** Files removed (or, on a dry run, that would be): temps, stamps, action keys, CAS blobs. */
-    public static final BuildPlanKey<Long> FILES = BuildPlanKey.of("cache-files", Long.class);
+    public static final BuildPlanKey<Long> FILES = BuildPlanKey.scalar("cache-files", Long.class);
 
     /** Bytes freed (or reclaimable, on a dry run). */
-    public static final BuildPlanKey<Long> BYTES = BuildPlanKey.of("cache-bytes", Long.class);
+    public static final BuildPlanKey<Long> BYTES = BuildPlanKey.scalar("cache-bytes", Long.class);
 
     /**
      * Action-tier bytes left after the prune — what the scheduler records so a cache that fills up
      * between two cadence ticks is pruned when it fills, not when the interval next elapses.
      */
-    public static final BuildPlanKey<Long> FINAL_ACTION_BYTES = BuildPlanKey.of("cache-final-bytes", Long.class);
+    public static final BuildPlanKey<Long> FINAL_ACTION_BYTES = BuildPlanKey.scalar("cache-final-bytes", Long.class);
 
     /**
      * Hygiene plan for the cache at {@code root}: leaked CAS temps, format stamps, step timings, an
@@ -129,7 +129,10 @@ public final class CachePlans {
                     ctx.progress(1);
                 })
                 .build();
-        return BuildPlan.builder("cache-prune").addTask(pruneStep).build();
+        return BuildPlan.builder("cache-prune")
+                .stateKeys(FILES, BYTES, FINAL_ACTION_BYTES)
+                .addTask(pruneStep)
+                .build();
     }
 
     /**
@@ -144,7 +147,10 @@ public final class CachePlans {
                     purgeActionCache(root);
                 })
                 .build();
-        return BuildPlan.builder("cache-purge").addTask(purgeStep).build();
+        return BuildPlan.builder("cache-purge")
+                .stateKeys(FILES, BYTES)
+                .addTask(purgeStep)
+                .build();
     }
 
     /**
@@ -184,7 +190,10 @@ public final class CachePlans {
                     ctx.progress(1);
                 })
                 .build();
-        return BuildPlan.builder("storage-clean").addTask(sweepStep).build();
+        return BuildPlan.builder("storage-clean")
+                .stateKeys(FILES, BYTES)
+                .addTask(sweepStep)
+                .build();
     }
 
     /** Totals for one store sweep ({@link #sweepStore}). */
@@ -199,13 +208,13 @@ public final class CachePlans {
         long totalFiles = 0;
         long totalBytes = 0;
 
-        TempSweep temps = sweepCasTemps(JkStores.resolve(root, "sha256"), dryRun);
+        TempSweep temps = sweepCasTemps(JkStores.resolve("sha256"), dryRun);
         totalFiles += temps.files();
         totalBytes += temps.bytes();
 
         // Reclaim leaked .put-*.tmp download temps under the Maven-layout store too — mirror=false
         // fetches (metadata / file:// POMs) return the temp and never delete it.
-        TempSweep repoTemps = sweepCasTemps(JkStores.resolve(root, "repos"), dryRun);
+        TempSweep repoTemps = sweepCasTemps(JkStores.resolve("repos"), dryRun);
         totalFiles += repoTemps.files();
         totalBytes += repoTemps.bytes();
 
@@ -278,7 +287,10 @@ public final class CachePlans {
                     ctx.progress(1);
                 })
                 .build();
-        return BuildPlan.builder("cache-clear").addTask(clearStep).build();
+        return BuildPlan.builder("cache-clear")
+                .stateKeys(FILES, BYTES)
+                .addTask(clearStep)
+                .build();
     }
 
     /** The current project dir plus, if it's in a workspace, every {@code [workspace]} module dir. */
@@ -441,7 +453,7 @@ public final class CachePlans {
     private static List<Path> tempFiles(Path dir) throws IOException {
         try (var stream = Files.walk(dir)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            // the path for a fresh stat even for entries the name test discards.
             return stream.filter(p -> p.getFileName().toString().startsWith(".put-"))
                     .filter(Files::isRegularFile)
                     .toList();

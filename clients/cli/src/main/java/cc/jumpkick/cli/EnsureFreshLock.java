@@ -28,7 +28,7 @@ import java.util.List;
  * is repaired automatically the next time a lock-dependent command runs. When the lock is
  * missing or stale ({@code projectInfo.lockStale}), this runs the engine lock plan under a live
  * CommandWedge spinner ({@code Locking g:n…}). Fresh locks are a no-op. The client does not
- * parse {@code jk.toml} to decide staleness (JK-2151).
+ * parse {@code jk.toml} to decide staleness.
  *
  * <p>Call sites: explain, tree, why, audit, deny, outdated, jshell, status, export, ide, sync,
  * install, and anything else that reads the lock. Build already freshes engine-side.
@@ -78,18 +78,16 @@ public final class EnsureFreshLock {
      * As {@link #ensure(Path, Path, GlobalOptions, String)} honoring the command's
      * {@code --repo-url} override: the invisible freshen resolves against the SAME repo the
      * command will use — dropping it made `jk outdated --repo-url …` on a lockless project
-     * fail its freshen against the declared repos (JK-2178).
+     * fail its freshen against the declared repos.
      */
     public static int ensure(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, URI repoUrl) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
     }
 
     /**
-     * Best-effort freshen for read verbs that RESOLVE INDEPENDENTLY of the lock ({@code jk
-     * outdated}): attempt the invisible freshen, but a failure — even with no lock at all — is a
-     * warning, never an exit. Pre-JK-2151 the engine skipped missing-lock freshens entirely, so
-     * these verbs always worked lockless; the write-a-missing-lock upgrade (aa655a0f) must not
-     * turn their unresolvable-repo situations into hard failures (JK-2178).
+     * Best-effort freshen for read verbs that resolve independently of the lock
+     * ({@code jk outdated}): attempt the invisible freshen, but a failure — even with no
+     * lock at all — is a warning, never an exit.
      */
     public static void ensureBestEffort(
             Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, URI repoUrl) {
@@ -153,7 +151,7 @@ public final class EnsureFreshLock {
                 return failSoftOrHard(dir, chip, err, outcome.exitCode(), spinner);
             }
             // The lock just changed on disk — memoized summaries (hasLock/lockJdk/lockStale)
-            // are stale for the rest of this invocation (JK-2162).
+            // are stale for the rest of this invocation.
             ProjectInfos.forget();
             return Exit.SUCCESS;
         } catch (Exception e) {

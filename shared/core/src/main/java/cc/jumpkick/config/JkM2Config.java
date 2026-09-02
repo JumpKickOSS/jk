@@ -7,7 +7,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Machine-scoped {@code [m2]} policy from {@code ~/.config/jk/config.toml}.
+ * Machine-scoped {@code [m2]} policy from {@code ~/.jk/config.toml}.
  *
  * <p>{@code integration} is the global kill switch for Maven local-repository lookup /
  * write-through of third-party jars. A project can still set {@code [m2] integration = false} to

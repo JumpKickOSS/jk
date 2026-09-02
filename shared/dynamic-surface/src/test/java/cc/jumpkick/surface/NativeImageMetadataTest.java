@@ -394,7 +394,7 @@ class NativeImageMetadataTest {
      * parser had no nesting cap and overflowed the stack on it — and {@code StackOverflowError} is an
      * {@link Error}, so the {@code catch (RuntimeException)} that makes a broken metadata file a
      * no-op did not catch it and the whole package step died. Reading through the one tree codec
-     * (JK-2422) means its depth cap applies here too.
+     * means its depth cap applies here too.
      */
     @Test
     void a_deeply_nested_metadata_file_is_skipped_rather_than_overflowing_the_stack() {

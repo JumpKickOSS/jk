@@ -35,7 +35,7 @@ public record JkHttpConfig(
     /** Web-UI SSE budget ({@code GET /api/events}); a separate cap from RPC admission. */
     public static final int DEFAULT_MAX_EVENT_STREAMS = 16;
 
-    /** Relative to the resolved {@code JK_HOME} / platform product layout home — i.e. {@code ~/.local/state/jk/web} by default. */
+    /** Relative to the jk home root — i.e. {@code ~/.jk/state/web} by default. */
     public static final String DEFAULT_WEB_ROOT = "state/web";
 
     /** The {@code [mcp]} table: surface toggle + its own SSE budget ({@code GET /mcp}). */
@@ -142,14 +142,14 @@ public record JkHttpConfig(
                 : Runtime.getRuntime().availableProcessors();
     }
 
-    /** {@code web-root} resolved against the live {@link JkDirs#data()} root when relative. */
+    /** {@code web-root} resolved against the live {@link JkDirs#home()} root when relative. */
     public Path webRootPath() {
-        return webRootPath(JkDirs.data());
+        return webRootPath(JkDirs.home());
     }
 
-    /** As {@link #webRootPath()} but against an explicit data root — for tests. */
-    public Path webRootPath(Path dataDir) {
+    /** As {@link #webRootPath()} but against an explicit anchor — for tests. */
+    public Path webRootPath(Path homeDir) {
         Path p = Path.of(webRoot);
-        return (p.isAbsolute() ? p : dataDir.resolve(p)).normalize();
+        return (p.isAbsolute() ? p : homeDir.resolve(p)).normalize();
     }
 }

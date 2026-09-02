@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.command.ide.IdeSourceRoots;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.jsonl.Jsonl;
@@ -42,10 +43,6 @@ public final class BspServer {
 
     private static final Pattern CONTENT_LENGTH =
             Pattern.compile("Content-Length:\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
-
-    /** javac-style {@code path:line:col: message} or {@code path:line: message}. */
-    private static final Pattern DIAG_LINE =
-            Pattern.compile("^(?<file>[^:]+\\.(?:java|kt|kts|groovy)):(?<line>\\d+)(?::(?<col>\\d+))?:\\s*(?<msg>.+)$");
 
     private final IdeEngineClient ide;
     private final BufferedReader in;
@@ -446,9 +443,8 @@ public final class BspServer {
 
     private String compileJson(String requestJson, Path moduleDir) throws IOException {
         var outcome = ide.buildModule(moduleDir, null);
-        if (!outcome.success()) {
-            publishDiagnostics(requestJson, outcome.errors());
-        }
+        // Unconditional: a green compile can still carry warnings the IDE should show.
+        publishDiagnostics(requestJson, outcome.errors(), outcome.warnings());
         return statusResult(outcome, "compile failed");
     }
 
@@ -475,7 +471,7 @@ public final class BspServer {
 
     private String runJson(Path moduleDir) throws IOException {
         // The launched app's output travels as build/logMessage notifications — the parent's
-        // stdout is the frame channel and must never carry raw program bytes (JK-2351).
+        // stdout is the frame channel and must never carry raw program bytes.
         var outcome = ide.runModule(moduleDir, null, line -> {
             try {
                 notify("build/logMessage", "{\"type\":4,\"message\":" + q(line) + "}");
@@ -486,43 +482,21 @@ public final class BspServer {
         return statusResult(outcome, "run failed");
     }
 
-    private void publishDiagnostics(String requestJson, List<String> errors) throws IOException {
-        if (errors == null || errors.isEmpty()) return;
+    /**
+     * Parsed with {@link CompilerLocus} — the one header vocabulary the CLI, MCP, journal and
+     * engine already share. A private pattern here misplaced every multi-line javac block,
+     * groovyc's spaced header, and any Windows path to project root line 0.
+     */
+    private void publishDiagnostics(String requestJson, List<String> errors, List<String> warnings) throws IOException {
+        boolean noErrors = errors == null || errors.isEmpty();
+        boolean noWarnings = warnings == null || warnings.isEmpty();
+        if (noErrors && noWarnings) return;
         List<String> uris = extractTargetUris(requestJson);
         String targetUri = uris.isEmpty() ? pathUri(ide.projectDir()) + "#root" : uris.getFirst();
         // Group diagnostics by file URI.
         Map<String, List<String>> byFile = new LinkedHashMap<>();
-        for (String err : errors) {
-            if (err == null || err.isBlank()) continue;
-            Matcher m = DIAG_LINE.matcher(err.strip());
-            if (m.matches()) {
-                Path file = Path.of(m.group("file"));
-                int line = Math.max(0, Integer.parseInt(m.group("line")) - 1);
-                int col = m.group("col") != null ? Math.max(0, Integer.parseInt(m.group("col")) - 1) : 0;
-                String msg = m.group("msg");
-                String diag = "{\"range\":{\"start\":{\"line\":"
-                        + line
-                        + ",\"character\":"
-                        + col
-                        + "},\"end\":{\"line\":"
-                        + line
-                        + ",\"character\":"
-                        + col
-                        + "}},\"severity\":1,\"message\":"
-                        + q(msg)
-                        + "}";
-                byFile.computeIfAbsent(pathUri(file), k -> new ArrayList<>()).add(diag);
-            } else {
-                // No path — attach to a synthetic project-level diagnostic via first source root.
-                String diag =
-                        "{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}},"
-                                + "\"severity\":1,\"message\":"
-                                + q(err)
-                                + "}";
-                byFile.computeIfAbsent(pathUri(ide.projectDir()), k -> new ArrayList<>())
-                        .add(diag);
-            }
-        }
+        collectDiagnostics(byFile, errors, 1, ide.projectDir());
+        collectDiagnostics(byFile, warnings, 2, ide.projectDir());
         for (Map.Entry<String, List<String>> e : byFile.entrySet()) {
             notify(
                     "build/publishDiagnostics",
@@ -534,6 +508,28 @@ public final class BspServer {
                             + String.join(",", e.getValue())
                             + "]}");
         }
+    }
+
+    /** BSP severity: 1 = error, 2 = warning. An unparseable block lands at project root line 0. */
+    static void collectDiagnostics(Map<String, List<String>> byFile, List<String> raw, int severity, Path projectDir) {
+        if (raw == null) return;
+        for (String text : raw) {
+            if (text == null || text.isBlank()) continue;
+            CompilerLocus locus = CompilerLocus.parse(text);
+            if (locus != null) {
+                byFile.computeIfAbsent(pathUri(Path.of(locus.file())), k -> new ArrayList<>())
+                        .add(diagnosticJson(
+                                Math.max(0, locus.line() - 1), Math.max(0, locus.col() - 1), severity, text.strip()));
+            } else {
+                byFile.computeIfAbsent(pathUri(projectDir), k -> new ArrayList<>())
+                        .add(diagnosticJson(0, 0, severity, text));
+            }
+        }
+    }
+
+    private static String diagnosticJson(int line, int col, int severity, String message) {
+        return "{\"range\":{\"start\":{\"line\":" + line + ",\"character\":" + col + "},\"end\":{\"line\":" + line
+                + ",\"character\":" + col + "}},\"severity\":" + severity + ",\"message\":" + q(message) + "}";
     }
 
     /**

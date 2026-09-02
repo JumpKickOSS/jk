@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Engine JVM entrypoint ({@code:engine}). Plain Java — never a native image. Spawned by the slim
+ * Engine JVM entrypoint ({@code :engine}). Plain Java — never a native image. Spawned by the slim
  * client as {@code java -cp lib/jk-engine/<jar> cc.jumpkick.engine.EngineMain}. Not a client: no CLI
  * command tree, no TUI.
  */
@@ -79,7 +79,7 @@ public final class EngineMain {
      */
     public static int run() {
         // Survive the spawner's terminal: detach into our own POSIX session, then ignore
-        // terminal-generated SIGINT/SIGHUP. Cancelling a build is BUILD_CANCEL on the wire.
+        // terminal-generated SIGINT/SIGHUP. Cancelling a build is CANCEL_REQUEST on the wire.
         PosixDetach.intoOwnSession();
         TerminalSignals.ignoreInterruptAndHangup();
         try {
@@ -247,7 +247,7 @@ public final class EngineMain {
     /**
      * The sidecar trainer's whole life: bring up a REAL engine server against a private temp state
      * dir (it can never win, lose, or see the real engine's election), idle briefly, then stop
-     * cleanly so the JVM assembles the {@code.aot} at exit.
+     * cleanly so the JVM assembles the {@code .aot} at exit.
      */
     /**
      * Hard ceiling on a trainer's life, enforced by a watchdog rather than by the happy path.

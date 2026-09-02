@@ -85,7 +85,7 @@ class WorkerLaunchClasspathTest {
             Path sdkAbs = sdkClasses.toAbsolutePath().normalize();
             Path hostCodecAbs = hostCodecJar.toAbsolutePath().normalize();
             Path depAbs = depJar.toAbsolutePath().normalize();
-            // JK-2326: codec dirs must precede the worker jar so a fresh classes/main wins over the
+            // : codec dirs must precede the worker jar so a fresh classes/main wins over the
             // codec the jar vendors.
             assertThat(cp).contains(workerAbs, sdkAbs, hostCodecAbs, depAbs);
             assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(workerAbs));

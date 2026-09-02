@@ -160,7 +160,7 @@ class BuildGraphTest {
     /**
      * A coordinator root with `.jk/` is a unit even though it compiles nothing: it has an
      * `after-build` script, and the graph is the only thing that can run it once, after everything
-     * else. Before JK-1058 the directory was silently ignored.
+     * else. Before the directory was silently ignored.
      */
     @Test
     void coordinator_root_with_build_logic_is_a_unit_ordered_last(@TempDir Path tmp) throws Exception {

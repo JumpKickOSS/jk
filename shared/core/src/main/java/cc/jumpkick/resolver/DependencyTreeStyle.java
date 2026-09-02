@@ -11,7 +11,7 @@ import java.util.function.UnaryOperator;
  * wire form and its inverse, the scope display order, and the scope badge.
  *
  * <p>Nothing here parses or reads anything — no {@code JkBuildParser}, no {@code Lockfile} — which
- * is why the CLI can reach it (JK-2151: substituting Theme colors client-side must not drag tomlj
+ * is why the CLI can reach it (: substituting Theme colors client-side must not drag tomlj
  * onto the native image). {@link DependencyTree} depends on this class, never the reverse; that
  * direction is what keeps the CLI off the parser.
  */

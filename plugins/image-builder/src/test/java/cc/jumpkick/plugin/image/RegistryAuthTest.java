@@ -27,7 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Jib attaches no credential retriever to a {@code RegistryImage} unless it is asked to, and jk
- * never asked (JK-2464). Both legs were affected and both are covered here: the <em>base-image
+ * never asked. Both legs were affected and both are covered here: the <em>base-image
  * pull</em>, which every mode performs — so a private base broke a plain {@code jk build}, not just
  * a push — and the push itself.
  *

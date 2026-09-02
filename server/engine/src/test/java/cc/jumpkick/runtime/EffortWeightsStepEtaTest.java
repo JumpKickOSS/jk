@@ -24,7 +24,6 @@ class EffortWeightsStepEtaTest {
     Path hostStateDir;
 
     private String prevStateDir;
-    private String prevBuildsDir;
 
     /**
      * Pin state + builds, the same way {@link NativeEffortTest} does and for the same reason. Cold
@@ -35,16 +34,13 @@ class EffortWeightsStepEtaTest {
      *
      * <p>{@code Calibration.installForTest} is not enough on its own: tests share a JVM, and
      * another class's {@code invalidateMemo()} drops the installed value mid-test. Moving the
-     * directory the memo would reload from is what makes it stick. JK_BUILDS_DIR is required too:
-     * a set JK_HOME would otherwise ignore JK_STATE_DIR for builds/.
+     * directory the memo would reload from is what makes it stick. builds/ hangs off the state
+     * root, so the one override pins both.
      */
     @BeforeEach
     void isolateHostState() {
         prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
-        prevBuildsDir = System.getProperty("jk.env.JK_BUILDS_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", hostStateDir.toString());
-        System.setProperty(
-                "jk.env.JK_BUILDS_DIR", hostStateDir.resolve("builds").toString());
         Calibration.invalidateMemo();
         BuildMetrics.clearSessionAggregatesMemo();
     }
@@ -53,8 +49,6 @@ class EffortWeightsStepEtaTest {
     void restoreHostState() {
         if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
         else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
-        if (prevBuildsDir == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
-        else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuildsDir);
         Calibration.invalidateMemo();
         BuildMetrics.clearSessionAggregatesMemo();
     }
@@ -101,7 +95,7 @@ class EffortWeightsStepEtaTest {
         long serialTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, false, EffortWeights.MS_PER_WEIGHT);
         assertThat(serialTests).isBetween(48_000L, 55_000L);
-        // Phase-gated schedule (JK-2210/2211): cli admits at eng's ARTIFACT point (~2s — the
+        // Phase-gated schedule (/2211): cli admits at eng's ARTIFACT point (~2s — the
         // compile slice; eng's 40s suite overlaps), so wall ≈ eng alone (~42s), not 42+10.
         long parallelTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, true, EffortWeights.MS_PER_WEIGHT);
@@ -219,7 +213,7 @@ class EffortWeightsStepEtaTest {
 
     @Test
     void cold_reprice_without_counts_underprices_tests_that_counts_fix() {
-        // Regression: build countdown used costFromRunningSteps(..., Map.of) while explain passed
+        // Regression: build countdown used costFromRunningSteps(..., Map.of()) while explain passed
         // testCount → cold monorepo ETA collapsed to suite-startup × modules (~12s) vs minutes.
         BuildMetrics metrics = BuildMetrics.load(Path.of("/nonexistent-" + System.nanoTime()));
         var withCounts = EffortWeights.costFromRunningSteps(

@@ -76,7 +76,7 @@ class ModuleLayoutTest {
 
     @Test
     void member_inherits_the_workspace_root_layout(@TempDir Path tmp) throws Exception {
-        // JK-2313: a workspace member that omits `layout` inherits the root's — isCompact must honor
+        // : a workspace member that omits `layout` inherits the root's — isCompact must honor
         // that, or raw-scan call sites disagree with compile on an ambiguous tree.
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "t"

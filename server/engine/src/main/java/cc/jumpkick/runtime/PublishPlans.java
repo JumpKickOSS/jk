@@ -60,15 +60,15 @@ public final class PublishPlans {
             boolean sbom,
             RepoCredential credential) {}
 
-    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.of("project", JkBuild.class);
-    public static final BuildPlanKey<Path> JAR = BuildPlanKey.of("jar", Path.class);
+    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("project", JkBuild.class);
+    public static final BuildPlanKey<Path> JAR = BuildPlanKey.scalar("jar", Path.class);
 
     /** The plugin's uploaded-file count (0 for {@code --dry-run}), populated by the publish step. */
-    public static final BuildPlanKey<Integer> FILES = BuildPlanKey.of("pub-files", Integer.class);
+    public static final BuildPlanKey<Integer> FILES = BuildPlanKey.scalar("pub-files", Integer.class);
 
     /** Build the publish plan for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
     public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
-        Path workerJar = PluginJar.PUBLISHER.locate(JkStores.cas(cache));
+        Path workerJar = PluginJar.PUBLISHER.locate(JkStores.storeCas());
         Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
 
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
@@ -133,7 +133,11 @@ public final class PublishPlans {
                 })
                 .build();
 
-        return BuildPlan.builder("publish").addTask(parseBuild).addTask(publish).build();
+        return BuildPlan.builder("publish")
+                .stateKeys(PROJECT, JAR, FILES)
+                .addTask(parseBuild)
+                .addTask(publish)
+                .build();
     }
 
     /** Fork the {@code jk-publisher} plugin; returns the uploaded-file count. */

@@ -10,7 +10,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.PublishRequest;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -71,32 +71,33 @@ class PublishVerbCredentialRedactionTest {
         // Restored by @ExtendWith(SysProps.class) on the class. It used to be three copies of a
         // `finally { clearProperty(...) }`, one per test, each of which left the property set if
         // anything between `project(tmp)` and the `try` threw — including this method itself and the
-        // precondition assertion above the first `try` (JK-2446).
+        // precondition assertion above the first `try`.
         System.setProperty(PluginJar.PUBLISHER.jarProperty(), worker.toString());
         return dir;
     }
 
     private static String bearerRequest(Path dir, Path cache, String token) {
-        return ProtoJobs.publishRequest(
-                dir.toString(),
-                cache.toString(),
-                "https://nexus.example.com/repo/",
-                null,
-                null,
-                null,
-                false,
-                true,
-                null,
-                null,
-                false,
-                false,
-                false,
-                "bearer",
-                null,
-                null,
-                token,
-                false,
-                false);
+        return new PublishRequest(
+                        dir.toString(),
+                        cache.toString(),
+                        "https://nexus.example.com/repo/",
+                        null,
+                        null,
+                        null,
+                        false,
+                        true,
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        "bearer",
+                        null,
+                        null,
+                        token,
+                        false,
+                        false)
+                .encode();
     }
 
     @Test
@@ -130,26 +131,27 @@ class PublishVerbCredentialRedactionTest {
     void a_socket_shipped_basic_password_is_masked_and_the_username_is_not(@TempDir Path tmp) throws Exception {
         Path dir = project(tmp);
         CapturingHost host = new CapturingHost("worker failed: 401 for alice:" + PASSWORD);
-        String request = ProtoJobs.publishRequest(
-                dir.toString(),
-                tmp.resolve("cache").toString(),
-                "https://nexus.example.com/repo/",
-                null,
-                null,
-                null,
-                false,
-                true,
-                null,
-                null,
-                false,
-                false,
-                false,
-                "basic",
-                "alice",
-                PASSWORD,
-                null,
-                false,
-                false);
+        String request = new PublishRequest(
+                        dir.toString(),
+                        tmp.resolve("cache").toString(),
+                        "https://nexus.example.com/repo/",
+                        null,
+                        null,
+                        null,
+                        false,
+                        true,
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        "basic",
+                        "alice",
+                        PASSWORD,
+                        null,
+                        false,
+                        false)
+                .encode();
 
         new PublishVerb(host).run(request, Session.CancelToken.NONE, null);
 

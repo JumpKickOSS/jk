@@ -63,7 +63,7 @@ tasks {
     withType<JavaCompile>().configureEach {
         options.release.set(17)
     }
-    // Packaging guard: plugin must not ship engine/server jars (JK-1511). On `buildPlugin`, not
+    // Packaging guard: plugin must not ship engine/server jars. On `buildPlugin`, not
     // `test`: `scripts/package-intellij.sh` runs `buildPlugin` and nothing else, so hanging the
     // scan off `test` meant it had never run against a distribution it was written to inspect.
     buildPlugin {

@@ -12,6 +12,6 @@ description = "jk-spring-boot: the built-in Spring Boot build plugin's code laye
 
 dependencies {
     implementation(project(":plugin-sdk"))
-    // `FakeBuildIo` — the shared engine-side fake for a packager/step body (JK-2443).
+    // `FakeBuildIo` — the shared engine-side fake for a packager/step body.
     testImplementation(testFixtures(project(":plugin-sdk")))
 }

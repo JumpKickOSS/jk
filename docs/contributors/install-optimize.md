@@ -74,7 +74,7 @@ Old product lines' multi‑tens of MiB of AOT do not accumulate across upgrades.
 ### `aot.toml` (human index)
 
 Cache file names are content hashes (`tool` + JDK home/vendor/version + GC + classpath for workers;
-engine jar identity + JDK for the engine). Open **`~/.local/state/jk/aot/aot.toml`** (or
+engine jar identity + JDK for the engine). Open **`~/.jk/state/aot/aot.toml`** (or
 `$JK_STATE_DIR/aot/aot.toml`) for a readable table of each file: tool, key, status (`ready` /
 `pending` / `noaot` / `empty` — a zero-byte cache from an interrupted train), size, JDK, GC,
 classpath, JVM flags, and timestamps. Written on train / use / sweep; safe to delete or hand-edit

@@ -12,7 +12,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,11 +51,6 @@ class CompileSpecTest {
                                 "workdir", path("work")))
                         .extra("stubsOut", path("stubs"))
                         .configString("jvmTarget", "25")
-                        .configList(
-                                "javaSourceRoots",
-                                List.of(
-                                        path("src", "java").toString(),
-                                        path("gen", "java").toString()))
                         .source(path("src", "A.groovy"))
                         .source(path("src", "B.java"))
                         .cp(path("libs", "dep.jar"), PluginProtocol.ROLE_COMPILE)
@@ -68,7 +62,6 @@ class CompileSpecTest {
         assertThat(s.workDir).isEqualTo(file("work"));
         assertThat(s.stubsOut).isEqualTo(file("stubs"));
         assertThat(s.jvmTarget).isEqualTo("25");
-        assertThat(s.javaSourceRoots).containsExactly(file("src", "java"), file("gen", "java"));
         assertThat(s.sources).containsExactly(file("src", "A.groovy"), file("src", "B.java"));
         assertThat(s.classpath).containsExactly(file("libs", "dep.jar"), file("libs", "other.jar"));
         assertThat(s.extraArgs).containsExactly("--parameters", "--enable-preview");
@@ -88,7 +81,6 @@ class CompileSpecTest {
                         .source(path("src", "A.groovy")));
         assertThat(s.workDir).isNull();
         assertThat(s.stubsOut).isNull();
-        assertThat(s.javaSourceRoots).isEmpty();
         assertThat(s.joint()).isFalse();
     }
 

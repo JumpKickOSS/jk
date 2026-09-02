@@ -35,7 +35,7 @@ class InstallWorkspaceTest {
         assertThat(out)
                 .as("the root packages nothing, so claiming it installed is a lie")
                 .doesNotContain("Installed ex:ws");
-        assertThat(JkStores.resolve(cache, "repos").resolve("jk-local/ex/lib/1.0/lib-1.0.jar"))
+        assertThat(JkStores.resolve("repos").resolve("jk-local/ex/lib/1.0/lib-1.0.jar"))
                 .exists();
     }
 

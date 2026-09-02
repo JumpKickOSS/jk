@@ -135,13 +135,13 @@ public final class JdkEnsure {
         // Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version /
         // jk-lock.toml / project.jdk / project.java-floor / default / env / PATH).
         // The environment is the request's, never this process's: the engine is a daemon, so
-        // System.getenv here would answer from whichever shell started it (JK-1021).
+        // System.getenv here would answer from whichever shell started it.
         UnaryOperator<String> env = projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
         JdkResolution.Request req = new JdkResolution.Request(
                 projectDir,
                 SessionContext.current().jdkSpec(),
                 // null: the client folded JK_JDK into the switch tier before sending, and a
-                // read here would be the daemon's environment (JK-1021).
+                // read here would be the daemon's environment.
                 null,
                 lockJdk,
                 (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,
@@ -202,7 +202,7 @@ public final class JdkEnsure {
      * IntelliJ, {@code $JAVA_HOME}, {@code PATH}, plus a {@code release} file parse per candidate),
      * about 65 metadata operations. Sixty-two constructions in a workspace build is ~4,000 stats for
      * facts that cannot change mid-build. A per-instance memo on an object built per call is not a
-     * missed optimisation, it is a bug the resident engine makes permanent (JK-1033).
+     * missed optimisation, it is a bug the resident engine makes permanent.
      *
      * <p>Sharing is safe because the registry already has the invalidation hook this needs:
      * {@link JdkRegistry#refresh()} drops the memo after an install or uninstall, and because the

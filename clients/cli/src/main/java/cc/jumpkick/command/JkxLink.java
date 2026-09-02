@@ -11,12 +11,17 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 
 /**
- * Materializes {@code jkx} next to {@code jk} in {@code $JK_BIN_DIR} (hardlink → symlink → shim;
- * Windows: {@code jkx.cmd}). Cheap on the happy path; never overwrites a foreign file.
+ * Materializes {@code jkx} next to {@code jk} in {@code <home>/bin} (hardlink → symlink → shim;
+ * Windows: {@code jkx.cmd}). Cheap on the happy path.
+ *
+ * <p>Whatever is at that name is jk's to replace, by containment: {@code <home>/bin} is jk's own
+ * directory. The version of this that wrote to a shared PATH directory could not say that — it
+ * read the first kilobyte looking for a generated-by header and refused anything over 4 KiB,
+ * because in a directory everything installs into, a name is not a claim.
  */
 final class JkxLink {
 
-    /** Present in every shim jk generates; its absence marks a foreign file we must not touch. */
+    /** Attribution line in every shim jk generates. Read by humans, not by this class. */
     private static final String MARKER = JkOwnership.GENERATED_BY;
 
     enum Status {
@@ -24,8 +29,6 @@ final class JkxLink {
         CREATED,
         /** Already present and pointing at this jk. */
         CURRENT,
-        /** Something else owns the {@code jkx} name; left untouched. */
-        SKIPPED_FOREIGN,
         /** The jk executable couldn't be resolved to an absolute file; nothing to link to. */
         SKIPPED_NO_EXE
     }
@@ -54,7 +57,6 @@ final class JkxLink {
             if (Files.exists(jkx) && Files.isSameFile(jkx, jkExe)) {
                 return new Result(Status.CURRENT, jkx);
             }
-            if (!ownedByJk(jkx)) return new Result(Status.SKIPPED_FOREIGN, jkx);
             Files.delete(jkx); // stale: old shim, moved jk, or broken link we created
         }
         Files.createDirectories(binDir);
@@ -77,24 +79,12 @@ final class JkxLink {
         Path jkx = binDir.resolve("jkx.cmd");
         String want = cmdShim(jkExe);
         if (Files.exists(jkx, LinkOption.NOFOLLOW_LINKS)) {
-            if (!ownedByJk(jkx)) return new Result(Status.SKIPPED_FOREIGN, jkx);
             String have = Files.readString(jkx, StandardCharsets.UTF_8);
             if (want.equals(have)) return new Result(Status.CURRENT, jkx);
         }
         Files.createDirectories(binDir);
         writeShim(jkx, want);
         return new Result(Status.CREATED, jkx);
-    }
-
-    /**
-     * True when the existing {@code jkx} is jk's to replace: a symlink (only jk links this name —
-     * a broken or wrong-target link is ours to repair), or a small file carrying the shim marker.
-     */
-    private static boolean ownedByJk(Path jkx) throws IOException {
-        if (Files.isSymbolicLink(jkx)) return true;
-        if (!Files.isRegularFile(jkx, LinkOption.NOFOLLOW_LINKS)) return false;
-        if (Files.size(jkx) > 4096) return false; // a shim is tiny; a real binary is not ours
-        return JkOwnership.isGeneratedLauncher(jkx);
     }
 
     private static void writeShim(Path jkx, String content) throws IOException {

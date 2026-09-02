@@ -9,7 +9,7 @@ import java.nio.file.Path;
  * never deletes an alien install that happens to share the IntelliJ JDK root ({@code ~/.jdks} /
  * {@code ~/Library/Java/JavaVirtualMachines}).
  *
- * <p>The marker itself is not JDK vocabulary — {@code ~/.local/bin} and the tool store ask the same
+ * <p>The marker itself is not JDK vocabulary — {@code <home>/bin} and the tool store ask the same
  * question — so it lives in {@link JkOwnership} and this type adds only the part that is about
  * JDKs: unwrapping a macOS {@code Contents/Home} bundle to find the tree the marker sits in.
  */

@@ -224,7 +224,7 @@ public final class McpReads {
                     true);
             Set<Path> only = null;
             if (modules != null && !modules.isEmpty()) {
-                // Same intersection semantics as jk test --affected -m … (JK-2613).
+                // Same intersection semantics as jk test --affected -m ….
                 var entry = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
                 var msel = ModuleSelection.resolve(root, entry, String.join(",", modules));
                 if (!msel.ok()) {

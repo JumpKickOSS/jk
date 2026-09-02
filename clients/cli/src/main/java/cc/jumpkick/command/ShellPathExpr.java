@@ -14,7 +14,7 @@ final class ShellPathExpr {
     private ShellPathExpr() {}
 
     /**
-     * Expression safe inside double quotes for bash / zsh / fish: {@code $HOME/.local/bin} or a
+     * Expression safe inside double quotes for bash / zsh / fish: {@code $HOME/.jk/bin} or a
      * double-quote-escaped absolute path.
      */
     static String posix(Path path, Path home) {
@@ -26,7 +26,7 @@ final class ShellPathExpr {
     }
 
     /**
-     * Command word: {@code "$HOME/.local/bin/jk"} or {@code "/opt/jk/bin/jk"} (double-quoted so
+     * Command word: {@code "$HOME/.jk/bin/jk"} or {@code "/opt/jk/bin/jk"} (double-quoted so
      * spaces and {@code $HOME} work).
      */
     static String posixCommand(Path path, Path home) {
@@ -34,7 +34,7 @@ final class ShellPathExpr {
     }
 
     /**
-     * PowerShell expression safe inside double quotes: {@code $HOME/.local/bin} or an escaped
+     * PowerShell expression safe inside double quotes: {@code $HOME/.jk/bin} or an escaped
      * absolute path.
      */
     static String pwsh(Path path, Path home) {

@@ -11,8 +11,8 @@ description = "jk-api: the stable front-end contract (IO/thread machinery lives 
 
 dependencies {
     // The host leaf, and only the host leaf. :host is the JDK-only floor every jk process already
-    // links (JK-2407), so this costs no consumer anything: BuildIdentity hashes the running jar and
-    // Hashing owns the one MessageDigest lookup in the tree (JK-2416).
+    // links, so this costs no consumer anything: BuildIdentity hashes the running jar and
+    // Hashing owns the one MessageDigest lookup in the tree.
     api(project(":host"))
 }
 

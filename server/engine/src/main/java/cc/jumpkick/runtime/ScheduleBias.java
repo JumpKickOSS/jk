@@ -15,7 +15,7 @@ import java.util.Map;
  * successful multi-module builds, applied multiplicatively to {@link WorkSchedule}'s ideal
  * schedule in {@link BuildEta}. The simulation composes measured step walls into a perfect-overlap
  * timeline; reality pays JVM spawn queuing, {@code PluginSlots} gating, and cache/IO contention
- * the model cannot see — a structural, host-shaped gap (JK-2216 follow-up: the pipelined sim ran
+ * the model cannot see — a structural, host-shaped gap (follow-up: the pipelined sim ran
  * ~25% hot on a 24-core monorepo rebuild). Learning the gap keeps the estimate honest across
  * future scheduler changes instead of baking in today's magic constant.
  *

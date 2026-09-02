@@ -63,7 +63,7 @@ class CodeFormatterStampKeyTest {
     /**
      * Same config, same bytes: the skip that makes a clean re-run free still works.
      *
-     * <p>The {@code save()} is the contract, not ceremony. The store is write-behind since JK-1034 —
+     * <p>The {@code save} is the contract, not ceremony. The store is write-behind since —
      * {@code record} is a map write and the whole index reaches disk once at the end of a run — so
      * what a later run sees is what the previous run flushed. That is the real worker lifecycle:
      * {@code CodeFormatter} saves beside {@code workers.close()}.

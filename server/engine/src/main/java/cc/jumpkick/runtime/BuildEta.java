@@ -98,6 +98,24 @@ public final class BuildEta {
                     cache,
                     jdksDir,
                     historyShapeForCosts(costs.size()));
+            if (Perf.ENABLED) {
+                // The three numbers per module that decide the whole estimate: WorkSchedule admits
+                // a dependent at `weight - test - tail`, so a collapsed split serializes the graph.
+                // Printed here rather than reconstructed from a synthetic plan — a hand-built
+                // ExplainPlan prices nothing like a real one and sends readers after the wrong
+                // suspect.
+                for (EffortWeights.ModuleCost c : costs) {
+                    System.err.println("[jk-perf] eta-cost " + c.dir()
+                            + " weight=" + c.weight()
+                            + " test=" + c.testWeight()
+                            + " tail=" + c.tailWeight());
+                }
+                System.err.println("[jk-perf] eta raw=" + seed.rawScheduleMs()
+                        + " final=" + seed.etaMs()
+                        + " concurrency=" + concurrency
+                        + " serial=" + serialEta
+                        + " bias=" + ScheduleBias.current(entryDir));
+            }
             return new BuildService.EtaModel(seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs());
         } catch (RuntimeException e) {
             // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
@@ -159,13 +177,13 @@ public final class BuildEta {
             for (BuildGraph.BuildUnit u : units) {
                 EffortWeights.ModuleCost c = byDir.remove(u.dir());
                 if (c != null) {
-                    ordered.add(new ModuleWorkCost(c.dir(), c.prereqs(), c.weight(), c.testWeight()));
+                    ordered.add(c.toWorkCost());
                 }
             }
         }
         // Any leftover (shouldn't happen) — append in original cost order.
         for (EffortWeights.ModuleCost c : byDir.values()) {
-            ordered.add(new ModuleWorkCost(c.dir(), c.prereqs(), c.weight(), c.testWeight()));
+            ordered.add(c.toWorkCost());
         }
         return ordered;
     }
@@ -192,8 +210,7 @@ public final class BuildEta {
             if (!distrust && !m.dirty()) continue;
             Path mdir = m.dir();
             Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
-            // Local *compile* content only — resource drift must not unlock suite walls (core's
-            // "extra resources changed" was pricing ~792 tests while live only re-copied).
+            // Local *compile* content only — resource drift must not unlock suite walls.
             boolean localCompile = hasLocalCompileContent(m);
             boolean resourceDrift = hasResourceDriftWork(m);
             boolean testResourceDrift = hasTestResourceDriftWork(m);
@@ -243,7 +260,9 @@ public final class BuildEta {
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
             if (cascadeRecheck > 0) {
-                priced = EffortWeights.costOf(mdir, prereqs, priced.weight() + cascadeRecheck, priced.testWeight());
+                // withWeight, not costOf: the four-argument form zeroes tailWeight, which reprices
+                // the module as the sum of its steps instead of its longer branch.
+                priced = priced.withWeight(priced.weight() + cascadeRecheck);
             }
             costs.add(priced);
         }
@@ -253,7 +272,7 @@ public final class BuildEta {
     /**
      * Steps that should not contribute full historical walls to open-loop ETA. Cascade-forced
      * compile/package/native and resource-only producers almost always action-cache hit for
-     * compile/test; billing suite walls for them was the multi-minute dogfood miss.
+     * compile/test.
      */
     static boolean shouldDiscountCascadeStep(
             TaskForecast.Task s,
@@ -465,7 +484,7 @@ public final class BuildEta {
                 // The floor catches sims that under-price unlearned steps — it must not let
                 // stale history override a structurally faster schedule outright (phase-gated
                 // pipelining halved real walls while history still remembered the serialized
-                // ones, JK-2216). Cap its uplift at 1.5x the simulated schedule; as post-change
+                // ones). Cap its uplift at 1.5x the simulated schedule; as post-change
                 // builds land, avg/max converge and the cap stops binding.
                 floor = Math.min(floor, Math.round(base * 1.5));
                 if (Perf.ENABLED) {
@@ -576,14 +595,14 @@ public final class BuildEta {
         return applyHistoryPrior(base, okHist, false);
     }
 
-    /** @param rebuildShape ignored — kept for call-site compatibility; step composition owns ETA. */
+    /** @param rebuildShape ignored — step composition owns ETA. */
     static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape) {
         return applyHistoryPrior(base, okHist, rebuildShape, -1);
     }
 
     /**
-     * @param rebuildShape ignored (API compat)
-     * @param dirtyModules ignored (API compat)
+     * @param rebuildShape ignored
+     * @param dirtyModules ignored
      */
     static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape, int dirtyModules) {
         if (okHist == null || okHist.count() == 0) return base;
@@ -627,7 +646,7 @@ public final class BuildEta {
             // reads a never-written key.
             BuildMetrics.Stats shapes = metrics.okAcrossShapes(kind, BuildMetrics.slashKey(entryDir.toString()));
             if (shapes.count() > 0) return shapes;
-            // Fall back to plain "build" for the path (pre-1156 rows).
+            // Fall back to plain "build" for the path when the shaped kind has no samples.
             if (!"build".equals(kind)) {
                 var legacy = metrics.invocation("build", BuildMetrics.slashKey(entryDir.toString()))
                         .map(BuildMetrics.Entry::ok);

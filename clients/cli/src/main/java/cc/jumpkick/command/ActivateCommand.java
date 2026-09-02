@@ -89,8 +89,17 @@ public final class ActivateCommand implements CliCommand {
         }
         ensureJkxLauncher();
         // stdout is eval'd shell code — PATH ensure + hooks + completions; keep silent aside from that.
-        CliOutput.outRaw(shell.get().fullActivateScript(resolveJkExe(), JkDirs.binDir(), JkDirs.data(), home()));
+        CliOutput.outRaw(shell.get().fullActivateScript(resolveJkExe(), JkDirs.binDir(), JkDirs.store(), home()));
         return 0;
+    }
+
+    /**
+     * The half of activation a profile block cannot do on Windows: the registry User PATH, which
+     * is what makes {@code ~/.jk/bin} reachable from cmd.exe and GUI-launched processes too.
+     * No-op everywhere else, and never fatal — see {@link WindowsUserPath}.
+     */
+    private static WindowsUserPath.Result ensureBinOnSystemPath() {
+        return WindowsUserPath.ensure(JkDirs.binDir());
     }
 
     private static JkxLink.Result ensureJkxLauncher() {
@@ -129,6 +138,7 @@ public final class ActivateCommand implements CliCommand {
         String next = ShellInstallerBlock.upsert(previous, block);
         if (hadBlock && previous.equals(next)) {
             ensureJkxLauncher();
+            ensureBinOnSystemPath();
             ShellCompletions.writeAll();
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
@@ -142,6 +152,7 @@ public final class ActivateCommand implements CliCommand {
         if (rcFile.getParent() != null) Files.createDirectories(rcFile.getParent());
         Files.writeString(rcFile, next.endsWith("\n") ? next : next + "\n", StandardCharsets.UTF_8);
         ensureJkxLauncher();
+        ensureBinOnSystemPath();
         ShellCompletions.writeAll();
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(
@@ -163,6 +174,7 @@ public final class ActivateCommand implements CliCommand {
             String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
             if (ShellInstallerBlock.present(existing)) {
                 ensureJkxLauncher();
+                ensureBinOnSystemPath();
                 ShellCompletions.writeAll();
                 CommandWedge.envelopeStart();
                 CliOutput.out(JkWedge.chipLine(
@@ -175,6 +187,7 @@ public final class ActivateCommand implements CliCommand {
         }
 
         ensureJkxLauncher();
+        ensureBinOnSystemPath();
         ShellCompletions.writeAll();
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(
@@ -197,6 +210,7 @@ public final class ActivateCommand implements CliCommand {
             String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
             if (ShellInstallerBlock.present(existing)) {
                 ensureJkxLauncher();
+                ensureBinOnSystemPath();
                 ShellCompletions.writeAll();
                 Theme t = Theme.active();
                 CommandWedge.envelopeStart();
@@ -256,7 +270,7 @@ public final class ActivateCommand implements CliCommand {
         try {
             Path shim = JkDirs.binDir().resolve("jk");
             // On Windows the shim is a .cmd and never a symlink, so the old isExecutable arm paid the
-            // 64x access check on every probe to learn what its extension already said (JK-1030).
+            // 64x access check on every probe to learn what its extension already said.
             if (Files.isSymbolicLink(shim) || PathUtil.isRunnable(shim)) {
                 return shim.toAbsolutePath().normalize().toString();
             }

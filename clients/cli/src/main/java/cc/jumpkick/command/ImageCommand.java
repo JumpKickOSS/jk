@@ -62,7 +62,7 @@ public final class ImageCommand implements CliCommand {
                 Opt.value("<exe>", "Docker/Podman binary (default: auto)", "--docker-executable"),
                 Opt.value(
                                 "<dir>",
-                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
+                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
                                 "--cache-dir")
                         .hide(),
                 CommonOpts.jdksDir(),
@@ -269,7 +269,7 @@ public final class ImageCommand implements CliCommand {
             view.finishBuildPlanFailure("image failed " + BuildTails.elapsedSince(start));
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
-        // Same Pushed/Wrote/Loaded tail as the single-project chip (JK-2100).
+        // Same Pushed/Wrote/Loaded tail as the single-project chip.
         var img = imageOut[0];
         String tail = img != null
                 ? imageSuccessTail(img.tarball(), img.name(), img.version(), img.daemonExe(), img.ref())

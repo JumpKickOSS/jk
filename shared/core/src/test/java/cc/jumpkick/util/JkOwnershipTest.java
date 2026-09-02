@@ -2,8 +2,8 @@
 package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIOException;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatIOException;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The one answer to "may jk delete this?", which three sites used to give for themselves — two of
- * them wrongly, at the cost of four real JDK installations (JK-2624).
+ * them wrongly, at the cost of four real JDK installations.
  */
 class JkOwnershipTest {
 
@@ -60,7 +60,7 @@ class JkOwnershipTest {
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void a_link_is_unlinked_and_its_target_is_left_alone(@TempDir Path tmp) throws IOException {
-        // The half JK-2603 fixed, pinned here too because this is now the site that decides it: a
+        // The half fixed, pinned here too because this is now the site that decides it: a
         // pointer jk planted into ~/.sdkman must cost the link, never the JDK behind it.
         Path theirs = populated(tmp.resolve("sdkman-candidate"));
         Path link = tmp.resolve("pointer");
@@ -69,7 +69,9 @@ class JkOwnershipTest {
         JkOwnership.removeIfOwned(link);
 
         assertThat(Files.exists(link, LinkOption.NOFOLLOW_LINKS)).isFalse();
-        assertThat(theirs.resolve("payload.txt")).as("the target keeps its contents").exists();
+        assertThat(theirs.resolve("payload.txt"))
+                .as("the target keeps its contents")
+                .exists();
     }
 
     @Test

@@ -10,9 +10,8 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.NativeRequest;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -105,18 +104,19 @@ public final class NativeVerb implements HostedVerb {
         for (Path d : targets) graalHomes.put(d.toString(), graal.toString());
         // The binary is the job's deliverable; the dashboard/agent surface has no test toggle.
         return ProtoSession.withTrigger(
-                ProtoJobs.nativeRequest(
-                        spec.dir(),
-                        JkDirs.cache().toString(),
-                        JkDirs.jdks().toString(),
-                        null,
-                        true,
-                        false,
-                        false,
-                        false,
-                        List.of(),
-                        graalHomes,
-                        List.of()),
+                new NativeRequest(
+                                spec.dir(),
+                                JkDirs.cache().toString(),
+                                JkDirs.jdks().toString(),
+                                null,
+                                true,
+                                false,
+                                false,
+                                false,
+                                List.of(),
+                                graalHomes,
+                                List.of())
+                        .encode(),
                 "web");
     }
 
@@ -162,7 +162,7 @@ public final class NativeVerb implements HostedVerb {
 
     private static @org.jspecify.annotations.Nullable Path graalHome() {
         // The request's, carried as a typed field. A getenv here would be the daemon's environment,
-        // i.e. whichever shell started the engine (JK-1021, JK-1039).
+        // i.e. whichever shell started the engine.
         Path p = SessionContext.current().graalHome();
         return p != null && Files.isDirectory(p) ? p : null;
     }
@@ -170,17 +170,14 @@ public final class NativeVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-            Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
+            NativeRequest body = NativeRequest.decode(requestLine);
+            Path entryDir = Path.of(body.dir());
+            Path cache = Path.of(body.cache());
+            String jdksDirStr = body.jdksDir();
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            String mainClass = Jsonl.str(requestLine, "mainClass");
-            boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            List<String> extraArgs = Jsonl.strArray(requestLine, "extraArgs");
             Map<Path, Path> graalByDir = new HashMap<>();
-            Jsonl.strMap(requestLine, "graalHomes").forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
-            List<String> moduleTokens = Jsonl.strArray(requestLine, "moduleDirs");
+            body.graalHomes().forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+            List<String> moduleTokens = body.moduleDirs();
             Set<Path> selected = new LinkedHashSet<>();
             if (!moduleTokens.isEmpty()) {
                 JkBuild entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
@@ -207,9 +204,9 @@ public final class NativeVerb implements HostedVerb {
             Session session =
                     host.resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
             WorkspaceRequest req = new WorkspaceRequest(
-                            entryDir, cache, jdksDir, 0, null, skipTests, verbose, 0, null, true, true)
+                            entryDir, cache, jdksDir, 0, null, body.skipTests(), body.verbose(), 0, null, true, true)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
-                    .withSpec(WorkspaceSpec.nativeImage(selected, graalByDir, mainClass, extraArgs));
+                    .withSpec(WorkspaceSpec.nativeImage(selected, graalByDir, body.mainClass(), body.extraArgs()));
 
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDir.toString());
@@ -218,7 +215,9 @@ public final class NativeVerb implements HostedVerb {
                     () -> BuildService.buildWorkspace(req, host.workspaceListener(writer, entryDir.toString())));
             return WorkspaceTerminal.finish(host, writer, entryDir.toString(), result, cancelToken.cancelled());
         } catch (Exception e) {
-            host.sendQuiet(writer, host.requestFailedLine(Jsonl.str(requestLine, "dir"), e));
+            host.sendQuiet(
+                    writer,
+                    host.requestFailedLine(NativeRequest.decode(requestLine).dir(), e));
             return JobOutcome.failed(Exit.FAILURE);
         }
     }

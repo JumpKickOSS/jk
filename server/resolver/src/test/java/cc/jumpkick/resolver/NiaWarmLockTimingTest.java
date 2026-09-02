@@ -39,7 +39,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * <p>Point {@value #OVERLAY_ENV} at a {@code nowinandroid} overlay directory (the one holding
  * {@code jk.toml}) to run it. It used to hard-code one contributor's home directory, which meant
  * that on every other machine — including CI — the test reported PASS having skipped for a reason
- * nobody could act on (JK-2446). Unset, it still skips, but now says what to set.
+ * nobody could act on. Unset, it still skips, but now says what to set.
  */
 @Tag("network")
 @ExtendWith(SysProps.class)
@@ -57,7 +57,7 @@ class NiaWarmLockTimingTest {
                 OVERLAY_ENV + " is unset — set it to a local nowinandroid overlay dir to run this");
         Path nia = Path.of(overlay);
         assumeTrue(Files.isRegularFile(nia.resolve("jk.toml")), OVERLAY_ENV + "=" + overlay + " has no jk.toml");
-        Path store = Path.of(System.getProperty("user.home"), ".local/share/jk/store");
+        Path store = Path.of(System.getProperty("user.home"), ".jk/store");
         assumeTrue(Files.isDirectory(store));
 
         // Wall-clock budgets are only meaningful on an uncontended machine; a full parallel

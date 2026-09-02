@@ -17,7 +17,7 @@ On disk:
 
 ```text
 {project}/target/jk-results.md
-~/.local/state/jk/builds/projects/<key>/runs/<build-number>/jk-results.md
+~/.jk/state/builds/projects/<key>/runs/<build-number>/jk-results.md
 ```
 
 The two files are the same report. Prefer the command over `cat` so you do not have to
@@ -72,7 +72,7 @@ jk explain
 Session log (same JSONL shape as `--output json`), live-appended:
 
 ```text
-~/.local/state/jk/builds/projects/<key>/runs/<build-number>/details.jsonl
+~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl
 ```
 
 Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not failures):
@@ -91,7 +91,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | Disk / CAS full | `jk cache usage` / `jk storage usage` | `jk cache clean` first; [Cache](cache.md) |
 | Engine won’t start / version skew | `jk engine status` | `jk engine stop` then retry; [Engine](engine.md) |
 | Format check failed | `jk format --check` | `jk format` (no `--check`); [Format](format.md) |
-| Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Signing released natives is JK-2059. Turning Smart App Control off is optional for contributors who want unsigned `gradlew dist`. |
+| Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Released natives are signed when published. Turning Smart App Control off is optional for contributors who want unsigned `gradlew dist`. |
 
 ## Cancel a stuck job
 

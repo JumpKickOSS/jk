@@ -5,9 +5,10 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 
 /**
- * Engine wire vocabulary: JSONL {@code "type"} discriminators. Builders live in {@link ProtoLifecycle},
- * {@link ProtoJobs}, {@link ProtoReads}, {@link ProtoEvents}, and {@link ProtoSession}. Pre-1.0 the
- * codec matches domain events; leftover tokens are deleted, not aliased.
+ * Engine wire vocabulary: JSONL {@code "type"} discriminators. Codecs live in typed records and
+ * the focused {@link ProtoLifecycle}, {@link ProtoReads}, {@link ProtoEvents}, and {@link
+ * ProtoSession} helpers. Pre-1.0 the codec matches domain events; leftover tokens are deleted, not
+ * aliased.
  */
 public final class EngineProtocol {
 
@@ -77,11 +78,8 @@ public final class EngineProtocol {
     /** Predecessor → successor: drain finished; the predecessor is exiting. */
     public static final String DRAIN_DONE = "drain-done";
 
-    /** Client → server: start a workspace build (see {@link #buildRequest}). */
+    /** Client → server: start a workspace build (see {@link BuildRequest}). */
     public static final String BUILD_REQUEST = "build-request";
-
-    /** Client → server, on the same connection as an in-flight {@link #BUILD_REQUEST}: best-effort cancel. */
-    public static final String BUILD_CANCEL = "build-cancel";
 
     /**
      * Client → server (any connection): cancel a live job by {@code jid} (or {@code requestId}
@@ -444,7 +442,7 @@ public final class EngineProtocol {
 
     /**
      * Client → server: cache maintenance ({@code prune}/{@code purge}/{@code sweep}/{@code clear})
-     * at an idle boundary under {@code.prune.lock}; may emit {@link #PRUNE_WAIT} first.
+     * at an idle boundary under {@code .prune.lock}; may emit {@link #PRUNE_WAIT} first.
      */
     public static final String CACHE_PRUNE_REQUEST = "cache-prune-request";
 
@@ -466,7 +464,7 @@ public final class EngineProtocol {
     /**
      * Server → client, before the plan burst of a {@link #CACHE_PRUNE_REQUEST}: the operation is
      * queued behind in-flight work — {@code plans} in-engine plans ({@code 0} with {@code
-     * external=true} means another process's prune holds {@code.prune.lock}).
+     * external=true} means another process's prune holds {@code .prune.lock}).
      */
     public static final String PRUNE_WAIT = "prune-wait";
 

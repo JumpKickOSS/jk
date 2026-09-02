@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDirFactory;
  * speaks loopback TCP, which has no path budget. The reason that remains is the one the length
  * gate was only ever approximating — a {@code @TempDir} fixture project must not sit
  * <em>inside the checkout</em>, because jk's own {@code jk.toml} is then its workspace root and
- * {@code WorkspaceLocator.findRoot} walks up into it (JK-2329). The shared convention points
+ * {@code WorkspaceLocator.findRoot} walks up into it. The shared convention points
  * {@code java.io.tmpdir} at {@code build/tmp} / {@code target/tmp}, both inside the checkout, so
  * this always re-roots rather than asking how long that path happens to be.
  */
@@ -44,7 +44,7 @@ public final class JkTempDirFactory implements TempDirFactory {
      * — falling back to the configured temp dir only when that root cannot be had.
      *
      * <p>Worker isolation is not lost by ignoring the configured value: {@code JUnitLauncher} gives
-     * each worker JVM a private tmpdir so parallel workers don't share temp state (JK-2183), and
+     * each worker JVM a private tmpdir so parallel workers don't share temp state, and
      * {@link Files#createTempDirectory} still makes a distinct {@code jk-junit-*} directory per
      * request under whichever root this returns.
      */

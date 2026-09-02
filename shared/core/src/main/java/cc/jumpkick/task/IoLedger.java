@@ -45,7 +45,7 @@ public final class IoLedger {
      * its workers are born inside whichever request first needed them and inherit <em>that</em>
      * request's ledger for the engine's whole life. Because {@link cc.jumpkick.config.RequestScope}
      * keys on the ledger to decide "which request am I in", that stale binding served one build's
-     * memoized directory scans to every build after it (JK-2620).
+     * memoized directory scans to every build after it.
      *
      * <p>So the pool hop is explicit: {@code SessionContext}'s {@code ContextPropagator} captures the
      * ambient ledger on the submitting thread and binds it around the task, clearing it when the
@@ -93,9 +93,9 @@ public final class IoLedger {
      * The ledger this thread's request opened, or {@code null} off a request.
      *
      * <p>Distinct from {@link #currentOrNew()}, which mints one rather than answer "none" — useful
-     * for accounting, useless as a request discriminator. {@link RequestScope} needs the honest
+     * for accounting, useless as a request discriminator. {@link cc.jumpkick.config.RequestScope} needs the honest
      * answer: it caches facts for the length of a request, so it must be able to tell that there is
-     * no request rather than cache into a ledger nobody opened (JK-1043).
+     * no request rather than cache into a ledger nobody opened.
      */
     public static @Nullable IoLedger ambient() {
         return AMBIENT.get();

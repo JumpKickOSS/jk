@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * Normalized, render-ready view of a single command's help metadata. Built from picocli's
- * reflective {@code CommandSpec} by {@link CommandModelExtractor}; the {@link HelpRenderer} paints
+ * reflective {@code CommandSpec} by {@code CommandModelExtractor}; the {@link HelpRenderer} paints
  * from this model and never touches picocli's spec directly. {@code *Model} naming avoids
  * collisions with picocli's own {@code OptionSpec}/{@code PositionalParamSpec} types.
  *

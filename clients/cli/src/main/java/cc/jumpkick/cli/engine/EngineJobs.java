@@ -4,10 +4,15 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.BuildRequest;
+import cc.jumpkick.engine.protocol.CompileRequest;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ImageRequest;
+import cc.jumpkick.engine.protocol.InstallRequest;
+import cc.jumpkick.engine.protocol.NativeRequest;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.engine.protocol.SingleBuildRequest;
+import cc.jumpkick.engine.protocol.TestRequest;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -22,6 +27,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -79,74 +85,42 @@ final class EngineJobs {
      * Session-owned facts ride from {@code session}: parallel-tests, offline/force, and the
      * resolved test selection — {@code --all}/{@code --include-tags}/{@code --exclude-tags} must
      * ride the wire or the engine falls back to each module's {@code [test]} excludes and a
-     * widened tier is silently served from the unit-tier stamp (JK-2181).
+     * widened tier is silently served from the unit-tier stamp.
      */
     static String encodeWorkspaceRequest(WorkspaceRequest req, Session session) {
-        return withKeepGoing(
-                withWorkspaceSpec(
-                        ProtoJobs.buildRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.workers(),
-                                req.profile(),
-                                req.skipTests(),
-                                req.verbose(),
-                                req.maxModuleConcurrency(),
-                                session.parallelTests(),
-                                session.offline(),
-                                session.force(),
-                                // jk build asks the engine to auto-freshen a stale workspace lock; verify's
-                                // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
-                                req.freshenLock(),
-                                // verify's scratch rebuild: never persist action records under
-                                // scratch-salted keys that can never recur.
-                                req.ephemeralActions(),
-                                // workspace jk test: every module plan stops at run-tests.
-                                req.testOnly(),
-                                // -m / --affected-since module selection — the engine schedules
-                                // exactly these dirs instead of forecasting dirtiness itself.
-                                req.dirtyHint() == null
-                                        ? null
-                                        : req.dirtyHint().stream()
-                                                .map(Object::toString)
-                                                .sorted()
-                                                .toList(),
-                                session.testSelection(),
-                                req.modules()),
-                        req),
-                req);
-    }
-
-    /**
-     * Additive {@code workspaceTarget} / {@code graalHomes} on a build-request. Omitted when the
-     * spec is the default package basket so older engines see an unchanged body.
-     */
-    /**
-     * Additive {@code keepGoing} on a build-request — omitted when false so a default run's body is
-     * unchanged. See {@link WorkspaceRequest#keepGoing()}.
-     */
-    static String withKeepGoing(String json, WorkspaceRequest req) {
-        if (!req.keepGoing()) return json;
-        return json.substring(0, json.length() - 1) + ",\"keepGoing\":true}";
-    }
-
-    static String withWorkspaceSpec(String json, WorkspaceRequest req) {
         WorkspaceSpec spec = req.spec();
-        if (spec == null || spec == WorkspaceSpec.DEFAULT) return json;
-        if (spec.target() == WorkspaceTarget.PACKAGE && spec.graalByDir().isEmpty()) return json;
-        StringBuilder extra = new StringBuilder();
-        if (spec.target() != WorkspaceTarget.PACKAGE) {
-            extra.append(",\"workspaceTarget\":")
-                    .append(Jsonl.quote(spec.target().name().toLowerCase()));
-        }
-        if (!spec.graalByDir().isEmpty()) {
-            LinkedHashMap<String, String> homes = new LinkedHashMap<>();
-            spec.graalByDir().forEach((dir, home) -> homes.put(dir.toString(), home.toString()));
-            extra.append(",\"graalHomes\":").append(Jsonl.map(homes));
-        }
-        if (extra.isEmpty()) return json;
-        return json.substring(0, json.length() - 1) + extra + "}";
+        Map<String, String> graalHomes = new LinkedHashMap<>();
+        if (spec != null) spec.graalByDir().forEach((dir, home) -> graalHomes.put(dir.toString(), home.toString()));
+        String workspaceTarget = spec != null && spec.target() != WorkspaceTarget.PACKAGE
+                ? spec.target().name().toLowerCase(Locale.ROOT)
+                : null;
+        return new BuildRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                        req.workers(),
+                        req.profile(),
+                        req.skipTests(),
+                        req.verbose(),
+                        req.maxModuleConcurrency(),
+                        session.parallelTests(),
+                        session.offline(),
+                        session.force(),
+                        req.freshenLock(),
+                        req.ephemeralActions(),
+                        req.testOnly(),
+                        req.dirtyHint() == null
+                                ? null
+                                : req.dirtyHint().stream()
+                                        .map(Object::toString)
+                                        .sorted()
+                                        .toList(),
+                        session.testSelection(),
+                        req.modules(),
+                        req.keepGoing(),
+                        workspaceTarget,
+                        graalHomes)
+                .encode();
     }
 
     /**
@@ -173,17 +147,20 @@ final class EngineJobs {
                 paths,
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                ProtoJobs.testRequest(
-                                        req.entryDir().toString(),
-                                        req.cache().toString(),
-                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                        req.workers(),
-                                        req.profile(),
-                                        req.verbose(),
-                                        req.offline(),
-                                        req.force(),
-                                        req.parallelTests() || session.parallelTests(),
-                                        sel),
+                                new TestRequest(
+                                                req.entryDir().toString(),
+                                                req.cache().toString(),
+                                                req.jdksDir() != null
+                                                        ? req.jdksDir().toString()
+                                                        : null,
+                                                req.workers(),
+                                                req.profile(),
+                                                req.verbose(),
+                                                req.offline(),
+                                                req.force(),
+                                                req.parallelTests() || session.parallelTests(),
+                                                sel)
+                                        .encode(),
                                 session.variant(),
                                 session.clientEnv(),
                                 session.jvm(),
@@ -218,18 +195,21 @@ final class EngineJobs {
                 paths,
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                ProtoJobs.singleBuildRequest(
-                                        req.entryDir().toString(),
-                                        req.cache().toString(),
-                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                        req.workers(),
-                                        req.profile(),
-                                        req.skipTests(),
-                                        req.verbose(),
-                                        req.offline(),
-                                        req.force(),
-                                        // jk build --all / tag flags on a single project (JK-2182).
-                                        session.testSelection()),
+                                new SingleBuildRequest(
+                                                req.entryDir().toString(),
+                                                req.cache().toString(),
+                                                req.jdksDir() != null
+                                                        ? req.jdksDir().toString()
+                                                        : null,
+                                                req.workers(),
+                                                req.profile(),
+                                                req.skipTests(),
+                                                req.verbose(),
+                                                req.offline(),
+                                                req.force(),
+                                                // jk build --all / tag flags on a single project.
+                                                session.testSelection())
+                                        .encode(),
                                 req.variant(),
                                 req.clientEnv(),
                                 session.jvm(),
@@ -268,18 +248,19 @@ final class EngineJobs {
         }
         return workspace(
                 paths,
-                envelope(ProtoJobs.nativeRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                        req.mainClass(),
-                        req.skipTests(),
-                        req.offline(),
-                        req.force(),
-                        req.verbose(),
-                        req.extraArgs(),
-                        graalHomes,
-                        moduleDirs)),
+                envelope(new NativeRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                req.mainClass(),
+                                req.skipTests(),
+                                req.offline(),
+                                req.force(),
+                                req.verbose(),
+                                req.extraArgs(),
+                                graalHomes,
+                                moduleDirs)
+                        .encode()),
                 req.cache(),
                 listener);
     }
@@ -293,19 +274,20 @@ final class EngineJobs {
             throws IOException {
         return workspace(
                 paths,
-                envelope(ProtoJobs.imageRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                        req.mainClass(),
-                        req.registry(),
-                        req.tag(),
-                        req.tarballArg(),
-                        req.dockerExecutable(),
-                        req.skipTests(),
-                        req.offline(),
-                        req.force(),
-                        req.verbose())),
+                envelope(new ImageRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                req.mainClass(),
+                                req.registry(),
+                                req.tag(),
+                                req.tarballArg(),
+                                req.dockerExecutable(),
+                                req.skipTests(),
+                                req.offline(),
+                                req.force(),
+                                req.verbose())
+                        .encode()),
                 req.cache(),
                 listener);
     }
@@ -313,21 +295,22 @@ final class EngineJobs {
     /**
      * Workspace {@code jk compile} (root or member): {@code COMPILE_REQUEST} on the entry dir;
      * the engine expands the cone (prereqs package, selection compiles-only) and streams
-     * workspace events — the one-orchestrator COMPILE path (JK-2103).
+     * workspace events — the one-orchestrator COMPILE path.
      */
     static WorkspaceResult runCompileWorkspace(
             EnginePaths.Paths paths, EngineRequests.CompileRequest req, WorkspaceBuildListener listener)
             throws IOException {
         return workspace(
                 paths,
-                envelope(ProtoJobs.compileRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.profile(),
-                        req.offline(),
-                        req.force(),
-                        req.verbose(),
-                        req.modules())),
+                envelope(new CompileRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.profile(),
+                                req.offline(),
+                                req.force(),
+                                req.verbose(),
+                                req.modules())
+                        .encode()),
                 req.cache(),
                 listener);
     }
@@ -346,15 +329,16 @@ final class EngineJobs {
             throws IOException {
         return singlePlan(
                 paths,
-                envelope(ProtoJobs.installRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.m2Dir().toString(),
-                        req.graalHome() != null ? req.graalHome().toString() : null,
-                        req.skipTests(),
-                        req.offline(),
-                        req.force(),
-                        req.verbose())),
+                envelope(new InstallRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.m2Dir().toString(),
+                                req.graalHome() != null ? req.graalHome().toString() : null,
+                                req.skipTests(),
+                                req.offline(),
+                                req.force(),
+                                req.verbose())
+                        .encode()),
                 listenerFactory,
                 testResultOut,
                 null);

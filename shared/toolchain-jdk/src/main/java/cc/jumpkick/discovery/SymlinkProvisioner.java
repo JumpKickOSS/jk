@@ -33,8 +33,8 @@ public final class SymlinkProvisioner {
      * removed first, so the call is idempotent — but only on {@link JkOwnership}'s terms: a link or
      * an empty directory goes, a <em>populated</em> directory goes only if jk created it. This used
      * to recurse into whatever was there, which is the shape that destroyed real JDKs from the
-     * pointer path in JK-2624; nothing but the caller's choice of {@code target} kept this copy from
-     * doing the same (JK-2625).
+     * pointer path in; nothing but the caller's choice of {@code target} kept this copy from
+     * doing the same.
      */
     public static void link(Path target, Path source) throws IOException {
         if (!canSymlink()) {
@@ -63,5 +63,4 @@ public final class SymlinkProvisioner {
             Files.deleteIfExists(path);
         }
     }
-
 }

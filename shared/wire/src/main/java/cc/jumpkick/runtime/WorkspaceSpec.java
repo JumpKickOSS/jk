@@ -52,7 +52,7 @@ public record WorkspaceSpec(
                 WorkspaceTarget.IMAGE, selected, Map.of(), null, List.of(), main, registry, tag, tarball, docker, null);
     }
 
-    /** {@code jk compile}: compile-only terminal on the selection; prereqs package (JK-2103). */
+    /** {@code jk compile}: compile-only terminal on the selection; prereqs package. */
     public static WorkspaceSpec compile(Set<Path> selected) {
         return new WorkspaceSpec(
                 WorkspaceTarget.COMPILE, selected, Map.of(), null, List.of(), null, null, null, null, null, null);

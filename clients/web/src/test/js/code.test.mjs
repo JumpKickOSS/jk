@@ -526,7 +526,7 @@ test('highlight budget and plain rows', () => {
 });
 
 test('a failed monaco load does not latch — the next open retries', async () => {
-  // JK-1953: the memoized promise previously cached its own rejection, so one CDN hiccup
+  // the memoized promise previously cached its own rejection, so one CDN hiccup
   // meant plain text for the tab's life. Headless node has no document, so every attempt
   // rejects — which is exactly the shape that must not latch.
   const { ensureMonaco } = await spa('monaco.js');

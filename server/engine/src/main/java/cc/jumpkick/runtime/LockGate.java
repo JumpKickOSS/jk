@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import java.nio.file.Path;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Per-lock-dir monitor serializing every engine-side {@code jk-lock.toml} resolution — CLI lock
@@ -13,18 +12,22 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class LockGate {
 
-    private static final ConcurrentHashMap<String, Object> MONITORS = new ConcurrentHashMap<>();
+    /**
+     * Striped, not keyed: a clear-on-overflow map could invalidate a monitor another thread was
+     * holding, and a monitor map must never do that. Two checkouts sharing a stripe only
+     * over-serialize; memory is bounded forever.
+     */
+    private static final Object[] MONITORS = new Object[64];
+
+    static {
+        for (int i = 0; i < MONITORS.length; i++) MONITORS[i] = new Object();
+    }
 
     private LockGate() {}
 
     /** The monitor object for one lock owner dir (normalized); never {@code null}. */
     public static Object monitorFor(Path lockDir) {
         String key = lockDir.toAbsolutePath().normalize().toString();
-        // Clear-on-overflow (ProjectIds idiom): one entry per distinct checkout the
-        // engine ever served, forever. Overflow needs thousands of checkouts; dropping monitors
-        // then only weakens single-flighting to last-writer-wins on the atomically-replaced lock
-        // file — never corruption.
-        if (MONITORS.size() >= 4_096) MONITORS.clear();
-        return MONITORS.computeIfAbsent(key, k -> new Object());
+        return MONITORS[Math.floorMod(key.hashCode(), MONITORS.length)];
     }
 }

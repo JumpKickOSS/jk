@@ -6,6 +6,7 @@ import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,7 +60,7 @@ public final class ModuleLayout {
     /**
      * Compact/SIMPLE layout. Honors an explicit {@code layout =} in {@code jk.toml} when present; a
      * workspace member that omits the key inherits the workspace root's {@code layout} (mirroring the
-     * resolved project's inheritance, so raw-scan call sites don't disagree with compile — JK-2313);
+     * resolved project's inheritance, so raw-scan call sites don't disagree with compile —);
      * otherwise probes the tree.
      */
     public static boolean isCompact(Path moduleDir) {
@@ -78,8 +79,8 @@ public final class ModuleLayout {
     }
 
     // isCompact runs per module per build (and walks to the workspace root); cache the per-file
-    // layout-key scan by (mtime,size) so repeated calls don't re-read jk.toml each time (JK-2327).
-    // Through StampedMemo since JK-1048: the hand-rolled version spent three metadata ops
+    // layout-key scan by (mtime,size) so repeated calls don't re-read jk.toml each time.
+    // Through StampedMemo since: the hand-rolled version spent three metadata ops
     // (isRegularFile + getLastModifiedTime + size) to guard a 550-byte read, where FileStamp.of does
     // one readAttributes and answers absence with it.
     private static final StampedMemo<Path, StampedMemo.FileStamp, Boolean> LAYOUT_CACHE = StampedMemo.create();
@@ -98,10 +99,16 @@ public final class ModuleLayout {
 
     private static Boolean scanLayout(Path toml) {
         String layout = TomlScan.scan(toml, "layout").get("layout");
-        if (layout == null) return null;
-        if ("traditional".equalsIgnoreCase(layout)) return Boolean.FALSE;
-        if ("simple".equalsIgnoreCase(layout)) return Boolean.TRUE;
-        return null;
+        if (layout == null || layout.isBlank()) return null;
+        try {
+            return switch (Layout.parse(layout)) {
+                case SIMPLE -> Boolean.TRUE;
+                case TRADITIONAL -> Boolean.FALSE;
+                case AUTO -> null;
+            };
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     static boolean hasTraditionalDirs(Path moduleDir) {
@@ -110,7 +117,7 @@ public final class ModuleLayout {
 
     /**
      * Main Groovy source roots. SIMPLE shares {@code src/} by extension; TRADITIONAL is
-     * {@code src/main/groovy} plus {@code src/main/java} (stray {@code.groovy} under the Java
+     * {@code src/main/groovy} plus {@code src/main/java} (stray {@code .groovy} under the Java
      * root compiles too, mirroring the Kotlin collector).
      */
     public static List<Path> mainGroovyRoots(Path moduleDir, boolean compact) {
@@ -120,7 +127,7 @@ public final class ModuleLayout {
 
     /**
      * Main Scala source roots. SIMPLE shares {@code src/} by extension; TRADITIONAL is
-     * {@code src/main/scala} plus {@code src/main/java} (stray {@code.scala} under the Java
+     * {@code src/main/scala} plus {@code src/main/java} (stray {@code .scala} under the Java
      * root compiles too, mirroring Kotlin and Groovy).
      */
     public static List<Path> mainScalaRoots(Path moduleDir, boolean compact) {
@@ -171,7 +178,7 @@ public final class ModuleLayout {
 
     /**
      * On-disk roots only — no plugin-schema parse. CLI IDE generators use this so
-     * {@code PluginDescriptor} stays off the native reachability set (JK-2151).
+     * {@code PluginDescriptor} stays off the native reachability set.
      */
     public static List<Root> diskRoots(Path moduleDir) {
         boolean compact = isCompact(moduleDir);

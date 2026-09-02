@@ -52,7 +52,7 @@ class MemoryTerminalTest {
             assertThat(tty.isLive()).isTrue();
             // A LOWER bound on elapsed time, which is the safe direction: load can only make a
             // wait longer, so this cannot flip on a busy machine the way an upper bound can. It
-            // says readKey honoured its 40ms timeout instead of returning immediately (JK-2446).
+            // says readKey honoured its 40ms timeout instead of returning immediately.
             assertThat(System.nanoTime() - t0)
                     .as("readKey waited out its timeout rather than returning at once")
                     .isGreaterThanOrEqualTo(20_000_000L);

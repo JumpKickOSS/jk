@@ -9,7 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Gives every test method in the class its own fresh state root — the {@link IsolatedStore} twin
- * for {@code <JK_HOME>/state} rather than {@code <JK_HOME>/data/store}.
+ * for {@code <JK_HOME>/state} rather than {@code <JK_HOME>/store}.
  *
  * <p>The tier's {@code JK_HOME} ({@code clients/cli/build/test-jk-home}) is shared by every one of
  * the task's parallel forks <em>and</em> by every previous run — no task cleans it. So {@code
@@ -18,7 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * That is not hypothetical — {@code EngineAotCommandTest} planted {@code
  * engine-<version>-deadbeefdeadbeef.aot} in the shared {@code state/aot} while a concurrent fork
  * running {@code EngineAotCacheTest} swept every {@code engine-<version>-<16hex>} key that was not
- * its own, and the assertion lost the race (JK-2453).
+ * its own, and the assertion lost the race.
  *
  * <p>Annotate any class that reads or writes {@link cc.jumpkick.util.JkDirs#state()} — the
  * {@code :cli} guard {@code checkTestRootsDeclared} requires it. Classes that only need a throwaway

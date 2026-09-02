@@ -4,8 +4,8 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.engine.protocol.TimelineEvent;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
  * Wire-event decoding, both shapes. Single-plan: the {@link EngineClient.ActiveJobs} note must not
  * outlive the stream (a stale jid adds a 2s cancel RPC to every later Ctrl-C in a watch loop), and
  * a cancel terminal injected before {@code plan-done} must settle, not NPE. Workspace: the events
- * that both shapes share are decoded by one table (JK-2436), so the assertions below are what stops
+ * that both shapes share are decoded by one table, so the assertions below are what stops
  * the workspace copy from drifting away from the single-plan one again.
  */
 class EngineEventDecoderStreamTest {
@@ -63,13 +63,13 @@ class EngineEventDecoderStreamTest {
         List<String> consumed = new ArrayList<>();
         // The engine keeps writing under target/ after the plan terminal (preflight memos, the
         // journal's jk-results.md copy) and only then sends job-finish. Returning on the terminal
-        // hands the caller a tree the engine is still writing into (JK-2451).
+        // hands the caller a tree the engine is still writing into.
         BufferedReader reader = recording(
                 consumed,
                 ProtoLifecycle.jobStart(43, "build", "/proj", 9),
                 ProtoEvents.planDone(0),
                 ProtoEvents.planFinish("/proj", true, false),
-                ProtoJobs.timeline("/proj/target/jk-profile.json"),
+                new TimelineEvent("/proj/target/jk-profile.json").encode(),
                 ProtoLifecycle.jobFinish(43),
                 "{\"type\":\"past-the-end\"}");
 
@@ -112,9 +112,8 @@ class EngineEventDecoderStreamTest {
     }
 
     /**
-     * The CLI reads the counts off {@code plan-finish} — and reads them from the one nested
-     * {@code tests} object, not from the flat {@code testTotal}/{@code testFailed} scalars the wire
-     * used to carry (JK-2424). {@code jk test}'s "Passed N tests" line is rendered from this.
+     * The CLI reads test counts from the nested {@code tests} object on {@code plan-finish}.
+     * {@code jk test}'s "Passed N tests" line is rendered from this.
      */
     @Test
     void the_summary_line_reads_test_counts_off_the_nested_tests_object() throws Exception {
@@ -169,10 +168,8 @@ class EngineEventDecoderStreamTest {
     }
 
     /**
-     * A workspace step terminal carries its real wall-clock {@code millis}. Before JK-2436 the
-     * workspace loop, the single-plan loop and {@link EnginePluginAdapter} each kept their own copy
-     * of this arm, and the plugin copy passed {@code Duration.ZERO} — so "which loop decoded it"
-     * silently decided whether a step had a duration at all. One table now answers for both shapes.
+     * A workspace step terminal carries its real wall-clock {@code millis}.
+     * One decode table answers for both workspace and single-plan shapes.
      */
     @Test
     void a_workspace_step_finish_keeps_the_wire_duration() throws Exception {

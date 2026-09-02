@@ -35,10 +35,10 @@ class SymlinkProvisionerTest {
 
     @Test
     void link_refuses_to_clobber_a_populated_directory_jk_did_not_create(@TempDir Path tempDir) throws IOException {
-        // JK-2625. link() cleared the way by recursing into whatever sat at the target. Every
+        // . link cleared the way by recursing into whatever sat at the target. Every
         // current caller happens to pass a path under jk's own store, so this never fired — but the
         // class advertises itself as shared with the JDK side, and that is exactly the caller that
-        // pointed the identical logic at ~/.jdks and destroyed real installs (JK-2624).
+        // pointed the identical logic at ~/.jdks and destroyed real installs.
         Path theirs = tempDir.resolve("their-tool");
         Files.createDirectories(theirs);
         Files.writeString(theirs.resolve("payload.txt"), "irreplaceable\n");

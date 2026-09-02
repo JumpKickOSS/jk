@@ -20,12 +20,11 @@ R8 minification is **opt-in**, never the default.
 main     = "com.example.App"   # required for run / fat / typical apps
 assembly = true
 # minified = true
-# config   = "config/install.toml"  # optional template → $JK_CONFIG_DIR/<bin>/config.toml
+# config   = "config/install.toml"  # optional template → ~/.jk/config/<bin>/config.toml
 ```
 
-On `jk install`, fat/minified apps land under `<data>/lib/<bin>/` and write
-`$JK_CONFIG_DIR/<bin>/config.toml` (default `~/.config/jk/<bin>/config.toml`, or
-`$JK_HOME/config/<bin>/config.toml`). If `config` is set, that module-relative template is
+On `jk install`, fat/minified apps land under `~/.jk/lib/<bin>/` and write
+`~/.jk/config/<bin>/config.toml`. If `config` is set, that module-relative template is
 rendered with `${version}`, `${jar}`, `${name}`, and any `jk-config.*` system properties.
 Without `config`, those same `jk-config.*` properties (plus `jar` / `version` / `name`) are
 written directly.
@@ -78,7 +77,11 @@ under `META-INF/native-image`. The effective rule set is written next to the art
 
 Missing optional classes (Netty/Micronaut `Class.forName` probes) are **warnings** by
 default (`strict-warnings = true` to fail). After shrink, an **audit** fails the build if
-R8 removed a class still named by a service file or index in the jar.
+R8 removed a class still named by a service file or index in the jar. A second audit
+**warns** (never fails, and outside `strict-warnings`) when classes lost or raw-ified
+their generic `Signature` between the inputs and the `-min.jar` — with a count, examples,
+and, past a small share, the honest advice that the app is not a minify candidate
+(`assembly = true`). See [what training cannot fix](dynamic-surface.md#what-training-cannot-fix).
 
 **Limitations (why this stays opt-in):**
 
@@ -93,7 +96,7 @@ Training (`jk train`) is **not** part of `jk build`. See [Dynamic surface](dynam
 ## `jk install` (project)
 
 Writes the thin jar and POM to the local repo (`repos/jk-local`), then prefers a native
-binary in `~/.local/bin` if one exists, else a minified/fat jar under `<data>/lib/<name>/`
+binary in `~/.jk/bin` if one exists, else a minified/fat jar under `~/.jk/lib/<name>/`
 plus a `java -jar` script, else a thin `java -cp` script over the repo jars.
 
 Plugin workers (`jk-plugin.toml`) are those same repo jars — the engine rebuilds their

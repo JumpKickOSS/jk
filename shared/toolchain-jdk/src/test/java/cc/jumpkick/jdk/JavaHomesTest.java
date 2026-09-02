@@ -10,9 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link JavaHomes#readBuildSoft} replaced the full parser with a bootstrap scan (JK-2151);
+ * {@link JavaHomes#readBuildSoft} replaced the full parser with a bootstrap scan;
  * a workspace member must still auto-inherit the root's {@code jdk}/{@code java} pins the
- * way {@code WorkspaceResolve.applyWorkspace} did (JK-2156).
+ * way {@code WorkspaceResolve.applyWorkspace} did.
  */
 class JavaHomesTest {
 

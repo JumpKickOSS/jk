@@ -7,7 +7,7 @@ import cc.jumpkick.run.TestSummary;
 import org.junit.jupiter.api.Test;
 
 /**
- * One wire spelling for test counts (JK-2424).
+ * One wire spelling for test counts.
  *
  * <p>jk shipped three: {@code testTotal}/{@code testFailed}/… on {@code plan-finish},
  * {@code testsTotal}/{@code testsFailed}/… on the history verbs, and the nested

@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import java.net.URI;
+import java.util.Locale;
 import java.util.Objects;
 
 /** Downloadable JDK package metadata from the foojay Disco API (URL + sha256). */
@@ -43,7 +44,7 @@ public record JdkPackage(
     }
 
     private String distributionAbbreviation() {
-        return switch (distribution.toLowerCase()) {
+        return switch (distribution.toLowerCase(Locale.ROOT)) {
             case "temurin" -> "tem";
             case "graalvm_ce", "graalvm-ce" -> "graalce";
             case "graalvm_oracle", "graalvm" -> "graal";
@@ -54,7 +55,7 @@ public record JdkPackage(
             case "semeru", "semeru_certified" -> "sem";
             case "sapmachine" -> "sapmchn";
             case "microsoft" -> "ms";
-            default -> distribution.toLowerCase().replace("_", "-");
+            default -> distribution.toLowerCase(Locale.ROOT).replace("_", "-");
         };
     }
 }

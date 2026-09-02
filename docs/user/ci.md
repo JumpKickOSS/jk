@@ -7,8 +7,8 @@ Caching only speeds the runner up.
 - uses: actions/cache@v4
   with:
     path: |
-      ~/.cache/jk
-      ~/.local/share/jk/store
+      ~/.jk/cache
+      ~/.jk/store
       ~/.m2/repository
       **/target/.jk
     key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml') }}

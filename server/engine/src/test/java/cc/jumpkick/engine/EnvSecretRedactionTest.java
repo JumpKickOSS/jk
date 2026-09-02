@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  * stamp/cache key material that lands under {@code target/}.
  *
  * <p>Both sides of the redactor's boundary are asserted here, deliberately in one file: a value a
- * {@code.env} declares is masked, a repository credential jk itself resolved is masked, and a value
+ * {@code .env} declares is masked, a repository credential jk itself resolved is masked, and a value
  * that is merely present in the environment is left alone. The first two are told to the redactor;
  * the third would have to be guessed at, which is the mode this design refuses.
  */
@@ -147,9 +147,9 @@ class EnvSecretRedactionTest {
     }
 
     /**
-     * Redaction follows the <em>declaration</em>, not the precedence winner. {@code.env} names the
+     * Redaction follows the <em>declaration</em>, not the precedence winner. {@code .env} names the
      * secret; whichever layer supplies its effective value, that value is what reaches the wire and
-     * that value is what gets masked. The reverse rule left the CI shape — {@code.env} default
+     * that value is what gets masked. The reverse rule left the CI shape — {@code .env} default
      * plus an exported override — as the one case nothing masked.
      */
     @Test
@@ -162,7 +162,7 @@ class EnvSecretRedactionTest {
         assertThat(r.redact("mode=from-file")).isEqualTo("mode=from-file");
     }
 
-    /** A name no {@code.env} mentions stays untouched — the redactor cannot enumerate the shell. */
+    /** A name no {@code .env} mentions stays untouched — the redactor cannot enumerate the shell. */
     @Test
     void an_undeclared_environment_value_is_left_alone(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve(".env"), "MODE=from-file\n");
@@ -171,7 +171,7 @@ class EnvSecretRedactionTest {
     }
 
     /**
-     * The CI shape: no {@code.env} anywhere in the tree, the credential arriving only as
+     * The CI shape: no {@code .env} anywhere in the tree, the credential arriving only as
      * {@code JK_REPO_NEXUS_TOKEN}. The declaration-based redactor cannot see it — and it is masked
      * anyway, because the resolver that produced it said so. The journal row is the assertion that
      * matters: a token masked on the wire and written raw to disk has not been redacted.

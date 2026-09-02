@@ -50,7 +50,7 @@ Official catalog: [JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-t
 (overridable). Plugin jars may overlay the same `(language, framework, name)`.
 
 ```toml
-# ~/.config/jk/config.toml
+# ~/.jk/config.toml
 [templates]
 official = "https://github.com/JumpKickOSS/jk-templates"
 
@@ -82,6 +82,7 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 | `hello` | quarkus | java, kotlin | Plugin REST app |
 | `hello` | micronaut | java, kotlin | Plugin HTTP service |
 | `hello` | grails | groovy | Grails 8 REST |
+| `compose` | android | kotlin | Jetpack Compose app (debug APK, `jk run` deploy) |
 
 MCP `jk_new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
 returns the file set without writing. The web dashboard has a New project modal —

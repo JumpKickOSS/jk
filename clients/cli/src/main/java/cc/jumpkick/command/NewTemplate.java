@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -83,7 +84,14 @@ final class NewTemplate {
         if (officialShortName(args.ref())) {
             EngineClient.freshenCatalog(EnginePaths.current(), "templates", args.offline(), null, null);
         }
-        String layout = args.layout() == null || args.layout().isBlank() ? "traditional" : args.layout();
+        Layout resolvedLayout;
+        try {
+            resolvedLayout =
+                    args.layout() == null || args.layout().isBlank() ? Layout.TRADITIONAL : Layout.parse(args.layout());
+        } catch (IllegalArgumentException e) {
+            CommandWedge.printFail("New", e.getMessage());
+            return Exit.USAGE;
+        }
         try {
             var ack = EngineClient.newProject(
                     EnginePaths.current(),
@@ -92,7 +100,7 @@ final class NewTemplate {
                             parentDir.toString(),
                             group,
                             resolvedLang,
-                            layout,
+                            resolvedLayout.token(),
                             args.ref(),
                             false,
                             null,

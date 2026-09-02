@@ -42,22 +42,14 @@ import java.util.function.Function;
  *
  * <ul>
  *   <li><b>artifact store</b> — {@code libs.global.toml}, {@code jdks.json}, {@code templates/},
- *       and the worker jars {@code PluginJar.locate()} fetches. That call reads
- *       {@code JkStores.cas(JkDirs.cache())}, whose argument is <em>ignored</em>: it resolves the
- *       store CAS. That spelling is why this was filed as "warmup re-downloads worker jars into
- *       the cache CAS". It does not, and never did.
+ *       and the worker jars {@code PluginJar.locate()} fetches via {@code JkStores.storeCas()}.
  *   <li><b>state</b> — {@code state/aot} ({@code PluginAot.dir()}) and
  *       {@code state/builds/host-metrics.toml}.
  * </ul>
  *
- * <p>So {@code jk cache nuke}, which removes {@code JK_CACHE_DIR} and nothing else, is not undone
- * by an idle warmup, and needs no "recently nuked" flag to stay that way — JK-2499 rejected that
- * shape for the sibling problem. {@code jk self nuke --data} and {@code --state} <em>are</em>
- * refilled, deliberately — by the <em>next</em> engine: those hold what an engine rebuilds because
- * it needs it, and the off-switch above is how a user declines. Within the process that hosted the
- * wipe, hygiene stands down ({@link StoreWriteGate#wipedSinceStart}) — a queued warmup write
- * landing after the wipe would recreate the store the nuke just reported gone, and on Windows a
- * write <em>during</em> it holds the delete open. {@code HostWarmupTest} holds that boundary.
+ * <p>A cache wipe is unaffected because warmup never writes there. After a store wipe, this process
+ * stands down via {@link StoreWriteGate#wipedSinceStart}; the next engine may rebuild required
+ * store and state entries.
  */
 public final class HostWarmup {
 

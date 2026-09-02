@@ -6,7 +6,7 @@ import org.gradle.api.Project
 import org.gradle.build.event.BuildEventsListenerRegistry
 
 /**
- * Wires [GateExecutionReport] to task-completion events for the whole build (JK-1018).
+ * Wires [GateExecutionReport] to task-completion events for the whole build.
  *
  * A plugin rather than a few lines in the root script because `BuildEventsListenerRegistry` is only available by
  * injection, and doing it here keeps the root build file to a one-line `apply`.

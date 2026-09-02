@@ -72,15 +72,19 @@ class JkxLinkTest {
         assertThat(Files.isSameFile(jkx, jk)).isTrue();
     }
 
+    /**
+     * {@code <home>/bin} is jk's own directory, so whatever holds the {@code jkx} name is jk's to
+     * replace — no header sniffing, no size cap. The sniffing this replaced existed because the
+     * launchers used to go onto a shared PATH directory, where a name is not a claim.
+     */
     @Test
-    void leaves_a_foreign_file_untouched() throws IOException {
+    void replaces_an_unrecognized_file_at_the_jkx_name() throws IOException {
         Path jk = fakeJk();
         Path jkx = jk.getParent().resolve("jkx");
-        String foreign = "#!/bin/sh\necho my own jkx\n";
-        Files.writeString(jkx, foreign);
+        Files.writeString(jkx, "#!/bin/sh\necho a stale jkx from an older jk\n");
         JkxLink.Result r = JkxLink.ensure(jk.getParent(), jk);
-        assertThat(r.status()).isEqualTo(JkxLink.Status.SKIPPED_FOREIGN);
-        assertThat(Files.readString(jkx)).isEqualTo(foreign);
+        assertThat(r.status()).isEqualTo(JkxLink.Status.CREATED);
+        assertThat(Files.isSameFile(jkx, jk)).isTrue();
     }
 
     @Test

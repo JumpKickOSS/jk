@@ -10,6 +10,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -29,11 +30,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * Test-step building blocks shared by the build plan and the {@code test} command. Coupled only
- * to {@link TaskContext} (the view-agnostic progress callback), so it lives in {@code:runtime}
+ * to {@link TaskContext} (the view-agnostic progress callback), so it lives in {@code :runtime}
  * and embedders can drive it without the CLI/TUI.
  */
 public final class TestSupport {
@@ -87,28 +87,20 @@ public final class TestSupport {
             Pattern.compile("@(?:Test|ParameterizedTest|TestFactory|TestTemplate|RepeatedTest)\\b");
 
     /**
-     * Best-effort count of JUnit test methods under {@code testSrcDir} — scans {@code.java}/{@code
+     * Best-effort count of JUnit test methods under {@code testSrcDir} — scans {@code .java}/{@code
      * .kt} sources for {@code @Test}-family annotations. Feeds the build's {@code estimatedTestCount}
      * (progress-bar weighting); a zero estimate falls back to a flat bar. Never throws.
      */
     public static int estimateTestCount(Path testSrcDir) {
         if (!Files.isDirectory(testSrcDir)) return 0;
         int count = 0;
-        try (Stream<Path> walk = Files.walk(testSrcDir)) {
-            for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
-                String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy") || n.endsWith(".scala");
-            })::iterator) {
-                try {
-                    String content = Files.readString(file);
-                    count += (int)
-                            TEST_ANNOTATION_REGEX.matcher(content).results().count();
-                } catch (IOException ignored) {
-                    // best-effort: skip unreadable files, keep counting
-                }
+        for (Path file : testSources(testSrcDir)) {
+            try {
+                String content = Files.readString(file);
+                count += (int) TEST_ANNOTATION_REGEX.matcher(content).results().count();
+            } catch (IOException ignored) {
+                // best-effort: skip unreadable files, keep counting
             }
-        } catch (IOException ignored) {
-            // best-effort: zero estimate falls back to a flat (empty) bar
         }
         return count;
     }
@@ -175,22 +167,20 @@ public final class TestSupport {
     public static int estimateTestClassCount(Path testSrcDir) {
         if (!Files.isDirectory(testSrcDir)) return 0;
         int count = 0;
-        try (Stream<Path> walk = Files.walk(testSrcDir)) {
-            for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
-                String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy") || n.endsWith(".scala");
-            })::iterator) {
-                try {
-                    String content = Files.readString(file);
-                    if (TEST_ANNOTATION_REGEX.matcher(content).find()) count++;
-                } catch (IOException ignored) {
-                    // best-effort
-                }
+        for (Path file : testSources(testSrcDir)) {
+            try {
+                String content = Files.readString(file);
+                if (TEST_ANNOTATION_REGEX.matcher(content).find()) count++;
+            } catch (IOException ignored) {
+                // best-effort
             }
-        } catch (IOException ignored) {
-            // best-effort
         }
         return count;
+    }
+
+    private static List<Path> testSources(Path testSrcDir) {
+        // One enumeration answers all four languages; a single pass cannot repeat a file.
+        return InputTrees.of(testSrcDir).withExtensions(".java", ".kt", ".groovy", ".scala");
     }
 
     /** Collect all test sources for every discovered suite (deduped paths). */

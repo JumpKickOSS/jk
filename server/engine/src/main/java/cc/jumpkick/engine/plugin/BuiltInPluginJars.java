@@ -70,7 +70,7 @@ public final class BuiltInPluginJars {
     }
 
     /**
-     * Overlay {@code ~/.config/jk/config.toml [plugins]} path pins onto the registry. Maven pins
+     * Overlay {@code ~/.jk/config.toml [plugins]} path pins onto the registry. Maven pins
      * wait for {@code jk lock} (project lock is law). A pin that cannot be honored — missing
      * file, unreadable jar, hash mismatch — throws: the pin is explicit user intent, and
      * silently running the shipped plugin instead is wrong code with no diagnostic. This matches

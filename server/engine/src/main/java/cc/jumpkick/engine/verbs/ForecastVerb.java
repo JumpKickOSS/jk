@@ -71,7 +71,7 @@ public final class ForecastVerb implements HostedVerb {
                         // "tests up-to-date" for a suite whose environment actually changed.
                         .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                         // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                        // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                        // empty and a resident engine ignores both --jdk and JK_JDK.
                         .withToolchainSpecs(
                                 ProtoSession.jdkSpecOf(requestLine),
                                 ProtoSession.graalSpecOf(requestLine),
@@ -92,7 +92,7 @@ public final class ForecastVerb implements HostedVerb {
                     }
                     List<String> dirty = new ArrayList<>();
                     // Read-only: a forecast that stored the dirty memo recreated target/.jk
-                    // right after jk clean --force wiped it (JK-2205).
+                    // right after jk clean --force wiped it.
                     for (Path d : BuildService.forecastDirtyDirsReadOnly(graph, cache, skipTests, entryDir))
                         dirty.add(d.toString());
                     boolean lockStale =

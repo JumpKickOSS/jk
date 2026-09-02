@@ -99,7 +99,7 @@ class CacheRetentionCoverageTest {
      * The rename check. A tier's bytes must be taken by the instrument {@link CacheTier} declares
      * for it, never by the residue sweep — and the residue sweep is precisely what picks up a
      * directory whose name has drifted from the table. Renaming {@link CacheTree#FORMAT_STAMPS} to
-     * {@code fmt-stamps} while the formatter worker keeps writing {@code format-stamps/} leaves the
+     * {@code fmt-stamps} while the formatter worker keeps writing {@code format/stamps/} leaves the
      * old tree unbounded and unmeasured, and the only visible symptom without this assertion is a
      * warning nobody reads. Here the tier reports as unrecognised and the suite goes red.
      */
@@ -225,6 +225,29 @@ class CacheRetentionCoverageTest {
         assertThat(CacheTree.entries())
                 .as("if `tools` is ever added here, this test stops describing the tree")
                 .doesNotContain("tools");
+    }
+
+    /**
+     * A nested tier's container is not residue. {@code format/stamps} and {@code format/freshness}
+     * put a {@code format/} directory at the top level; the whitelist recognises the first
+     * segment of a nested entry, or the sweep would rm -rf the container with both stores in it.
+     */
+    @Test
+    void a_nested_tier_keeps_its_container_out_of_the_residue_sweep(@TempDir Path root) throws IOException {
+        Path stamp = CacheTree.FORMAT_STAMPS.under(root).resolve("ab/x.stamp");
+        Files.createDirectories(stamp.getParent());
+        Files.writeString(stamp, "");
+        Path index = CacheTree.FORMAT_FRESHNESS.under(root).resolve("ab/cd.idx");
+        Files.createDirectories(index.getParent());
+        Files.writeString(index, "#format-freshness-v1\n");
+        backdate(root.resolve("format"), OLD); // even an old container is known, not residue
+
+        var report = CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(stamp).exists();
+        assertThat(index).exists();
+        assertThat(report.unknownEntries()).doesNotContain("format");
+        assertThat(CacheTree.entries()).contains("format").doesNotContain("format/stamps");
     }
 
     /** A stray that appeared moments ago may be another engine mid-write. */

@@ -141,9 +141,9 @@ public final class JavaCompilerHost {
         private volatile Work inflight;
         private volatile boolean dead;
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
-        // PluginSlots permit while idle (JK-2284). Touched only by the io thread.
+        // PluginSlots permit while idle. Touched only by the io thread.
         private PluginSlots.Lease slot;
-        // Bounded ring of the worker's most recent non-protocol lines, surfaced on a crash (JK-2296).
+        // Bounded ring of the worker's most recent non-protocol lines, surfaced on a crash.
         private static final int TAIL_MAX = 50;
         private final ConcurrentLinkedDeque<String> passthroughTail = new ConcurrentLinkedDeque<>();
 
@@ -176,7 +176,7 @@ public final class JavaCompilerHost {
         /**
          * Enqueue work, then re-check {@link #dead}: if the worker died between the caller's {@code
          * alive()} check and this add, {@code failAll}'s drain has already run and would never see
-         * this item, hanging {@code compile.get()} forever (JK-2285). The re-check fails it here.
+         * this item, hanging {@code compile.get} forever. The re-check fails it here.
          */
         private void enqueue(Work w) {
             queue.add(w);
@@ -233,7 +233,7 @@ public final class JavaCompilerHost {
                     return;
                 }
                 // Take a worker slot only for the duration of this exchange; released on
-                // RESULT/ERROR/failure so an idle session holds none (JK-2284).
+                // RESULT/ERROR/failure so an idle session holds none.
                 slot = PluginSlots.acquire();
                 try {
                     next.spec = ForkedJavac.writeSpec(next.req);
@@ -303,7 +303,7 @@ public final class JavaCompilerHost {
             if (s != null) s.close();
         }
 
-        /** Delete a work item's spec temp file on every terminal path (JK-2296). */
+        /** Delete a work item's spec temp file on every terminal path. */
         private static void deleteSpec(Work w) {
             if (w == null || w.spec == null) return;
             try {
@@ -346,7 +346,7 @@ public final class JavaCompilerHost {
         /**
          * Attach the tail of the worker's non-protocol output (stack trace / OOM banner / spec-parse
          * error) to a worker-death exception — otherwise the engine reports only "zinc worker exited"
-         * with no cause (JK-2296).
+         * with no cause.
          */
         private Throwable withWorkerTail(Throwable e) {
             if (passthroughTail.isEmpty()) return e;
@@ -358,7 +358,7 @@ public final class JavaCompilerHost {
          * Fail every queued (not-yet-dispatched) Work. Safe to call from any thread — it only polls
          * the concurrent queue and completes futures (both idempotent), and never touches the io
          * thread's {@code slot}/{@code inflight}. Used both by {@link #failAll} and by {@link
-         * #enqueue}'s post-add dead re-check (JK-2285).
+         * #enqueue}'s post-add dead re-check.
          */
         private void drainFailQueued(Throwable e) {
             Work w;

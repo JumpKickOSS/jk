@@ -34,7 +34,7 @@ class CacheSnapshotMemoizingTest {
                         // every caller is provably contending. "Reached get()" is not that: a caller
                         // counts down and is then briefly RUNNABLE before it parks on the memo's
                         // lock, and this used to cover that gap with a bare Thread.sleep(50) — a
-                        // guess about scheduling on this machine (JK-2446). Thread state IS
+                        // guess about scheduling on this machine. Thread state IS
                         // observable, so wait for the followers to be off the CPU instead.
                         assertThat(callersArrived.await(30, TimeUnit.SECONDS))
                                 .as("all callers reach get() before the walk returns")
@@ -105,7 +105,7 @@ class CacheSnapshotMemoizingTest {
 
     @Test
     void render_reads_captured_maven_stats_instead_of_walking() {
-        // JK-2293: toJson/toThinJson must read the captured Maven-local stats, not walk ~/.m2 on
+        // : toJson/toThinJson must read the captured Maven-local stats, not walk ~/.m2 on
         // the render / SSE connect path. A snapshot carrying known values must render exactly those.
         CacheSnapshot snap =
                 new CacheSnapshot(1, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 42L, 424242L, 0, 0, 0, 0);

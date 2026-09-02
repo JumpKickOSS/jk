@@ -32,7 +32,8 @@ User `[minified] keep` / keep-files still win last — [Packaging](packaging.md)
 In R8 `--classfile` full mode, a class keeps its **generic signature** only if the class
 is explicitly kept. An application that resolves types by runtime generic matching
 **cannot be shrunk** at any keep setting. Training cannot rescue that — use the fat jar,
-or write class-level keep rules yourself.
+or write class-level keep rules yourself. Every minified build audits for this and warns
+with a count and examples when signatures were erased ([Packaging](packaging.md)).
 
 The Graal tracing agent also does not record `Class.getTypeParameters()`; populating the
 generic-reflection kind automatically is not complete. native-image itself preserves

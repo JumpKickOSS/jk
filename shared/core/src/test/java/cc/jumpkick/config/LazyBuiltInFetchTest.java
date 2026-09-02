@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2239: built-ins install lazily — an unowned table gives the engine-registered fetcher one
+ *: built-ins install lazily — an unowned table gives the engine-registered fetcher one
  * chance to fetch + install the owner before the parse error, and a fetch failure surfaces its
  * cause in that error.
  */

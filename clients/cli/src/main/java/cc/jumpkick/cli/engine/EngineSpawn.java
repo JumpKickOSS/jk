@@ -376,7 +376,7 @@ public final class EngineSpawn {
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar under {@code
-     * <data>/lib/jk-engine/} ({@code $JK_HOME/data/lib/jk-engine/} under the umbrella), launched as {@code
+     * <home>/lib/jk-engine/}, launched as {@code
      * <managed-jdk>/bin/java … -cp <path> cc.jumpkick.engine.EngineMain} — the engine is a plain JVM
      * app, never a native image. There is no client-binary FALLBACK: the slim client never hosts the
      * engine.
@@ -416,7 +416,7 @@ public final class EngineSpawn {
      * JDK identity (version + vendor). A mismatched cache is silently ignored by {@code
      * AOTMode=auto} and never retrained, so folding the JDK into the key means a jar upgrade, a JDK
      * build bump (Temurin 25.0.3→25.0.4), or a vendor swap all yield a fresh key that trains cleanly.
-     * Stale {@code.aot}/{@code.noaot} files from previous keys are deleted best-effort here.
+     * Stale {@code .aot}/{@code .noaot} files from previous keys are deleted best-effort here.
      */
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
         return aotCachePath(paths, engineJar, jdk, Jk.VERSION);
@@ -443,7 +443,7 @@ public final class EngineSpawn {
                                 ? "no-jdk"
                                 : jdk.version() + "|" + jdk.vendor().name());
         String hash = Hashing.sha256Hex(signature.toString()).substring(0, 16);
-        // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
+        // ONE home for every AOT cache — engine and workers alike live in ~/.jk/state/aot/ so a
         // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
         // version-scoped: a new primary reaps other versions' engine AOT. The sweep below stays
@@ -653,11 +653,11 @@ public final class EngineSpawn {
 
     /** Copy PubGrub budget env vars from this process into the engine spawn environment. */
     /**
-     * Hand the spawned engine the environment it cannot otherwise see.
+     * Hand the spawned engine the environment it cannot otherwise.
      *
      * <p>A daemon does not inherit the client's environment, so anything set only in the caller's shell
      * is invisible to it. That is why {@code JK_STORE_DIR} did nothing beforethe engine
-     * resolved its own {@code ~/.local/share/jk/store} regardless. Paired with the store being part of the engine
+     * resolved its own {@code ~/.jk/store} regardless. Paired with the store being part of the engine
      * identity ({@link cc.jumpkick.engine.EnginePaths}), a different store now both spawns its own
      * engine and reaches it.
      */

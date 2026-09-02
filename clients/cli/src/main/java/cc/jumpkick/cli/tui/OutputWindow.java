@@ -40,7 +40,7 @@ public final class OutputWindow {
     /**
      * Logical index (into {@link #totalAccepted}) through which lines have already been printed
      * into terminal scrollback. Scrollback is permanent — a reopen must dump only NEWER lines,
-     * or every toggle cycle duplicates up to {@link #MAX_LINES} rows (JK-2092).
+     * or every toggle cycle duplicates up to {@link #MAX_LINES} rows.
      */
     private long committedThrough;
 

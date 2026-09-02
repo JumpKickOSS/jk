@@ -103,7 +103,7 @@ class WorkspaceSchedulerTest {
 
     @Test
     void cancel_drains_in_flight_units_before_returning() {
-        // JK-2097: cancel(true) settled the futures instantly while suppliers kept running, so
+        // : cancel(true) settled the futures instantly while suppliers kept running, so
         // module-finish events could land AFTER workspace-finish. The cancel path must wait
         // (bounded) for in-flight tasks to settle before run() returns.
         AtomicBoolean cancelled = new AtomicBoolean();
@@ -158,7 +158,7 @@ class WorkspaceSchedulerTest {
 
     @Test
     void dependents_admit_on_artifact_publish_not_completion() throws Exception {
-        // JK-2210: "up" publishes its artifacts mid-task, then keeps "testing" until released.
+        // : "up" publishes its artifacts mid-task, then keeps "testing" until released.
         // "down" (depends on up) must start after the publish but before up completes.
         CountDownLatch upPublished = new CountDownLatch(1);
         CountDownLatch downStarted = new CountDownLatch(1);
@@ -227,7 +227,7 @@ class WorkspaceSchedulerTest {
 
     @Test
     void bounded_admission_prefers_the_longest_remaining_chain() {
-        // JK-2196: a spine (root -> s1 -> s2 -> s3) plus three independent leaves, declared
+        // : a spine (root -> s1 -> s2 -> s3) plus three independent leaves, declared
         // leaves-first. With cap=1 the old first-ready scan ran the leaves before the spine;
         // critical-path-first admission must start the spine as soon as it is ready.
         List<String> units = List.of("leaf1", "leaf2", "leaf3", "root", "s1", "s2", "s3");

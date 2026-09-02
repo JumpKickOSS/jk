@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * <strong>The</strong> precedence every machine-scoped setting follows — built-in default, then
- * {@code ~/.config/jk/config.toml}, then the environment, highest layer first — together with the
+ * {@code ~/.jk/config.toml}, then the environment, highest layer first — together with the
  * one thing that makes the layers agree: <em>a single validity predicate, applied identically to
  * every layer</em>. A value the predicate rejects falls through to the layer below; it never fails
  * the command, because a machine preference must not be able to stop a build.

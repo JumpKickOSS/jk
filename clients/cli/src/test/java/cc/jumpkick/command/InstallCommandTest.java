@@ -105,7 +105,7 @@ class InstallCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
         // [m2] install = false (integration still default true): repos/jk-local, not ~/.m2.
-        assertThat(JkStores.resolve(cache, "repos")
+        assertThat(JkStores.resolve("repos")
                         .resolve("jk-local")
                         .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
                 .exists();
@@ -163,7 +163,7 @@ class InstallCommandTest {
         // It also has to say who wrote it. This used to assert the opposite — the absence of the
         // line was standing in for "this is the app shape, not the tool shape" — but that made the
         // app launcher indistinguishable from a hand-rolled shim of the same name, which is how
-        // `jk tool uninstall` came to delete binaries jk never wrote (JK-2626). Attribution is now
+        // `jk tool uninstall` came to delete binaries jk never wrote. Attribution is now
         // required of every launcher jk puts on PATH; the two shapes are told apart above.
         assertThat(script).contains(JkOwnership.GENERATED_BY);
     }

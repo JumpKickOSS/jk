@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The affected-tests report accumulates on the request's accumulator — one per invocation — so a
- * later run starts from nothing instead of merging into a previous run's rows (JK-2607).
+ * later run starts from nothing instead of merging into a previous run's rows.
  */
 class BuildAccumulatorAffectedTest {
 

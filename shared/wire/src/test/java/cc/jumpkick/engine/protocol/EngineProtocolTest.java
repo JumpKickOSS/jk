@@ -178,9 +178,9 @@ class EngineProtocolTest {
 
     @Test
     void build_request_carries_freshen_lock() {
-        String on = ProtoJobs.buildRequest("/w", "/c", null, 1, null, false, false, 0, false, false, false, true);
+        String on = buildRequest(true, false, null);
         assertThat(Jsonl.bool(on, "freshenLock", false)).isTrue();
-        String off = ProtoJobs.buildRequest("/w", "/c", null, 1, null, false, false, 0, false, false, false, false);
+        String off = buildRequest(false, false, null);
         assertThat(Jsonl.bool(off, "freshenLock", true)).isFalse();
         // rebuild rides the session envelope, not the builder.
         assertThat(Jsonl.bool(ProtoSession.withSession(off, null, null, null, true), "rebuild", false))
@@ -205,41 +205,28 @@ class EngineProtocolTest {
 
     @Test
     void build_request_carries_test_only_and_dirty_hint() {
-        String on = ProtoJobs.buildRequest(
-                "/w",
-                "/c",
-                null,
-                1,
-                null,
-                false,
-                false,
-                0,
-                false,
-                false,
-                false,
-                true,
-                false,
-                true,
-                List.of("/w/api", "/w/core"));
+        String on = buildRequest(true, true, List.of("/w/api", "/w/core"));
         assertThat(Jsonl.bool(on, "testOnly", false)).isTrue();
-        assertThat(ProtoJobs.dirtyHintOf(on)).containsExactly("/w/api", "/w/core");
+        assertThat(BuildRequest.decode(on).dirtyHint()).containsExactly("/w/api", "/w/core");
 
         // Unset controls stay off the wire entirely.
-        String off = ProtoJobs.buildRequest(
-                "/w", "/c", null, 1, null, false, false, 0, false, false, false, true, false, false, null);
+        String off = buildRequest(true, false, null);
         assertThat(off).doesNotContain("testOnly").doesNotContain("dirtyHint");
-        assertThat(ProtoJobs.dirtyHintOf(off)).isNull();
+        assertThat(BuildRequest.decode(off).dirtyHint()).isNull();
 
         // An empty selection is not a selection.
-        String empty = ProtoJobs.buildRequest(
-                "/w", "/c", null, 1, null, false, false, 0, false, false, false, true, false, false, List.of());
-        assertThat(ProtoJobs.dirtyHintOf(empty)).isNull();
+        String empty = buildRequest(true, false, List.of());
+        assertThat(BuildRequest.decode(empty).dirtyHint()).isNull();
     }
 
     @Test
     void lock_request_round_trips_all_fields() {
-        String json = ProtoJobs.lockRequest(
-                "/work", "/cache", List.of("a", "b"), true, true, "http://repo", true, false, true, true);
+        String json = new LockRequest(
+                        "/work", "/cache", List.of("a", "b"), true, true, "http://repo", true, false, true, true)
+                .encode();
+        assertThat(LockRequest.decode(json))
+                .isEqualTo(new LockRequest(
+                        "/work", "/cache", List.of("a", "b"), true, true, "http://repo", true, false, true, true));
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.LOCK_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
@@ -255,14 +242,15 @@ class EngineProtocolTest {
 
     @Test
     void lock_request_null_repo_url_decodes_as_absent() {
-        String json = ProtoJobs.lockRequest("/w", "/c", List.of(), false, false, null, false, false, false, false);
+        String json = new LockRequest("/w", "/c", List.of(), false, false, null, false, false, false, false).encode();
         assertThat(Jsonl.str(json, "repoUrl")).isNull();
     }
 
     @Test
     void update_request_round_trips_the_git_splice_fields() {
-        String json =
-                ProtoJobs.updateRequest("/work", "/cache", List.of(), false, null, true, "mylib", false, true, false);
+        String json = new UpdateRequest(
+                        "/work", "/cache", List.of(), false, null, true, "mylib", false, true, false, null)
+                .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.UPDATE_REQUEST);
         assertThat(Jsonl.bool(json, "gitOnly", false)).isTrue();
         assertThat(Jsonl.str(json, "gitTarget")).isEqualTo("mylib");
@@ -271,7 +259,8 @@ class EngineProtocolTest {
 
     @Test
     void sync_request_round_trips_all_fields() {
-        String json = ProtoJobs.syncRequest("/work", "/cache", "/jdks", "http://repo", true, false, true, true, false);
+        String json =
+                new SyncRequest("/work", "/cache", "/jdks", "http://repo", true, false, true, true, false).encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.SYNC_REQUEST);
         assertThat(Jsonl.str(json, "jdksDir")).isEqualTo("/jdks");
         assertThat(Jsonl.str(json, "repoUrl")).isEqualTo("http://repo");
@@ -326,7 +315,8 @@ class EngineProtocolTest {
 
     @Test
     void audit_request_round_trips_all_fields() {
-        String json = ProtoJobs.auditRequest("/work", "/cache", "HIGH", "http://osv/batch", "http://osv/vulns/", true);
+        String json =
+                new AuditRequest("/work", "/cache", "HIGH", "http://osv/batch", "http://osv/vulns/", true).encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.AUDIT_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
@@ -336,7 +326,7 @@ class EngineProtocolTest {
         // The audit worker queries OSV, so the run's offline decision has to ride the request.
         assertThat(Jsonl.bool(json, "offline", false)).isTrue();
         // null overrides decode as absent (the real OSV endpoints)
-        assertThat(Jsonl.str(ProtoJobs.auditRequest("/w", "/c", "LOW", null, null, false), "osvBatchUrl"))
+        assertThat(Jsonl.str(new AuditRequest("/w", "/c", "LOW", null, null, false).encode(), "osvBatchUrl"))
                 .isNull();
     }
 
@@ -353,8 +343,9 @@ class EngineProtocolTest {
 
     @Test
     void format_request_round_trips_the_resolved_styles() {
-        String json = ProtoJobs.formatRequest(
-                "/work", "/cache", true, "palantir", "kotlinlang", false, true, false, true, false);
+        String json = new FormatRequest(
+                        "/work", "/cache", true, "palantir", "kotlinlang", false, true, false, true, false)
+                .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.FORMAT_REQUEST);
         assertThat(Jsonl.bool(json, "check", false)).isTrue();
         assertThat(Jsonl.str(json, "javaStyle")).isEqualTo("palantir");
@@ -388,26 +379,27 @@ class EngineProtocolTest {
 
     @Test
     void publish_request_round_trips_the_credential_fields() {
-        String json = ProtoJobs.publishRequest(
-                "/work",
-                "/cache",
-                "https://repo/m2",
-                "us-east-1",
-                null,
-                "/out/app.jar",
-                true,
-                false,
-                "/key.asc",
-                "s3cret",
-                false,
-                true,
-                true,
-                "basic",
-                "alice",
-                "hunter2",
-                null,
-                true,
-                false);
+        String json = new PublishRequest(
+                        "/work",
+                        "/cache",
+                        "https://repo/m2",
+                        "us-east-1",
+                        null,
+                        "/out/app.jar",
+                        true,
+                        false,
+                        "/key.asc",
+                        "s3cret",
+                        false,
+                        true,
+                        true,
+                        "basic",
+                        "alice",
+                        "hunter2",
+                        null,
+                        true,
+                        false)
+                .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.PUBLISH_REQUEST);
         // A publish uploads to someone else's server: the offline decision rides the request so
         // the worker can refuse rather than PUT behind an offline run's back.
@@ -433,15 +425,17 @@ class EngineProtocolTest {
 
     @Test
     void image_request_keeps_the_tarball_tristate() {
-        String none = ProtoJobs.imageRequest(
-                "/w", "/c", null, "com.example.Main", null, null, null, null, false, false, false, false);
+        String none = new ImageRequest(
+                        "/w", "/c", null, "com.example.Main", null, null, null, null, false, false, false, false)
+                .encode();
         assertThat(EngineProtocol.typeOf(none)).isEqualTo(EngineProtocol.IMAGE_REQUEST);
         assertThat(Jsonl.str(none, "tarball")).isNull();
         String defaulted =
-                ProtoJobs.imageRequest("/w", "/c", null, null, null, null, "", null, false, false, false, false);
+                new ImageRequest("/w", "/c", null, null, null, null, "", null, false, false, false, false).encode();
         assertThat(Jsonl.str(defaulted, "tarball")).isEmpty();
-        String explicit = ProtoJobs.imageRequest(
-                "/w", "/c", null, null, "reg.io", "v2", "/out/img.tar", "podman", true, true, true, true);
+        String explicit = new ImageRequest(
+                        "/w", "/c", null, null, "reg.io", "v2", "/out/img.tar", "podman", true, true, true, true)
+                .encode();
         assertThat(Jsonl.str(explicit, "tarball")).isEqualTo("/out/img.tar");
         assertThat(Jsonl.str(explicit, "registry")).isEqualTo("reg.io");
         assertThat(Jsonl.str(explicit, "dockerExecutable")).isEqualTo("podman");
@@ -453,7 +447,7 @@ class EngineProtocolTest {
     void goal_finish_image_variant_carries_the_success_tail_fields_and_test_counts() {
         String json = ProtoEvents.planFinishImage("", true, 12, 12, 0, 0, "reg.io/app:1.0", null, "app", "1.0", null);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
-        // One wire spelling: the counts ride as the nested `tests` object, never flat scalars (JK-2424).
+        // One wire spelling: the counts ride as the nested `tests` object, never flat scalars.
         TestSummary counts = TestSummary.readCounts(json);
         assertThat(counts).isNotNull();
         assertThat(counts.total()).isEqualTo(12);
@@ -466,7 +460,7 @@ class EngineProtocolTest {
 
     @Test
     void import_request_note_and_finish_variant_round_trip() {
-        String req = ProtoJobs.importRequest("/p/pom.xml", "/p/jk.toml", "/p", "/tmp/jk", true, null, "/cache");
+        String req = new ImportRequest("/p/pom.xml", "/p/jk.toml", "/p", "/tmp/jk", true, null, "/cache").encode();
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.IMPORT_REQUEST);
         assertThat(Jsonl.str(req, "source")).isEqualTo("/p/pom.xml");
         assertThat(Jsonl.str(req, "out")).isEqualTo("/p/jk.toml");
@@ -487,7 +481,7 @@ class EngineProtocolTest {
 
     @Test
     void provision_request_and_result_round_trip() {
-        String req = ProtoJobs.provisionRequest("/proj", "/cache/tools", true, true);
+        String req = new ProvisionRequest("/proj", "/cache/tools", true, true, null, null).encode();
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.PROVISION_REQUEST);
         // Project directory is always "dir" (never projectDir) — freeze invariant.
         assertThat(Jsonl.str(req, "dir")).isEqualTo("/proj");
@@ -523,20 +517,17 @@ class EngineProtocolTest {
     @Test
     void hosted_request_project_directory_field_is_always_dir() {
         // Sample of hosted builders — none may invent a second spelling for the project path.
-        assertThat(Jsonl.str(ProtoJobs.compileRequest("/w", "/c", null, false, false, false), "dir"))
+        assertThat(Jsonl.str(new CompileRequest("/w", "/c", null, false, false, false, List.of()).encode(), "dir"))
                 .isEqualTo("/w");
-        assertThat(Jsonl.str(
-                        ProtoJobs.buildRequest("/w", "/c", null, 1, null, false, false, 0, false, false, false, false),
-                        "dir"))
-                .isEqualTo("/w");
-        assertThat(Jsonl.str(ProtoJobs.provisionRequest("/w", "/t", false, false), "dir"))
+        assertThat(Jsonl.str(buildRequest(false, false, null), "dir")).isEqualTo("/w");
+        assertThat(Jsonl.str(new ProvisionRequest("/w", "/t", false, false, null, null).encode(), "dir"))
                 .isEqualTo("/w");
         assertThat(Jsonl.str(ProtoEvents.planFinish("/w", true), "dir")).isEqualTo("/w");
     }
 
     @Test
     void compile_request_round_trips_all_fields() {
-        String json = ProtoJobs.compileRequest("/work", "/cache", "ci", true, false, true);
+        String json = new CompileRequest("/work", "/cache", "ci", true, false, true, List.of()).encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.COMPILE_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
@@ -545,7 +536,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "force", true)).isFalse();
         assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
 
-        String noProfile = ProtoJobs.compileRequest("/w", "/c", null, false, false, false);
+        String noProfile = new CompileRequest("/w", "/c", null, false, false, false, List.of()).encode();
         assertThat(Jsonl.str(noProfile, "profile")).isNull();
     }
 
@@ -554,8 +545,19 @@ class EngineProtocolTest {
         var graal = new LinkedHashMap<String, String>();
         graal.put("/work/app", "/graal/a");
         graal.put("/work/tool", "/graal/b");
-        String json = ProtoJobs.nativeRequest(
-                "/work", "/cache", "/jdks", "com.example.Main", true, false, true, false, List.of("-O2"), graal);
+        String json = new NativeRequest(
+                        "/work",
+                        "/cache",
+                        "/jdks",
+                        "com.example.Main",
+                        true,
+                        false,
+                        true,
+                        false,
+                        List.of("-O2"),
+                        graal,
+                        List.of())
+                .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.NATIVE_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "jdksDir")).isEqualTo("/jdks");
@@ -569,7 +571,7 @@ class EngineProtocolTest {
 
     @Test
     void install_request_round_trips_all_fields() {
-        String json = ProtoJobs.installRequest("/work", "/cache", "/home/u/.m2", "/graal", true, false, false, true);
+        String json = new InstallRequest("/work", "/cache", "/home/u/.m2", "/graal", true, false, false, true).encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.INSTALL_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "m2Dir")).isEqualTo("/home/u/.m2");
@@ -577,14 +579,14 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "skipTests", false)).isTrue();
         assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
 
-        String jvmOnly = ProtoJobs.installRequest("/w", "/c", "/m2", null, false, false, false, false);
+        String jvmOnly = new InstallRequest("/w", "/c", "/m2", null, false, false, false, false).encode();
         assertThat(Jsonl.str(jvmOnly, "graalHome")).isNull();
     }
 
     @Test
     void git_fetch_request_and_finish_variant_round_trip() {
-        String req = ProtoJobs.gitFetchRequest(
-                "https://github.com/o/r.git", "github.com/o/r", "v1.2", "/cache", true, false);
+        String req = new GitFetchRequest("https://github.com/o/r.git", "github.com/o/r", "v1.2", "/cache", true, false)
+                .encode();
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.GIT_FETCH_REQUEST);
         assertThat(Jsonl.str(req, "url")).isEqualTo("https://github.com/o/r.git");
         assertThat(Jsonl.str(req, "canonicalUrl")).isEqualTo("github.com/o/r");
@@ -691,5 +693,30 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "success", false)).isTrue();
         assertThat(Jsonl.longValue(json, "cacheFiles", -99)).isEqualTo(12);
         assertThat(Jsonl.longValue(json, "cacheBytes", -99)).isEqualTo(34_567);
+    }
+
+    private static String buildRequest(boolean freshenLock, boolean testOnly, List<String> dirtyHint) {
+        return new BuildRequest(
+                        "/w",
+                        "/c",
+                        null,
+                        1,
+                        null,
+                        false,
+                        false,
+                        0,
+                        false,
+                        false,
+                        false,
+                        freshenLock,
+                        false,
+                        testOnly,
+                        dirtyHint,
+                        null,
+                        List.of(),
+                        false,
+                        null,
+                        Map.of())
+                .encode();
     }
 }

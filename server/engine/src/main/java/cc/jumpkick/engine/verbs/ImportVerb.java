@@ -6,10 +6,9 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ImportRequest;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -70,14 +69,15 @@ public final class ImportVerb implements HostedVerb {
                     "no build file found in " + dir + " (looked for build.gradle.kts, build.gradle, pom.xml)");
         }
         return ProtoSession.withTrigger(
-                ProtoJobs.importRequest(
-                        source.toString(),
-                        dir.resolve(ManifestPaths.MANIFEST).toString(),
-                        spec.dir(),
-                        JkDirs.tmp().toString(),
-                        false,
-                        null,
-                        JkDirs.cache().toString()),
+                new ImportRequest(
+                                source.toString(),
+                                dir.resolve(ManifestPaths.MANIFEST).toString(),
+                                spec.dir(),
+                                JkDirs.tmp().toString(),
+                                false,
+                                null,
+                                JkDirs.cache().toString())
+                        .encode(),
                 "web");
     }
 
@@ -85,21 +85,21 @@ public final class ImportVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                Path baseDir = Path.of(Jsonl.str(requestLine, "baseDir"));
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String report = Jsonl.str(requestLine, "report");
+                ImportRequest body = ImportRequest.decode(requestLine);
+                Path baseDir = Path.of(body.baseDir());
+                Path cache = Path.of(body.cache());
                 Session session = Session.defaults()
                         .withWorkingDir(baseDir)
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = CompatPlans.importBuildPlan(
-                        Path.of(Jsonl.str(requestLine, "source")),
-                        Path.of(Jsonl.str(requestLine, "out")),
+                        Path.of(body.source()),
+                        Path.of(body.out()),
                         baseDir,
-                        Path.of(Jsonl.str(requestLine, "tmpDir")),
-                        Jsonl.bool(requestLine, "force", false),
-                        report != null ? Path.of(report) : null,
+                        Path.of(body.tmpDir()),
+                        body.force(),
+                        body.report() != null ? Path.of(body.report()) : null,
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
                 return host.streamSinglePlan(
                         plan,

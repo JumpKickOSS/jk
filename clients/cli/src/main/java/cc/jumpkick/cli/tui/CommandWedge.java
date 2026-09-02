@@ -17,6 +17,7 @@ import java.util.List;
  * <h2>Output modes</h2>
  *
  * <table>
+ * <caption>Render modes</caption>
  * <tr><th>Mode</th><th>Trigger</th><th>Chrome</th></tr>
  * <tr><td>nerd</td><td>ansi + {@link GlobalConfig#nerdFont}</td><td>PUA caps + Unicode glyphs</td></tr>
  * <tr><td>ansi</td><td>ansi, no PUA axis granted</td><td>colored chip + trailing bg space, Unicode glyphs, no PUA</td></tr>

@@ -134,7 +134,7 @@ public final class WireStream {
      * to change either way, so it is a normal exit from this wait, not a failure.
      *
      * <p>Half-closing our write side first is what keeps this from being a standoff: the engine's
-     * connection thread is parked reading this socket for a late {@code build-cancel}, and the
+     * connection thread is parked reading this socket for EOF, and the
      * terminal is our last word on it. The half-close hands it the EOF it needs to move on to the
      * finish tail, while our read side stays open for the line we are waiting for.
      */

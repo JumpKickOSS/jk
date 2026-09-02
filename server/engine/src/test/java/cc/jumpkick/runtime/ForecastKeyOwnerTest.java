@@ -26,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The derived values `jk explain` and the build have to agree on, asserted at the one body that
- * derives each — the shape JK-2479/JK-2480 concluded with after a prefix-set guard proved unable to
+ * derives each — the shape concluded with after a prefix-set guard proved unable to
  * see a value drift behind an agreed token.
  *
  * <p>What is NOT asserted here: that the forecast calls these owners. A test cannot show that
@@ -38,7 +38,7 @@ class ForecastKeyOwnerTest {
 
     @Test
     void compile_main_request_carries_every_field_forJavac_hashes(@TempDir Path tmp) throws Exception {
-        // JK-2479: the forecast built its CompileRequest independently and set none of the Scala
+        // : the forecast built its CompileRequest independently and set none of the Scala
         // fields, none of the sibling-language classpath entries, and not the Groovy stubs
         // --source-path — all of which forJavac hashes. One body now derives all of it, so the
         // question is whether that body actually puts them in.
@@ -132,7 +132,7 @@ class ForecastKeyOwnerTest {
 
     @Test
     void assembly_key_is_one_body_the_build_and_the_forecast_share(@TempDir Path tmp) throws Exception {
-        // JK-2480: both package-assembly sites emitted `main:`, the build from project.mainClass()
+        // : both package-assembly sites emitted `main:`, the build from project.mainClass
         // and the forecast from PluginModule.mainClass(dir, project). One body now derives the whole
         // bag; the expectation below is spelled out by hand rather than taken from either side, so
         // it pins the values and not merely the agreement.
@@ -212,7 +212,7 @@ class ForecastKeyOwnerTest {
         // the disagreement is currently unreachable: JkBuildParser refuses an [application] table on
         // a plugin worker ("already implies main cc.jumpkick.plugin.process.PluginMain"), and
         // `assembly` only exists inside [application] — so no worker module can be assembly = true
-        // today, and JK-2480's reported symptom (a permanent package-assembly [run]) cannot occur.
+        // today, and's reported symptom (a permanent package-assembly [run]) cannot occur.
         // What was real is the second derivation; this is the one that remains.
         Path worker = Files.createDirectories(tmp.resolve("w"));
         Files.writeString(worker.resolve("jk.toml"), """

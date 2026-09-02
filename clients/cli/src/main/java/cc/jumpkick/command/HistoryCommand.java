@@ -23,7 +23,7 @@ import java.util.function.Function;
 
 /**
  * {@code jk history} — browse and prune the persisted build-history journal
- * ({@code ~/.local/state/jk/builds/journal/}). The journal is owned by the engine; these commands are thin
+ * ({@code ~/.jk/state/builds/journal/}). The journal is owned by the engine; these commands are thin
  * RPCs (spawning the engine if it isn't running), rendering the flat JSONL the engine streams back.
  */
 public final class HistoryCommand extends GroupCommand {

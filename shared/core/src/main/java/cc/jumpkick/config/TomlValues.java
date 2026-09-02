@@ -38,9 +38,9 @@ public final class TomlValues {
      *
      * <p>Three user-config readers reach here — {@code JkTemplatesConfig}, {@code JkHistoryConfig},
      * {@code JkHttpConfig} — and none of them memoized, so each re-read and re-parsed
-     * {@code ~/.config/jk/config.toml} on every {@code resolve()}. Memoizing here rather than at the
+     * {@code ~/.jk/config.toml} on every {@code resolve()}. Memoizing here rather than at the
      * three callers is the same choice {@code TomlScan} made for its twenty-eight: the read is the
-     * cost and one owner ends it for everyone (JK-1033).
+     * cost and one owner ends it for everyone.
      *
      * <p>An unsettled file bypasses the memo, for the reason {@code TomlScan} and
      * {@code JkBuildParser} both give: size+mtime cannot see a same-length edit inside one coarse

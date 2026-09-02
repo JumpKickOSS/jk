@@ -11,7 +11,7 @@ import java.util.Map;
  * Read-only ranked test list for {@code jk test --affected} ({@link
  * EngineProtocol#AFFECTED_TESTS_REQUEST}). A refuse is discriminated by the {@code refused}
  * boolean — never by the message being non-empty, which turned an empty-message refuse into a
- * silent success (JK-2617). {@code rows} is the execute-set ranking; wire rows are
+ * silent success. {@code rows} is the execute-set ranking; wire rows are
  * {@code |}-joined {@code score|class|reason}.
  */
 public record AffectedTestsReport(

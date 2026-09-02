@@ -19,7 +19,7 @@ import java.util.Set;
 
 /**
  * Persistent launcher for {@code jk install} and ephemeral exec for {@code jk exec}. Layout:
- * {@code $JK_STATE_DIR/tools/envs/<bin>/env.json} + {@code $JK_BIN_DIR/<bin>} with absolute CAS
+ * {@code <state>/tools/envs/<bin>/env.json} + {@code <home>/bin/<bin>} with absolute CAS
  * classpath.
  */
 public final class ToolLauncher {
@@ -44,7 +44,7 @@ public final class ToolLauncher {
     public static Path install(
             Path envsRoot, Path binDir, Path javaHome, ToolEnv env, ToolProvenance provenance, List<String> jvmArgs)
             throws IOException {
-        Path envDir = envsRoot.resolve(env.binName());
+        Path envDir = LauncherName.resolveChild(envsRoot, env.binName());
         Files.createDirectories(envDir);
         Files.createDirectories(binDir);
 
@@ -55,7 +55,7 @@ public final class ToolLauncher {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING);
 
-        Path launcher = binDir.resolve(env.binName() + (Os.isWindows() ? ".cmd" : ""));
+        Path launcher = LauncherName.resolveChild(binDir, env.binName() + (Os.isWindows() ? ".cmd" : ""));
         String script = Os.isWindows()
                 ? renderWindowsLauncher(env, javaHome, jvmArgs)
                 : renderPosixLauncher(env, javaHome, jvmArgs);
@@ -85,7 +85,7 @@ public final class ToolLauncher {
             ToolEnv env,
             ToolProvenance provenance)
             throws IOException {
-        Path envDir = envsRoot.resolve(env.binName());
+        Path envDir = LauncherName.resolveChild(envsRoot, env.binName());
         Files.createDirectories(envDir);
         Files.createDirectories(binDir);
         Files.writeString(
@@ -95,7 +95,7 @@ public final class ToolLauncher {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING);
 
-        Path launcher = binDir.resolve(env.binName() + (Os.isWindows() ? ".cmd" : ""));
+        Path launcher = LauncherName.resolveChild(binDir, env.binName() + (Os.isWindows() ? ".cmd" : ""));
         String cp = env.classpath().isEmpty() ? null : Classpaths.join(env.classpath());
         String scriptBody;
         if (Os.isWindows()) {

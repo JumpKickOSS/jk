@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  * <p>This is not part of the {@code ##JKT:} fork protocol and shares no state with the launcher: it
  * runs once before the fork, reads {@code jk.toml} and {@code jk-lock.toml}, and writes a file. It
  * lived in {@code JUnitLauncher} only because that is who calls it, and a Maven POM writer sitting
- * inside the protocol reader is how the launcher grew past the cap (JK-2438).
+ * inside the protocol reader is how the launcher grew past the cap.
  *
  * <p>The rule that must not be split is inside this file: <b>only ever replace a POM jk generated
  * itself</b> — recognised by the marker comment, an uninterpolated {@code ${group}}/{@code ${name}}

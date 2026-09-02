@@ -7,7 +7,7 @@ import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.TimelineEvent;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -135,7 +135,7 @@ public final class JournalWriter {
             long buildNumber = a.buildNumber();
             if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
             a.flushTimeline().ifPresent(path -> {
-                if (writer != null) WireWriter.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
+                if (writer != null) WireWriter.sendQuiet(writer, new TimelineEvent(path.toString()).encode());
             });
             List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
             if (record.synthetic()) {
@@ -171,7 +171,7 @@ public final class JournalWriter {
                 log.accept("jk engine: jk-results.md write failed: " + e);
             }
             // --affected runs: the merged per-module ranking, written once per request so a new
-            // run replaces the file instead of compounding an old one (JK-2607).
+            // run replaces the file instead of compounding an old one.
             AffectedTests affected = a.affected();
             if (affected != null && a.dir() != null && !a.dir().isBlank()) {
                 try {

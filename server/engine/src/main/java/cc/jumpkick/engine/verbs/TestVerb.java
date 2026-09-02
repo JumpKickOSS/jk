@@ -7,8 +7,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.engine.protocol.TestRequest;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -54,17 +54,16 @@ public final class TestVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String entryDirStr = Jsonl.str(requestLine, "dir");
-            String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
-            int workers = Jsonl.intValue(requestLine, "workers", 0);
-            String profile = Jsonl.str(requestLine, "profile");
-            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            boolean offline = Jsonl.bool(requestLine, "offline", false);
-            boolean force = Jsonl.bool(requestLine, "force", false);
-            // Default parallel, same as every other surface (JK-2213): a serial default here
+            TestRequest body = TestRequest.decode(requestLine);
+            String entryDirStr = body.dir();
+            String cacheStr = body.cache();
+            String jdksDirStr = body.jdksDir();
+            int workers = body.workers();
+            String profile = body.profile();
+            boolean verbose = body.verbose();
+            // Default parallel, same as every other surface: a serial default here
             // put concurrent single-module test jobs behind the process-wide TEST_GATE.
-            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", true);
+            boolean parallelTests = body.parallelTests();
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
@@ -74,14 +73,14 @@ public final class TestVerb implements HostedVerb {
             int workerCount = Math.max(0, workers);
 
             boolean compactTests = ModuleLayout.isCompact(entryDir);
-            int estimatedTestCount = TestSupport.estimateSelectedSuiteTestCount(
-                    entryDir, compactTests, ProtoJobs.testSelectionOf(requestLine));
+            int estimatedTestCount =
+                    TestSupport.estimateSelectedSuiteTestCount(entryDir, compactTests, body.selection());
 
             JkConfig config = JkConfig.empty()
-                    .withOffline(offline)
+                    .withOffline(body.offline())
                     .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
                     .withVerbose(verbose)
-                    .withForce(force);
+                    .withForce(body.force());
             Session session = Session.defaults()
                     .withConfig(config)
                     .withWorkingDir(entryDir)
@@ -90,7 +89,7 @@ public final class TestVerb implements HostedVerb {
                     .withCancel(cancelToken)
                     .withJvm(ProtoSession.jvmTuning(requestLine))
                     .withParallelTests(parallelTests)
-                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine))
+                    .withTestSelection(body.selection())
                     .withAffected(Jsonl.bool(requestLine, "affected", false))
                     // The request's env belongs on the session too, not only on the request: it is
                     // what BuildEnv hands every build-path caller, and without it `FOO=x jk build`
@@ -99,7 +98,7 @@ public final class TestVerb implements HostedVerb {
                     // the daemon's own environment instead of the caller's.
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                     // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                    // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                    // empty and a resident engine ignores both --jdk and JK_JDK.
                     .withToolchainSpecs(
                             ProtoSession.jdkSpecOf(requestLine),
                             ProtoSession.graalSpecOf(requestLine),

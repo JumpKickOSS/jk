@@ -51,7 +51,7 @@ public final class ClasspathResolver {
     public static final Set<Scope> TEST =
             EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.TEST, Scope.TEST_DEV);
 
-    /** Scopes bundled into a runnable app (assembly jar / installed {@code <data>/lib/<bin>/}). */
+    /** Scopes bundled into a runnable app (assembly jar / installed {@code <home>/lib/<bin>/}). */
     public static final Set<Scope> RUNTIME = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
 
     /**
@@ -211,7 +211,7 @@ public final class ClasspathResolver {
     /**
      * Honor the project's {@code [m2] integration = false} recorded in the lock: use a store-only
      * locator so {@code ~/.m2} is not consulted for the compile/runtime classpath, matching sync and
-     * the reference gate in {@code MavenRepo} (JK-2306). Any module opting out disables it.
+     * the reference gate in {@code MavenRepo}. Any module opting out disables it.
      */
     private ArtifactLocator effectiveLocator(Lockfile lock) {
         boolean projectOptOut = lock.modules().stream().anyMatch(m -> Boolean.FALSE.equals(m.m2integration()));

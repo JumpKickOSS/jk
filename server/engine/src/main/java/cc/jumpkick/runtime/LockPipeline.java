@@ -239,7 +239,7 @@ public final class LockPipeline {
      * SHAs and the offline gate.
      */
     public Lockfile resolve(@Nullable Lockfile existing, ResolveObserver observer, Progress progress) throws Exception {
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
         // --force / Session force: drop process resolve memos before any POM/metadata work.
         if (SessionContext.current().config().forceOr(false)) {
             ResolveProcessCacheControl.clearAll();
@@ -286,7 +286,7 @@ public final class LockPipeline {
         lock = withToolPins(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         // graal() is non-null exactly when [native].graal is set or [native] turns native-image on,
-        // which is what "the project asked for Graal" means (JK-1020).
+        // which is what "the project asked for Graal" means.
         lock = ToolchainLockStamp.apply(
                 lock,
                 policy.keepToolchainSuggestion() ? existing : null,
@@ -405,7 +405,7 @@ public final class LockPipeline {
      */
     public Lockfile pinPlugins(Lockfile lock, Progress progress) {
         progress.label("lock plugins");
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
         RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas, BuildEnv.forModule(lockDir));
         List<Lockfile.PluginEntry> entries = new ArrayList<>();
         for (PluginDeclaration pd : effective.plugins()) {

@@ -51,34 +51,34 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell 
     /**
      * Single rc line: eval/source {@code jk activate &lt;shell&gt;} via a home-relative or absolute
      * path to the binary so PATH need not be set first. {@code jkCommand} is a shell-ready command
-     * word (e.g. {@code "$HOME/.local/bin/jk"} or {@code /opt/jk/bin/jk}).
+     * word (e.g. {@code "$HOME/.jk/bin/jk"} or {@code /opt/jk/bin/jk}).
      */
     String activationLine(String jkCommand);
 
     /**
      * Snippet that ensures {@code binDir} is on PATH when missing (idempotent). {@code binDir} is a
-     * shell expression ({@code $HOME/.local/bin} or an absolute path). Ends with newline.
+     * shell expression ({@code $HOME/.jk/bin} or an absolute path). Ends with newline.
      */
     String pathEnsureSnippet(String binDir);
 
     /**
-     * Snippet that wires completions from {@code dataDir}/completions/&lt;shell&gt;. {@code dataDir}
+     * Snippet that wires completions from {@code storeDir}/completions/&lt;shell&gt;. {@code storeDir}
      * is a shell expression. Ends with newline; empty when unsupported.
      */
-    String completionWiring(String dataDir);
+    String completionWiring(String storeDir);
 
     /**
      * Full stdout of {@code jk activate &lt;shell&gt;}: PATH ensure, directory hooks, completions.
-     * {@code jkExe} is the absolute path embedded for hook-env; {@code binDir}/{@code dataDir} are
+     * {@code jkExe} is the absolute path embedded for hook-env; {@code binDir}/{@code storeDir} are
      * live paths converted to {@code $HOME}-relative expressions when under {@code home}.
      */
-    default String fullActivateScript(String jkExe, Path binDir, Path dataDir, Path home) {
+    default String fullActivateScript(String jkExe, Path binDir, Path storeDir, Path home) {
         String binExpr = pathExpr(binDir, home);
-        String dataExpr = pathExpr(dataDir, home);
+        String storeExpr = pathExpr(storeDir, home);
         StringBuilder sb = new StringBuilder();
         sb.append(pathEnsureSnippet(binExpr));
         sb.append(activateScript(jkExe));
-        String completions = completionWiring(dataExpr);
+        String completions = completionWiring(storeExpr);
         if (completions != null && !completions.isBlank()) {
             sb.append(completions);
             if (!completions.endsWith("\n")) sb.append('\n');

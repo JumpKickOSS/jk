@@ -26,13 +26,13 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
+import cc.jumpkick.jdk.JdkService;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.jdk.JdkService;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -245,13 +245,14 @@ public final class JdkUpdateCommand implements CliCommand {
 
         // Reap what this command queued. Draining lives here, in the explicit verb where the user
         // was asked — never on the provisioning path, where it once fired during an ordinary build
-        // and took the JDK that build was running on (JK-2627).
+        // and took the JDK that build was running on.
         if (removeOld) {
             new JdkGarbage(registry.jdksRoot()).drain();
             StableJdkPointer.healAfterRemovals(
                     registry,
                     superseded,
-                    m -> CliOutput.out(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + m));
+                    m -> CliOutput.out(
+                            Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + m));
         }
 
         if (failed == 0) {
@@ -361,8 +362,7 @@ public final class JdkUpdateCommand implements CliCommand {
                 .distinct()
                 .toList();
         CliOutput.out("");
-        CliOutput.out("  Also remove the superseded "
-                + (victims.size() == 1 ? "install" : "installs") + ":");
+        CliOutput.out("  Also remove the superseded " + (victims.size() == 1 ? "install" : "installs") + ":");
         for (String v : victims) {
             CliOutput.out("    " + Theme.colorize(v, Theme.active().warning()));
         }

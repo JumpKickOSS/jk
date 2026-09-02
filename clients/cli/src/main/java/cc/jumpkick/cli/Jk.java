@@ -10,6 +10,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Terminals;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -70,6 +71,9 @@ public final class Jk {
         int code;
         try {
             code = execute(args);
+        } catch (JkDirs.InvalidOverrideException e) {
+            System.err.println("jk: invalid environment: " + e.getMessage());
+            code = Exit.USAGE;
         } finally {
             // Wake any JLine NonBlocking stdin reader before the JVM shutdown hooks run — also
             // on the exception path, where the JVM's default handler still runs those hooks. On

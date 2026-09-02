@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** A refuse is a wire fact ({@code refused}), never an inference from message shape (JK-2617). */
+/** A refuse is a wire fact ({@code refused}), never an inference from message shape. */
 class AffectedTestsReportTest {
 
     @Test

@@ -57,7 +57,7 @@ public final class MavenRepo {
 
     /**
      * The HTTP client, retained for the small sidecar GETs that are not artifact fetches — currently the
-     * {@code.sha1} that confirms an {@code ~/.m2} candidate. Null for non-HTTP transports.
+     * {@code .sha1} that confirms an {@code ~/.m2} candidate. Null for non-HTTP transports.
      */
     private final Http http;
 
@@ -210,7 +210,7 @@ public final class MavenRepo {
      * As {@link #fetchArtifact(Coordinate, BooleanSupplier)} but validates a warm local-mirror hit
      * against {@code expectedSha256} (the lock pin). A stale store copy (e.g. an internal repo
      * republished the same GAV and the lock was re-pinned) is evicted and re-fetched from the network
-     * instead of failing the whole sync with a checksum-mismatch dead end (JK-2305).
+     * instead of failing the whole sync with a checksum-mismatch dead end.
      */
     public Fetched fetchArtifact(Coordinate coord, String expectedSha256, BooleanSupplier abort)
             throws IOException, InterruptedException {
@@ -369,7 +369,7 @@ public final class MavenRepo {
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
         if (m2integration && JkM2Config.resolve().integration()) {
-            // Refuse a relativePath (from a possibly hostile GAV) that would escape ~/.m2 (JK-2291).
+            // Refuse a relativePath (from a possibly hostile GAV) that would escape ~/.m2.
             Path m2Target = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             Optional<Path> used = writeThroughM2(m2Target, source, relativePath, sha256);
             if (used.isPresent()) return used.get();
@@ -377,7 +377,7 @@ public final class MavenRepo {
         repoStore.materialize(relativePath, source, sha256);
         // Fail loudly rather than returning the transient download temp as the "stored" path: a
         // swallowed store-write error (disk full, permissions) otherwise makes sync report success
-        // and the later requirePresent gate throws a misleading "run jk sync -F" loop (JK-2310).
+        // and the later requirePresent gate throws a misleading "run jk sync -F" loop.
         return repoStore
                 .locate(relativePath)
                 .orElseThrow(() -> new IOException(
@@ -409,7 +409,7 @@ public final class MavenRepo {
      *
      * <p>The hash is fetched remotely rather than read from {@code jk-lock.toml} on purpose: it makes the
      * check work during resolve, when no lock entry exists yet, and it keeps the authority with the
-     * repository instead of with a directory any {@code mvn install} can write to. A {@code.sha1} is
+     * repository instead of with a directory any {@code mvn install} can write to. A {@code .sha1} is
      * ~40 bytes against a jar that can be tens of megabytes, so the saving is bandwidth — it does not
      * reduce request count, and so does not by itself relieve a per-IP quota.
      *
@@ -426,7 +426,7 @@ public final class MavenRepo {
 
             // Prefer the collision-resistant .sha256 sidecar; fall back to .sha1 only when the repo
             // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
-            // for bytes any `mvn install` could have seeded — JK-2321).
+            // for bytes any `mvn install` could have seeded —).
             String vouchAlgo;
             Optional<String> advertised = fetchSidecar(uri, ".sha256", 64);
             if (advertised.isPresent()) {
@@ -591,7 +591,7 @@ public final class MavenRepo {
     }
 
     /**
-     * Fetch {@code.sha256} then {@code.sha1} sidecar; mismatch fails closed. Missing sidecar is
+     * Fetch {@code .sha256} then {@code .sha1} sidecar; mismatch fails closed. Missing sidecar is
      * allowed (TOFU) and counted for the summary line.
      */
     private void verifyUpstreamChecksum(
@@ -669,7 +669,7 @@ public final class MavenRepo {
      * into every artifact's {@code source} field, so it is committed to {@code jk-lock.toml} and
      * shared with everyone who clones the repository. A base URL declared as
      * {@code https://alice:s3cr3t@nexus.example.com/repo/} (in {@code jk.toml} or, worse, in one
-     * developer's {@code ~/.config/jk/config.toml}) would put that credential in the lockfile, in
+     * developer's {@code ~/.jk/config.toml}) would put that credential in the lockfile, in
      * every fetch error and in the journal. Stripping it here costs nothing: authentication runs
      * through {@link RepoCredentialResolver} and an {@code Authorization} header,
      * and the JDK's {@code HttpClient} never authenticates from userinfo — so the credential half

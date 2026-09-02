@@ -25,6 +25,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.test.AffectedTests;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -41,7 +42,7 @@ import java.util.function.UnaryOperator;
 
 /**
  * Assembles {@link BuildPlan} DAGs for build-family commands: core tasks via {@link #coreBuilder},
- * then command-specific tails via {@link #appendDeclaredTails}. Step bodies live in {@code Planner*}
+ * then command-specific tails via {@link PlannerTails#appendDeclaredTails}. Step bodies live in {@code Planner*}
  * collaborators. Not itself a runnable plan — callers {@code build()} the returned
  * {@link BuildPlan.Builder} and {@link BuildPlan#run() run} it.
  */
@@ -56,75 +57,97 @@ public final class BuildPlanner {
     private BuildPlanner() {}
 
     // ---- shared cross-step keys ---------------------------------------
-    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.of("project", JkBuild.class);
-    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
-    public static final BuildPlanKey<Path> JAVA_HOME = BuildPlanKey.of("java-home", Path.class);
-    public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.of("release", Integer.class);
+    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("project", JkBuild.class);
+    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.scalar("lockfile", Lockfile.class);
+    public static final BuildPlanKey<Path> JAVA_HOME = BuildPlanKey.scalar("java-home", Path.class);
+    public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> CLASSPATH = BuildPlanKey.of("classpath", List.class);
+    public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> JAVA_SOURCES = BuildPlanKey.of("java-sources", List.class);
+    public static final BuildPlanKey<List<Path>> JAVA_SOURCES = BuildPlanKey.list("java-sources", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> KOTLIN_SOURCES = BuildPlanKey.of("kotlin-sources", List.class);
+    public static final BuildPlanKey<List<Path>> KOTLIN_SOURCES = BuildPlanKey.list("kotlin-sources", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> GROOVY_SOURCES = BuildPlanKey.of("groovy-sources", List.class);
+    public static final BuildPlanKey<List<Path>> GROOVY_SOURCES = BuildPlanKey.list("groovy-sources", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> JAVAC_ARGS = BuildPlanKey.of("javac-args", List.class);
+    public static final BuildPlanKey<List<String>> JAVAC_ARGS = BuildPlanKey.list("javac-args", String.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> PROCESSOR_CP = BuildPlanKey.of("processor-cp", List.class);
+    public static final BuildPlanKey<List<Path>> PROCESSOR_CP = BuildPlanKey.list("processor-cp", Path.class);
 
     /** The javac half of the processor split — set by the ksp step (KSP jars removed). */
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> JAVAC_PROCESSOR_CP = BuildPlanKey.of("javac-processor-cp", List.class);
+    public static final BuildPlanKey<List<Path>> JAVAC_PROCESSOR_CP =
+            BuildPlanKey.list("javac-processor-cp", Path.class);
 
     /** The [[contribute.provided-classpath]] jars (platform), published for the test step. */
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> PROVIDED_CP = BuildPlanKey.of("provided-cp", List.class);
+    public static final BuildPlanKey<List<Path>> PROVIDED_CP = BuildPlanKey.list("provided-cp", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> COMPILE_TEST_CP = BuildPlanKey.of("cp-test", List.class);
+    public static final BuildPlanKey<List<Path>> COMPILE_TEST_CP = BuildPlanKey.list("cp-test", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> TEST_RUNTIME_CP = BuildPlanKey.of("cp-runtime", List.class);
+    public static final BuildPlanKey<List<Path>> TEST_RUNTIME_CP = BuildPlanKey.list("cp-runtime", Path.class);
 
-    public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.of("action-key", String.class);
+    public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.scalar("action-key", String.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> TEST_SOURCES = BuildPlanKey.of("test-sources", List.class);
+    public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
     /** Suite resource dirs copied into classes/test — a TestStamp input. */
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> TEST_RESOURCE_DIRS = BuildPlanKey.of("test-resource-dirs", List.class);
+    public static final BuildPlanKey<List<Path>> TEST_RESOURCE_DIRS =
+            BuildPlanKey.list("test-resource-dirs", Path.class);
 
-    public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.of("build-outcome", String.class);
-    public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.of("kotlin-outcome", String.class);
-    public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.of("groovy-outcome", String.class);
-    public static final BuildPlanKey<Path> JAR_PATH = BuildPlanKey.of("jar-path", Path.class);
+    public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.scalar("build-outcome", String.class);
+    public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.scalar("kotlin-outcome", String.class);
+    public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.scalar("groovy-outcome", String.class);
+    public static final BuildPlanKey<Path> JAR_PATH = BuildPlanKey.scalar("jar-path", Path.class);
 
     /** Fingerprint of last {@code target/package-classes} staging. */
     public static final BuildPlanKey<String> STAGED_CLASSES_INPUTS =
-            BuildPlanKey.of("staged-classes-inputs", String.class);
+            BuildPlanKey.scalar("staged-classes-inputs", String.class);
 
-    public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.of("main-classes", Path.class);
-    public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.of("test-classes", Path.class);
-    public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.of("layout", BuildLayout.class);
-    public static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
-    public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.of("no-test-sources", Boolean.class);
+    public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.scalar("main-classes", Path.class);
+    public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
+    public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.scalar("layout", BuildLayout.class);
+    public static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.scalar("test-result", TestSummary.class);
+    public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.scalar("no-test-sources", Boolean.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<Map> PRE_COMPILE_ABI = BuildPlanKey.of("pre-compile-abi", Map.class);
+    public static final BuildPlanKey<Map<String, ClassAbi.Fingerprint>> PRE_COMPILE_ABI =
+            BuildPlanKey.map("pre-compile-abi", String.class, ClassAbi.Fingerprint.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> COMPILED_MAIN_SOURCES = BuildPlanKey.of("compiled-main-sources", List.class);
+    public static final BuildPlanKey<List<Path>> COMPILED_MAIN_SOURCES =
+            BuildPlanKey.list("compiled-main-sources", Path.class);
 
     public static final BuildPlanKey<AffectedTests> AFFECTED_TESTS =
-            BuildPlanKey.of("affected-tests", AffectedTests.class);
+            BuildPlanKey.scalar("affected-tests", AffectedTests.class);
+
+    private static final List<BuildPlanKey<?>> STATE_KEYS = List.of(
+            PROJECT,
+            LOCKFILE,
+            JAVA_HOME,
+            RELEASE,
+            CLASSPATH,
+            JAVA_SOURCES,
+            KOTLIN_SOURCES,
+            GROOVY_SOURCES,
+            JAVAC_ARGS,
+            PROCESSOR_CP,
+            JAVAC_PROCESSOR_CP,
+            PROVIDED_CP,
+            COMPILE_TEST_CP,
+            TEST_RUNTIME_CP,
+            ACTION_KEY,
+            TEST_SOURCES,
+            TEST_RESOURCE_DIRS,
+            BUILD_OUTCOME,
+            KOTLIN_OUTCOME,
+            GROOVY_OUTCOME,
+            JAR_PATH,
+            STAGED_CLASSES_INPUTS,
+            MAIN_CLASSES,
+            TEST_CLASSES,
+            LAYOUT,
+            TEST_RESULT,
+            NO_TEST_SOURCES,
+            PRE_COMPILE_ABI,
+            COMPILED_MAIN_SOURCES,
+            AFFECTED_TESTS);
 
     /** Serializes {@code run-tests} across concurrent modules unless {@code parallelTests}. */
     static final Semaphore TEST_GATE = new Semaphore(1);
@@ -344,9 +367,8 @@ public final class BuildPlanner {
 
     /**
      * Core + declared tails — the exact plan {@code jk build} runs. Prefer this over a bare
-     * {@code coreBuilder(...).build()} anywhere a FULL build is intended: since JK-2211 the
-     * test branch hangs off the terminal join the tails add, and a core-only plan silently
-     * prunes run-tests (a fixture that "builds and tests" would stop testing).
+     * {@code coreBuilder(...).build()} anywhere a FULL build is intended: the test branch hangs
+     * off the terminal join the tails add, and a core-only plan silently prunes run-tests.
      */
     public static BuildPlan fullPlan(Inputs in) {
         BuildPlan.Builder b = coreBuilder(in);
@@ -361,7 +383,7 @@ public final class BuildPlanner {
 
     /** As {@link #coreBuilder(Inputs)} with upstream-dirty {@code forceRebuild} for weight prediction. */
     public static BuildPlan.Builder coreBuilder(Inputs in, boolean forceRebuild) {
-        Cas cas = JkStores.cas(in.cache()); // artifact store CAS (deps, workers)
+        Cas cas = JkStores.storeCas(); // artifact store CAS (deps, workers)
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(in.cache()), CacheTree.ACTIONS.under(in.cache()));
 
         // Compose only the language steps the project uses, so a single-language
@@ -425,7 +447,7 @@ public final class BuildPlanner {
         }
         // Scala compiles with Java in one Zinc session, but a second stub-generating compiler
         // (kotlinc / groovyc) can't parse .scala, so the combo fails with a cryptic unresolved
-        // reference instead of the loud error above (JK-2318).
+        // reference instead of the loud error above.
         if (useScala && (useKotlin || useGroovy)) {
             throw new IllegalStateException("scala+" + (useKotlin ? "kotlin" : "groovy")
                     + " in one module is not supported — split the languages into separate modules");
@@ -516,7 +538,7 @@ public final class BuildPlanner {
                                 groovyModule,
                                 forceRebuild,
                                 // The caches below, not fresh walks: prediction and the plan that
-                                // follows it read the same source lists (JK-1031).
+                                // follows it read the same source lists.
                                 new EffortWeights.SourceRefs(javaMainSrcRef, kotlinMainSrcRef, groovyMainSrcRef)));
                 p = planRef.get();
             }
@@ -529,11 +551,8 @@ public final class BuildPlanner {
         // instead of walking the same directories again. Using AtomicReference
         // with lazy init: whichever side fires first populates the cache; the
         // other side finds the value already set.
-        // Build-logic anchors (BEFORE_COMPILE / AFTER_COMPILE / AFTER_RESOURCES / BEFORE_PACKAGE)
-        // each call BuildLogicSupport.run() independently; a module with scripts at more
-        // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
-        // here the same lazy-init-race pattern as javaMainSrcRef above: computed once by whichever
-        // anchor task needs it first, reused by the rest.
+        // Build-logic anchors each call BuildLogicSupport.run() independently; share one lazy
+        // source-tree hash across anchors (same pattern as javaMainSrcRef).
         final AtomicReference<List<String>> buildLogicInputTokensRef = new AtomicReference<>();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
 
@@ -628,12 +647,15 @@ public final class BuildPlanner {
         // packaging, tests, and the run/native tails all read.
         Task assembleClasses = PlannerPackage.assembleClassesStep(cx);
 
-        BuildPlan.Builder b =
-                BuildPlan.builder("build").addTask(parseBuild).addTask(syncDeps).addTask(ensureJdk);
+        BuildPlan.Builder b = BuildPlan.builder("build")
+                .stateKeys(STATE_KEYS)
+                .addTask(parseBuild)
+                .addTask(syncDeps)
+                .addTask(ensureJdk);
         // Workspace root with no sources: validate jk.toml + sync deps, nothing more.
         // Workspace root with no sources: validate jk.toml, sync deps, and run the root's own
         // `after-build` logic. The graph orders this unit behind every member, so by the time the
-        // step executes the whole workspace is built (JK-1058).
+        // step executes the whole workspace is built.
         if (workspaceNoSources) {
             if (BuildLogicToml.resolve(in.dir()).isPresent()) {
                 b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
@@ -755,10 +777,7 @@ public final class BuildPlanner {
         return b.terminal(TaskNames.PACKAGE_JAR);
     }
 
-    /**
-     * The build-scoped services, estimation state, and layout flags shared by every core step
-     * the explicit replacement for the effectively-final locals the step lambdas used to capture.
-     */
+    /** The build-scoped services, estimation state, and layout flags shared by every core step. */
     record Ctx(
             Inputs in,
             Cas cas,

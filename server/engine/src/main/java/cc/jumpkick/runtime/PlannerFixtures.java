@@ -176,16 +176,12 @@ public final class PlannerFixtures {
                         ctx.progress(1);
                         return;
                     }
-                    @SuppressWarnings("unchecked")
-                    List<Path> compileCp = (List<Path>) ctx.require(COMPILE_TEST_CP);
+                    List<Path> compileCp = ctx.require(COMPILE_TEST_CP);
                     List<Path> classpath = new ArrayList<>();
                     classpath.add(ctx.require(MAIN_CLASSES));
                     classpath.addAll(compileCp);
-                    @SuppressWarnings("unchecked")
-                    List<Path> processorCp =
-                            (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
-                    @SuppressWarnings("unchecked")
-                    List<String> javacArgs = (List<String>) ctx.require(JAVAC_ARGS);
+                    List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+                    List<String> javacArgs = ctx.require(JAVAC_ARGS);
                     CompileRequest request = fixturesCompileRequest(
                             sources,
                             classpath,

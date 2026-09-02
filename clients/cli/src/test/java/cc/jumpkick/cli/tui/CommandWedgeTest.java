@@ -65,7 +65,7 @@ class CommandWedgeTest {
 
     @Test
     void analyzing_stdout_is_suppressed_when_stdout_is_machine_consumed() {
-        // JK-2330: `jk bsp serve` hands stdout to BspServer as the JSON-RPC frame channel, and
+        // : `jk bsp serve` hands stdout to BspServer as the JSON-RPC frame channel, and
         // `jk explain --graph` writes graph source there. A spinner would put cursor ANSI in both.
         var out = new ByteArrayOutputStream();
         var prev = System.out;
@@ -83,7 +83,7 @@ class CommandWedgeTest {
 
     @Test
     void spinner_and_download_bar_are_silent_in_script_mode() {
-        // JK-2350: JK_OUTPUT=json puts every command in script mode, but Spinner.show and
+        // : JK_OUTPUT=json puts every command in script mode, but Spinner.show and
         // JdkDownloadBar.show gated only on --no-progress — jdk install / clean / new animated
         // cursor ANSI and OSC into a machine-consumed stdout. The rule now lives on the
         // primitives, so no call site can route around it.
@@ -110,7 +110,7 @@ class CommandWedgeTest {
     void no_source_animates_straight_onto_cli_output_stdout() {
         // The interactivity gate callers rely on asks whether stdout is a *terminal*, which a
         // pty-allocating IDE or CI runner answers yes to while still parsing every byte. Only
-        // analyzingStdout consults scriptMode, so routing around it reopens JK-2330.
+        // analyzingStdout consults scriptMode, so routing around it reopens.
         Path main = MainSources.locate();
         Pattern anti = Pattern.compile("analyzing\\(\\s*CliOutput\\.stdout\\(\\)");
         Path wedge = main.resolve("cc/jumpkick/cli/tui/CommandWedge.java");

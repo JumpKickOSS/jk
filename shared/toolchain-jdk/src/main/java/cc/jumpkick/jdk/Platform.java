@@ -5,6 +5,7 @@ import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 /**
  * Maps the current JVM's {@code os.arch} / {@code os.name} properties onto the strings the foojay
@@ -61,18 +62,18 @@ public final class Platform {
 
     static String mapArchitecture(String osArch) {
         if (osArch == null) return "x64";
-        return switch (osArch.toLowerCase()) {
+        return switch (osArch.toLowerCase(Locale.ROOT)) {
             case "amd64", "x86_64" -> "x64";
             case "aarch64", "arm64" -> "aarch64";
             case "x86", "i386", "i486", "i586", "i686" -> "x86";
             case "arm" -> "arm32";
-            default -> osArch.toLowerCase();
+            default -> osArch.toLowerCase(Locale.ROOT);
         };
     }
 
     static String mapOperatingSystem(String osName) {
         if (osName == null) return "linux";
-        String lower = osName.toLowerCase();
+        String lower = osName.toLowerCase(Locale.ROOT);
         if (lower.contains("linux")) return "linux";
         if (lower.contains("mac") || lower.contains("darwin")) return "macos";
         if (lower.contains("windows")) return "windows";

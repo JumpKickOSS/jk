@@ -7,7 +7,7 @@ Never loads the JumpKick engine jar into the IDE.
 
 | Action | Behavior |
 |---|---|
-| **Sync project** | `jk ide --print-model` → `jk ide --idea` → `jk bsp install` + VFS refresh (JK-1511) |
+| **Sync project** | `jk ide --print-model` → `jk ide --idea` → `jk bsp install` + VFS refresh |
 | Sync dependencies only | `jk sync` |
 | Install BSP connection | `jk bsp install` → `.bsp/jk.json` |
 | Build / Test / Lock | `jk build` / `test` / `lock` |

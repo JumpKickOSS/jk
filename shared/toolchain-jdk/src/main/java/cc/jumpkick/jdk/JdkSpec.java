@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -30,6 +31,6 @@ public record JdkSpec(String value) {
 
     /** Lower-case comparison form used when matching against feed aliases. */
     public String normalized() {
-        return value.toLowerCase();
+        return value.toLowerCase(Locale.ROOT);
     }
 }

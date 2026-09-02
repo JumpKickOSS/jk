@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.terminal.Terminals;
 
 /**
@@ -18,7 +19,7 @@ public final class Interactivity {
 
     /** {@code true} when {@code CI} or {@code JK_NONINTERACTIVE} is set, or {@code TERM=dumb}. */
     private static boolean forcedNonInteractive() {
-        if (System.getenv("CI") != null) {
+        if (EnvValues.isCi(System::getenv)) {
             return true;
         }
         String nonInteractive = System.getenv("JK_NONINTERACTIVE");

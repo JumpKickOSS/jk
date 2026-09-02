@@ -69,7 +69,7 @@ public final class OutdatedPlans {
 
         boolean workspace = scopes.size() > 1;
         Map<String, String> shortNames = reverseCatalog(dir);
-        GitFetcher git = new GitFetcher(JkStores.resolve(cache, "git"));
+        GitFetcher git = new GitFetcher(JkStores.resolve("git"));
         Map<String, GitFetcher.RemoteRefs> gitRefsCache = new HashMap<>();
 
         List<OutdatedReport.Row> rows = new ArrayList<>();
@@ -78,7 +78,7 @@ public final class OutdatedPlans {
             JkBuild build = scope.getValue();
             String moduleLabel = workspace ? LockPlans.coordLabel(build, moduleDir) : "";
             Map<String, String> locked = lockedVersions(LockPaths.lockFile(moduleDir));
-            Cas cas = JkStores.cas(cache);
+            Cas cas = JkStores.storeCas();
             RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);
             Set<String> seen = new LinkedHashSet<>();
             for (Map.Entry<Scope, List<Dependency>> entry :
@@ -126,7 +126,7 @@ public final class OutdatedPlans {
         } catch (IOException | RuntimeException ignored) {
             // No lock, or unreadable: Current is simply empty, exactly as for an unlocked dep.
         }
-        RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, JkStores.cas(cache));
+        RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, JkStores.storeCas());
         List<String> available;
         try {
             available = repos.availableVersions(ReachabilityMetadata.coordinate("any"));

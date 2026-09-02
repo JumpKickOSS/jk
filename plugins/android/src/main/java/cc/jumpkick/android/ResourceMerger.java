@@ -68,7 +68,7 @@ final class ResourceMerger {
 
     private static void copyFirstWins(Path configDir, Path outDir) throws IOException {
         // outDir is the method's parameter and cannot change, so creating it inside the loop paid a
-        // CreateDirectoryW-returning-ERROR_ALREADY_EXISTS per file on Windows (JK-1032).
+        // CreateDirectoryW-returning-ERROR_ALREADY_EXISTS per file on Windows.
         Files.createDirectories(outDir);
         try (var files = Files.list(configDir)) {
             for (Path file : (Iterable<Path>) files.sorted()::iterator) {

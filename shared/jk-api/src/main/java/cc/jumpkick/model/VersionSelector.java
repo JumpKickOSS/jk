@@ -4,7 +4,7 @@ package cc.jumpkick.model;
 import java.util.Objects;
 
 /**
- * Version selector. {@link #parse} treats bare versions as {@link Exact} ({@code:} form);
+ * Version selector. {@link #parse} treats bare versions as {@link Exact} ({@code :} form);
  * {@link #parseFloating} as {@link Caret} ({@code @} form). Decorations: {@code ^}/{@code ~}/
  * {@code =}/range/{@code latest}/{@code snapshot}.
  */

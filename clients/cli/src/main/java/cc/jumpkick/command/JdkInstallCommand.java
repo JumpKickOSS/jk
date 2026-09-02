@@ -112,13 +112,13 @@ public final class JdkInstallCommand implements CliCommand {
     URI feedUrl;
     Path cacheFile;
 
-    private static final BuildPlanKey<JdkCatalog> CATALOG = BuildPlanKey.of("catalog", JdkCatalog.class);
-    private static final BuildPlanKey<JdkCatalog.Entry> ENTRY = BuildPlanKey.of("entry", JdkCatalog.Entry.class);
-    private static final BuildPlanKey<InstalledJdk> INSTALLED = BuildPlanKey.of("installed", InstalledJdk.class);
-    private static final BuildPlanKey<Boolean> WANT_DEFAULT = BuildPlanKey.of("want-default", Boolean.class);
+    private static final BuildPlanKey<JdkCatalog> CATALOG = BuildPlanKey.scalar("catalog", JdkCatalog.class);
+    private static final BuildPlanKey<JdkCatalog.Entry> ENTRY = BuildPlanKey.scalar("entry", JdkCatalog.Entry.class);
+    private static final BuildPlanKey<InstalledJdk> INSTALLED = BuildPlanKey.scalar("installed", InstalledJdk.class);
+    private static final BuildPlanKey<Boolean> WANT_DEFAULT = BuildPlanKey.scalar("want-default", Boolean.class);
 
     /** True when the interactive wizard ran — it already settled the default decision. */
-    private static final BuildPlanKey<Boolean> WIZARD_RAN = BuildPlanKey.of("wizard-ran", Boolean.class);
+    private static final BuildPlanKey<Boolean> WIZARD_RAN = BuildPlanKey.scalar("wizard-ran", Boolean.class);
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -306,6 +306,7 @@ public final class JdkInstallCommand implements CliCommand {
 
         BuildPlan plan = BuildPlan.builder("jdk-install")
                 .interactive(true)
+                .stateKeys(CATALOG, ENTRY, INSTALLED, WANT_DEFAULT, WIZARD_RAN)
                 .addTask(fetchCatalog)
                 .addTask(select)
                 .addTask(install)

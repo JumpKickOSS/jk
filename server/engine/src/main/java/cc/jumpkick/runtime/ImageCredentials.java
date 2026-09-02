@@ -32,7 +32,7 @@ import java.util.Optional;
  *
  * <p>Nothing here ever reaches argv: the worker is forked with the spec path alone, and the spec
  * file is created owner-only ({@link #newSpecFile}). Process arguments are world-readable in
- * {@code /proc}, which is the bug [[JK-2406]] fixed for keystore passwords.
+ * {@code /proc}, which is the bug [[]] fixed for keystore passwords.
  */
 final class ImageCredentials {
 

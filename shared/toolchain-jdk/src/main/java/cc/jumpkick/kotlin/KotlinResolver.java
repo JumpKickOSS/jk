@@ -6,8 +6,8 @@ import cc.jumpkick.compat.ToolDistribution;
 import java.net.URI;
 
 /**
- * Picks the Kotlin distribution to use for compiling {@code .kt} sources. Mirrors {@link
- * cc.jumpkick.mvn.MavenResolver} / {@link cc.jumpkick.gradle.GradleResolver}: a default pinned
+ * Picks the Kotlin distribution to use for compiling {@code .kt} sources. Mirrors {@code
+ * cc.jumpkick.mvn.MavenResolver} / {@code cc.jumpkick.gradle.GradleResolver}: a default pinned
  * version, downloaded once into {@code $JK_STORE_DIR/tools/kotlin/<version>/} and reused
  * thereafter.
  *

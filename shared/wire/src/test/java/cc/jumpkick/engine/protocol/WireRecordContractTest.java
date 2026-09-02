@@ -15,8 +15,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
@@ -24,7 +26,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The contract behind "a wire message is a record with {@code encode()} and {@code decode(String)}
- * in one file" (JK-2431).
+ * in one file".
  *
  * <p>The alternative the house rule rejects is a {@code WireKeys} constant table: it moves the
  * literals into one file and still lets a decoder spell a key no encoder writes, because the two
@@ -202,6 +204,15 @@ class WireRecordContractTest {
         if (type == List.class) {
             Class<?> element = (Class<?>) ((ParameterizedType) generic).getActualTypeArguments()[0];
             return List.of(value(element, element, seq), value(element, element, seq));
+        }
+        if (type == Map.class) {
+            Type[] elements = ((ParameterizedType) generic).getActualTypeArguments();
+            Class<?> key = (Class<?>) elements[0];
+            Class<?> valueType = (Class<?>) elements[1];
+            Map<Object, Object> values = new LinkedHashMap<>();
+            values.put(value(key, key, seq), value(valueType, valueType, seq));
+            values.put(value(key, key, seq), value(valueType, valueType, seq));
+            return values;
         }
         if (type.isRecord()) return build(type, seq);
         throw new IllegalStateException("no synthetic value for wire component type " + type);

@@ -429,7 +429,7 @@ public final class PluginTableRegistry {
      * Keep a classpath catalog only when it is empty or names every built-in. A partial tree is
      * discarded rather than loaded or treated as a hard error.
      *
-     * <p>Accepted residual (JK-2345): a COMPLETE leftover catalog from the same era — all current
+     * <p>Accepted residual: a COMPLETE leftover catalog from the same era — all current
      * built-ins present and parseable, content stale — passes this gate and seeds BY_TABLE at
      * class init. The engine replaces entries per plugin via {@code putBuiltIn} at install time;
      * only catalog-less CLI/test JVMs would validate tables against the stale schemas until the

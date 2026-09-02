@@ -116,9 +116,26 @@ Discover test classes, then fork N runners that **pull** classes until empty.
 
 | Value | Meaning |
 |-------|---------|
-| omit / `0` | **Auto:** `min(jobs, classCount)`, then heap-clamped |
+| omit / `0` | **Auto:** this build's share of the machine — `cores / dirty-module width`, then `min(…, classCount)`, then heap-clamped |
 | `1` | One test JVM (serial within the module) |
 | `N` | Cap at N runners (still ≤ class count; heap-clamped) |
+
+Auto is a **share**, not "as many as this module could use", because jk takes its
+parallelism from modules first and the two layers spend one machine:
+
+| Build | Dirty width | Auto workers per module |
+|---|---|---|
+| touched one module | 1 | all cores |
+| a few modules | 4 | cores / 4 |
+| full 30-module rebuild | 13 | 1 — the modules already fill the machine |
+
+That last row is the point. Sharding *every* module of a wide build as if it were alone
+costs more in JVM starts than it wins in overlap: on jk's own 30-module tree it moved the
+rebuild from 73 s to 103 s, and the whole-build wall is monotone in `-w`
+(73 s at `-w1`, 77 s at `-w2`, 81 s at `-w4`). Width comes from the **dirty** set, so
+touching one module in a big workspace still shards wide — that is the inner loop.
+
+An explicit `-w N` is never rescaled; it means N.
 
 When `W > 1`, each runner gets its own `java.io.tmpdir` and its own `JK_STATE_DIR`
 (nested-engine suites get distinct engine sockets).

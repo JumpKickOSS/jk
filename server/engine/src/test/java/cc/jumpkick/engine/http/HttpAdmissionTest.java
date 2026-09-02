@@ -189,7 +189,7 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
 
     @Test
     void mcp_wait_parks_without_holding_the_only_admission_permit() throws Exception {
-        // RPC budget of 1: pre-JK-2028 a parked jk_job wait held the permit, so every other
+        // RPC budget of 1: a parked jk_job wait held the permit, so every other
         // request (including the jk_cancel that could un-wedge it) 503'd until timeout.
         HttpEngineServer tiny = new HttpEngineServer(
                 httpConfig("127.0.0.1", 0, 1),

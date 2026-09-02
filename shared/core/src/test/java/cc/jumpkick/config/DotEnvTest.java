@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * the {@code.env} dialect, pinned. There is no {@code.env} specification and
+ * the {@code .env} dialect, pinned. There is no {@code .env} specification and
  * implementations disagree on quoting, escapes, {@code export}, and inner expansion — so jk's
  * choices are asserted rather than left to be discovered.
  */

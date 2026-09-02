@@ -11,7 +11,7 @@ import java.util.function.Function;
 
 /**
  * Android SDK root: reuse {@code ANDROID_HOME}/{@code ANDROID_SDK_ROOT}/Studio defaults, else
- * {@code <data>/android-sdk}. A foreign root is linked there (POSIX symlink; Windows junction) so the
+ * {@code <store>/android-sdk}. A foreign root is linked there (POSIX symlink; Windows junction) so the
  * path handed to the toolchain stays stable.
  */
 public final class AndroidSdk {
@@ -30,7 +30,7 @@ public final class AndroidSdk {
         if (override != null && !override.isBlank()) {
             return new AndroidSdk(Files.createDirectories(Path.of(override)));
         }
-        return resolve(System::getenv, JkDirs.data().resolve("android-sdk"));
+        return resolve(System::getenv, JkDirs.store().resolve("android-sdk"));
     }
 
     /** Explicit-env seam for tests. */

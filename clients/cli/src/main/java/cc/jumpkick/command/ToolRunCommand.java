@@ -24,6 +24,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.tool.InstalledToolEnvs;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
 import cc.jumpkick.tool.ToolTarget;
@@ -72,7 +73,7 @@ public final class ToolRunCommand implements CliCommand {
                         .repeat(),
                 Opt.value(
                                 "<dir>",
-                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
+                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
                                 "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")
@@ -447,6 +448,28 @@ public final class ToolRunCommand implements CliCommand {
             Integer aliasExit = resolveJBangAlias("jk tool run");
             if (aliasExit != null) return aliasExit;
             // A GAV script-ref fell through: `target`/`toolArgs` were rewritten in place.
+        }
+
+        // Resolution order for a bare name: an INSTALLED tool first, then the library catalog —
+        // the one lookup that must obviously work is the tool this machine installed, and what the
+        // install recorded (coordinate, Main-Class, classpath) is what the run uses. The fast path
+        // steps aside when the invocation asks for something the install did not record: a
+        // `name@selector` is a version request (a resolve), and `--with` / `--main` change the
+        // classpath or entrypoint. A full coordinate always skips both lookups.
+        if (classified instanceof ToolTarget.CatalogName c
+                && c.suffix() == null
+                && mainClass == null
+                && in.values("with").isEmpty()
+                && aliasDeps.isEmpty()) {
+            Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
+            InstalledToolEnvs.Installed installed =
+                    InstalledToolEnvs.read(stateDir.resolve("tools").resolve("envs"), c.name());
+            if (installed != null) {
+                Path javaHome = installed.javaHome() != null && Files.isDirectory(installed.javaHome())
+                        ? installed.javaHome()
+                        : JavaHomes.runningJavaHome();
+                return ToolLauncher.execEphemeral(javaHome, installed.env(), installed.jvmArgs(), toolArgs);
+            }
         }
 
         ToolTargets.Resolved resolved;

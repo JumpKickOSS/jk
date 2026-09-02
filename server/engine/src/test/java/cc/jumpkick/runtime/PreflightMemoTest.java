@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.task.IoLedger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -442,6 +445,37 @@ class PreflightMemoTest {
             for (Path p : stream.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(p);
             }
+        }
+    }
+
+    @Test
+    void fingerprint_is_identical_snapshotted_or_streamed(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Files.writeString(
+                Files.createDirectories(tmp.resolve("src/main/resources")).resolve("app.properties"), "k=v\n");
+
+        InputTrees.configureForTest(new JkEngineConfig(256, null, false, 32));
+        String snapshotted = fingerprintInRequest(tmp);
+        InputTrees.resetForTest();
+        InputTrees.configureForTest(new JkEngineConfig(256, null, false, 0));
+        String streamed = fingerprintInRequest(tmp);
+        InputTrees.resetForTest();
+
+        // A module crossing the retain boundary between runs must not look edited.
+        assertThat(snapshotted).doesNotStartWith("err-").isEqualTo(streamed);
+    }
+
+    private static String fingerprintInRequest(Path module) {
+        IoLedger ledger = new IoLedger();
+        IoLedger.open(ledger);
+        try {
+            String[] out = new String[1];
+            SessionContext.runWhere(
+                    Session.defaults().withIo(ledger), () -> out[0] = PreflightMemo.fingerprintModule(module, false));
+            return out[0];
+        } finally {
+            InputTrees.finishJob();
+            IoLedger.close();
         }
     }
 

@@ -9,7 +9,7 @@ description = "jk-image-runner: child-JVM worker that builds and pushes OCI imag
 
 dependencies {
     // jk-model owns ImageConfig and RepoCredential — the only non-SPI first-party types this
-    // worker names. :core and :io were declared here and never imported; JK-2193 dropped them
+    // worker names. :core and :io were declared here and never imported; a later pass dropped them
     // from jk.toml and this is the same edit on the Gradle side. See plugins/image-builder/jk.toml.
     implementation(project(":jk-api"))
     implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)

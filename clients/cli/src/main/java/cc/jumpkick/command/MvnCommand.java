@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -113,7 +114,7 @@ public final class MvnCommand implements CliCommand {
         if (p.error() != null) CommandWedge.printFail(tool, p.error());
         if ("LINKED".equals(p.source()) || "DOWNLOADED".equals(p.source())) {
             CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " "
-                    + p.source().toLowerCase());
+                    + p.source().toLowerCase(Locale.ROOT));
         }
         if (p.exit() != 0) return null;
         return p.bin() != null ? Path.of(p.bin()) : null;

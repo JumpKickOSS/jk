@@ -11,11 +11,11 @@ import org.junit.jupiter.api.Test;
 
 class JkDiffTest {
 
-    private static final String JDK21 = "/home/u/.local/share/jk/jdks/temurin-21";
-    private static final String JDK25 = "/home/u/.local/share/jk/jdks/temurin-25";
-    private static final String GRAAL = "/home/u/.local/share/jk/jdks/graalvm-25";
+    private static final String JDK21 = "/home/u/.jdks/temurin-21";
+    private static final String JDK25 = "/home/u/.jdks/temurin-25";
+    private static final String GRAAL = "/home/u/.jdks/graalvm-25";
     private static final String PRIOR_JDK = "/home/u/.sdkman/candidates/java/current";
-    private static final String LOCAL_BIN = "/home/u/.local/bin";
+    private static final String LOCAL_BIN = "/home/u/.jk/bin";
     private static final String PROJ = "/home/u/src/proj";
 
     @Test

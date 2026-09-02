@@ -84,7 +84,7 @@ public final class RepoGroupBuilder {
      *
      * <p>Inline {@code ${VAR}} credentials are expanded here rather than during the parse, so this
      * is where the request's environment has to arrive. Build-path callers pass
-     * {@code Inputs.env}, which layers the project's {@code.env} under the caller's shell
+     * {@code Inputs.env}, which layers the project's {@code .env} under the caller's shell
      * environment; the three-argument overload keeps ambient behaviour for tooling and tests.
      */
     public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas, UnaryOperator<String> env) {

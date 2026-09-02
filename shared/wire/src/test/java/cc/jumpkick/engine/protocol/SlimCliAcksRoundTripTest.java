@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * Round-trips for the JK-2136 acks that shipped without them (JK-2171). The hand-rolled
+ * Round-trips for the acks that shipped without them. The hand-rolled
  * JSONL codec makes a per-ack round-trip the cheap guard this layer relies on.
  */
 class SlimCliAcksRoundTripTest {

@@ -48,6 +48,23 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void rejects_unknown_layout(@TempDir Path temp) {
+        assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
+                        "widget", temp.toString(), "com.example", "java", "mill", null, false)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("layout must be");
+    }
+
+    @Test
+    void auto_layout_scaffolds_traditional_tree(@TempDir Path temp) throws Exception {
+        var result = NewProjectOps.create(
+                new NewProjectOps.Request("widget", temp.toString(), "com.acme", "java", "auto", null, false));
+        Path root = result.path();
+        assertThat(root.resolve("src/main/java")).isDirectory();
+        assertThat(Files.readString(root.resolve("jk.toml"))).doesNotContain("layout");
+    }
+
+    @Test
     void target_dir_scaffolds_into_the_requested_directory(@TempDir Path temp) throws Exception {
         // targetDir wins over parentDir/name for the write location.
         Path custom = temp.resolve("elsewhere/custom-home");

@@ -4,21 +4,19 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.UncheckedIOException;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +26,7 @@ import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * The real-socket fixture the {@code EngineServer*Test} contract tests share: short-path temp
@@ -39,40 +38,21 @@ import org.junit.jupiter.api.AfterEach;
 abstract class EngineServerHarness {
 
     // @TempDir nests deep enough under Gradle's build dir to overrun what the JDK will bind as a
-    // Unix domain socket. UnixSocketPaths owns the budget, ShortTempDirs.root() the root that fits
-    // it; these dirs mirror the short paths ~/.local/state/jk/engine/ has in real use.
-    private final List<Path> tempDirs = new ArrayList<>();
+    // Unix domain socket. ShortTempDirs owns the short root, the creation, and the teardown-safe
+    // cleanup (an engine under test may still be deleting its own socket/pid/lock mid-walk).
+    @RegisterExtension
+    final ShortTempDirs tempDirs = new ShortTempDirs("jkd-");
 
     Path shortTempDir() throws IOException {
-        // ShortTempDirs.root(): /tmp on POSIX (macOS TMPDIR is too deep for UDS sun_path),
-        // %USERPROFILE%\Temp on Windows (created if missing — never C:\tmp).
-        Path dir = Files.createTempDirectory(ShortTempDirs.root(), "jkd-");
-        tempDirs.add(dir);
-        return dir;
+        return tempDirs.create();
     }
 
     @AfterEach
-    void cleanupTempDirs() {
+    void resetSharedHeapPlan() {
         // Every test that gets a real EngineServer to run triggers planSharedWorkerMemoryOnce,
         // which mutates JvmOptions' process-wide static heap plan — reset it so it doesn't leak into
         // unrelated tests (e.g. JvmOptionsTest) sharing this test JVM.
         JvmOptions.resetSharedPlanForTests();
-        for (Path dir : tempDirs) {
-            try (var walk = Files.walk(dir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignored) {
-                        // best-effort
-                    }
-                });
-            } catch (IOException | UncheckedIOException ignored) {
-                // An engine under test may still be deleting its own files (socket/pid/lock) as it
-                // tears down concurrently with this cleanup — Files.walk's lazy traversal wraps a
-                // file disappearing mid-walk as an UncheckedIOException, not IOException. Best-effort
-                // either way; OS temp cleanup is the real backstop.
-            }
-        }
     }
 
     static EnginePaths.Paths paths(Path stateDir) {
@@ -81,13 +61,7 @@ abstract class EngineServerHarness {
 
     /** Poll {@code condition} until true or {@code timeout} elapses (fails the test on timeout). */
     static void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) {
-                throw new AssertionError("condition not met within " + timeout);
-            }
-            Thread.sleep(10);
-        }
+        Await.until(timeout, condition);
     }
 
     /** A minimal hand-rolled client: connect, send lines, read one reply line per line sent. */

@@ -122,11 +122,11 @@ class LibrarySearchCommandTest {
             assertThat(exit).isZero();
             String stdout = out.toString(StandardCharsets.UTF_8);
             // The seeded coord is shown with its local version in the Cached column. The store is
-            // the suite-shared JK_HOME store (repos live there, JK-2176), so other tests' real
+            // the suite-shared JK_HOME store (repos live there), so other tests' real
             // syncs may legitimately add rows — assert on the seed, never on absence.
             assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
         } finally {
-            // A fake blob for a REAL coordinate poisons later offline locks that pin it (JK-2179).
+            // A fake blob for a REAL coordinate poisons later offline locks that pin it.
             Path seeded = JkStores.store().resolve("repos/central").resolve(seededRel);
             Files.deleteIfExists(Path.of(seeded + ".sha256"));
             Files.deleteIfExists(seeded);
@@ -136,7 +136,7 @@ class LibrarySearchCommandTest {
     @Test
     void offline_with_nothing_cached_reports_no_local_matches(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // The store is suite-shared (JK-2176): scrub the searched family so this test is
+        // The store is suite-shared: scrub the searched family so this test is
         // order-independent — nothing else in the suite syncs commons-io.
         Path repos = JkStores.store().resolve("repos");
         if (Files.isDirectory(repos)) {

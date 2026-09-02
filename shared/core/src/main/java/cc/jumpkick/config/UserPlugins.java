@@ -11,7 +11,7 @@ import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 
 /**
- * Machine-scoped {@code [plugins]} from {@code ~/.config/jk/config.toml}. Later alias wins when
+ * Machine-scoped {@code [plugins]} from {@code ~/.jk/config.toml}. Later alias wins when
  * merged with project {@code [plugins]}. The installer never writes this table — implied
  * first-party defaults live in the host.
  */
@@ -22,7 +22,7 @@ public final class UserPlugins {
     /**
      * Process-lifetime memo, keyed by path, with the staleness rule {@link StampedMemo} owns — the
      * same one {@code GlobalConfig} applies to this very file, which is the point: the two used to
-     * stamp {@code ~/.config/jk/config.toml} at two different resolutions. {@code fromConfig} sits
+     * stamp {@code ~/.jk/config.toml} at two different resolutions. {@code fromConfig} sits
      * on every jk.toml parse (527 call sites, per-module hot paths); without this the resident
      * engine re-ran a full tomlj parse of the user config hundreds of times per build.
      */

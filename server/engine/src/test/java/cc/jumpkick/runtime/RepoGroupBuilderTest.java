@@ -278,7 +278,7 @@ class RepoGroupBuilderTest {
                 """.formatted(USER, PASSWORD));
         var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
         Files.writeString(tmp.resolve("config.toml"), "");
-        System.setProperty("jk.env.JK_CONFIG_FILE", tmp.resolve("config.toml").toString());
+        System.setProperty("jk.env.JK_HOME", tmp.toString());
 
         var built = new AtomicReference<RepoGroup>();
         String out;
@@ -286,7 +286,7 @@ class RepoGroupBuilderTest {
             out = inOneRun(() ->
                     built.set(RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")), name -> null)));
         } finally {
-            System.clearProperty("jk.env.JK_CONFIG_FILE");
+            System.clearProperty("jk.env.JK_HOME");
         }
         RepoGroup group = built.get();
         assertThat(out)

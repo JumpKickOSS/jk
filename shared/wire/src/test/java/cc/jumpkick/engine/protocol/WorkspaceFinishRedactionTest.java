@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The workspace terminal carries raw worker output to the user's terminal, the dashboard and the
  * on-disk journal, and {@code .env} values are secret by source. Three of the four engine verbs
  * that emit this event shipped it unmasked, because a {@code List<String>} parameter cannot tell a
- * caller that redaction is mandatory (JK-2387).
+ * caller that redaction is mandatory.
  *
  * <p>So the parameter is {@link Redacted}, and this class proves the two halves of that claim
  * <em>by compiling code</em>: raw text is rejected by {@code javac}, and {@link Redacted} has no

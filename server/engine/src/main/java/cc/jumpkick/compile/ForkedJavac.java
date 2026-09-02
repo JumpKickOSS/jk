@@ -50,7 +50,7 @@ public final class ForkedJavac {
         public Result {
             diagnostics = List.copyOf(diagnostics);
             compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
-            generated = generated == null ? Map.of() : Map.copyOf(generated); // copy like the other two (JK-2316)
+            generated = generated == null ? Map.of() : Map.copyOf(generated); // copy like the other two
         }
 
         public Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {

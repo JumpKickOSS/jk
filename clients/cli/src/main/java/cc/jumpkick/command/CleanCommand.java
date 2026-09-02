@@ -145,7 +145,7 @@ public final class CleanCommand implements CliCommand {
 
     /**
      * Module entries resolved against the workspace root; entries that escape it (absolute paths,
-     * {@code..}) are skipped with a warning — a hostile {@code [workspace].modules} entry must
+     * {@code ..}) are skipped with a warning — a hostile {@code [workspace].modules} entry must
      * never point {@code jk clean} outside the workspace.
      */
     static List<Path> resolveModuleDirs(Path workspaceRoot, List<String> modules, List<String> warnings) {
@@ -210,7 +210,7 @@ public final class CleanCommand implements CliCommand {
      * java.nio.file.DirectoryNotEmptyException}, papering over an engine that was still writing
      * {@code target/.jk/preflight} and {@code target/jk-results.md} after telling the client the
      * build was over. The client now waits for {@code job-finish} before returning, so there is no
-     * writer left to race and a not-empty directory is a real failure again (JK-2451).
+     * writer left to race and a not-empty directory is a real failure again.
      */
     static void deleteRecursively(Path root, long[] stats) throws IOException {
         var tally = new PathUtil.Removed();

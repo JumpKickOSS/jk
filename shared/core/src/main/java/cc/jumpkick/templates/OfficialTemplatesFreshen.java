@@ -2,6 +2,7 @@
 package cc.jumpkick.templates;
 
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
@@ -139,7 +140,7 @@ public final class OfficialTemplatesFreshen {
                 || isEmptyDir(dest)
                 || isLegacyLangKindLayout(dest)
                 || !looksLikeTemplateMonorepo(dest)) {
-            if (Files.exists(dest)) deleteRecursively(dest);
+            PathUtil.deleteRecursivelyOrThrow(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
             log.accept("jk engine: cloned templates source (" + dest.getFileName() + ")");
@@ -163,7 +164,7 @@ public final class OfficialTemplatesFreshen {
             runGit(reset, 30);
         } catch (IOException fetchFailed) {
             // Corrupt / auth-skewed cache: delete and clone clean.
-            deleteRecursively(dest);
+            PathUtil.deleteRecursivelyOrThrow(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
             log.accept("jk engine: re-cloned templates source (" + dest.getFileName() + ")");
@@ -252,14 +253,6 @@ public final class OfficialTemplatesFreshen {
             Thread.currentThread().interrupt();
             proc.destroyForcibly();
             throw new IOException("git interrupted", e);
-        }
-    }
-
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            List<Path> paths = walk.sorted((a, b) -> b.compareTo(a)).toList();
-            for (Path p : paths) Files.deleteIfExists(p);
         }
     }
 

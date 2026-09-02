@@ -55,8 +55,8 @@ public final class ZshShell implements Shell {
     }
 
     @Override
-    public String completionWiring(String dataDir) {
-        String dir = dataDir + "/completions/zsh";
+    public String completionWiring(String storeDir) {
+        String dir = storeDir + "/completions/zsh";
         return "fpath=(\"" + dir + "\" $fpath)\n";
     }
 

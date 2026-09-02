@@ -285,7 +285,7 @@ public final class BuildLayout {
      * {@code target/jdt/classes/main/} — main class output for an external IDE language server
      * (Eclipse JDT-LS, used by VS Code's redhat.java). Kept separate from {@link #classesDir} so an
      * IDE's continuous autobuild never collides with jk's incremental compiler, which deletes and
-     * re-hashes every {@code.class} under its own output dir.
+     * re-hashes every {@code .class} under its own output dir.
      */
     public Path jdtClassesDir() {
         // Module-LOCAL on purpose (unlike buildDir's Mill-style central tree): Eclipse JDT
@@ -303,7 +303,7 @@ public final class BuildLayout {
     /**
      * {@code target/kotlin/main/} — kotlinc incremental workspace for main sources.
      *
-     * <p>The Kotlin BTA incremental compiler owns this directory and prunes any {@code.class} file
+     * <p>The Kotlin BTA incremental compiler owns this directory and prunes any {@code .class} file
      * it did not produce. It must never share a dir with javac's output. After kotlinc finishes, jk
      * merges the output into {@link #classesDir}.
      */
@@ -413,8 +413,8 @@ public final class BuildLayout {
      * consumed by other projects, not run directly.
      * </ul>
      *
-     * <p>This rule also applies to native shared-library outputs ({@code.so}, {@code.dylib},
-     * {@code.dll}) produced by GraalVM {@code native-image --shared}.
+     * <p>This rule also applies to native shared-library outputs ({@code .so}, {@code .dylib},
+     * {@code .dll}) produced by GraalVM {@code native-image --shared}.
      */
     public Path artifactDir() {
         return packagedAtRoot() ? targetDir() : targetDir().resolve("lib");
@@ -471,7 +471,7 @@ public final class BuildLayout {
     /**
      * {@code <artifactDir>/lib<artifact>} — base path for a GraalVM-compiled native shared library
      * ({@code native-image --shared}). This is the {@code -o} basename only; native-image appends
-     * the platform extension ({@code.so}/{@code.dylib}/{@code.dll}) and emits C headers alongside.
+     * the platform extension ({@code .so}/{@code .dylib}/{@code .dll}) and emits C headers alongside.
      */
     public Path nativeLibrary() {
         return artifactDir().resolve("lib" + artifact);

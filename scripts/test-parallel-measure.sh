@@ -7,7 +7,7 @@
 # JK_BIN=/path/to/jk ./scripts/test-parallel-measure.sh
 #
 # Env:
-# JK_BIN — jk binary (default: ~/.local/bin/jk or PATH)
+# JK_BIN — jk binary (default: ~/.jk/bin/jk or PATH)
 # MODULES — --modules filter (default: multi-module library set without clients/cli)
 # EXTRA_ARGS — extra args appended to both runs (e.g. --no-progress)
 # WARM — if 1 (default), do one warm-up test before timing

@@ -160,7 +160,6 @@ public final class AggregatedMetrics {
         return taskWallMs(dir, step);
     }
 
-    /** Prefer {@code task.*} keys; fall back to legacy {@code step.*} for existing local state. */
     public OptionalLong taskWallMs(String dir, String task) {
         if (task == null || task.isBlank()) return OptionalLong.empty();
         String t = sanitize(task);
@@ -168,12 +167,8 @@ public final class AggregatedMetrics {
             String mod = sanitize(dir);
             OptionalDouble v = value("module." + mod + ".task." + t + ".wall-ms");
             if (v.isPresent()) return OptionalLong.of(Math.round(v.getAsDouble()));
-            v = value("module." + mod + ".step." + t + ".wall-ms");
-            if (v.isPresent()) return OptionalLong.of(Math.round(v.getAsDouble()));
         }
         OptionalDouble v = value("task." + t + ".wall-ms");
-        if (v.isPresent()) return OptionalLong.of(Math.round(v.getAsDouble()));
-        v = value("step." + t + ".wall-ms");
         return v.isPresent() ? OptionalLong.of(Math.round(v.getAsDouble())) : OptionalLong.empty();
     }
 
@@ -222,12 +217,8 @@ public final class AggregatedMetrics {
             String mod = sanitize(dir);
             OptionalDouble v = value("module." + mod + ".task." + t + ".per-unit-ms");
             if (v.isPresent()) return v;
-            v = value("module." + mod + ".step." + t + ".per-unit-ms");
-            if (v.isPresent()) return v;
         }
-        OptionalDouble v = value("task." + t + ".per-unit-ms");
-        if (v.isPresent()) return v;
-        return value("step." + t + ".per-unit-ms");
+        return value("task." + t + ".per-unit-ms");
     }
 
     public OptionalDouble hostRate(String key) {

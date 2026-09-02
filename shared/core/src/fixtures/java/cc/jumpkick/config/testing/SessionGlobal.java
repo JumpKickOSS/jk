@@ -6,7 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import java.util.Optional;
 
 /**
- * {@link SessionContext}'s process-wide static — the original leak JK-1010 bounded.
+ * {@link SessionContext}'s process-wide static — the original leak bounded.
  *
  * <p>Reads {@link SessionContext#installed()}, not {@link SessionContext#current()}: the latter
  * prefers the calling thread's {@code ScopedValue} binding, so snapshotting it and writing it back

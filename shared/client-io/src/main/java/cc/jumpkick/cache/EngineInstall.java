@@ -65,7 +65,7 @@ public final class EngineInstall {
         this.clock = clock == null ? System::currentTimeMillis : clock;
     }
 
-    /** Rooted at the product lib, {@code <data>/lib}. */
+    /** Rooted at the product lib, {@code <home>/lib}. */
     public static EngineInstall current() {
         return new EngineInstall(JkDirs.productLib());
     }

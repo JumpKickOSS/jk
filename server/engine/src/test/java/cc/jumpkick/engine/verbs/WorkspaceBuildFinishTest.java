@@ -32,11 +32,11 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The two laws of the workspace terminal, both learned the hard way.
  *
- * <p>A client that hangs up before the terminal is not a build result (JK-1521, JK-2386). The
+ * <p>A client that hangs up before the terminal is not a build result. The
  * verdict is computed from the build; whatever the socket does afterwards, that verdict is what the
  * envelope stamps and the journal records.
  *
- * <p>And no {@code .env} value rides out on it (JK-2387). Every workspace verb — {@code build},
+ * <p>And no {@code .env} value rides out on it. Every workspace verb — {@code build},
  * {@code native}, {@code image}, workspace {@code compile} — settles through
  * {@link WorkspaceTerminal}, so masking the rows once here masks them for all four. That the
  * masking cannot be skipped is proved separately, by compiling code, in
@@ -140,7 +140,7 @@ class WorkspaceBuildFinishTest {
         assertThat(Jsonl.bool(line, "cancelled", true)).isFalse();
     }
 
-    // --- JK-2387: the terminal's error rows are worker output, and .env values are secret -------
+    // ---: the terminal's error rows are worker output, and.env values are secret -------
 
     private static final String SECRET = "jk-2387-must-not-leak-s3cret-token";
 

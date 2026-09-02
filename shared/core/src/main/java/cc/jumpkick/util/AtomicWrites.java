@@ -31,7 +31,7 @@ import java.util.function.IntConsumer;
  * only {@link java.nio.channels.FileChannel#force} in the tree is a disk benchmark. So on ext4
  * {@code data=ordered} or APFS, a power loss can make the rename durable while the data blocks are
  * not, leaving a zero-length or truncated target rather than the {@code .tmp} sibling the old wording
- * promised (JK-1037). Fifty call sites read that sentence and trusted it.
+ * promised. Fifty call sites read that sentence and trusted it.
  *
  * <p>Use {@link #replaceDurably} for a file where a torn target is not recoverable by re-running.
  * There are four: {@code jk-lock.toml}, the engine install pointer, {@code aot.toml}, and
@@ -61,7 +61,7 @@ public final class AtomicWrites {
      * <p>The cleanup is on the failure path, not in a {@code finally}: a successful
      * {@link #moveInto} has already consumed {@code tmp}, so a {@code finally} unlink was an
      * unlink of a path that could not exist — one wasted metadata call on every success, at
-     * fifty call sites and once per CAS blob (JK-1029). On NTFS that op is ~11&nbsp;µs against
+     * fifty call sites and once per CAS blob. On NTFS that op is ~11&nbsp;µs against
      * Linux's ~1.5.
      */
     public static void replace(Path target, byte[] bytes) throws IOException {
@@ -127,7 +127,7 @@ public final class AtomicWrites {
      * which {@code McpManifest} edits surgically; {@code jk-results.md}, which a CI runner may
      * collect as a different uid. Worse, it was sticky in the wrong direction — 0644 in, 0600 out,
      * and nothing ever widened it back, so a file loosened by hand re-tightened on the next build
-     * (JK-2623).
+     *.
      *
      * <p>So: create at {@code 0666 & ~umask}, which is exactly what a plain {@link Files#write}
      * would produce (the kernel masks the requested mode, so asking for {@code rw-rw-rw-} asks for
@@ -221,7 +221,7 @@ public final class AtomicWrites {
      * <p>The seam exists because the alternative did not work. "A POSIX denial does not retry" was
      * asserted as {@code elapsedMs < 140} — 140 ms being the sum of the seven back-offs — which on a
      * loaded machine is a coin toss and says nothing about retrying either way. Attempt count is the
-     * property; milliseconds were a proxy for it (JK-2446). Package-private, non-final, and never
+     * property; milliseconds were a proxy for it. Package-private, non-final, and never
      * reassigned outside a test.
      */
     static IntConsumer backOff = AtomicWrites::sleepBriefly;

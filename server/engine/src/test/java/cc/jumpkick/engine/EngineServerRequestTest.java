@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.engine.protocol.AuditRequest;
+import cc.jumpkick.engine.protocol.CompileRequest;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.LockRequest;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.engine.protocol.SingleBuildRequest;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
@@ -93,17 +96,18 @@ class EngineServerRequestTest extends EngineServerHarness {
             boolean sawAnyPackage = false;
             int lastPackageTotal = -1;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
-                c.sendLine(ProtoJobs.lockRequest(
-                        project.toString(),
-                        cache.toString(),
-                        List.of(),
-                        false,
-                        false,
-                        repoUrl,
-                        false,
-                        false,
-                        false,
-                        false));
+                c.sendLine(new LockRequest(
+                                project.toString(),
+                                cache.toString(),
+                                List.of(),
+                                false,
+                                false,
+                                repoUrl,
+                                false,
+                                false,
+                                false,
+                                false)
+                        .encode());
                 String line;
                 while ((line = c.readLine()) != null) {
                     String type = EngineProtocol.typeOf(line);
@@ -225,8 +229,14 @@ class EngineServerRequestTest extends EngineServerHarness {
             String planFinish = null;
             String buildError = null;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
-                c.sendLine(ProtoJobs.auditRequest(
-                        project.toString(), cache.toString(), "LOW", base + "/querybatch", base + "/vulns/", false));
+                c.sendLine(new AuditRequest(
+                                project.toString(),
+                                cache.toString(),
+                                "LOW",
+                                base + "/querybatch",
+                                base + "/vulns/",
+                                false)
+                        .encode());
                 String line;
                 while ((line = c.readLine()) != null) {
                     String type = EngineProtocol.typeOf(line);
@@ -325,8 +335,9 @@ class EngineServerRequestTest extends EngineServerHarness {
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {
-            String plain = ProtoJobs.singleBuildRequest(
-                    project.toString(), cache.toString(), null, 1, null, true, false, false, false);
+            String plain = new SingleBuildRequest(
+                            project.toString(), cache.toString(), null, 1, null, true, false, false, false, null)
+                    .encode();
 
             // First build: real compile, stamps + caches populated.
             assertThat(runToBuildPlanFinish(p, plain)).doesNotContain("\"buildOutcome\":\"up-to-date\"");
@@ -381,7 +392,8 @@ class EngineServerRequestTest extends EngineServerHarness {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(ProtoJobs.compileRequest(project.toString(), cache.toString(), null, false, false, false));
+            c.sendLine(new CompileRequest(project.toString(), cache.toString(), null, false, false, false, List.of())
+                    .encode());
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -502,7 +514,7 @@ class EngineServerRequestTest extends EngineServerHarness {
      * Engine-hosted {@code jk cache clean} round-trip: a real server over the socket sweeps a
      * fixture cache holding a leftover cache-CAS temp and a 90-day-old action key. Asserts the
      * single-plan wire conversation ends in a summary-carrying {@code plan-finish} counting the one
-     * temp, and that the {@code.prune.lock} cross-process guard was created — the hosted path always
+     * temp, and that the {@code .prune.lock} cross-process guard was created — the hosted path always
      * takes it, so no second process can prune the same root underneath this one.
      *
      * <p>The aged key is a <strong>survivor</strong>: entries are evicted only to bring the action
@@ -575,7 +587,7 @@ class EngineServerRequestTest extends EngineServerHarness {
     /**
      * Engine-hosted {@code jk clean --force} round-trip: a real server over the socket invalidates the
      * action-cache entries for a fixture project, matching a record by its qualified-task tag while
-     * leaving an unrelated project's record untouched. Also asserts the {@code.prune.lock} guard.
+     * leaving an unrelated project's record untouched. Also asserts the {@code .prune.lock} guard.
      */
     @Test
     void cache_clear_request_invalidates_the_projects_entries_over_the_socket() throws Exception {

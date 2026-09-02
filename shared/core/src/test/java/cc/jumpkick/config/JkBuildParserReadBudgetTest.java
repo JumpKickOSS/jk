@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  * staleness stamp <em>was</em> the file's bytes. Nothing observable failed — which is why this asserts
  * the read count rather than the parse result. On a 31-module workspace `parse` fans out over every
  * sibling, so that one unconditional read became 260,971 read syscalls and 379 MB for a read-only
- * `jk status` (JK-1028).
+ * `jk status`.
  */
 class JkBuildParserReadBudgetTest {
 
@@ -125,8 +125,8 @@ class JkBuildParserReadBudgetTest {
     void resolving_every_module_is_linear_in_the_workspace(@TempDir Path dir) throws IOException {
         // WorkspaceClasspath.resolve used to call JkBuildParser.parse per sibling, and each parse
         // resolved the whole workspace — O(N) work per sibling over N siblings. It now loads the
-        // workspace once. The read budget was fixed in JK-1028; this pins the *request* count, which
-        // is the metadata half (JK-1046).
+        // workspace once. The read budget was fixed in; this pins the *request* count, which
+        // is the metadata half.
         int members = 12;
         StringBuilder rootToml =
                 new StringBuilder("group = \"g\"\nversion = \"1.0\"\nname = \"root\"\n[workspace]\nmodules = [");
@@ -155,7 +155,7 @@ class JkBuildParserReadBudgetTest {
         //           12 modules ~= 2,180.
         //   after:  per module, 1 parse + resolve loading the workspace once ~= 27. 12 modules = 324.
         // The bound below is set where the old shape fails and the new one passes with room; it is
-        // not a claim of linearity, which would need loadModules itself memoized — and JK-1033 showed
+        // not a claim of linearity, which would need loadModules itself memoized — and showed
         // that moves the cost rather than removing it, because a correct stamp for the memo needs the
         // same N readAttributes the load already pays.
         long requests = JkBuildParser.parseRequests();

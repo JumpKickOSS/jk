@@ -146,7 +146,10 @@ class ImagePlansOfflineTest {
                             return "";
                         }))
                 .build();
-        BuildPlan plan = BuildPlan.builder("image").addTask(step).build();
+        BuildPlan plan = BuildPlan.builder("image")
+                .stateKeys(ImagePlans.IMAGE_REF)
+                .addTask(step)
+                .build();
         Session offline = Session.defaults().withConfig(JkConfig.empty().withOffline(true));
         return SessionContext.where(offline, plan::run);
     }

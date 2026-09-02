@@ -73,7 +73,7 @@ public final class PlannerTails {
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             // A coordinator root is the third plan with no package-jar to hang a tail off. Its
-            // unit exists to run the workspace's own build logic (JK-1058); re-rooting the
+            // unit exists to run the workspace's own build logic; re-rooting the
             // terminal here would require a step its plan never had.
             if (CompileSupport.coordinatorOnly(project, in.dir())) return;
             List<String> leaves = new ArrayList<>();
@@ -98,7 +98,7 @@ public final class PlannerTails {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
             }
-            // run-tests is a LEAF, not a gate (JK-2211): packaging no longer requires it, so
+            // run-tests is a LEAF, not a gate: packaging no longer requires it, so
             // without joining it here the terminal's requires-closure would prune the suite
             // out of `jk build` entirely. Joining keeps tests scheduled — concurrently with
             // packaging — while a failure still fails the plan.
@@ -167,7 +167,7 @@ public final class PlannerTails {
                     packagePlugin(
                             ctx,
                             in,
-                            JkStores.cas(in.cache()),
+                            JkStores.storeCas(),
                             project,
                             ctx.require(MAIN_CLASSES),
                             layout.minifiedJar(),
@@ -215,7 +215,7 @@ public final class PlannerTails {
                     // Packaging cache: the fat jar's key comes from PackagingKeys, the one body
                     // the forecast also calls — the `main:` token used to be derived from a
                     // different source on each side, so a worker module could never forecast
-                    // up-to-date (JK-2480).
+                    // up-to-date.
                     PackagingKeys.Keyed keyed = PackagingKeys.assembly(
                             assemblyJar,
                             layout.moduleRoot(),
@@ -236,7 +236,7 @@ public final class PlannerTails {
                     byte[] assemblySbom = null;
                     Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
                     if (Files.exists(lockFile)) {
-                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), JkStores.cas(cache));
+                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), JkStores.storeCas());
                         assemblyAttrs.put("Sbom-Format", "CycloneDX");
                         assemblyAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
                     }

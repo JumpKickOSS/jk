@@ -85,15 +85,17 @@ class GroovyCompilerTest {
     }
 
     @Test
-    void java_source_roots_are_swept_into_joint_resolution(@TempDir Path dir) throws Exception {
-        Path javaRoot = dir.resolve("src/java");
-        write(javaRoot.resolve("dep/Helper.java"), """
+    void the_engine_listed_java_neighborhood_feeds_joint_resolution(@TempDir Path dir) throws Exception {
+        // The engine puts the roots' .java on SOURCE (GroovycInputs) — the worker compiles the
+        // list verbatim, so a listed neighbor resolves…
+        Path j = write(dir.resolve("src/java/dep/Helper.java"), """
                 package dep;
                 public class Helper {
                     public static int answer() { return 42; }
                 }
                 """);
         Path g = write(dir.resolve("src/groovy/Uses.groovy"), """
+                @groovy.transform.CompileStatic
                 class Uses {
                     int answer() { dep.Helper.answer() }
                 }
@@ -102,12 +104,39 @@ class GroovyCompilerTest {
 
         Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out, "workdir", dir.resolve("work")))
                 .configString("jvmTarget", "25")
-                .configList("javaSourceRoots", List.of(javaRoot.toAbsolutePath().toString()))
-                .source(g));
+                .source(g)
+                .source(j));
 
         assertThat(run.exit).as("diagnostics: %s", run.protocol).isZero();
         assertThat(out.resolve("Uses.class")).isRegularFile();
         assertThat(out.resolve("dep/Helper.class")).doesNotExist();
+    }
+
+    @Test
+    void a_java_file_on_disk_but_not_on_source_is_not_compiled(@TempDir Path dir) throws Exception {
+        // …and an unlisted one does not: the worker never walks a tree, or it would compile
+        // files the engine's action key never hashed.
+        write(dir.resolve("src/java/dep/Helper.java"), """
+                package dep;
+                public class Helper {
+                    public static int answer() { return 42; }
+                }
+                """);
+        Path g = write(dir.resolve("src/groovy/Uses.groovy"), """
+                @groovy.transform.CompileStatic
+                class Uses {
+                    int answer() { dep.Helper.answer() }
+                }
+                """);
+        Path out = dir.resolve("classes");
+
+        Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out, "workdir", dir.resolve("work")))
+                .configString("jvmTarget", "25")
+                .source(g));
+
+        assertThat(run.exit)
+                .as("an unlisted neighbor must be unresolvable, not silently swept in")
+                .isNotZero();
     }
 
     @Test

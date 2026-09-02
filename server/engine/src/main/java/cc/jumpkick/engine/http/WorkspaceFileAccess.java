@@ -535,6 +535,30 @@ final class WorkspaceFileAccess {
             return new WriteResult.NotFound();
         }
         if (!realFile.startsWith(realRoot)) return new WriteResult.NotFound();
+        // Compare-then-write is atomic per real path: the handlers run one virtual thread per
+        // request, so two tabs (or a tab plus an agent) PUTting the same file with the same etag
+        // could both pass the comparison and the second silently clobbered the first — the exact
+        // lost update the etag exists to prevent. Striped monitors (never a clear-on-overflow
+        // map): a shared stripe only over-serializes distinct files.
+        synchronized (WRITE_LOCKS[Math.floorMod(realFile.hashCode(), WRITE_LOCKS.length)]) {
+            return compareAndWrite(file, expectedEtag, content, encoding, absRoot, rel, lang);
+        }
+    }
+
+    private static final Object[] WRITE_LOCKS = new Object[64];
+
+    static {
+        for (int i = 0; i < WRITE_LOCKS.length; i++) WRITE_LOCKS[i] = new Object();
+    }
+
+    private static WriteResult compareAndWrite(
+            Path file,
+            @Nullable String expectedEtag,
+            String content,
+            @Nullable String encoding,
+            Path absRoot,
+            String rel,
+            String lang) {
         if (expectedEtag != null && !expectedEtag.isBlank()) {
             long curSize;
             try {
@@ -589,7 +613,7 @@ final class WorkspaceFileAccess {
         if (dir == null) return new WriteResult.Failed("no parent directory");
         try {
             // Was a hand-rolled copy of AtomicWrites.replace — temp sibling, atomic move, cleanup in
-            // a finally — and it carried that pattern's permission bug (JK-2623): the JDK creates a
+            // a finally — and it carried that pattern's permission bug: the JDK creates a
             // temp file 0600, the rename hands those bits to the target, and this target is the
             // user's own source file. An agent editing through the API left the file readable by
             // nobody but its owner. The owner also gets the Windows retry it never had.

@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * Builds the render-ready {@link CommandModel} from jk's own {@link Command} model — the
- * picocli-free counterpart to {@link CommandModelExtractor} (which builds the same {@code
+ * picocli-free counterpart to {@code CommandModelExtractor} (which builds the same {@code
  * CommandModel} from a picocli {@code CommandSpec}). Both feed {@link HelpRenderer}, so a command
  * renders identically whether it's been ported off picocli yet or not.
  */

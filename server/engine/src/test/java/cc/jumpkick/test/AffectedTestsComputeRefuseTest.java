@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 
-/** The honesty refuses the PRD promised and JK-2605 shipped without (JK-2612). */
+/** The honesty refuses the PRD promised and shipped without. */
 class AffectedTestsComputeRefuseTest {
 
     @Test

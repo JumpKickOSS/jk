@@ -79,7 +79,7 @@ class PluginProcessTest {
 
     @Test
     void converseNoSlot_does_not_wait_for_a_worker_slot() {
-        // JK-2284: the Zinc pull session must not pin a PluginSlots permit for the worker's whole
+        // : the Zinc pull session must not pin a PluginSlots permit for the worker's whole
         // life, or a nested fork (the test runner) deadlocks at parallelism 1. converseNoSlot must
         // proceed even while every permit is held elsewhere — converse() would block here forever.
         PluginSlots.configure(1);

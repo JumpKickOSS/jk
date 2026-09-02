@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The three wire splicers share one policy, because they share one implementation
- * ({@code Jsonl.append}) — JK-2431.
+ * ({@code Jsonl.append}) —.
  *
  * <p>Before, {@code withSession} and {@code withTrigger} threw on a line that was not an encoded
  * object and {@code withCancelled} returned it unchanged, so the same mistake was loud on the

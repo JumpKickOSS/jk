@@ -85,7 +85,7 @@ public final class OutdatedCommand implements CliCommand {
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
         // Best-effort: outdated resolves against its repos independently — a lockless project
-        // whose freshen cannot resolve (e.g. --repo-url world) still reports (JK-2178).
+        // whose freshen cannot resolve (e.g. --repo-url world) still reports.
         EnsureFreshLock.ensureBestEffort(dir, cache, global, "Outdated", repoUrl);
 
         OutdatedReport report;

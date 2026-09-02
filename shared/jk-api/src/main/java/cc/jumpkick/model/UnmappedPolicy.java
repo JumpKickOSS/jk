@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.util.Locale;
+
 /**
  * How bare EffectivePom fills for GAs the platform BOM does NOT manage are constrained when a
  * platform is declared.
@@ -21,7 +23,7 @@ public enum UnmappedPolicy {
     /** Parse {@code mediate} / {@code strict} (case-insensitive). Default mediate. */
     public static UnmappedPolicy parse(String raw) {
         if (raw == null || raw.isBlank()) return MEDIATE;
-        return switch (raw.trim().toLowerCase()) {
+        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
             case "mediate", "highest-wins" -> MEDIATE;
             case "strict", "exact" -> STRICT;
             default ->
@@ -30,6 +32,6 @@ public enum UnmappedPolicy {
     }
 
     public String wireName() {
-        return name().toLowerCase();
+        return name().toLowerCase(Locale.ROOT);
     }
 }

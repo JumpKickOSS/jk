@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.testing.PropertyRoots;
 import java.lang.annotation.Annotation;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -35,18 +33,13 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
     private static final ExtensionContext.Namespace NS =
             ExtensionContext.Namespace.create(IsolatedRootsExtension.class);
 
-    /** What {@link #beforeEach} redirected, so {@link #afterEach} can put it back exactly. */
-    private record Redirect(Root root, Path dir, String previous) {}
-
     @Override
     public void beforeEach(ExtensionContext ctx) throws Exception {
         Class<?> testClass = ctx.getRequiredTestClass();
-        List<Redirect> redirects = new ArrayList<>();
+        List<PropertyRoots.Redirect> redirects = new ArrayList<>();
         for (Root root : ROOTS) {
             if (!testClass.isAnnotationPresent(root.marker())) continue;
-            Path dir = Files.createTempDirectory(root.tempPrefix());
-            redirects.add(new Redirect(root, dir, System.getProperty(root.property())));
-            System.setProperty(root.property(), dir.toString());
+            redirects.add(PropertyRoots.redirect(root.property(), root.tempPrefix()));
         }
         ctx.getStore(NS).put("redirects", redirects);
     }
@@ -54,24 +47,17 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
     @Override
     public void afterEach(ExtensionContext ctx) {
         @SuppressWarnings("unchecked")
-        List<Redirect> redirects = (List<Redirect>) ctx.getStore(NS).get("redirects");
+        List<PropertyRoots.Redirect> redirects =
+                (List<PropertyRoots.Redirect>) ctx.getStore(NS).get("redirects");
         if (redirects == null || redirects.isEmpty()) return;
         try {
             // While the overlays are still set, EnginePaths.current() resolves to the isolated
-            // engine key — stop exactly that engine so per-method daemons never accumulate.
-            EngineTestSupport.stopEngineOnly();
+            // engine key — the ServiceLoader hook (EngineStopHook) stops exactly that engine so
+            // per-method daemons never accumulate.
+            PropertyRoots.runTeardownHooks();
         } finally {
-            for (Redirect r : redirects) {
-                if (r.previous() != null) {
-                    System.setProperty(r.root().property(), r.previous());
-                } else {
-                    System.clearProperty(r.root().property());
-                }
-                try {
-                    PathUtil.deleteRecursivelyOrThrow(r.dir());
-                } catch (Exception ignored) {
-                    // Temp-root leftovers are ephemeral; never fail the test on cleanup.
-                }
+            for (PropertyRoots.Redirect r : redirects) {
+                PropertyRoots.restore(r);
             }
         }
     }

@@ -175,7 +175,7 @@ class AffectedTestRankerTest {
     @Test
     void foreign_abi_change_ranks_a_dependents_importer() {
         // Module B is a clean dependent: no local dirty paths, but its test imports a type
-        // module A classified as ABI-changed (JK-2606).
+        // module A classified as ABI-changed.
         TestClassIndex.Entry importer =
                 new TestClassIndex.Entry("com.acme.b.BarTest", Set.of("com.acme.a.Foo"), Set.of(), "Bar");
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
@@ -266,7 +266,7 @@ class AffectedTestRankerTest {
     @Test
     void compact_layout_derives_full_fqcs(@TempDir Path ws) throws Exception {
         // Compact (simple) layout: main under src/<pkg>, tests under test/src/<pkg>. The string
-        // heuristics dropped the first package segment; root resolution must not (JK-2609).
+        // heuristics dropped the first package segment; root resolution must not.
         Path module = ws.resolve("api");
         Files.writeString(
                 Files.createDirectories(module).resolve("jk.toml"),

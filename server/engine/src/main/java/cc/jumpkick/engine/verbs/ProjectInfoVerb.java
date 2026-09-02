@@ -46,7 +46,7 @@ public final class ProjectInfoVerb implements HostedVerb {
         try {
             ProjectInfo info;
             try {
-                // Under the request's session — see ExecPlanVerb (JK-1040). projectInfo resolves this
+                // Under the request's session — see ExecPlanVerb. projectInfo resolves this
                 // project's layout, lock freshness and test tags, and every one of those reads the
                 // ambient session; without this they read the daemon's.
                 Session session = host.resolveSession(requestLine, cancelToken, false);

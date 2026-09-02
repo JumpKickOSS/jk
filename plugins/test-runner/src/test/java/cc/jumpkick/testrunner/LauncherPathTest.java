@@ -30,9 +30,7 @@ class LauncherPathTest {
 
     @Test
     void exclude_negation_is_a_tag_expression_not_a_tag_name() {
-        // The defect this class was written for: a second, hand-rolled filter compared "!slow"
-        // against tag *names*, matched nothing, and ran every test — the exact opposite of what
-        // the Launcher does with the same input. TagFilter is now the only reader.
+        // Exclude "!slow" is a JUnit tag expression; TagFilter is the only reader.
         assertThat(run(List.of(), List.of("!slow"))).containsExactly("slowOne()");
     }
 
@@ -53,8 +51,7 @@ class LauncherPathTest {
 
     @Test
     void a_tag_whose_name_contains_brackets_still_matches() {
-        // JK-2383 fixed the wire reader that truncated an excludeTags entry at its first ']'.
-        // This is the runner end of that value: "[slow]" is a legal TestTag, so it must filter.
+        // "[slow]" is a legal TestTag and must filter, not truncate at ']'.
         assertThat(run(List.of(), List.of("[slow]"))).containsExactlyInAnyOrder("plain()", "slowOne()");
     }
 

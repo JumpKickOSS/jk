@@ -8,7 +8,7 @@ import java.util.Optional;
  * Declared Nerd Font intent — what the user asked for, before detection runs. The resolved
  * capability is {@link NerdFontCaps}; {@link #AUTO} is the only mode whose caps are not fixed.
  *
- * <p>Spelled in {@code ~/.config/jk/config.toml} as root-level {@code nerd-font} and in the
+ * <p>Spelled in {@code ~/.jk/config.toml} as root-level {@code nerd-font} and in the
  * environment as {@code JK_NERD_FONT}.
  */
 public enum NerdFontMode {

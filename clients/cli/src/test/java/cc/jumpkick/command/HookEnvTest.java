@@ -14,9 +14,9 @@ class HookEnvTest {
 
     private static final String SEP = File.pathSeparator;
     private static final String PROJ = "/home/u/src/proj";
-    private static final String JDK25 = "/home/u/.local/share/jk/jdks/temurin-25";
-    private static final String GRAAL = "/home/u/.local/share/jk/jdks/graalvm-25";
-    private static final String LOCAL_BIN = "/home/u/.local/bin";
+    private static final String JDK25 = "/home/u/.jdks/temurin-25";
+    private static final String GRAAL = "/home/u/.jdks/graalvm-25";
+    private static final String LOCAL_BIN = "/home/u/.jk/bin";
     private static final String USER_JAVA = "/home/u/sdk/java";
     private static final String PRIOR_JDK = "/home/u/.sdkman/candidates/java/current";
     private static final String PROJ_A_JDK = "/home/u/src/proj-a/.jk/jdk";

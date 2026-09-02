@@ -33,16 +33,16 @@ public final class CompatPlans {
     }
 
     /** The importer's exit code (0 = converted cleanly). */
-    public static final BuildPlanKey<Integer> EXIT = BuildPlanKey.of("import-exit", Integer.class);
+    public static final BuildPlanKey<Integer> EXIT = BuildPlanKey.scalar("import-exit", Integer.class);
 
     /** The importer's reported issue count (rendered as "Import notes: N issue(s)"). */
-    public static final BuildPlanKey<Integer> WARNINGS = BuildPlanKey.of("import-warnings", Integer.class);
+    public static final BuildPlanKey<Integer> WARNINGS = BuildPlanKey.scalar("import-warnings", Integer.class);
 
     /** The importer's terminal error text, if any. */
-    public static final BuildPlanKey<String> ERROR = BuildPlanKey.of("import-error", String.class);
+    public static final BuildPlanKey<String> ERROR = BuildPlanKey.scalar("import-error", String.class);
 
     /** The importer's diagnostic detail, kept only when it exited non-zero. */
-    public static final BuildPlanKey<String> DIAG = BuildPlanKey.of("import-diag", String.class);
+    public static final BuildPlanKey<String> DIAG = BuildPlanKey.scalar("import-diag", String.class);
 
     /**
      * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
@@ -74,7 +74,10 @@ public final class CompatPlans {
                 })
                 .build();
 
-        return BuildPlan.builder("import").addTask(convert).build();
+        return BuildPlan.builder("import")
+                .stateKeys(EXIT, WARNINGS, ERROR, DIAG)
+                .addTask(convert)
+                .build();
     }
 
     /** A provisioning call's outcome — the flat fields {@code jk mvn}/{@code jk gradle} render from. */

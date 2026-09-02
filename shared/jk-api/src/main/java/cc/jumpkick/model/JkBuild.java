@@ -311,7 +311,7 @@ public record JkBuild(
     /**
      * True when a {@code [native]} table is present with {@code enabled = false} — an explicit
      * opt-out. Distinct from an absent table: the unique-main fallback may pick up table-less
-     * modules, but must never pick up an explicitly disabled one (JK-2089).
+     * modules, but must never pick up an explicitly disabled one.
      */
     public boolean nativeExplicitlyDisabled() {
         return nativeConfig.isPresent() && nativeMode() == NativeMode.DISABLED;
@@ -525,7 +525,7 @@ public record JkBuild(
      * @param nativeImage {@code native = true}: native-image on {@code jk build} and {@code jk
      *     install}
      * @param config optional module-relative template copied to
-     *     {@code $JK_CONFIG_DIR/<bin>/config.toml} on {@code jk install}
+     *     {@code <home>/config/<bin>/config.toml} on {@code jk install}
      */
     public record Application(String main, boolean assembly, boolean minified, boolean nativeImage, String config) {
 
@@ -621,7 +621,7 @@ public record JkBuild(
      * {@code [install]} — what installing this module produces besides its jar and POM.
      *
      * <p>{@code productLib} names a directory under jk's own product library
-     * ({@code ~/.local/share/jk/lib/<name>/}) that the packaged artifact is materialized into, with
+     * ({@code ~/.jk/lib/<name>/}) that the packaged artifact is materialized into, with
      * that directory's {@code <name>.toml} stamped to name it by sha and a downgrade refused. It
      * exists because jk installs itself: the engine's real install output is a jar in jk's product
      * layout, not the coordinate in {@code repos/jk-local}, and until this was declared the only

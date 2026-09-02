@@ -20,7 +20,7 @@ import java.util.List;
  *
  * <p><b>Launcher.</b> {@link #java(Path)} / {@link #javac(Path)} / {@link #tool(Path, String)} are
  * the only sanctioned spelling of {@code <javaHome>/bin/<tool>}, because that path carries a
- * {@code .exe} on Windows and a hand-built copy always forgets it (guard G1, JK-2393/JK-2457).
+ * {@code .exe} on Windows and a hand-built copy always forgets it (guard G1).
  *
  * <p><b>Fingerprint.</b> {@link #compute(Path)} is a SHA-256 of an installed tool tree — a JDK
  * (including {@code JdkOwnership.MARKER}), or any tool home {@code jk doctor} verifies. Sorted
@@ -43,7 +43,7 @@ public final class JdkFingerprint {
     /**
      * SHA-256 of the empty manifest — what {@link #compute} returns for a tool home holding no
      * regular files. A caller that gets this back hashed <em>nothing</em>, and that is worth saying
-     * out loud rather than printing as a digest: until JK-2467 it was the only value
+     * out loud rather than printing as a digest: until it was the only value
      * {@code jk doctor --verify-linked} could ever produce, because a symlinked root was handed to
      * {@code visitFile} and rejected there. Named so a test can assert it deliberately and a caller
      * can tell "empty tree" from "this tree hashes to X".

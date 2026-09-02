@@ -7,10 +7,9 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.InstallRequest;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TestSummary;
@@ -59,8 +58,9 @@ public final class InstallVerb implements HostedVerb {
         String m2 =
                 Path.of(System.getProperty("user.home"), ".m2", "repository").toString();
         return ProtoSession.withTrigger(
-                ProtoJobs.installRequest(
-                        spec.dir(), JkDirs.cache().toString(), m2, null, spec.skipTests(), false, false, false),
+                new InstallRequest(
+                                spec.dir(), JkDirs.cache().toString(), m2, null, spec.skipTests(), false, false, false)
+                        .encode(),
                 "web");
     }
 
@@ -68,10 +68,7 @@ public final class InstallVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-                boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-                String m2DirStr = Jsonl.str(requestLine, "m2Dir");
-                String graalHomeStr = Jsonl.str(requestLine, "graalHome");
+                InstallRequest body = InstallRequest.decode(requestLine);
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Constructed in-session — see runImage's note on ambient-session capture.
@@ -80,10 +77,10 @@ public final class InstallVerb implements HostedVerb {
                         () -> InstallPlans.projectInstallBuildPlan(
                                 session.workingDir(),
                                 session.cacheDir(),
-                                Path.of(m2DirStr),
-                                skipTests,
-                                verbose,
-                                graalHomeStr != null ? Path.of(graalHomeStr) : null));
+                                Path.of(body.m2Dir()),
+                                body.skipTests(),
+                                body.verbose(),
+                                body.graalHome() != null ? Path.of(body.graalHome()) : null));
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
                     return testResult == null

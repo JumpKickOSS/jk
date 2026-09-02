@@ -107,7 +107,7 @@ class RebuildRunTestsMarkerTest {
                         false,
                         Set.of(),
                         rebuild);
-                // Core + tails, like jk build: post-JK-2211 run-tests is a terminal-join leaf and
+                // Core + tails, like jk build: post- run-tests is a terminal-join leaf and
                 // a core-only plan prunes the whole test branch (no run, no marker).
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
                 PlannerTails.appendDeclaredTails(builder, inputs);
@@ -123,7 +123,7 @@ class RebuildRunTestsMarkerTest {
         SessionContext.runWhere(Session.defaults().withCacheDir(cache), () -> {
             try {
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
-                Cas cas = JkStores.cas(cache);
+                Cas cas = JkStores.storeCas();
                 ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
                 List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, false);
                 assertThat(plan).hasSize(1);

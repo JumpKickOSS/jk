@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Learned schedule-contention bias (JK-2216): success-only, size-gated observations of
+ * Learned schedule-contention bias: success-only, size-gated observations of
  * actual-wall / raw-simulated-schedule, EWMA-folded per project and clamped on read.
  */
 class ScheduleBiasTest {
@@ -22,14 +22,14 @@ class ScheduleBiasTest {
 
     @BeforeEach
     void isolateStore() {
-        prevBuilds = System.getProperty("jk.env.JK_BUILDS_DIR");
-        System.setProperty("jk.env.JK_BUILDS_DIR", home.resolve("builds").toString());
+        prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", home.toString());
     }
 
     @AfterEach
     void restore() {
-        if (prevBuilds == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
-        else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuilds);
+        if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
     }
 
     @Test

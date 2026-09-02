@@ -1,0 +1,37 @@
+# Guard letters that are deliberately NOT enforced by both builds, and why.
+#
+# `./gradlew build` and `jk build` are meant to enforce the same house rules
+# (docs/contributors/code-as-art.md). Five letters drifted to the Gradle side and stayed there,
+# so the self-hosted build — the one contributors actually run — reported the rules green while
+# enforcing fewer of them. This file is the exception list for the parity check that stops that
+# happening again (G51, checked from both sides).
+#
+# One letter per line: `G<n> <reason>`. An entry is a claim that the letter CANNOT sensibly live
+# in both, not that nobody got around to it. "Not ported yet" is not a reason — port it.
+
+# Implemented as a test in one module, which both builds run as part of that module's suite. The
+# charter's rule is that a guard scoped to ONE module belongs beside the suite it governs: as a
+# test it gets assertions, a debugger and a failure report instead of script.
+G14 ForecastKeyParityTest (:engine) — one module, run by both builds
+G22 IdeClientWiringTest (:cli) — one module, run by both builds
+G27 CliSourceRulesTest (:cli) — one module, run by both builds
+G31 CliSourceRulesTest (:cli) — one module, run by both builds
+G32 SpikeCacheTempDirTest (:engine) — one module, run by both builds
+
+# Reads Gradle's own publication model.
+G19 checkPublishedPomCoordinates reads build/publications/*/pom-default.xml, which Maven-publish
+G19 generates and jk's publisher does not produce. The rule is about what THIS build publishes;
+G19 jk's equivalent belongs with jk's own publish path, not as a text scan of Gradle's output.
+
+# Folded / never allocated — no code behind the letter on either side.
+G4 folded into checkCliNoParseTypes; no task of its own
+G41 never allocated and not reusable
+
+# Self-hosted-build only: these are about the relationship BETWEEN the two builds, or about the
+# gate's own integrity, so a Gradle twin would either be circular or meaningless.
+G0 checkCorpus is the floor under every other guard in this file — it fails when the gate's own
+G0 corpus shrinks below the population the scans were measured against. It guards this file, so
+G0 it lives with this file.
+G44 checkBothBuildsSeeEveryModule compares settings.gradle.kts against the root jk.toml
+G44 [workspace]. Asking Gradle to check that both builds see every module makes Gradle the
+G44 authority on a question about Gradle; the self-hosted side is the honest place for it.

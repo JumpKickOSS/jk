@@ -15,7 +15,7 @@ public record CompilerLocus(String file, int line, int col) {
      * {@code <path ending in a source ext>:<line>[:<col>]:<rest>}. The single definition — CLI
      * rendering ({@code CompilerDiagnostic}) matches against it too. The optional space after the
      * first colon is groovyc's shape ({@code /w/Foo.groovy: 5: unexpected token …}) — without it,
-     * groovyc blobs never parsed to units on either surface (JK-2113).
+     * groovyc blobs never parsed to units on either surface.
      */
     public static final Pattern HEADER = Pattern.compile(
             "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)): ?(?<line>\\d+)(?::(?<col>\\d+))?:(?<rest>.*)$");

@@ -11,7 +11,7 @@ import java.nio.file.Path;
  *
  * <p>Such a test cannot resolve its target against the working directory. Gradle runs a test with
  * CWD at the owning module; a workspace {@code jk build} runs it with CWD at
- * {@code ~/.local/state/jk/engine}. Nor can it walk up looking for its own module: jk may place
+ * {@code ~/.jk/state/engine}. Nor can it walk up looking for its own module: jk may place
  * class output at {@code <root>/target/<module>/} rather than {@code <module>/target/}, so the
  * module directory is not always an ancestor of the classes that were loaded. The one thing both
  * layouts share is that the output lives <em>somewhere under the checkout</em>, so that is what

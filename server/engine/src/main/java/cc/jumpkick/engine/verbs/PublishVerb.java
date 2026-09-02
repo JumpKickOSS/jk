@@ -10,9 +10,8 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.engine.protocol.PublishRequest;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.PublishPlans;
@@ -64,26 +63,27 @@ public final class PublishVerb implements HostedVerb {
     @Override
     public String decodeJob(JobSpec spec) {
         return ProtoSession.withTrigger(
-                ProtoJobs.publishRequest(
-                        spec.dir(),
-                        JkDirs.cache().toString(),
-                        "https://publish.invalid/",
-                        null,
-                        null,
-                        null,
-                        false,
-                        true,
-                        null,
-                        null,
-                        false,
-                        false,
-                        false,
-                        "anonymous",
-                        null,
-                        null,
-                        null,
-                        false,
-                        false),
+                new PublishRequest(
+                                spec.dir(),
+                                JkDirs.cache().toString(),
+                                "https://publish.invalid/",
+                                null,
+                                null,
+                                null,
+                                false,
+                                true,
+                                null,
+                                null,
+                                false,
+                                false,
+                                false,
+                                "anonymous",
+                                null,
+                                null,
+                                null,
+                                false,
+                                false)
+                        .encode(),
                 "web");
     }
 
@@ -91,17 +91,14 @@ public final class PublishVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String jar = Jsonl.str(requestLine, "jar");
-                String keyFile = Jsonl.str(requestLine, "keyFile");
+                PublishRequest body = PublishRequest.decode(requestLine);
+                Path entryDir = Path.of(body.dir());
+                Path cache = Path.of(body.cache());
                 RepoCredential credential =
-                        switch (String.valueOf(Jsonl.str(requestLine, "authType"))) {
+                        switch (String.valueOf(body.authType())) {
                             case "basic" ->
-                                new RepoCredential.Basic(
-                                        Jsonl.str(requestLine, "user"),
-                                        Jsonl.str(requestLine, "pass") != null ? Jsonl.str(requestLine, "pass") : "");
-                            case "bearer" -> new RepoCredential.Bearer(Jsonl.str(requestLine, "token"));
+                                new RepoCredential.Basic(body.user(), body.pass() != null ? body.pass() : "");
+                            case "bearer" -> new RepoCredential.Bearer(body.token());
                             default -> RepoCredential.ANONYMOUS;
                         };
                 // The one credential the engine does not resolve: the CLI resolved it (env,
@@ -113,20 +110,20 @@ public final class PublishVerb implements HostedVerb {
                 // the session below does not exist yet.
                 ResolvedSecrets.recordFor(entryDir, credential.secret());
                 PublishPlans.Request req = new PublishPlans.Request(
-                        URI.create(Jsonl.str(requestLine, "repoUrl")),
-                        Jsonl.str(requestLine, "region"),
-                        Jsonl.str(requestLine, "endpoint"),
-                        jar != null ? Path.of(jar) : null,
-                        Jsonl.bool(requestLine, "allowSnapshot", false),
-                        Jsonl.bool(requestLine, "dryRun", false),
-                        keyFile != null ? Path.of(keyFile) : null,
-                        Jsonl.str(requestLine, "gpgPassphrase"),
-                        Jsonl.bool(requestLine, "sigstore", false),
-                        Jsonl.bool(requestLine, "slsa", false),
-                        Jsonl.bool(requestLine, "sbom", false),
+                        URI.create(body.repoUrl()),
+                        body.region(),
+                        body.endpoint(),
+                        body.jar() != null ? Path.of(body.jar()) : null,
+                        body.allowSnapshot(),
+                        body.dryRun(),
+                        body.keyFile() != null ? Path.of(body.keyFile()) : null,
+                        body.gpgPassphrase(),
+                        body.sigstore(),
+                        body.slsa(),
+                        body.sbom(),
                         credential);
                 Session session = Session.defaults()
-                        .withConfig(JkConfig.empty().withOffline(Jsonl.bool(requestLine, "offline", false)))
+                        .withConfig(JkConfig.empty().withOffline(body.offline()))
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache)
                         .withCancel(cancelToken);

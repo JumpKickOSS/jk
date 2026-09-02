@@ -57,18 +57,17 @@ that standard.
 
 1. **Correctness first.** Race protocols, cancel, journal, lock, and
    cache invariants are not optional. If a refactor is prettier and
-   wrong, it is wrong. Ticket comments on races (JK-1470, 1478, 1474,
-   1521, 1725, 1837, 1861) move with the code or become types that make
-   the race unrepresentable.
+   wrong, it is wrong. Race invariants move with the code or become types that
+   make the race unrepresentable.
    **Withdrawing a peel is a success, not a failure.** If the extracted
    types cannot carry the invariant, the extract does not land, and the
    proposal is recorded as rejected with the reason. Round 3 proposed
    peeling `yieldListeners` / `awaitDrainComplete` / the `SHUTDOWN` arm /
    `tryStartBuildPlan` out of `EngineServer`, then withdrew it:
-   `tryStartBuildPlan` *is* JK-1470, and any extraction hands
+   `tryStartBuildPlan` *is* that invariant, and any extraction hands
    `lifecycleLock` to a second object — spreading the invariant across two
    files instead of making it unrepresentable. That was the correct call.
-   Do not re-file it.
+   Do not re-propose it.
 2. **Pre-1.0 is a gift.** Rename the wire. Collapse duplicate events.
    Delete the second HTTP job envelope. Change `jk-lock.toml` fields,
    SSE payloads, MCP tool shapes, `EngineProtocol` tokens — if the
@@ -103,19 +102,19 @@ The bug was not file length. It was **two job lifecycles** (CLI vs HTTP)
 and **three serializers** of the same facts. Before the envelope, HTTP
 jobs had no heartbeat and no wall deadline, HTTP lock skipped
 `admitJob`, and a late progress emit after teardown could resurrect a
-map (JK-1474).
+map.
 
 Load-bearing races — preserve the *invariant*, not the method shape:
 
-| Ticket | Invariant |
-|---|---|
-| JK-1470 | Plan slot claimed under `lifecycleLock` in the same breath as the drain check |
-| JK-1478 | Register the runner *before* `start`; reverse it and cancel is a no-op |
-| JK-1474 | Teardown retires the session; late writes no-op |
-| JK-1521 | EOF after a reported failure is not cancel |
-| JK-1725 | Release the plan slot *before* `request-finish` |
-| JK-1837 | SSE snapshot + attach is one critical section |
-| JK-1861 | Peak connections is one metric across UDS + SSE |
+| Invariant |
+|---|
+| Plan slot claimed under `lifecycleLock` in the same breath as the drain check |
+| Register the runner *before* `start`; reverse it and cancel is a no-op |
+| Teardown retires the session; late writes no-op |
+| EOF after a reported failure is not cancel |
+| Release the plan slot *before* `request-finish` |
+| SSE snapshot + attach is one critical section |
+| Peak connections is one metric across UDS + SSE |
 
 Existing peels to copy, not relitigate: `BuildService`, `runtime.*Plans`,
 `InFlightBuilds`, `EngineMaintenance`, `http/*`,
@@ -184,11 +183,10 @@ interface HostedVerb {
 ```
 
 `run` returns a **`JobOutcome`** — the sealed `Succeeded | Failed(exitCode)
-| Cancelled | Declined`. That signature is load-bearing: it used to be
-`void` plus a nullable outcome set on the side, and `null` meant both
-"declined to rule" and "aborted before producing any facts", which the
-accumulator read as success. Sixteen verbs journaled a green build that
-had thrown.
+| Cancelled | Declined`. That signature is load-bearing: a `void` plus a
+nullable side-channel cannot distinguish "declined to rule" from "aborted
+before producing any facts", and the accumulator read both as success.
+Sixteen verbs journaled a green build that had thrown.
 
 `VerbRegistry.standard(...)` is an explicit list. Adding `jk quux` is
 one class + one registry line. It is automatically admitted, heartbeaten,
@@ -273,7 +271,7 @@ worker class and by exactly the engine source that hardcodes its argv.
 `checkWireProtocolPrefixPairs` (G5) keeps the pair a pair; G25 says which
 family owns it.
 
-**The `plugins/` vs `workers/` directory split is withdrawn** (JK-2429).
+**The `plugins/` vs `workers/` directory split is withdrawn**.
 The descriptor's presence already declares the family. A second directory
 declaring it again is a copy that has to be kept in sync, and a guard
 reading the directory would still have to consult the descriptor to know
@@ -288,7 +286,7 @@ a rename would buy is legibility, at the cost of 8 `git mv`s, 15
 What G25 buys instead is the case a directory name cannot see: a module
 whose family and whose actual engine wiring disagree.
 
-The ticket also asked for **two** convention scripts. There is one,
+An earlier proposal asked for **two** convention scripts. There is one,
 `jk.plugin-conventions`, with a family arm inside it — because everything
 else in that script (thin fat-jar, flattened worker POM, staged repo,
 `installLocal`) is identical for both families, and splitting it would
@@ -411,15 +409,13 @@ data. The cap is on behaviour in one file, not on the envelope `jk format`
 writes or the comments a type needs. An import the formatter adds cannot grow
 a file past the cap.
 
-JS gets the wider band, but **not for the reason this document used to
-give.** The old rationale said `clients/web` has no bundler, so a split
-costs a `<script>` tag and a load-order invariant no compiler checks.
-That was wrong: there is no bundler, but there has been an ES module
-graph all along — `index.html` loads exactly one local script,
+JS gets the wider band for a narrower reason than "no bundler." There is
+no bundler, but there has been an ES module graph all along —
+`index.html` loads exactly one local script,
 `<script src="/app.js" type="module">`, and every other file is reached
 by static `import`. The browser topologically orders the graph, and a bad
 specifier or a missing export is a link error before a line runs. A JS
-split there costs an `import`, exactly like Java. JK-2440 took `app.js`
+split there costs an `import`, exactly like Java. Splits took `app.js`
 2,786 → 601, `code.js` 1,966 → 775 and `fold.js` 1,734 → 971 on that
 basis, and all three left this baseline.
 
@@ -441,7 +437,7 @@ file in the tree was a *test*, `JkBuildParserTest` at 2,334 lines — 2.9x
 the hard cap for its own language, and 5.6x its 416-line subject, which it
 had grown around by accretion one config table at a time. No guard could
 see it, and neither could the doc/guard parity check below, which compares
-extensions and is blind to directory scope. JK-2444 extended the scan to
+extensions and is blind to directory scope. The scan now covers
 `src/test/java`, `src/test/kotlin`, `src/test/js` and `src/fixtures`.
 
 The objection to capping tests is real and it is not an exemption:
@@ -469,9 +465,9 @@ both `check` and `jar`. Three rules:
 
 The baseline is the ratchet, and it is deliberately *not* a second
 ceiling: a handful of entries sit above the exception band because they
-are named debt with peel tickets (JK-2433–2440), not because the band
-moved. A shrink passes and prints the tightened line to paste back, so
-the ratchet never blocks progress.
+are named debt tracked in KanArtist, not because the band moved. A shrink
+passes and prints the tightened line to paste back, so the ratchet never
+blocks progress.
 
 A commit is progress only if a number goes down: lines in the god file,
 map count, overload count, boolean flags, duplicated envelopes, or FQCN
@@ -536,7 +532,7 @@ sometimes lies.
   five hand-rolled memos with three stamp rules. A tolerant reader and a
   strict reader of the same file are **two policies on one reader**
   (a sealed policy plus a sealed on-bad arm), never two implementations.
-- Preview APIs only with an explicit ticket. Virtual threads are
+- Preview APIs only when scheduled in KanArtist. Virtual threads are
   already house style.
 
 ### JSpecify
@@ -549,7 +545,7 @@ Zero-runtime. Safe on the Graal CLI. Dogfoods `jk init`.
    `@NonNull`.
 3. No JetBrains / JSR-305 / Lombok nullness in engine or shared.
    IntelliJ keeps JetBrains because the platform API uses it.
-4. Mark new packages first, residue last. NullAway is a later ticket.
+4. Mark new packages first, residue last. NullAway is later work.
 5. Three-state `Boolean success` on the accumulator is correct (unset /
    ok / fail). Mark `@Nullable`; do not “fix” it to `boolean`.
 
@@ -721,8 +717,8 @@ module's files?* Yes → the gate. No → a test beside the code.
 The gate is the **workspace root's** build logic — `after-build`, the root's
 own anchor, so it runs once after every member module with the whole tree on
 disk. It briefly lived in `tools/gate`, a sourceless member invented only
-because a root did not run build logic at all until JK-1058; that module is
-gone.
+because a root did not run build logic at all until the root itself could;
+that module is gone.
 
 **Scope and caching are the same decision.** A root script's action key
 covers every file in the checkout bar build output and VCS metadata, so an
@@ -805,7 +801,7 @@ is where the mistake is actually typed — runs in both.
   An allowlist is a feature, not a concession: it *is* the ownership map,
   checked in and reviewable. When a rule has too many violations to gate
   on today, ship it as a ratchet — check in the current violating-file
-  list, fail on any file not on it, delete entries as tickets land. That
+  list, fail on any file not on it, delete entries as fixes land. That
   converts an unwinnable rule into a monotonic one on day one.
 - **Do not write a guard that a dead call satisfies.** A "every
   `workspaceFinish` call site is preceded by `redactEnv`" scan is
@@ -836,6 +832,7 @@ Letters are allocated when a guard lands and are never reused.
 
 | id | task | rule | form |
 |---|---|---|---|
+| G0 | `checkCorpus` (`.jk/after-build.kts`) | the gate's own corpus shrinking below the population every scan below it was measured against — module dirs, `src/main/java`, `src/test/java`, `plugins/*`. Not a rule about the code: a floor under the *other* guards, so a broken file tree reports green instead of scanning nothing | ban, self-hosted build only |
 | G1 | `checkNoHandBuiltJavaBinary` | a hand-built `<javaHome>/bin/java` (use `JdkFingerprint`) | ban |
 | G2 | `checkNoBareExitCode` | `System.exit` / `halt` with an integer literal (use `Exit`) | ban, no allowlist |
 | G3 | `checkSingleXmlParserOwner` | an XML parser outside `cc.jumpkick.host.DomXml`, plus the six flags required inside it by name | ban |
@@ -860,8 +857,9 @@ Letters are allocated when a guard lands and are never reused.
 | G22 | `IdeClientWiringTest` (`:cli`) | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist |
 | G23 | `checkNoOrphanTestTags` | a `@Tag` no test task runs, a tag no tier owns, or a `TestTiers` table that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions |
 | G24 | `checkSingleAotMarkerSpelling` | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist |
-| G25 | `checkPluginFamily` | a module under `plugins/` whose family — SPI or forked worker — is not consistent with its `jk-plugin.toml`, its wire prefix's owner, and its config-key schema; four arms plus a self-fail | ban, no exceptions (7/8 partition over 15 modules) |
-| G26 | `checkNoUnownedSpawn` | a process fork outside the declared owner (`PluginLoader.command` engine-side, `TaskExec.ToolRun` plugin-side) | ban, 3-fork allowlist |
+| G25 | `checkPluginFamily` | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist |
+| G26 | `checkPluginForkOwner` | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express yet) |
+| G27 | `CliSourceRulesTest` (`:cli`) | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist |
 | G28 | `checkNoRetiredWireSpelling` | a retired wire-key spelling typed as a field key in production source | ban, declared inputs + self-fail floors |
 | G29 | `checkWorkerOfflineFromSpec` | a `JK_OFFLINE` / offline-property read in worker sources (use `TaskExec.offline()`) | ban, no allowlist |
 | G30 | `checkPropertiesStoreOwner` | a `Properties.store()` call in main sources (use `DeterministicProperties.render`) | ban, no allowlist |
@@ -869,26 +867,53 @@ Letters are allocated when a guard lands and are never reused.
 | G32 | `SpikeCacheTempDirTest` (`:engine`) | a spike-cache test that does not root its project in a `@TempDir` | ban, one env-gated exception |
 | G33 | `checkCatalogLockParity` | `gradle/libs.versions.toml` and `jk-lock.toml` disagreeing on a shared module version | ban |
 | G34 | `checkTestFixturesStayOutOfProduction` | a `testFixtures(...)` dependency on a non-test configuration, or a test-fixtures/JUnit/AssertJ jar on the CLI's runtime classpath — scans every build script, plus a self-fail arm | ban, no allowlist |
-| G25 | `checkPluginFamily` | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist |
-| G26 | `checkPluginForkOwner` | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express until JK-2493) |
-| G27 | `CliSourceRulesTest` (`:cli`) | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist |
 | G35 | `checkTestPathsFromCheckoutRoot` | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist |
 | G36 | `checkManifestDepParity` | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `fixtures = true` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist |
 | G37 | `checkOneRecursiveDelete` | a hand-rolled children-first delete outside `cc.jumpkick.host.PathUtil`, or `FOLLOW_LINKS` in any file that deletes — comment-blind, plus a self-fail arm on the owner still using `walkFileTree` and `NOFOLLOW_LINKS` | ban; four commented exemptions, each a *selective* delete rather than a tree delete |
+| G38 | `checkToolchainEnvFromRequest` | a toolchain env var read straight from the daemon's own environment instead of the request (use `BuildEnv.forModule` / `ambient`) — `JK_JDK=temurin-21 jk build` was silently ignored, so which JDK you compiled against depended on how the resident engine happened to be started | ban; `server/` + `shared/` main sources only (`clients/` is exempt by shape — there `System.getenv` **is** the request), one narrow in-scope exemption |
+| G39 | `checkCheapestRejectionFirst` | an `isRegularFile` filter placed before a free name-only predicate — the walk already read the attributes, and re-resolving the path costs 10.3 µs on NTFS against 1.0 on ext4 | ban |
+| G40 | `checkRunnableOwner` | a `Files.isExecutable` outside `PathUtil.isRunnable` — 33.4 µs on Windows against 0.52 on Linux, for a question Windows does not answer that way (there the extension decides) | ban, one exemption (`ActionCache.executableBit`, which wants the bit itself) |
+| G41 | — | never allocated. Letters are issued when a guard lands; this one never was, and is not reusable. G44 briefly carried the same claim and was wrong: it is live in the self-hosted build. | — |
+| G42 | `checkTreeCopyOwner` | a hand-rolled recursive copy outside `PathUtil.copyTree` — the mirror of G37 for the write direction; all twelve callers shared the same three defects (`createDirectories` per *file*, no byte-identity check, walk attributes discarded) | ban, commented exemptions, each a copy deliberately not the owner's shape |
+| G43 | `checkArchiveStreamOwner` | an archive byte sink that bypasses `DeterministicZip.archiveStream` / `newArchive` — `ZipOutputStream` inherits a 512-byte buffer, turning a 9 MB jar into ~18,000 `write(2)` calls where 64 KB gives ~143 | ban + self-fail on the owner still offering the sink |
+| G44 | `checkBothBuildsSeeEveryModule` (`.jk/after-build.kts`) | a module `settings.gradle.kts` and the root `jk.toml` `[workspace]` do not both see — Gradle never builds it, or `jk build` never compiles it and `jk test` never runs its suite; plus a stale `singleBuildModules` exception that one of the builds has since picked up | ban, one declared single-build exception (`clients/intellij`) |
+| G45 | `checkBlindWalkRatchet` | a module gaining a blind `Files.walk` / `walkFileTree` / `newDirectoryStream` / `list` in `src/main/java` (prefer `PathUtil.forEachRegularFile`, which hands the walk's attributes to the visitor) | ratchet against `walk-baseline.txt`; a module may only shrink |
+| G46 | `checkJdkRemovalConfined` | JDK removal reachable from anything but an explicit `jk jdk` verb — an ordinary build deleted the JDK it was running on, twice in one afternoon, taking four installs including both GraalVMs | ban + self-fail on `JdkGarbage` still carrying the members it reads |
+| G47 | `checkCaseConversionLocale` | a `toLowerCase()` / `toUpperCase()` in `src/main` without `Locale.ROOT` — under tr_TR/az `'i' ⇄ 'I'` do not round-trip, so an identifier parser is wrong for an entire locale family; one silently rewrote an MCP client's `runtime` scope into `main` | ban + a self-fail arm on scanning zero files |
+| G48 | `checkNoGluedInlineTag` | `{@code`/`link`/`value` glued to its payload (`{@code.asc}`) — renders as literal garbage, and blocks FQCN shortening for the whole file | ban, no allowlist |
+| G50 | `checkNoTicketIds` (root project) | a KanArtist ticket id anywhere in the tree — extension-blind, because every scope this rule was given by extension is where it was missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS held ~50 after the second, and a Giter8 template wrote one into a user's own new project | ban, two exemptions (`AGENTS.md`'s board protocol, this page's ban examples) + a self-fail on an empty candidate set |
+| G49 | `checkSingleHomeRoot` (root project) | a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; two self-fail arms (stale allowlist entry, empty candidate set) | ban; nine-file allowlist, each entry carrying the reason it reads another program's layout |
+| G51 | `checkGuardParity` (root project) + `.jk/after-build.kts` | a guard letter enforced by one build and not the other — G46 through G50 lived on the Gradle side only, so `jk build` printed "house rules clean" while enforcing 36 of the 41 it claimed, and neither gate's count was wrong about itself. Deliberately implemented twice: a parity check only one build runs has the shape of the problem it prevents. The exception list is single-owner (`guard-parity.txt`), so a letter cannot be excused on one side and demanded on the other | ban; exceptions carry the reason parity is impossible, and "not ported yet" is not one |
+| G52 | `checkTestTierDocs` (root project) + `.jk/after-build.kts` | the contributor tier table differs from `TestTiers` task names, include/exclude tags, order, or `checkAll` membership | exact generated-block comparison in both builds |
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
 Both read only `clients/cli`, so both are now arms of `CliSourceRulesTest`
 — jk checks the manifest where Gradle checks the resolved classpath,
 which is the half each build can see.
 
-**This table drifted, and that is worth recording.** Six guards landed
+**This table drifted twice, and that is worth recording.** Six guards landed
 carrying no letter at all — G28 through G33 above were lettered when the
-drift was found, not when they shipped. A registry that lags the code is
+drift was found, not when they shipped. It then happened again and larger:
+the table sat at G37 while the build ran through G48, which is how landing
+G49 nearly collided with a live letter. A registry that lags the code is
 the same defect as a baseline that lags the tree, and it has the same fix:
 reconcile by listing both sides and diffing them.
 
-Two spellings of the letter comment exist — `// Guard G20 (JK-2420):` and
-`// G22 — JK-2449:` — and a scan for the first form silently misses the
+Twice by hand is the argument for the third time not being by hand.
+`checkGuardRegistry` (root project) now reads the letters out of every
+`*.gradle.kts` in the tree and out of this table, and fails when the two sets
+differ or when a letter appears twice here — the same shape `checkStageDocs`
+uses to hold `BuildStage` against three doc pages. Retired and never-issued
+letters keep a row saying so, because the set has to be total for the diff to
+mean anything.
+
+Reconciling for it also found two **contradicting** pairs: G25 and G26 each had
+two rows, and the stale G26 named `checkNoUnownedSpawn`, a task that does not
+exist. That is the failure mode a lagging registry actually has — not a missing
+row, which a reader notices, but a row that answers confidently and wrong.
+
+Two spellings of the letter comment exist — `// Guard G20:` and
+`// G22 — …:` — and a scan for the first form silently misses the
 second. That is the campaign's own lesson landing on its own registry: a
 probe's answer is bounded by what the probe can see. Match on the letter,
 not on the word.
@@ -909,7 +934,7 @@ A guard does not have to live in `buildSrc`. G19, G22 and G24 sit in the
 `build.gradle.kts` of the module that owns the fact — which is the right
 home when the ban list comes from one module's source. Wire it to that
 module's `check` **and** `jar`, and remember `checkAll` now depends on
-every module's `check` (JK-2498), so it will run.
+every module's `check`, so it will run.
 
 A third home: a **convention script**. G25 and G26 live in
 `jk.plugin-conventions`, so each of the 15 plugin modules checks *itself*
@@ -957,8 +982,8 @@ proposed fix would have made the tree worse: renumbering usage from `64`
 to `2` would have touched 85 sites to save 20.
 
 So a count in a Done criterion is re-measured against the tree before the
-ticket is written, and the ticket records the measurement. Retractions and
-reconciliations belong in a corrections log, not in a silent edit.
+criterion is written, and the criterion records the measurement. Retractions
+and reconciliations belong in a corrections log, not in a silent edit.
 
 ### A test that passes without executing is worse than a missing test
 
@@ -1084,7 +1109,7 @@ The drift is not symmetric and the asymmetry is the lesson. Gradle was
 right about nine edges that jk had never been told (`clients/web` taking
 `:wire` for `WireTokenParityTest`; the five modules that consume `:host`'s
 test fixtures; the four plugin modules that consume `:plugin-sdk`'s).
-**jk** was right about two that Gradle still declared after JK-2193
+**jk** was right about two that Gradle still declared after a cleanup
 deleted them as unimported — so a guard that only checked one direction
 would have "fixed" the tree by re-adding dead edges. G36 checks both.
 
@@ -1097,9 +1122,9 @@ build is the one nobody runs before pushing.
 
 The same round found the smaller sibling of that defect. Gradle runs a
 test with CWD at the owning module; a workspace `jk build` runs it with
-CWD at `~/.local/state/jk/engine`. A source tripwire that spells its
+CWD at `~/.jk/state/engine`. A source tripwire that spells its
 target `Path.of(System.getProperty("user.dir"), "../../plugins/android/…")`
-therefore reads `~/.local/state/plugins/android/…` under jk — green under
+therefore reads `~/.jk/state/plugins/android/…` under jk — green under
 Gradle for months.
 
 Fourteen test classes had solved this, each with its own copy of the
@@ -1162,15 +1187,15 @@ workspace/test → lock family → hosted plans → cache maint → sync reads.
 leave if `EngineServer` is still over 1,200. `EngineMaintenance`
 already exists — finish moving, do not invent a parallel chore type.
 
-**Phase 7 — Lombok sweep.** Shipped (JK-2003): root `lombok.config`
+**Phase 7 — Lombok sweep.** Done: root `lombok.config`
 (fluent + chain + generated annotation), compile-only + AP on every
 Java module, `@Builder` on field-copy request types, `@RequiredArgsConstructor`
-on assignment-only composition roots, ticket-id comments gone.
-Remaining hand-rolled builders are accumulators (`Task`, `BuildPlan`,
-`JkBuild`, `WizardStep`, `Invocation`, graph/import builders) — keep
-them. Records stay records. JSpecify still owns nullness.
+on assignment-only composition roots. Remaining hand-rolled builders are
+accumulators (`Task`, `BuildPlan`, `JkBuild`, `WizardStep`, `Invocation`,
+graph/import builders) — keep them. Records stay records. JSpecify still
+owns nullness.
 
-**Phase 8 — Reach and guards (JK-2379).** `shared/jsonl` becomes
+**Phase 8 — Reach and guards.** `shared/jsonl` becomes
 `shared/host` with `cc.jumpkick.host`, so every module — plugin worker,
 native CLI, engine — can see `Exit`, `Hashing`, `Os`, `PathUtil`,
 `DeterministicZip`, `BuildStamps`, `CacheTree`. Then the mechanical
@@ -1207,8 +1232,7 @@ below is its human-readable summary.
 
 ## After EngineServer
 
-Same charter, one patient at a time. **Shipped** (JK-1933–1941), with
-where each file actually sits today:
+Same charter, one patient at a time. Current sizes:
 
 | File | Before | Floor | Today | Cap | How |
 |---|---|---|---|---|---|
@@ -1225,8 +1249,8 @@ where each file actually sits today:
 | `JkManagerColor` | — | — | 380 | 800 | token colour |
 | `NewCommand` | 1,403 | 1,164 | 546 | 800 | wizard |
 
-¹ EngineServer entered this batch at 3,418 lines; the earlier JK-1875..1922 charter had already
-taken it from its 7,073-line peak.
+¹ EngineServer entered this batch at 3,418 lines; an earlier Typed Envelope peel had
+already taken it from its 7,073-line peak.
 
 ² `JkManager` was one 2,204-line class. The triad that replaced it shipped at 2,467 lines total and
 is **3,421** today — larger than the god class. `JkManagerView` and `JkManagerColor` are already out
@@ -1250,8 +1274,8 @@ commit that pastes that number into `size-baseline.txt` updates **Today**
 here. Re-baselining upward requires deleting the invariant comment that
 justified the old number and writing one that justifies the new one.
 
-The rows still over the exception band are named debt with peel tickets
-(JK-2433–2440), not a moved band.
+The rows still over the exception band are named debt tracked in KanArtist,
+not a moved band.
 
 ---
 
@@ -1270,12 +1294,12 @@ The rows still over the exception band are named debt with peel tickets
   short.
 - Growing public product docs for this. This file is enough.
 - **A second copy "because the owner is unreachable."** Fix the module
-  graph, or file the ticket. Copying is never the answer, and round 3
-  proved it: every confirmed correctness defect in the tree was a diverged
-  copy of a routine that was correct once — an XXE posture that lost five
-  of six flags, an `isWindows` that tested `win` where the owner tested
-  `windows`, a lock writer that dropped `[[plugin]]` rows, a stamp
-  predicate that never learned about `.gstamp`.
+  graph, or schedule follow-up work in KanArtist. Copying is never the
+  answer, and round 3 proved it: every confirmed correctness defect in the
+  tree was a diverged copy of a routine that was correct once — an XXE
+  posture that lost five of six flags, an `isWindows` that tested `win`
+  where the owner tested `windows`, a lock writer that dropped `[[plugin]]`
+  rows, a stamp predicate that never learned about `.gstamp`.
 - **A comment standing in for a compiler check.** If two things must
   agree, make one derive from the other, or add a guard. Do not write the
   sentence. A "keep in sync with X" comment is a defect report about the

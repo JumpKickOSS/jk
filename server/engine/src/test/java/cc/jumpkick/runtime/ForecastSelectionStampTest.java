@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The forecast's run-tests stamp must key on the SESSION test selection, exactly like the live
  * run — with {@code TestSelection.DEFAULT} baked in, a widened {@code jk build --all} forecast-hit
  * the unit-tier green marker and the whole workspace short-circuited to "up to date" without
- * running a single widened test (JK-2203).
+ * running a single widened test.
  */
 class ForecastSelectionStampTest {
 

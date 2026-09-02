@@ -18,10 +18,10 @@ class ShellCompletionsTest {
 
     @Test
     void write_all_creates_scripts_under_data(@TempDir Path data) throws Exception {
-        // jk.env.JK_DATA_DIR overlay (same seam as IsolatedRootsExtension): keep the write out
-        // of the suite-shared JK_HOME so parallel workers never race on data/ (JK-2184).
-        String prev = System.getProperty("jk.env.JK_DATA_DIR");
-        System.setProperty("jk.env.JK_DATA_DIR", data.toString());
+        // jk.env.JK_STORE_DIR overlay (same seam as IsolatedRootsExtension): keep the write out
+        // of the suite-shared JK_HOME so parallel workers never race on data/.
+        String prev = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", data.toString());
         try {
             Path root = ShellCompletions.writeAll();
             assertThat(root).startsWith(data);
@@ -34,8 +34,8 @@ class ShellCompletionsTest {
                     .contains("build");
             assertThat(Files.readString(root.resolve("bash/jk"))).contains("complete -F _jk jk");
         } finally {
-            if (prev == null) System.clearProperty("jk.env.JK_DATA_DIR");
-            else System.setProperty("jk.env.JK_DATA_DIR", prev);
+            if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
+            else System.setProperty("jk.env.JK_STORE_DIR", prev);
         }
     }
 }

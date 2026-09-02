@@ -42,7 +42,7 @@ public final class WorkspaceScheduler {
      * Build one unit, calling {@code artifactsReady} the moment its cross-module artifacts
      * (package-jar / package-assembly) are terminal — usually well before the unit's tests and
      * terminal tails finish. Admission of dependents keys on that signal, not on completion
-     * (JK-2210): Mill/Gradle-shaped edges, where a dependent's compile waits on the upstream
+     *: Mill/Gradle-shaped edges, where a dependent's compile waits on the upstream
      * artifact and never on the upstream suite. Calling it more than once is harmless; a task
      * that never calls it (compile/package failed, or no package steps) implicitly publishes on
      * completion so admission can never wedge — the failed case is then handled by the sink's
@@ -96,7 +96,7 @@ public final class WorkspaceScheduler {
      * {@link #CANCEL_DRAIN_MS}) so their module events land before this method returns, and then
      * {@code null} is returned. {@code CompletableFuture.cancel(true)} is deliberately NOT used on
      * the cancel path: it settles the future instantly while the supplier keeps running, which let
-     * module-finish events fire after the workspace-finish event (JK-2097). Real stoppage is
+     * module-finish events fire after the workspace-finish event. Real stoppage is
      * cooperative — SessionCancel checks inside plans plus JobWorkers process kills — which
      * settles tasks quickly; the bound keeps cancel from ever hanging on a wedged step.
      */
@@ -111,7 +111,7 @@ public final class WorkspaceScheduler {
         return run(units, dirOf, edges, (u, ready) -> task.run(u), sink, maxConcurrency, cancelled);
     }
 
-    /** As {@link #run(List, Function, Map, UnitTask, LevelSink, int, BooleanSupplier)} with phase gates (JK-2210). */
+    /** As {@link #run(List, Function, Map, UnitTask, LevelSink, int, BooleanSupplier)} with phase gates. */
     public static <U, R> R run(
             List<U> units,
             Function<U, Path> dirOf,
@@ -162,7 +162,7 @@ public final class WorkspaceScheduler {
             }
             return null;
         }
-        // Critical-path-first admission (JK-2196): the ready scan below takes the FIRST ready
+        // Critical-path-first admission: the ready scan below takes the FIRST ready
         // unit, so order the backlog by longest remaining dependent chain, descending. With 13
         // units ready at the widest level, declaration order used to start leaf plugins ahead of
         // the client-io → io → resolver → toolchain → engine → cli spine that dominates the wall.
@@ -171,7 +171,7 @@ public final class WorkspaceScheduler {
         Map<Path, Integer> height = dependentChainHeight(units, dirOf, edges, unitDirs);
         notStarted.sort(Comparator.comparingInt((U u) -> -height.getOrDefault(dirOf.apply(u), 0)));
         // Events: a Done per completed unit, or a Path per artifact-publish. Admission keys on
-        // artifactsReady (JK-2210), so a dependent starts while its prereq's tests still run;
+        // artifactsReady, so a dependent starts while its prereq's tests still run;
         // completion accounting (sink, fail-fast, the concurrency cap) stays on Done.
         BlockingQueue<Object> events = new LinkedBlockingQueue<>();
         Set<Path> artifactsReady = ConcurrentHashMap.newKeySet();

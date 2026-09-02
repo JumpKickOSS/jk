@@ -11,14 +11,14 @@ description = "jk engine API: the client<->engine wire contract — protocol cod
 dependencies {
     // The DTOs speak the jk-api vocabulary (BuildPlan/Step/BuildPlanListener, JkBuild, TestSummary).
     api(project(":jk-api"))
-    // CachePruneScheduler consults JkCacheConfig (~/.config/jk/config.toml [cache]).
+    // CachePruneScheduler consults JkCacheConfig (~/.jk/config.toml [cache]).
     api(project(":core"))
     // EngineProtocol encodes/decodes with the shared Jsonl codec (not the plugin SPI).
     api(project(":host"))
     // TEST ONLY. `EngineProtocol.INVOCATION_PHASE` frames carry the wire names of :plugin-sdk's
     // InvocationPhase enum, and EngineProtocolTest closes that set against the enum itself rather
     // than restating it. The enum is the owner; production code here only ever sees the String, so
-    // this edge stays out of `api`/`implementation` and never reaches a client classpath (JK-2444).
+    // this edge stays out of `api`/`implementation` and never reaches a client classpath.
     testImplementation(testFixtures(project(":host")))
     testImplementation(project(":plugin-sdk"))
 }
@@ -32,11 +32,11 @@ dependencies {
 // failure message instead.
 //
 // Two arms, because the corpora fail differently:
-//   java — the 8 retired test-count spellings (JK-2424), banned as a field key (quoted or dotted)
+//   java — the 8 retired test-count spellings, banned as a field key (quoted or dotted)
 //          in every production Java source. The one owner is TestSummary.WIRE_KEY +
 //          countsJson/countsMap/readCounts.
 //   spa  — those 8, plus `class`, the retired diagnostic alias of EngineProtocol.TEST_CLASS_FIELD
-//          (JK-2506), banned in the dashboard's JS/HTML, which cannot import Java and hand-types
+//         , banned in the dashboard's JS/HTML, which cannot import Java and hand-types
 //          every key it reads. `class` cannot join the java arm: `.class` literals and the
 //          test-worker discovery protocol (LauncherPath/JUnitLauncher `--list-only`) keep that
 //          token live in Java on purpose, so the ban's shape and the defect's shape only match in
@@ -66,7 +66,7 @@ fun readsTheKey(body: String, name: String): Boolean {
     return false
 }
 
-// Guard G28 (JK-2424).
+// Guard G28.
 val checkNoRetiredWireSpelling by tasks.registering {
     group = "verification"
     description = "Fail the build on a retired wire-key spelling typed as a field key in production source"

@@ -50,7 +50,6 @@ public final class JdkInventory {
     private final Path jdksRoot;
     private final Path file;
     private final Path userConfigFile;
-    private final Path dataDir;
 
     public static JdkInventory current() {
         return of(JkDirs.jdks());
@@ -60,8 +59,7 @@ public final class JdkInventory {
     public static JdkInventory of(Path jdksRoot) {
         return SHARED.computeIfAbsent(
                 jdksRoot.toAbsolutePath().normalize(),
-                root -> new JdkInventory(
-                        root, JkDirs.state().resolve(FILE_NAME), JkDirs.userConfigFile(), JkDirs.data()));
+                root -> new JdkInventory(root, JkDirs.state().resolve(FILE_NAME), JkDirs.userConfigFile()));
     }
 
     /**
@@ -69,9 +67,9 @@ public final class JdkInventory {
      *
      * <p>{@link #snapshot()} memoizes on {@code (size, mtime)} in <em>instance</em> fields, and this
      * factory built a fresh instance on every call — so the memo never survived, exactly the shape
-     * JK-1033 fixed for {@code JdkRegistry}. {@code jk hook-env} runs on every shell prompt and asks
+     * fixed for {@code JdkRegistry}. {@code jk hook-env} runs on every shell prompt and asks
      * for defaultId, graalId, defaultHome and graalHome; a per-call instance re-read and re-parsed the
-     * file for each (JK-1048).
+     * file for each.
      *
      * <p>Correctness is unchanged: the snapshot still re-stats on every read and re-parses when the
      * file moves, so sharing the instance shares the memo, not a stale answer.
@@ -83,16 +81,15 @@ public final class JdkInventory {
         SHARED.clear();
     }
 
-    /** Test seam: inventory file + jdks root, no config/symlink migration. */
+    /** Test seam: inventory file + jdks root, no config migration. */
     public JdkInventory(Path jdksRoot, Path file) {
-        this(jdksRoot, file, null, null);
+        this(jdksRoot, file, null);
     }
 
-    public JdkInventory(Path jdksRoot, Path file, Path userConfigFile, Path dataDir) {
+    public JdkInventory(Path jdksRoot, Path file, Path userConfigFile) {
         this.jdksRoot = Objects.requireNonNull(jdksRoot, "jdksRoot");
         this.file = Objects.requireNonNull(file, "file");
         this.userConfigFile = userConfigFile;
-        this.dataDir = dataDir;
     }
 
     public Path file() {
@@ -366,7 +363,7 @@ public final class JdkInventory {
         ensureMigrated();
         try {
             // One readAttributes, not isRegularFile-then-readAttributes: it answers presence, size and
-            // mtime together, and this runs on every shell prompt via `jk hook-env` (JK-1033).
+            // mtime together, and this runs on every shell prompt via `jk hook-env`.
             var attrs = Files.readAttributes(file, BasicFileAttributes.class);
             if (!attrs.isRegularFile()) return Snapshot.empty();
             if (cachedSnapshot != null
@@ -409,7 +406,6 @@ public final class JdkInventory {
             graal = matchLegacy(scan.get(LEGACY_GRAAL_HOME_KEY), scan.get(LEGACY_GRAAL_KEY), rows);
             stripLegacyKeys(userConfigFile);
         }
-        deleteLeftoverSymlinks();
         return new Snapshot(def, graal, rows);
     }
 
@@ -477,17 +473,6 @@ public final class JdkInventory {
             return List.of();
         }
         return out;
-    }
-
-    private void deleteLeftoverSymlinks() {
-        if (dataDir == null) return;
-        for (String name : List.of("default-jdk", "current-jdk", "default-graal-jdk")) {
-            try {
-                Files.deleteIfExists(dataDir.resolve(name));
-            } catch (IOException ignored) {
-                // best-effort leftover cleanup
-            }
-        }
     }
 
     /**

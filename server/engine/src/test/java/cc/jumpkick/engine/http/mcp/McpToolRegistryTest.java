@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * The registry contract behind JK-2435: a tool costs one class and one line in
+ * The registry contract behind: a tool costs one class and one line in
  * {@link McpTools#standard()}, and every {@code jk_*} the surface writes down is a tool that
  * exists. The old shape typed each name twice in two unlinked switches; nothing checked them.
  */

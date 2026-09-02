@@ -54,7 +54,7 @@ class BuildLogicAnchorGatingTest {
         assertThat(compileTest.requires()).contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
         assertThat(after.requires()).isNotEmpty(); // mainCompile at minimum
 
-        // BEFORE_PACKAGE is not level-0: needs resources — and since JK-2211 never tests, so
+        // BEFORE_PACKAGE is not level-0: needs resources — and since never tests, so
         // artifact creation overlaps the suite. Tests stay scheduled via the terminal join.
         assertThat(before.requires())
                 .contains(TaskNames.COPY_RESOURCES)
@@ -116,7 +116,7 @@ class BuildLogicAnchorGatingTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        // Core + tails, same as jk build: since JK-2211 run-tests is a terminal LEAF joined by
+        // Core + tails, same as jk build: since run-tests is a terminal LEAF joined by
         // the tails (never a package prerequisite), so a core-only build would prune it.
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
         PlannerTails.appendDeclaredTails(b, in);

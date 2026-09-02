@@ -60,16 +60,14 @@ public final class ImagePlans {
 
     private ImagePlans() {}
 
-    public static final BuildPlanKey<ImageConfig> CONFIG = BuildPlanKey.of("image-config", ImageConfig.class);
-    public static final BuildPlanKey<Path> TARBALL_PATH = BuildPlanKey.of("tarball-path", Path.class);
+    public static final BuildPlanKey<ImageConfig> CONFIG = BuildPlanKey.scalar("image-config", ImageConfig.class);
+    public static final BuildPlanKey<Path> TARBALL_PATH = BuildPlanKey.scalar("tarball-path", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    private static final BuildPlanKey<List> DEP_JARS = BuildPlanKey.of("dep-jars", List.class);
+    private static final BuildPlanKey<List<Path>> DEP_JARS = BuildPlanKey.list("dep-jars", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    private static final BuildPlanKey<List> SNAPSHOT_JARS = BuildPlanKey.of("snapshot-jars", List.class);
+    private static final BuildPlanKey<List<Path>> SNAPSHOT_JARS = BuildPlanKey.list("snapshot-jars", Path.class);
 
-    public static final BuildPlanKey<String> IMAGE_REF = BuildPlanKey.of("image-ref", String.class);
+    public static final BuildPlanKey<String> IMAGE_REF = BuildPlanKey.scalar("image-ref", String.class);
 
     /**
      * The base image template used when no {@code image.base} is set in the project or global
@@ -111,7 +109,7 @@ public final class ImagePlans {
 
     /**
      * As above with {@code decorate}: request-level Inputs decoration applied by the one
-     * orchestrator so the IMAGE branch honors the same knobs as PACKAGE (JK-2102). {@code null} =
+     * orchestrator so the IMAGE branch honors the same knobs as PACKAGE. {@code null} =
      * none.
      */
     public static BuildPlan imageBuildPlan(
@@ -222,11 +220,8 @@ public final class ImagePlans {
                         return;
                     }
 
-                    @SuppressWarnings("unchecked")
-                    List<Path> depJars = (List<Path>) ctx.require(DEP_JARS);
-                    @SuppressWarnings("unchecked")
-                    List<Path> snapshotJars =
-                            (List<Path>) ctx.get(SNAPSHOT_JARS).orElse(List.of());
+                    List<Path> depJars = ctx.require(DEP_JARS);
+                    List<Path> snapshotJars = ctx.get(SNAPSHOT_JARS).orElse(List.of());
                     Path classesDir = PluginBuild.shape(project, projectDir)
                                     .map(sh -> sh.layeredImage())
                                     .orElse(false)
@@ -238,7 +233,7 @@ public final class ImagePlans {
                     // Which worker built it, by content: the artifact id is a compile-time constant
                     // and the release version does not move between local builds, so neither can
                     // tell a rebuilt worker from the one whose output is already in the cache.
-                    Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.cas(cache));
+                    Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.storeCas());
                     ImageWrite.restoreOrBuild(
                             ctx,
                             project,
@@ -267,7 +262,9 @@ public final class ImagePlans {
                 .build();
 
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
-        builder.addTask(imagePlan).addTask(writeImage);
+        builder.stateKeys(CONFIG, TARBALL_PATH, DEP_JARS, SNAPSHOT_JARS, IMAGE_REF)
+                .addTask(imagePlan)
+                .addTask(writeImage);
         return builder.terminal(TaskNames.WRITE_IMAGE).build();
     }
 
@@ -282,7 +279,7 @@ public final class ImagePlans {
      *
      * <ol>
      *   <li>Parse project-local {@code [image]} from {@code jk.toml}.
-     *   <li>Parse user-global {@code [image]} from {@code ~/.config/jk/config.toml} (if present).
+     *   <li>Parse user-global {@code [image]} from {@code ~/.jk/config.toml} (if present).
      *   <li>Merge: project values win over global values.
      *   <li>Substitute {@code {java-major-version}} in {@code image.base} with the project's JDK
      *       major (falling back to 21 when undeclared).
@@ -291,7 +288,7 @@ public final class ImagePlans {
      */
     private static ImageConfig buildConfig(
             Path jkBuild, JkBuild project, String registry, String tag, String dockerExecutableArg) throws IOException {
-        // Merge user-global [image] from ~/.config/jk/config.toml underneath the project layer.
+        // Merge user-global [image] from ~/.jk/config.toml underneath the project layer.
         ManifestImage.ImageConfigData data =
                 ManifestImage.merge(JkBuildParser.imageConfig(jkBuild), GlobalConfig.image());
 
@@ -653,7 +650,7 @@ public final class ImagePlans {
         Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return;
         Lockfile lock = LockfileReader.read(lockPath);
-        ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
+        ClasspathResolver resolver = new ClasspathResolver(JkStores.storeCas());
         for (ClasspathResolver.Entry entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
             if (!Files.exists(entry.jar())) continue;
             (entry.artifact().version().contains("SNAPSHOT") ? snapshots : releases).add(entry.jar());
@@ -670,7 +667,7 @@ public final class ImagePlans {
     private static Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
         Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return Map.of();
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
         Map<Path, Lockfile.Artifact> rows = new LinkedHashMap<>();
         for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
             if (pkg.checksum() == null) continue;
@@ -723,7 +720,7 @@ public final class ImagePlans {
         if (!Files.exists(lockPath)) return List.of();
         Lockfile lock = LockfileReader.read(lockPath);
         List<Path> result = new ArrayList<>();
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue;
             String hex = pkg.checksumHex();

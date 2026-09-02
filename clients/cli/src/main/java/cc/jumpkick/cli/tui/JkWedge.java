@@ -189,7 +189,7 @@ public final class JkWedge implements Widget {
      * row; {@code \r} then rewinds the wrong row and every subsequent frame lands on a new line, so
      * an 80 ms animator turns into a screenful of stacked half-frames. That is exactly what
      * {@code jk jdk install lts} did: a 40-cell bar plus the {@code JDK} chip plus
-     * {@code NN% · Downloading Eclipse Temurin} is wider than an 80-column terminal (JK-2602).
+     * {@code NN% · Downloading Eclipse Temurin} is wider than an 80-column terminal.
      *
      * <p>A static line, printed once with a newline, may wrap harmlessly — which is why the clip
      * lives here rather than inside {@link #renderLine}: truncating a settled result would throw
@@ -332,7 +332,7 @@ public final class JkWedge implements Widget {
      * in bold, and whatever {@code tookTail} the caller measured (already dark-gray italic if it came
      * from {@code ConsoleSpec.took}). The subject is the only thing that varies, which is why it is a
      * parameter and not a second renderer — the JDK download had grown its own red wedge and red bar,
-     * a look that appeared nowhere else in the product (JK-2602).
+     * a look that appeared nowhere else in the product.
      */
     public static JkWedge cancelled(String title, String subject, boolean byUser, String tookTail) {
         String what = subject == null || subject.isBlank() ? "job" : subject;
@@ -340,7 +340,11 @@ public final class JkWedge implements Widget {
         String by = byUser ? " by user" : "";
         if (!Theme.active().isAnsi()) {
             return new JkWedge(
-                    Icon.cancelled(), title, RichText.plain(what + " was cancelled" + by + took), Variant.CANCELLED, null);
+                    Icon.cancelled(),
+                    title,
+                    RichText.plain(what + " was cancelled" + by + took),
+                    Variant.CANCELLED,
+                    null);
         }
         String styled = what + " was "
                 + Theme.colorize("cancelled", Theme.active().brightWhite().bold())

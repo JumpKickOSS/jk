@@ -135,7 +135,7 @@ public final class Giter8Apply {
         // `package=$organization$.$name$`-style defaults derive from the overridden values. An
         // interpolation pass ahead of the overrides would freeze derivations to shipped defaults.
         if (overrides != null) props.putAll(overrides);
-        props.putIfAbsent("simple", "no");
+        props.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "no");
         for (Map.Entry<String, String> e : new ArrayList<>(props.entrySet())) {
             if (Giter8Maven.isMavenExpr(e.getValue())) {
                 props.put(e.getKey(), Giter8Maven.resolveExpr(e.getValue(), maven));

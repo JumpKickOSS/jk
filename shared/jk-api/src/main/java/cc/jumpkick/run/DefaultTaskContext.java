@@ -215,14 +215,7 @@ final class DefaultTaskContext implements TaskContext {
 
     @Override
     public <T> void put(BuildPlanKey<T> key, T value) {
-        // Allow null to be stored as a sentinel? Decided against — steps
-        // should signal "no value" by not putting at all and downstream
-        // reading via .get() returning empty.
-        if (value == null) {
-            plan.stateRef().remove(key.name());
-        } else {
-            plan.stateRef().put(key.name(), value);
-        }
+        plan.put(key, value);
     }
 
     @Override

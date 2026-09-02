@@ -55,7 +55,7 @@ class JkBuildRendererTest {
 
     @Test
     void graal_native_spec_round_trips_but_graalvm_default_is_elided() {
-        // JK-2098: "native" is a distinct legal spec — eliding it re-parses as "graalvm".
+        // : "native" is a distinct legal spec — eliding it re-parses as "graalvm".
         JkBuild base = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .build())
@@ -74,7 +74,7 @@ class JkBuildRendererTest {
     }
 
     /**
-     * The reachability-metadata pin round-trips for the same reason {@code graal} does (JK-2098):
+     * The reachability-metadata pin round-trips for the same reason {@code graal} does:
      * eliding a value that re-parses as something else is how a rendered manifest quietly changes
      * the build. Only the parser's own default is elided.
      */

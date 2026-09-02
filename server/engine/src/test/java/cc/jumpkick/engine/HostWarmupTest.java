@@ -109,7 +109,7 @@ class HostWarmupTest {
      * Every root an idle warmup writes under is outside {@code JK_CACHE_DIR}, so {@code jk cache
      * nuke} — which removes that root and nothing else — is not undone by the 12 h cycle. Filed as
      * "HostWarmup re-downloads worker jars into the cache CAS"; the misreading is
-     * {@code PluginJar.locate()}'s {@code JkStores.cas(JkDirs.cache())}, whose argument is ignored
+     * {@code PluginJar.locate()}'s {@code JkStores.storeCas()}, whose argument is ignored
      * and which resolves the <em>store</em> CAS. Asserting the four roots the pass actually uses is
      * what keeps that from quietly becoming true.
      */
@@ -125,7 +125,7 @@ class HostWarmupTest {
                     .isNotEqualTo(state);
 
             // 1. worker jars — the root PluginJar.locate() fetches into.
-            assertThat(JkStores.cas(JkDirs.cache()).root()).isEqualTo(store);
+            assertThat(JkStores.storeCas().root()).isEqualTo(store);
             // 2. store feeds and templates.
             assertThat(JkDirs.libraryRegistry()).startsWithRaw(store);
             assertThat(JkDirs.templates()).startsWithRaw(store);
@@ -135,7 +135,7 @@ class HostWarmupTest {
             assertThat(JkDirs.builds()).startsWithRaw(state);
 
             for (Path written : List.of(
-                    JkStores.cas(JkDirs.cache()).root(),
+                    JkStores.storeCas().root(),
                     JkDirs.libraryRegistry(),
                     JkDirs.templates(),
                     PluginAot.dir(),

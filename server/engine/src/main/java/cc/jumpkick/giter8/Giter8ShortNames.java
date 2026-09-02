@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.model.Layout;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -10,8 +11,8 @@ import java.util.Optional;
  */
 public final class Giter8ShortNames {
 
-    public static final String LAYOUT_SIMPLE = "simple";
-    public static final String LAYOUT_TRADITIONAL = "traditional";
+    public static final String LAYOUT_SIMPLE = Layout.TOKEN_SIMPLE;
+    public static final String LAYOUT_TRADITIONAL = Layout.TOKEN_TRADITIONAL;
     /** Framework-specific tree (Grails {@code grails-app/}, etc.). */
     public static final String LAYOUT_CUSTOM = "custom";
 

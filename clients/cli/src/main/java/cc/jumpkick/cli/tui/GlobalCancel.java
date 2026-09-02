@@ -25,7 +25,7 @@ import java.nio.file.Path;
  * <li>Settle the active plan region ("Build job was cancelled by user took …")
  * <li>{@code halt(}{@link Exit#INTERRUPTED}{@code )} — guaranteed process death if anything
  * above is stuck. 130 is {@code 128 + SIGINT}, what every shell already means by it; this
- * handler halted with 2 until JK-2417, which is jk's bad-config code.
+ * handler must not halt with Exit.USAGE (2); use the cancel exit code.
  * </ol>
  *
  * <p>The halt is a backup, not the normal route: a verb that notices the cancel unwinds and exits
@@ -42,11 +42,8 @@ public final class GlobalCancel {
 
     /**
      * Set the instant SIGINT lands, before anything that can block. The halt below is only a
-     * backup, and on a TTY it routinely loses: the verb notices the cancel, settles its plan and
-     * returns an ordinary failure while this handler is still waiting out the cancel RPCs. Left
-     * alone, the same Ctrl-C exited {@code 130} through a pipe and {@code 1} under a pty —
-     * indistinguishable in a script from a build that ran and failed. {@link #exitCodeFor} is how
-     * the entry point closes that gap.
+     * backup and often loses on a TTY when the verb settles first. {@link #exitCodeFor} makes both
+     * routes exit {@link Exit#INTERRUPTED} (130), not a plain failure.
      */
     private static volatile boolean interrupted;
 
@@ -106,7 +103,7 @@ public final class GlobalCancel {
             err.flush();
             // stdout too, not only err: when stdout is not a TTY it is buffered with autoFlush off,
             // and halt() below skips shutdown hooks — so up to a full buffer of `-O json` output was
-            // silently lost on Ctrl-C into a pipe (JK-1029).
+            // silently lost on Ctrl-C into a pipe.
             System.out.flush();
 
             // 3) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —

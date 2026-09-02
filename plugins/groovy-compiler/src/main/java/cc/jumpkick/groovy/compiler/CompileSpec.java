@@ -21,7 +21,6 @@ final class CompileSpec {
     final List<File> sources = new ArrayList<>();
     final List<File> classpath = new ArrayList<>();
     final List<File> processorPath = new ArrayList<>();
-    final List<File> javaSourceRoots = new ArrayList<>();
     final List<String> extraArgs = new ArrayList<>();
 
     /** Joint mode ⇔ any listed source is a {@code .java} file. */
@@ -48,7 +47,6 @@ final class CompileSpec {
         s.outputDir = spec.classesDir().toFile();
         if (spec.workdir() != null) s.workDir = spec.workdir().toFile();
         spec.extra("stubsOut").ifPresent(p -> s.stubsOut = p.toFile());
-        for (String root : c.stringList("javaSourceRoots")) s.javaSourceRoots.add(new File(root));
         for (Path p : spec.sources()) s.sources.add(p.toFile());
         for (Path p : spec.compileClasspath()) s.classpath.add(p.toFile());
         for (Path p : spec.processorClasspath()) s.processorPath.add(p.toFile());

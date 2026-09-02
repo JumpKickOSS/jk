@@ -42,7 +42,7 @@ public final class RepoLoginCommand implements CliCommand {
                 Opt.value("<USER>", "HTTP Basic username (else stdin = bearer token)", "--username"),
                 Opt.value(
                                 "<dir>",
-                                "Override the credentials directory. Default: <data>/repo-credentials.",
+                                "Override the credentials directory. Default: <home>/creds/repo.",
                                 "--credentials-dir")
                         .hide());
     }

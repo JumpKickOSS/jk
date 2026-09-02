@@ -57,14 +57,20 @@ public final class PwshShell implements Shell {
     @Override
     public String pathEnsureSnippet(String binDir) {
         // binDir is a double-quote-safe expression ($HOME/… or escaped absolute).
+        //
+        // Split on the separator and compare whole entries. A `-notlike "*$__jk_bin*"` substring
+        // test says "already there" for a PATH that merely mentions the directory — an unrelated
+        // `…\.jk\bin-backup` entry suppressed the prepend and left jk off PATH. The POSIX
+        // snippets fence with `:` for the same reason.
         return "$__jk_bin = \"" + binDir + "\"\n"
-                + "if ($env:PATH -notlike \"*$__jk_bin*\") { $env:PATH = \"$__jk_bin$([IO.Path]::PathSeparator)$env:PATH\" }\n"
+                + "if (-not ($env:PATH -split [IO.Path]::PathSeparator | Where-Object { $_ -eq $__jk_bin })) {"
+                + " $env:PATH = \"$__jk_bin$([IO.Path]::PathSeparator)$env:PATH\" }\n"
                 + "Remove-Variable __jk_bin -ErrorAction SilentlyContinue\n";
     }
 
     @Override
-    public String completionWiring(String dataDir) {
-        String file = dataDir + "/completions/pwsh/jk.ps1";
+    public String completionWiring(String storeDir) {
+        String file = storeDir + "/completions/pwsh/jk.ps1";
         return "if (Test-Path -LiteralPath \"" + file + "\") { . \"" + file + "\" }\n";
     }
 

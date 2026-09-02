@@ -231,7 +231,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
 
     /**
      * Display {@code group:name} from bootstrap TOML — no {@code JkBuildParser}. Missing group
-     * inherits from the workspace root when this dir is a listed member (JK-2151).
+     * inherits from the workspace root when this dir is a listed member.
      */
     public static String coordOf(Path projectDir) {
         Path dir = projectDir.toAbsolutePath().normalize();
@@ -260,7 +260,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
      * Project}. Scanned, not parsed, for the same reason {@link #coordOf} is: identity is
      * resolved on the client for history and dashboard routes, and {@code checkCliNoParseTypes}
      * keeps {@link cc.jumpkick.config.JkBuildParser} — and tomlj with it — off the native image
-     * (JK-2151).
+     *.
      */
     private static Optional<String> explicitId(Path projectDir) {
         String id =

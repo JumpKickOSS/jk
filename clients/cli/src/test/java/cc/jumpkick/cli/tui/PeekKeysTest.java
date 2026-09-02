@@ -50,7 +50,7 @@ class PeekKeysTest {
         // Typeahead seeded BEFORE attach, and deliberately a Ctrl-O: the reader's attach-time
         // drain must swallow it without dispatching. That makes the drain observable — this used
         // to be `Thread.sleep(60)`, chosen to out-wait a 40ms drain, which proved nothing and was
-        // a guess about this machine's scheduling either way (JK-2446). It also turns the wait
+        // a guess about this machine's scheduling either way. It also turns the wait
         // into an extra assertion the suite did not have: keys typed before peek attaches are
         // discarded, Ctrl-O included.
         in.feed(0x0F);

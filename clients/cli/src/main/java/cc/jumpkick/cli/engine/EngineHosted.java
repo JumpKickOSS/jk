@@ -3,8 +3,16 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.AuditRequest;
+import cc.jumpkick.engine.protocol.CompileRequest;
+import cc.jumpkick.engine.protocol.FormatRequest;
+import cc.jumpkick.engine.protocol.GitFetchRequest;
+import cc.jumpkick.engine.protocol.ImageRequest;
+import cc.jumpkick.engine.protocol.ImportRequest;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.engine.protocol.ProvisionRequest;
+import cc.jumpkick.engine.protocol.PublishRequest;
+import cc.jumpkick.engine.protocol.TrainRequest;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -36,13 +44,18 @@ final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        ProtoJobs.auditRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.severity(),
-                                req.osvBatchUrl() != null ? req.osvBatchUrl().toString() : null,
-                                req.osvVulnsUrl() != null ? req.osvVulnsUrl().toString() : null,
-                                req.offline()),
+                        new AuditRequest(
+                                        req.entryDir().toString(),
+                                        req.cache().toString(),
+                                        req.severity(),
+                                        req.osvBatchUrl() != null
+                                                ? req.osvBatchUrl().toString()
+                                                : null,
+                                        req.osvVulnsUrl() != null
+                                                ? req.osvVulnsUrl().toString()
+                                                : null,
+                                        req.offline())
+                                .encode(),
                         "audit",
                         listenerFactory,
                         (type, line) -> findings.onFinding(
@@ -67,17 +80,18 @@ final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                ProtoJobs.formatRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.check(),
-                        req.javaStyle(),
-                        req.kotlinStyle(),
-                        req.optimizeImports(),
-                        req.importOrder(),
-                        req.removeUnusedImports(),
-                        req.offline(),
-                        req.verbose()),
+                new FormatRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.check(),
+                                req.javaStyle(),
+                                req.kotlinStyle(),
+                                req.optimizeImports(),
+                                req.importOrder(),
+                                req.removeUnusedImports(),
+                                req.offline(),
+                                req.verbose())
+                        .encode(),
                 "format",
                 listenerFactory,
                 (type, line) -> files.onFile(
@@ -116,26 +130,27 @@ final class EngineHosted {
         }
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                ProtoJobs.publishRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.repoUrl().toString(),
-                        req.region(),
-                        req.endpoint(),
-                        req.jarPath() != null ? req.jarPath().toString() : null,
-                        req.allowSnapshot(),
-                        req.dryRun(),
-                        req.keyFile() != null ? req.keyFile().toString() : null,
-                        req.gpgPassphrase(),
-                        req.sigstore(),
-                        req.slsa(),
-                        req.sbom(),
-                        authType,
-                        user,
-                        pass,
-                        token,
-                        req.offline(),
-                        req.verbose()),
+                new PublishRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.repoUrl().toString(),
+                                req.region(),
+                                req.endpoint(),
+                                req.jarPath() != null ? req.jarPath().toString() : null,
+                                req.allowSnapshot(),
+                                req.dryRun(),
+                                req.keyFile() != null ? req.keyFile().toString() : null,
+                                req.gpgPassphrase(),
+                                req.sigstore(),
+                                req.slsa(),
+                                req.sbom(),
+                                authType,
+                                user,
+                                pass,
+                                token,
+                                req.offline(),
+                                req.verbose())
+                        .encode(),
                 "publish",
                 listenerFactory,
                 (type, line) -> {});
@@ -158,19 +173,20 @@ final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        ProtoJobs.imageRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.mainClass(),
-                                req.registry(),
-                                req.tag(),
-                                req.tarballArg(),
-                                req.dockerExecutable(),
-                                req.skipTests(),
-                                req.offline(),
-                                req.force(),
-                                req.verbose()),
+                        new ImageRequest(
+                                        req.entryDir().toString(),
+                                        req.cache().toString(),
+                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                        req.mainClass(),
+                                        req.registry(),
+                                        req.tag(),
+                                        req.tarballArg(),
+                                        req.dockerExecutable(),
+                                        req.skipTests(),
+                                        req.offline(),
+                                        req.force(),
+                                        req.verbose())
+                                .encode(),
                         "image",
                         listenerFactory,
                         (type, line) -> {},
@@ -195,14 +211,15 @@ final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                ProtoJobs.importRequest(
-                        req.source().toString(),
-                        req.out().toString(),
-                        req.baseDir().toString(),
-                        req.tmpDir().toString(),
-                        req.force(),
-                        req.report() != null ? req.report().toString() : null,
-                        req.cache().toString()),
+                new ImportRequest(
+                                req.source().toString(),
+                                req.out().toString(),
+                                req.baseDir().toString(),
+                                req.tmpDir().toString(),
+                                req.force(),
+                                req.report() != null ? req.report().toString() : null,
+                                req.cache().toString())
+                        .encode(),
                 "import",
                 listenerFactory,
                 (type, line) -> notes.onNote(Jsonl.str(line, "kind"), Jsonl.str(line, "text")));
@@ -224,7 +241,9 @@ final class EngineHosted {
             EnginePaths.Paths paths, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
             throws IOException {
         return EnginePluginAdapter.provision(
-                paths, ProtoJobs.provisionRequest(projectDir.toString(), toolsRoot.toString(), noDiscover, gradle));
+                paths,
+                new ProvisionRequest(projectDir.toString(), toolsRoot.toString(), noDiscover, gradle, null, null)
+                        .encode());
     }
 
     /**
@@ -237,8 +256,8 @@ final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.provision(
                 paths,
-                ProtoJobs.provisionRequest(
-                        toolsRoot.toString(), toolsRoot.toString(), noDiscover, false, tool, version));
+                new ProvisionRequest(toolsRoot.toString(), toolsRoot.toString(), noDiscover, false, tool, version)
+                        .encode());
     }
 
     /**
@@ -252,14 +271,15 @@ final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        ProtoJobs.compileRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.profile(),
-                                req.offline(),
-                                req.force(),
-                                req.verbose(),
-                                req.modules()),
+                        new CompileRequest(
+                                        req.entryDir().toString(),
+                                        req.cache().toString(),
+                                        req.profile(),
+                                        req.offline(),
+                                        req.force(),
+                                        req.verbose(),
+                                        req.modules())
+                                .encode(),
                         "compile",
                         listenerFactory,
                         (type, line) -> {})
@@ -274,16 +294,19 @@ final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        ProtoJobs.trainRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.graalHome() != null ? req.graalHome().toString() : null,
-                                req.profile(),
-                                req.force(),
-                                req.skipTests(),
-                                req.offline(),
-                                req.verbose()),
+                        new TrainRequest(
+                                        req.entryDir().toString(),
+                                        req.cache().toString(),
+                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                        req.graalHome() != null
+                                                ? req.graalHome().toString()
+                                                : null,
+                                        req.profile(),
+                                        req.force(),
+                                        req.skipTests(),
+                                        req.offline(),
+                                        req.verbose())
+                                .encode(),
                         "train",
                         listenerFactory,
                         (type, line) -> {})
@@ -328,13 +351,14 @@ final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                ProtoJobs.gitFetchRequest(
-                        req.url(),
-                        req.canonicalUrl(),
-                        req.ref(),
-                        req.cache().toString(),
-                        req.refresh(),
-                        req.requireJkToml()),
+                new GitFetchRequest(
+                                req.url(),
+                                req.canonicalUrl(),
+                                req.ref(),
+                                req.cache().toString(),
+                                req.refresh(),
+                                req.requireJkToml())
+                        .encode(),
                 "install-git-fetch",
                 listenerFactory,
                 (type, line) -> {});
@@ -346,7 +370,7 @@ final class EngineHosted {
     /**
      * Resolve a Maven-published CLI tool against the engine (the POM walk + jar fetches run
      * engine-side; see {@code ToolPlans}). The launcher write / inheritIO exec stays in the calling
-     * command — it owns the user's {@code ~/.local/bin} and terminal.
+     * command — it owns the user's {@code ~/.jk/bin} and terminal.
      */
     static EngineRequests.ToolResolveOutcome runToolResolve(
             EnginePaths.Paths paths,
@@ -414,7 +438,7 @@ final class EngineHosted {
     /**
      * Run a cache maintenance op against the engine, which executes it as an idle-boundary job: the
      * mutation waits until no plan is in flight (and blocks new ones while it runs), holding the
-     * cross-process {@code.prune.lock} throughout. {@code onWait} fires when the engine reports the
+     * cross-process {@code .prune.lock} throughout. {@code onWait} fires when the engine reports the
      * job is queued — {@code plans} in-flight builds ({@code external=true}: another process's
      * prune) — so the command can explain the pause before the progress UI starts. {@code
      * summaryOut} (a single-slot holder) is populated from the terminal plan-finish <em>before</em>

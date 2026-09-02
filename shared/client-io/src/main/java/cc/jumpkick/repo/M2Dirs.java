@@ -63,7 +63,7 @@ public final class M2Dirs {
      * consults it when placing an artifact, when trying {@code ~/.m2}, and when trying the local
      * mirror — so a 500-artifact sync stat'ed, read and XML-parsed {@code ~/.m2/settings.xml} over a
      * thousand times for a value that cannot change during a resolve. {@code RunNotices.warnOnce}
-     * beside the failure paths is a good hint that the authors expected repeat entry (JK-1033).
+     * beside the failure paths is a good hint that the authors expected repeat entry.
      */
     private static final StampedMemo<Path, StampedMemo.FileStamp, Path> SETTINGS_REPO = StampedMemo.create();
 

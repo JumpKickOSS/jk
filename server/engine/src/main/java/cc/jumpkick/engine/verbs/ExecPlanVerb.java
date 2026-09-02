@@ -53,7 +53,7 @@ public final class ExecPlanVerb implements HostedVerb {
                 // BuildPlanner.Inputs rather than a Session, so nothing installed the request's
                 // toolchain selection and `jk run --jdk 21` resolved the JVM that runs the app
                 // without the switch — the client was already sending it, and it was being dropped
-                // here (JK-1040). runWhere is the scoped, self-restoring install, so a third verb
+                // here. runWhere is the scoped, self-restoring install, so a third verb
                 // added later inherits this by taking its session from resolveSession too.
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 plan = SessionContext.where(

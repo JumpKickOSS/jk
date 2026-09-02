@@ -58,7 +58,7 @@ extra-src = ["../intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"]
 # Nested engines / shared sockets: integration classes materialize the resident engine and
 # share its JK_HOME store, so they stay on one serial trailing worker (serial-tags) while
 # the hermetic unit tier shards across workers (auto). History: the old blanket
-# `workers = 1` predated per-worker JK_STATE_DIR isolation (JK-2183/JK-2184).
+# `workers = 1` predated per-worker JK_STATE_DIR isolation.
 workers = 0
 serial-tags = ["integration"]
 # Exclude the long-running tests for our day-to-day usage.

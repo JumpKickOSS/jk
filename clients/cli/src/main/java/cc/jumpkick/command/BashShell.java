@@ -55,8 +55,8 @@ public final class BashShell implements Shell {
     }
 
     @Override
-    public String completionWiring(String dataDir) {
-        String file = dataDir + "/completions/bash/jk";
+    public String completionWiring(String storeDir) {
+        String file = storeDir + "/completions/bash/jk";
         return "[ -f \"" + file + "\" ] && . \"" + file + "\"\n";
     }
 

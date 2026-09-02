@@ -26,9 +26,9 @@ jobs:
       - name: Scan commit messages
         run: bash scripts/check-no-agent-attribution.sh
 
-  # Fast unit tier only — excludes @Tag(integration|slow|bench). Target <5 min.
+  # Unit tier plus every network-free structural guard. Target <5 min.
   test:
-    name: Gradle unit test
+    name: Fast branch gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,5 +46,5 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Unit test
-        run: ./gradlew test --no-daemon
+      - name: Unit tests and structural guards
+        run: ./gradlew checkFast --no-daemon

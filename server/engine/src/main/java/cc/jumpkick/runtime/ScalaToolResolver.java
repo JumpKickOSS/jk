@@ -52,7 +52,7 @@ public final class ScalaToolResolver {
 
         Files.createDirectories(libDir);
         // Drop the completion marker up front: a crash mid-copy then leaves no gate, so the next
-        // build re-resolves cleanly instead of trusting a half-written lib dir (JK-2290).
+        // build re-resolves cleanly instead of trusting a half-written lib dir.
         Files.deleteIfExists(cacheFile);
         int expected = resolution.modules().size();
         List<Path> jars = new ArrayList<>();
@@ -63,9 +63,9 @@ public final class ScalaToolResolver {
             if (hit.isEmpty()) continue;
             Path named = libDir.resolve(coord.artifact() + "-" + coord.version() + ".jar");
             // Copy through a unique temp + atomic move so a torn/partial copy is never observed by a
-            // concurrent build, and --force re-copies unconditionally (JK-2290).
+            // concurrent build, and --force re-copies unconditionally.
             Path tmp = Files.createTempFile(libDir, "." + named.getFileName() + ".", ".part");
-            // Failure path only — moveInto consumed tmp on success (JK-1029).
+            // Failure path only — moveInto consumed tmp on success.
             boolean moved = false;
             try {
                 Files.copy(hit.get().fetched().cachePath(), tmp, StandardCopyOption.REPLACE_EXISTING);

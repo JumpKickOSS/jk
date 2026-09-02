@@ -6,7 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.engine.protocol.ProvisionRequest;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.CompatPlans;
 import java.io.BufferedWriter;
@@ -46,16 +46,11 @@ public final class ProvisionVerb implements HostedVerb {
             try {
                 // `tool` present means an explicit `jk tool install <tool>[:<version>]`; absent
                 // means the historical "read this project's wrapper" form.
-                String tool = Jsonl.str(requestLine, "tool");
-                Path toolsRoot = Path.of(Jsonl.str(requestLine, "toolsRoot"));
-                boolean noDiscover = Jsonl.bool(requestLine, "noDiscover", false);
-                var outcome = tool != null && !tool.isBlank()
-                        ? CompatPlans.provisionTool(tool, Jsonl.str(requestLine, "version"), toolsRoot, noDiscover)
-                        : CompatPlans.provision(
-                                Path.of(Jsonl.str(requestLine, "dir")),
-                                toolsRoot,
-                                noDiscover,
-                                Jsonl.bool(requestLine, "gradle", false));
+                ProvisionRequest body = ProvisionRequest.decode(requestLine);
+                Path toolsRoot = Path.of(body.toolsRoot());
+                var outcome = body.tool() != null && !body.tool().isBlank()
+                        ? CompatPlans.provisionTool(body.tool(), body.version(), toolsRoot, body.noDiscover())
+                        : CompatPlans.provision(Path.of(body.dir()), toolsRoot, body.noDiscover(), body.gradle());
                 host.sendQuiet(
                         writer,
                         ProtoEvents.provisionResult(

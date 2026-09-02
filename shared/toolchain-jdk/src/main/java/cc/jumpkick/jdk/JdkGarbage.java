@@ -37,7 +37,7 @@ public final class JdkGarbage {
      *
      * <p>Being under the root is not enough. {@link JkDirs#jdks()} is IntelliJ's shared
      * {@code ~/.jdks}, so the user's own JDKs live there too, and an update that superseded one of
-     * those would have queued somebody else's install for deletion (JK-2624). {@link JdkOwnership}
+     * those would have queued somebody else's install for deletion. {@link JdkOwnership}
      * is the only thing that distinguishes them.
      */
     public void enqueue(Path dir) {

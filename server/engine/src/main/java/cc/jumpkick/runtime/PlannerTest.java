@@ -142,8 +142,7 @@ public final class PlannerTest {
                     allTestSources.addAll(gvTest);
                     allTestSources.addAll(scTest);
                     ctx.put(TEST_SOURCES, allTestSources);
-                    @SuppressWarnings("unchecked")
-                    List<Path> compileCp = (List<Path>) ctx.require(COMPILE_TEST_CP);
+                    List<Path> compileCp = ctx.require(COMPILE_TEST_CP);
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(ctx.require(MAIN_CLASSES));
                     baseCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), baseCp);
@@ -240,14 +239,11 @@ public final class PlannerTest {
                             if (mixedTest) javaCp.add(ktTestOut);
                             if (mixedTestGv) javaCp.add(gvTestOut);
                         }
-                        @SuppressWarnings("unchecked")
-                        List<String> javacArgs = (List<String>) ctx.require(JAVAC_ARGS);
+                        List<String> javacArgs = ctx.require(JAVAC_ARGS);
                         // Run the same declared annotation processors over test sources:
                         // modern javac only honors processors named by -processorpath, so
                         // without this a Lombok-using test wouldn't see its generated modules.
-                        @SuppressWarnings("unchecked")
-                        List<Path> processorCp =
-                                (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+                        List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
                         Files.createDirectories(genDir);
                         ScalaCompile.Setup scalaSetup = null;
@@ -342,8 +338,7 @@ public final class PlannerTest {
                         ctx.label("no tests to run");
                         return;
                     }
-                    @SuppressWarnings("unchecked")
-                    List<Path> testRtCp = (List<Path>) ctx.require(TEST_RUNTIME_CP);
+                    List<Path> testRtCp = ctx.require(TEST_RUNTIME_CP);
                     testRtCp = new ArrayList<>(testRtCp);
                     testRtCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp);
                     // Plugin test-classpath contributions (contributesTestClasspath — e.g. the
@@ -354,7 +349,6 @@ public final class PlannerTest {
                     // anything real on the classpath shadows it.
                     testRtCp.addAll(contributedProvidedFor(ctx));
                     Path testClassesForStamp = ctx.require(TEST_CLASSES);
-                    @SuppressWarnings("unchecked")
                     List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(List.of());
                     // Plugin jars handed to the test JVM ([build.test-plugin-jars])
                     // plugin-forking tests' behavior depends on their content, so resolve
@@ -379,7 +373,6 @@ public final class PlannerTest {
                     // the outcome — own main output, test sources, the *content* of the
                     // runtime classpath (sibling modules included), the lock, and the
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
-                    @SuppressWarnings("unchecked")
                     List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
                     // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
                     // when the session selection carries no tags at all, apply this module's
@@ -403,6 +396,9 @@ public final class PlannerTest {
                     }
                     String stampKey = TestStamp.computeKey(
                             testSrcs, ctx.require(MAIN_CLASSES), testResDirs, in.lockFile(), testRtCp, extras);
+                    if (Perf.ENABLED) {
+                        System.err.println("[jk-perf] live-test-stamp " + in.dir() + " key=" + stampKey);
+                    }
                     String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -489,7 +485,7 @@ public final class PlannerTest {
                                 .withModuleLabel(moduleLabel)
                                 .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
                                 // [test] serial-tags: those classes run on one trailing worker
-                                // while the rest shard (JK-2184).
+                                // while the rest shard.
                                 .withSerialTags(projectUnderTest.build().testSerialTags());
                         if (affected != null) launcher.withClassNames(affected.classNames());
                         result = launcher.run(
@@ -561,20 +557,8 @@ public final class PlannerTest {
     }
 
     /**
-     * Say out loud that a module which asked for a test framework contributed no tests.
-     *
-     * <p>"No test sources" is a legitimate answer — plenty of modules have none — so the step
-     * skipping is not itself news. It becomes news when the module declares
-     * {@code [test-dependencies]}: somebody wrote down that this module has tests, and the build
-     * just found none. That combination is either a layout mistake or the shape of JK-2620, where a
-     * stale scan made a module's real suite invisible and {@code jk test} exited green over tests it
-     * never compiled. The propagation fix closes that particular hole; this note is what makes the
-     * next one loud instead of silent, because a skip with a plausible label reads exactly like
-     * success.
-     *
-     * <p>Raised through {@link TaskContext#warn} rather than a log line, so it is attributed to this
-     * module and this step and lands in the {@code jk-results.md} warnings an agent already reads —
-     * a note only the engine log carries is a note nobody sees.
+     * Warn when a module declares {@code [test-dependencies]} but has no test source files.
+     * Raised via {@link TaskContext#warn} so it is attributed to this module/step in results.
      */
     private static void warnDeclaredTestDepsButNoSources(TaskContext ctx, JkBuild project, Path dir) {
         if (project == null) return;
@@ -582,10 +566,6 @@ public final class PlannerTest {
                 && project.dependencies().of(Scope.TEST_DEV).isEmpty()) {
             return;
         }
-        ctx.warn(
-                "no-test-sources",
-                dir + " declares [test-dependencies] but has no test sources — nothing was compiled "
-                        + "or run for it. Check the test roots (src/test/java, or the suite dirs under "
-                        + "src/) and that they hold files this module's languages compile.");
+        ctx.warn("no-test-sources", dir + " declares [test-dependencies] but has no test source files");
     }
 }

@@ -64,7 +64,7 @@ class ForkedJavacAotBenchTest {
             // Benchmark methodology, not synchronisation: let the background AOT trainer finish
             // before the measured runs start. This file asserts nothing (every check is an
             // assumeTrue; the javadoc says it prints medians and never fails on a delta), so there
-            // is no assertion this delay could make falsely green — the JK-2446 defect shape.
+            // is no assertion this delay could make falsely green — the defect shape.
             Thread.sleep(1500);
         }
 

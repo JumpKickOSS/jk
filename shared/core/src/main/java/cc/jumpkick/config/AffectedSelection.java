@@ -90,7 +90,7 @@ public final class AffectedSelection {
     public static List<String> gitDiffNameOnly(Path root, String ref) {
         // --end-of-options: a ref like "--output=…" must be read as a revision, not a git
         // option. Matches the discipline in GitCliExtension. --relative + stdout-only parsing:
-        // see DirtyPaths.gitDiffNameOnly (JK-2611).
+        // see DirtyPaths.gitDiffNameOnly.
         return DirtyPaths.gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", ref + "...HEAD");
     }
 }

@@ -28,7 +28,7 @@ public record ModuleOutcome(
      * Image-terminal outcome for a {@code jk image} workspace module — what the terminal step
      * actually did (push / daemon load / tarball write), so the CLI can print the same
      * "Pushed &lt;ref&gt;" / "Wrote OCI tarball" / "Loaded … into docker" tail the single-project
-     * path shows (JK-2100). {@code null} for non-image modules; all fields nullable.
+     * path shows. {@code null} for non-image modules; all fields nullable.
      */
     public record Image(String ref, String tarball, String name, String version, String daemonExe) {}
 

@@ -10,9 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * jshell classpath aliasing runs in the RESIDENT engine (JK-2143), so it must be
+ * jshell classpath aliasing runs in the RESIDENT engine, so it must be
  * idempotent against a stable cache dir — the old per-request temp dir + deleteOnExit
- * accumulated for the engine's whole lifetime (JK-2159).
+ * accumulated for the engine's whole lifetime.
  */
 class ExecPlansJarAliasedTest {
 

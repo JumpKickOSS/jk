@@ -7,9 +7,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.engine.protocol.SingleBuildRequest;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -60,13 +59,14 @@ public final class SingleBuildVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String entryDirStr = Jsonl.str(requestLine, "dir");
-            String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
-            int workers = Jsonl.intValue(requestLine, "workers", 0);
-            String profile = Jsonl.str(requestLine, "profile");
-            boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
+            SingleBuildRequest body = SingleBuildRequest.decode(requestLine);
+            String entryDirStr = body.dir();
+            String cacheStr = body.cache();
+            String jdksDirStr = body.jdksDir();
+            int workers = body.workers();
+            String profile = body.profile();
+            boolean skipTests = body.skipTests();
+            boolean verbose = body.verbose();
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
@@ -78,7 +78,7 @@ public final class SingleBuildVerb implements HostedVerb {
             int estimatedTestCount = skipTests
                     ? 0
                     : TestSupport.estimateSelectedSuiteTestCount(
-                            entryDir, ModuleLayout.isCompact(entryDir), ProtoJobs.testSelectionOf(requestLine));
+                            entryDir, ModuleLayout.isCompact(entryDir), body.selection());
 
             Session session =
                     host.resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);

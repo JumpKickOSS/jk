@@ -8,39 +8,31 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * the store must not follow the cache root, or isolating a cache keeps discarding downloads.
+ * The store must not follow the cache root, or isolating a cache keeps discarding downloads.
  *
- * <p>A cleverer rule was tried first — redirect only when the cache root looks like the ambient one, so
- * a caller supplying its own directory keeps isolation — and it was measured failing. The client
- * resolves {@code JK_CACHE_DIR} to a concrete path and sends it; the engine daemon does not inherit the
- * client's environment, so its ambient root is {@code ~/.cache/jk}, nothing ever matched, and every
- * request kept its own store.
+ * <p>A cleverer rule was tried first — redirect only when the cache root looks like the ambient
+ * one, so a caller supplying its own directory keeps isolation — and it was measured failing. The
+ * client resolves {@code JK_CACHE_DIR} to a concrete path and sends it; the engine daemon does not
+ * inherit the client's environment, so its ambient root is {@code ~/.jk/cache}, nothing ever
+ * matched, and every request kept its own store. The store helpers therefore take no cache
+ * argument at all — an ignored parameter read as cache-rooted and produced a real mis-diagnosis.
  */
 class JkStoresTest {
 
     @Test
-    void the_store_is_independent_of_whatever_cache_root_arrives(@TempDir Path tmp) {
+    void store_and_store_cas_root_under_the_store_override(@TempDir Path tmp) {
         Path store = tmp.resolve("store");
-
-        for (Path cacheRoot : new Path[] {
-            tmp.resolve("cache"), // the ambient one
-            tmp.resolve("fresh-cache-for-this-test"), // JK_CACHE_DIR pointed somewhere new
-            tmp.resolve("some-fixture-cache"), // a fixture supplying its own
-            null
-        }) {
-            assertThat(JkStores.storeRootFor(cacheRoot, tmp.resolve("cache"), store))
-                    .as("cacheRoot=%s", cacheRoot)
-                    .isEqualTo(store);
+        String prev = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        try {
+            assertThat(JkStores.store()).isEqualTo(store);
+            assertThat(JkStores.storeCas().root()).isEqualTo(store);
+            assertThat(JkStores.resolve("git")).isEqualTo(store.resolve("git"));
+            assertThat(JkStores.resolve("repos")).isEqualTo(store.resolve("repos"));
+        } finally {
+            if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
+            else System.setProperty("jk.env.JK_STORE_DIR", prev);
         }
-    }
-
-    @Test
-    void a_store_subdirectory_resolves_under_the_store(@TempDir Path tmp) {
-        Path store = tmp.resolve("store");
-
-        assertThat(JkStores.storeRootFor(tmp.resolve("anything"), tmp.resolve("cache"), store)
-                        .resolve("git"))
-                .isEqualTo(store.resolve("git"));
     }
 
     @Test

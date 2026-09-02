@@ -362,7 +362,7 @@ public final class PlannerPlugin {
                     // (d8, aapt2, a compiler plugin) run on and compile against — ProjectFacts
                     // carries `release`, which is a different fact entirely. Without this,
                     // switching jdk = 17 to 21 moves no plugin step key and every one of the SPI
-                    // plugins restores output built against the old platform (JK-2460).
+                    // plugins restores output built against the old platform.
                     tokens.add("jdk:" + ActionKey.jdkToken(javaHome));
                     // The step's CODE is an input: a changed plugin jar must re-run the
                     // step, or a plugin upgrade (or first-party dev iteration) silently restores
@@ -463,7 +463,7 @@ public final class PlannerPlugin {
         // artifacts the packager body receives below are the very objects that keyed its output,
         // so nothing can reach the plugin without reaching its key — and `jk explain` prices this
         // step by calling the same body, so it can no longer forecast the plain jar's key for a
-        // module the plain packager never touches (JK-2491).
+        // module the plain packager never touches.
         PackagingKeys.PackagerKey packaging = PackagingKeys.pluginPackager(new PackagingKeys.Packager(
                 project,
                 in.dir(),

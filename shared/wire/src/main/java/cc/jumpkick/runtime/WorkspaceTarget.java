@@ -3,7 +3,7 @@ package cc.jumpkick.runtime;
 
 /**
  * Terminal basket for a workspace build-family request. Same orchestrator
- * ({@link WorkspaceExecute}); only the plan terminal and optional module cone change.
+ * (the engine's {@code WorkspaceExecute}); only the plan terminal and optional module cone change.
  */
 public enum WorkspaceTarget {
     /** {@code jk build}: package (+ declared tails). */

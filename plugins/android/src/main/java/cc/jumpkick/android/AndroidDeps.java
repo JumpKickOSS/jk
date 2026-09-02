@@ -108,7 +108,7 @@ final class AndroidDeps {
     private static void collectTree(Path root, Map<String, Path> out) throws IOException {
         // Collected then sorted, rather than sorted inside a stream: the walk hands over each
         // entry's attributes and re-resolving every path to ask isRegularFile again was the cost
-        // (JK-1041 via JK-1031's owner).
+        // (via's owner).
         List<Path> found = new ArrayList<>();
         PathUtil.forEachRegularFile(root, (file, attrs) -> found.add(file));
         found.sort(Comparator.naturalOrder());

@@ -35,7 +35,7 @@ class UserConfigPluginPinTest {
 
     @AfterEach
     void restoreConfigOverride() {
-        System.clearProperty("jk.env.JK_CONFIG_FILE");
+        System.clearProperty("jk.env.JK_HOME");
     }
 
     @Test
@@ -46,7 +46,7 @@ class UserConfigPluginPinTest {
                 [plugins]
                 acme = { path = %s, sha256 = "%s" }
                 """.formatted(MinimalToml.quote(tmp.resolve("gone.jar").toString()), "ab".repeat(32)));
-        System.setProperty("jk.env.JK_CONFIG_FILE", config.toString());
+        System.setProperty("jk.env.JK_HOME", config.getParent().toString());
 
         assertThatThrownBy(BuiltInPluginJars::installUserConfig)
                 .isInstanceOf(IllegalStateException.class)
@@ -64,7 +64,7 @@ class UserConfigPluginPinTest {
                 [plugins]
                 acme = { path = %s, sha256 = "%s" }
                 """.formatted(MinimalToml.quote(jar.toString()), declared));
-        System.setProperty("jk.env.JK_CONFIG_FILE", config.toString());
+        System.setProperty("jk.env.JK_HOME", config.getParent().toString());
 
         assertThatThrownBy(BuiltInPluginJars::installUserConfig)
                 .isInstanceOf(IllegalStateException.class)
@@ -80,7 +80,7 @@ class UserConfigPluginPinTest {
                 [plugins]
                 acme = { path = %s, sha256 = "%s" }
                 """.formatted(MinimalToml.quote(jar.toString()), Hashing.sha256Hex(jar)));
-        System.setProperty("jk.env.JK_CONFIG_FILE", config.toString());
+        System.setProperty("jk.env.JK_HOME", config.getParent().toString());
 
         BuiltInPluginJars.installUserConfig();
 

@@ -58,7 +58,7 @@ public final class KotlinPluginSetup {
     }
 
     /**
-     * Locate the {@code jk-kotlin-compiler} plugin jar via the shared registry: the {@value
+     * Locate the {@code jk-kotlin-compiler} plugin jar via the shared registry: the {@link
      * #WORKER_JAR_PROPERTY} override, then the CAS by expected SHA.
      */
     public static Path locateWorkerJar(Cas cas) {

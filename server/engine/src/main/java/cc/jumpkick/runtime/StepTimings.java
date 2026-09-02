@@ -30,13 +30,14 @@ import org.tomlj.TomlTable;
 
 /**
  * Learned per-unit step rates ({@code floor + perUnit × count}) for progress-bar weights. Rates
- * are EWMA-smoothed in {@code ~/.local/state/jk/builds/timings.toml} (beside {@code calibration.toml} /
+ * are EWMA-smoothed in {@code ~/.jk/state/builds/timings.toml} (beside {@code calibration.toml} /
  * {@code metrics.json}) so they survive cache GC and {@code jk clean}. Cold steps fall back to
  * static estimates. Reads are memoized per store file; {@link #record} is a single load-update-write
  * at build end.
  *
- * <p>Legacy location {@code ~/.cache/jk/timings.toml} is migrated into state on first load.
- * Hermetic tests may pass a non-default root; then the file is {@code <root>/timings.toml}.
+ * <p>Callers hand this the cache root and {@link #file(Path)} remaps it to the state ledger, so
+ * the numbers survive {@code jk clean}. Hermetic tests may pass a non-default root; then the file
+ * is {@code <root>/timings.toml}.
  */
 public final class StepTimings {
 
@@ -389,7 +390,7 @@ public final class StepTimings {
     }
 
     private static OptionalLong tomlLong(Path userConfig, String key) {
-        // The [cache] table of the user-global ~/.config/jk/config.toml; missing/malformed → empty.
+        // The [cache] table of the user-global ~/.jk/config.toml; missing/malformed → empty.
         Optional<Long> v = TomlValues.parse(userConfig)
                 .map(toml -> toml.getTable("cache"))
                 .flatMap(cache -> TomlValues.optLong(cache, key));

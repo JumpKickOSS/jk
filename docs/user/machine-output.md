@@ -28,7 +28,7 @@ On disk (the command reads the journal copy; `target/` is a latest-copy fallback
 
 ```text
 target/jk-results.md
-~/.local/state/jk/builds/projects/<key>/runs/<build-number>/jk-results.md
+~/.jk/state/builds/projects/<key>/runs/<build-number>/jk-results.md
 ```
 
 The two markdown files are the same report. JUnit XML stays at `target/reports/test-results/`.
@@ -62,7 +62,7 @@ Illustrative lines:
 ## `details.jsonl`
 
 ```text
-~/.local/state/jk/builds/projects/<key>/runs/<build-number>/details.jsonl
+~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl
 ```
 
 Same event shape as `--output json`. Default **on**; disable with `JK_CLI_DETAILS=off`
@@ -93,8 +93,10 @@ differs; field **names** match.
 | Module | `module-start` / `module-finish` |
 | Workspace end | `workspace-finish` |
 
-`stage` is a **closed** set: `resolve`, `generate`, `compile`, `test`, `package`,
-`native`, `image`, `other`. `jid` is the public job handle on every surface.
+`stage` is a **closed** set, in pipeline order: `resolve`, `generate`, `compile`, `test`,
+`package`, `train`, `native`, `image`, `publish`, `other`. The field is always present, but a
+task outside the pipeline (`BuildStage.OTHER`) is emitted as `"stage":""` on the live wire; the
+journal spells that same case `other`. `jid` is the public job handle on every surface.
 
 SSE `event` name always equals `data.type`. MCP live frames are
 `notifications/jk/event` with the same params. Dashboard-only chrome (`status`/`cache`

@@ -14,13 +14,13 @@ description = "jk plugin SPI: the stable surface plugins compile against. " +
 // cc.jumpkick.model.JkVersion (jk's release train): the SPI freezes on a different cadence. This
 // line is the ONE owner of the SDK version: it is what actually gets published, `test` hands it to
 // PublishedSdkConsumerTest below, and PluginSdkScaffoldVersionTest (in :core) reads it back to hold
-// the `jk new --plugin` scaffold pin against it. JK-2430 deleted the Java constant that used to
+// the `jk new --plugin` scaffold pin against it. A later pass deleted the Java constant that used to
 // mirror it — nothing in production read it, and a mirror a compiler cannot check is a comment.
 group = "cc.jumpkick"
 version = "0.1.0"
 
 // The plugin SPI leaf (plus :host for the shared codec and host primitives). Classes ride the user's
-// test JVM on the project's pinned JDK — JDK 17 floor. Since JK-2139, :jk-api carries
+// test JVM on the project's pinned JDK — JDK 17 floor. :jk-api carries
 // its own same-shape PluginConfig fork; neither module depends on the other.
 java {
     toolchain {
@@ -33,7 +33,7 @@ tasks.compileJava {
 
 // `api`, not `implementation`: the codec and the Exit vocabulary are reachable from the SPI a
 // plugin author writes against, so they belong on the consumer's compile classpath. Which is why
-// :host publishes as `cc.jumpkick:jk-host` — see shared/host/build.gradle.kts (JK-2466).
+// :host publishes as `cc.jumpkick:jk-host` — see shared/host/build.gradle.kts.
 dependencies {
     api(project(":host"))
     // The SPI's own fake (`FakeBuildIo`) lives in `testFixtures`, so the four plugin modules that
@@ -172,7 +172,7 @@ fun blankJavaComments(src: String): String {
 // plugins/*/src/main/java plus this module's own src/main/java. Tests are exempt: they
 // legitimately build specs both ways. Measured 2026-08-25: 0 violations over 119 files
 // (70 plugin, 49 plugin-sdk).
-// Guard G29 (JK-2471).
+// Guard G29.
 val checkWorkerOfflineFromSpec by tasks.registering {
     group = "verification"
     description = "Fail the build on a JK_OFFLINE / offline-property read in worker sources (use TaskExec.offline())"

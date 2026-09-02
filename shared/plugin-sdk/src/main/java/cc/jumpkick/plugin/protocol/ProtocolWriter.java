@@ -24,8 +24,8 @@ import java.io.PrintStream;
  *
  * <p>What the buffer underneath <em>does</em> buy: one {@code write(2)} per line instead of however
  * many the encoder emits, since the flush below now has something to flush. This is a pipe, not the
- * filesystem — nowhere near the 160–305&nbsp;µs NTFS costs that motivate the rest of JK-1027 — which
- * is the other half of why batching it is not worth a deadlock (JK-1045).
+ * filesystem — nowhere near the 160–305&nbsp;µs NTFS costs that motivate the rest of — which
+ * is the other half of why batching it is not worth a deadlock.
  */
 public final class ProtocolWriter {
 

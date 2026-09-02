@@ -80,7 +80,7 @@ class WizardTest {
      * <p>This was a bare {@code Thread.sleep(10)}. Ten milliseconds was a guess about how fast this
      * machine drains a pipe: too short under load (a flake) and, worse, unable to prove the key had
      * been consumed at all, so the negative assertions it guarded could pass having verified
-     * nothing (JK-2446). A redraw is a fact; wait for the fact.
+     * nothing. A redraw is a fact; wait for the fact.
      */
     private static void settle(Harness h) throws Exception {
         int before = h.drawnBeforeKey().get();

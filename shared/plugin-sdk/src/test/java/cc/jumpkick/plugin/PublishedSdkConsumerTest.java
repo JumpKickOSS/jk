@@ -27,7 +27,7 @@ import org.w3c.dom.Element;
 /**
  * The SDK is only as good as its published closure. {@code cc.jumpkick:jk-plugin-sdk} shipped a POM
  * whose one dependency was {@code jk:host:unspecified} — a coordinate no repository can serve — so
- * every consumer failed in dependency resolution before compiling a line (JK-2466). Asserting on
+ * every consumer failed in dependency resolution before compiling a line. Asserting on
  * POM text would have proved the string changed; this resolves the artifact the way a Maven
  * consumer does and then compiles against what came back.
  *

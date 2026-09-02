@@ -5,10 +5,8 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -223,7 +221,7 @@ public final class FreshnessStamp {
         // One readAttributes answers all three questions this used to ask separately — present,
         // directory, mtime — where exists + isDirectory + getLastModifiedTime each re-resolved the
         // path (10.3, 10.3 and 10.6 us on NTFS against ~1.5 on ext4). Three ops per input, over
-        // ~1,300 sources, twice per isFresh (JK-1031).
+        // ~1,300 sources, twice per isFresh.
         Optional<BasicFileAttributes> stat = PathUtil.stat(file);
         if (stat.isEmpty()) return true; // disappearing input → treat as changed
         BasicFileAttributes attrs = stat.get();
@@ -235,23 +233,12 @@ public final class FreshnessStamp {
             // a deletion bumps the parent and nothing else. The visitor still hands over attributes
             // the walk already read.
             boolean[] newer = {false};
-            Files.walkFileTree(file, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes a) {
-                    if (a.lastModifiedTime().toMillis() >= stampMillis) newer[0] = true;
-                    return newer[0] ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
+            PathUtil.forEachEntry(file, dir -> false, (p, a) -> {
+                if (a.lastModifiedTime().toMillis() >= stampMillis) {
+                    newer[0] = true;
+                    return false;
                 }
-
-                @Override
-                public FileVisitResult visitFile(Path p, BasicFileAttributes a) {
-                    if (a.lastModifiedTime().toMillis() >= stampMillis) newer[0] = true;
-                    return newer[0] ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFileFailed(Path p, IOException failure) {
-                    return FileVisitResult.CONTINUE;
-                }
+                return true;
             });
             return newer[0];
         }

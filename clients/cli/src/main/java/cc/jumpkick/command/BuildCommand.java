@@ -70,7 +70,7 @@ public final class BuildCommand implements CliCommand {
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.skipTests());
         opts.add(CommonOpts.keepGoing());
-        // Suite/tag widening, same vocabulary as `jk test` (JK-2182): --all = every suite
+        // Suite/tag widening, same vocabulary as `jk test`: --all = every suite
         // AND no config tag excludes — the "build + run everything" gate.
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
@@ -136,7 +136,7 @@ public final class BuildCommand implements CliCommand {
             CommandWedge.printFail("Build", ModuleSelectors.BOTH_MESSAGE);
             return Exit.CONFIG;
         }
-        // Suite/tag widening rides the session exactly as `jk test` (JK-2182); the wire
+        // Suite/tag widening rides the session exactly as `jk test`; the wire
         // adapters read it for both workspace and single-project requests.
         TestSelection testSelection;
         try {

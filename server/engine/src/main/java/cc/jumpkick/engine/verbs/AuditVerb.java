@@ -5,10 +5,10 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.protocol.AuditRequest;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -49,13 +49,11 @@ public final class AuditVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String severity = Jsonl.str(requestLine, "severity");
-                String batch = Jsonl.str(requestLine, "osvBatchUrl");
-                String vulns = Jsonl.str(requestLine, "osvVulnsUrl");
+                AuditRequest body = AuditRequest.decode(requestLine);
+                Path entryDir = Path.of(body.dir());
+                Path cache = Path.of(body.cache());
                 Session session = Session.defaults()
-                        .withConfig(JkConfig.empty().withOffline(Jsonl.bool(requestLine, "offline", false)))
+                        .withConfig(JkConfig.empty().withOffline(body.offline()))
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache)
                         .withCancel(cancelToken)
@@ -64,9 +62,9 @@ public final class AuditVerb implements HostedVerb {
                 BuildPlan plan = AuditPlans.auditBuildPlan(
                         LockPaths.lockFile(entryDir),
                         cache,
-                        severity,
-                        batch != null ? URI.create(batch) : null,
-                        vulns != null ? URI.create(vulns) : null,
+                        body.severity(),
+                        body.osvBatchUrl() != null ? URI.create(body.osvBatchUrl()) : null,
+                        body.osvVulnsUrl() != null ? URI.create(body.osvVulnsUrl()) : null,
                         (module, version, vulnId, sev, summary) -> host.sendQuiet(
                                 writer, ProtoEvents.auditFinding(dir, module, version, vulnId, sev, summary)));
                 return host.streamSinglePlan(

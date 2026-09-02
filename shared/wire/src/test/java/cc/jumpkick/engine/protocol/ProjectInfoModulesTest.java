@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** The module set rides as one ordered {@code dir → name} object (JK-2168). */
+/** The module set rides as one ordered {@code dir → name} object. */
 class ProjectInfoModulesTest {
 
     /** Wrap a body in a real {@code project-info-ack} line — the only shape the engine writes. */

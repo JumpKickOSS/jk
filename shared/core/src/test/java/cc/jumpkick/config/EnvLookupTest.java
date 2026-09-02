@@ -11,9 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * precedence and search roots for {@code.env}.
+ * precedence and search roots for {@code .env}.
  *
- * <p>The two decisions worth pinning: the real environment beats {@code.env} (Node dotenv / Docker
+ * <p>The two decisions worth pinning: the real environment beats {@code .env} (Node dotenv / Docker
  * Compose convention — the file supplies defaults, so a shell or CI variable can still override it),
  * and the search stops at the workspace root rather than walking up to a git root.
  */

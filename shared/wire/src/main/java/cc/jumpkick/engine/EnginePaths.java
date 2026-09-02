@@ -176,12 +176,12 @@ public final class EnginePaths {
     public static void writeEndpoint(Paths paths, Path socket) throws IOException {
         Path ep = endpoint(paths);
         // Durable: a torn endpoint pointer strands every client that reads it, and nothing
-        // reconstructs it without a respawn (JK-1037).
+        // reconstructs it without a respawn.
         AtomicWrites.replaceDurably(ep, socket.getFileName().toString());
     }
 
     /**
-     * The token-file sibling of a {@code.sock} path, derived by naming convention alone — so the
+     * The token-file sibling of a {@code .sock} path, derived by naming convention alone — so the
      * CLI-side client's {@code connect(Path)} (which only ever receives {@code paths.socket}, not
      * the full {@link Paths} record, across its several call sites) can find it without threading the
      * whole record through every method.
@@ -191,7 +191,7 @@ public final class EnginePaths {
     }
 
     /**
-     * The pid-file sibling of a {@code.sock} path ({@code <stem>.pid}), same naming convention as
+     * The pid-file sibling of a {@code .sock} path ({@code <stem>.pid}), same naming convention as
      * {@link #tokenFor} — used by the client to wait for process death after force-stop and to
      * displace a silent peer.
      */

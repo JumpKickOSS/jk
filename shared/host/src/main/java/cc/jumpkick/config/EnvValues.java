@@ -27,6 +27,15 @@ public final class EnvValues {
     }
 
     /** A boolean env value parsed per the jk-wide truth set; unrecognised → empty. */
+    /**
+     * The one answer to "am I on CI": the truth set over {@code CI}, defaulting off. Two readers
+     * used a presence test instead, so {@code CI=false} counted as CI for resolver progress
+     * rendering and TUI interactivity and for nothing else — one question, one owner.
+     */
+    public static boolean isCi(Function<String, String> env) {
+        return bool(env, "CI").orElse(false);
+    }
+
     public static Optional<Boolean> bool(Function<String, String> env, String name) {
         return parseBool(env.apply(name));
     }

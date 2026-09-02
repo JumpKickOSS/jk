@@ -56,9 +56,9 @@ public final class InstallPlans {
     private InstallPlans() {}
 
     // Cross-step keys.
-    public static final BuildPlanKey<Coordinate> PRIMARY = BuildPlanKey.of("primary-coord", Coordinate.class);
-    public static final BuildPlanKey<Path> CHECKOUT = BuildPlanKey.of("checkout-dir", Path.class);
-    public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.of("fetched-sha", String.class);
+    public static final BuildPlanKey<Coordinate> PRIMARY = BuildPlanKey.scalar("primary-coord", Coordinate.class);
+    public static final BuildPlanKey<Path> CHECKOUT = BuildPlanKey.scalar("checkout-dir", Path.class);
+    public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.scalar("fetched-sha", String.class);
 
     /**
      * Build the project-install plan for {@code projectDir}: core plan + declared tails +
@@ -133,13 +133,14 @@ public final class InstallPlans {
      * would be the one build verb that skips it silently; {@code --skip-tests} stays the opt-out.
      */
     public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
+        builder.stateKeys(PRIMARY);
         // Require whatever the plan already ends on, not just package-jar. appendDeclaredTails
         // re-roots the terminal onto its own join so the assembly / minified / sources tails are
         // not pruned; taking the terminal for cache-install without requiring that join pruned
         // them right back. The visible symptom was `jk install` on a project declaring
         // `assembly = true` installing a THIN-jar launcher — the fat jar was never built, so the
         // install plan's artifact ladder (native > minified > fat > thin) found nothing better
-        // than the thin jar and honestly picked it (JK-1071).
+        // than the thin jar and honestly picked it.
         String displaced = builder.currentTerminal();
         List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
         if (displaced != null && !TaskNames.PACKAGE_JAR.equals(displaced)) requires.add(displaced);
@@ -195,7 +196,7 @@ public final class InstallPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("git fetch " + url + " @ " + ref);
-                    GitFetcher fetcher = new GitFetcher(JkStores.resolve(cacheDir, "git"));
+                    GitFetcher fetcher = new GitFetcher(JkStores.resolve("git"));
                     GitFetcher.Fetched fetched;
                     try {
                         fetched = fetchTagOrBranch(fetcher, url, canonicalUrl, ref, refresh);
@@ -213,7 +214,10 @@ public final class InstallPlans {
                     ctx.progress(1);
                 })
                 .build();
-        return BuildPlan.builder("install-git-fetch").addTask(fetch).build();
+        return BuildPlan.builder("install-git-fetch")
+                .stateKeys(CHECKOUT, FETCHED_SHA)
+                .addTask(fetch)
+                .build();
     }
 
     /** Try the user's ref as a tag first, then a branch. */
@@ -303,8 +307,7 @@ public final class InstallPlans {
             String jarHex = Hashing.sha256Hex(jar);
             String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
             if (installToMavenLocal(p)) {
-                Path storeLocal =
-                        JkStores.storeRootFor(cacheDir).resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
+                Path storeLocal = JkStores.store().resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
                 Path m2 = M2Dirs.localRepository();
                 return ArtifactMemo.verify(
                                 m2.resolve(jarRel), ArtifactMemo.jkPath(storeLocal, jarRel), coord.toGav(), jarHex)
@@ -451,11 +454,11 @@ public final class InstallPlans {
      * to the store root.
      */
     public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        RepoArtifactStore.writeToLocalStore(JkStores.storeRootFor(cacheDir), relativePath, source);
+        RepoArtifactStore.writeToLocalStore(JkStores.store(), relativePath, source);
     }
 
     private static RepoArtifactStore localStore(Path cacheDir) {
-        return RepoArtifactStore.forRepoName(JkStores.storeRootFor(cacheDir), RepoArtifactResolver.JK_LOCAL);
+        return RepoArtifactStore.forRepoName(JkStores.store(), RepoArtifactResolver.JK_LOCAL);
     }
 
     /** Write byte content into {@code repos/jk-local/} as a full-store entry with a {@code .jk} memo. */

@@ -9,10 +9,9 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.engine.protocol.UpdateRequest;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -61,39 +60,46 @@ public final class UpdateVerb implements HostedVerb {
     @Override
     public String decodeJob(JobSpec spec) {
         return ProtoSession.withTrigger(
-                ProtoJobs.updateRequest(
-                        spec.dir(),
-                        JkDirs.cache().toString(),
-                        List.of(),
-                        false,
-                        null,
-                        false,
-                        null,
-                        false,
-                        false,
-                        false,
-                        null),
+                new UpdateRequest(
+                                spec.dir(),
+                                JkDirs.cache().toString(),
+                                List.of(),
+                                false,
+                                null,
+                                false,
+                                null,
+                                false,
+                                false,
+                                false,
+                                null)
+                        .encode(),
                 "web");
     }
 
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            List<String> features = Jsonl.strArray(requestLine, "features");
-            boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
-            boolean gitOnly = Jsonl.bool(requestLine, "gitOnly", false);
-            String gitTarget = Jsonl.str(requestLine, "gitTarget");
+            UpdateRequest body = UpdateRequest.decode(requestLine);
             Session session = host.resolveSession(requestLine, cancelToken, false);
-            URI repoUrl = LockVerb.repoUrlOf(requestLine);
-            String platformOverride = Jsonl.str(requestLine, "platform");
+            URI repoUrl = body.repoUrl() == null ? null : URI.create(body.repoUrl());
+            String platformOverride = body.platform();
             if (platformOverride != null && platformOverride.isBlank()) platformOverride = null;
             String platformFinal = platformOverride;
             return SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
-                if (!gitOnly) {
+                if (!body.gitOnly()) {
                     return LockCascade.run(
-                            host, entryDir, cache, repoUrl, features, withDefaults, false, true, platformFinal, writer);
+                            host,
+                            entryDir,
+                            cache,
+                            repoUrl,
+                            body.features(),
+                            !body.noDefaultFeatures(),
+                            false,
+                            true,
+                            platformFinal,
+                            writer);
                 }
                 Files.createDirectories(cache);
                 JkBuild root;
@@ -103,8 +109,8 @@ public final class UpdateVerb implements HostedVerb {
                     host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
                     return JobOutcome.failed(Exit.CONFIG);
                 }
-                var outcome =
-                        LockPlans.updateGitOnly(entryDir, root, cache, repoUrl, features, withDefaults, gitTarget);
+                var outcome = LockPlans.updateGitOnly(
+                        entryDir, root, cache, repoUrl, body.features(), !body.noDefaultFeatures(), body.gitTarget());
                 host.sendQuiet(
                         writer,
                         ProtoEvents.lockFinish(

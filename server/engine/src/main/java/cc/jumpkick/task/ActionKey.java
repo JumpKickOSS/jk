@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.GroovycInputs;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.host.Hashing;
@@ -55,7 +56,7 @@ public final class ActionKey {
         // javac out of this very home, so it is where the platform classes (and the compiler) come
         // from. Switching jdk = 17 to 21 leaves --release alone, so without this the key never
         // moves and the build restores bytecode compiled by the old javac against the old
-        // platform. Same reasoning, same rendering, as forKotlinc's `jdk:` (JK-2391/JK-2460).
+        // platform. Same reasoning, same rendering, as forKotlinc's `jdk:`.
         sb.append("jdk:").append(jdkToken(request.javaHome())).append('\n');
         sb.append("options:");
         List<String> opts = new ArrayList<>(request.extraOptions());
@@ -159,21 +160,10 @@ public final class ActionKey {
         args.sort(Comparator.naturalOrder());
         sb.append(String.join(",", args)).append('\n');
 
-        appendSources(sb, request.sources());
-
-        // Java source roots feed joint resolution — hash every.java under them so an
-        // edit to a swept file invalidates the key just like an explicit source would.
-        List<Path> rootJava = new ArrayList<>();
-        for (Path root : request.javaSourceRoots()) {
-            if (!Files.isDirectory(root)) continue;
-            try (var walk = Files.walk(root)) {
-                walk.filter(p -> p.toString().endsWith(".java"))
-                        .filter(Files::isRegularFile)
-                        .sorted()
-                        .forEach(rootJava::add);
-            }
-        }
-        appendSources(sb, rootJava);
+        // The hashed set IS the spec's SOURCE set (GroovycInputs): explicit sources plus every
+        // .java the roots feed joint resolution — an edit to a swept file invalidates the key
+        // just like an explicit source, and the worker compiles exactly what was hashed.
+        appendSources(sb, GroovycInputs.compileSet(request));
 
         List<Path> cp = new ArrayList<>(request.classpath());
         cp.addAll(request.workerClasspath());
@@ -244,7 +234,7 @@ public final class ActionKey {
      *
      * <p>The one JDK-identity convention in the tree: {@link #forJavac}, {@link #forKotlinc} and
      * the {@code jdk:} token both {@code PlannerPlugin} arms add to their {@link #forArtifact}
-     * bags all render it through here, so a second spelling cannot appear (JK-2460). A null home
+     * bags all render it through here, so a second spelling cannot appear. A null home
      * — a request that names no project JDK — keys the literal {@code none}, which is a value no
      * real home can produce, rather than silently collapsing onto whichever JDK ran last.
      */

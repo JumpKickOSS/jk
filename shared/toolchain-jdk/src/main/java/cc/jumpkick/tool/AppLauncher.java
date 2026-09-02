@@ -18,20 +18,20 @@ import java.util.Set;
 /**
  * Writes a launcher script for an application installed by {@code jk install}. Thin apps use
  * {@code java -cp} over repo/CAS jars; fat and minified apps use {@code java -jar} of the copy
- * under {@code <data>/lib/&lt;bin&gt;/}.
+ * under {@code <home>/lib/&lt;bin&gt;/}.
  */
 public final class AppLauncher {
 
     private AppLauncher() {}
 
     /**
-     * Write {@code ~/.local/bin/<binName>} (POSIX) or {@code <binName>.cmd} (Windows) launching {@code
+     * Write {@code ~/.jk/bin/<binName>} (POSIX) or {@code <binName>.cmd} (Windows) launching {@code
      * mainClass} with {@code classpathJars} on the classpath. Returns the launcher path.
      */
     public static Path install(Path binDir, Path javaHome, String binName, String mainClass, List<Path> classpathJars)
             throws IOException {
+        Path launcher = LauncherName.resolveChild(binDir, launcherFileName(binName));
         Files.createDirectories(binDir);
-        Path launcher = binDir.resolve(launcherFileName(binName));
         String script = renderScript(javaHome, mainClass, classpathJars);
         Files.writeString(
                 launcher,
@@ -48,8 +48,8 @@ public final class AppLauncher {
      * (assembly jars, Spring Boot jars — anything whose manifest carries its own entry point).
      */
     public static Path installJar(Path binDir, Path javaHome, String binName, Path jar) throws IOException {
+        Path launcher = LauncherName.resolveChild(binDir, launcherFileName(binName));
         Files.createDirectories(binDir);
-        Path launcher = binDir.resolve(launcherFileName(binName));
         String script = renderJarScript(javaHome, jar);
         Files.writeString(
                 launcher,
@@ -63,6 +63,7 @@ public final class AppLauncher {
 
     /** The launcher file name for {@code binName} on this platform. */
     public static String launcherFileName(String binName) {
+        LauncherName.requireValid(binName);
         return binName + (Os.isWindows() ? ".cmd" : "");
     }
 
@@ -74,16 +75,16 @@ public final class AppLauncher {
     }
 
     /**
-     * Every launcher jk drops on {@code PATH} says who wrote it, on line two. These scripts had no
-     * attribution at all, which is why {@code jk-cli} and {@code jk-engine} were indistinguishable
-     * from a hand-rolled shim of the same name — and why an uninstall could not tell whether it was
-     * removing jk's file or the user's (JK-2626). The line is the evidence
-     * {@link JkOwnership#isGeneratedLauncher} reads back.
+     * Every launcher jk writes says who wrote it, on line two. For a human opening the file, not
+     * for a delete check: these live in {@code <home>/bin}, which jk owns, so what may be removed
+     * is settled by where the file is rather than by what it says.
      */
-    private static final String POSIX_PREAMBLE = "#!/usr/bin/env bash\n# " + JkOwnership.GENERATED_BY + " — do not edit.\n";
+    private static final String POSIX_PREAMBLE =
+            "#!/usr/bin/env bash\n# " + JkOwnership.GENERATED_BY + " — do not edit.\n";
 
     /** {@link #POSIX_PREAMBLE} for {@code cmd.exe}; ASCII only, CRLF. */
-    private static final String WINDOWS_PREAMBLE = "@echo off\r\nREM " + JkOwnership.GENERATED_BY + " -- do not edit.\r\n";
+    private static final String WINDOWS_PREAMBLE =
+            "@echo off\r\nREM " + JkOwnership.GENERATED_BY + " -- do not edit.\r\n";
 
     /** Script content for a self-contained-jar launcher — what {@link #installJar} writes. */
     public static String renderJarScript(Path javaHome, Path jar) {

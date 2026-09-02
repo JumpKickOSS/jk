@@ -60,8 +60,8 @@ public final class FishShell implements Shell {
     }
 
     @Override
-    public String completionWiring(String dataDir) {
-        String dir = dataDir + "/completions/fish";
+    public String completionWiring(String storeDir) {
+        String dir = storeDir + "/completions/fish";
         return "if test -d \"" + dir + "\"\n    set -gp fish_complete_path \"" + dir + "\"\nend\n";
     }
 

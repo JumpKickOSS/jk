@@ -52,12 +52,11 @@ public final class AffectedTestRun {
         }
         if (dirty == null) dirty = List.of();
 
-        @SuppressWarnings("unchecked")
-        Map<String, ClassAbi.Fingerprint> pre = (Map<String, ClassAbi.Fingerprint>)
+        Map<String, ClassAbi.Fingerprint> pre =
                 ctx.get(BuildPlanner.PRE_COMPILE_ABI).orElse(Map.of());
         Map<String, ClassAbi.Fingerprint> current = AbiIndex.scanClasses(classesDir);
         // Dependency modules' changed types (classified at their compiles) rank this module's
-        // importers too — a dependent in the cone is not "nothing affected" (JK-2606).
+        // importers too — a dependent in the cone is not "nothing affected".
         Map<String, ClassAbi.Kind> foreign = AffectedChangedPublish.foreignFor(in.session(), current.keySet());
         Set<String> production = new LinkedHashSet<>(current.keySet());
         production.addAll(foreign.keySet());
@@ -77,9 +76,7 @@ public final class AffectedTestRun {
             }
         }
 
-        @SuppressWarnings("unchecked")
-        List<Path> compiled =
-                (List<Path>) ctx.get(BuildPlanner.COMPILED_MAIN_SOURCES).orElse(List.of());
+        List<Path> compiled = ctx.get(BuildPlanner.COMPILED_MAIN_SOURCES).orElse(List.of());
         Path rel = wsRoot.relativize(moduleDir);
         String why = AffectedTestsCompute.hasLocalDirty(wsRoot, moduleDir, dirty) ? "dirty" : "dependent";
         AffectedTests.ModuleRow coneRow =

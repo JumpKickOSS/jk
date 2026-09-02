@@ -6,8 +6,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.GitFetchRequest;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.InstallPlans;
@@ -46,21 +46,16 @@ public final class GitFetchVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                boolean refresh = Jsonl.bool(requestLine, "refresh", false);
-                JkConfig config = JkConfig.empty().withForce(refresh);
+                GitFetchRequest body = GitFetchRequest.decode(requestLine);
+                Path cache = Path.of(body.cache());
+                JkConfig config = JkConfig.empty().withForce(body.refresh());
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = InstallPlans.gitFetchBuildPlan(
-                        Jsonl.str(requestLine, "url"),
-                        Jsonl.str(requestLine, "canonicalUrl"),
-                        Jsonl.str(requestLine, "ref"),
-                        cache,
-                        refresh,
-                        Jsonl.bool(requestLine, "requireJkToml", true));
+                        body.url(), body.canonicalUrl(), body.ref(), cache, body.refresh(), body.requireJkToml());
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     Path checkout = plan.get(InstallPlans.CHECKOUT).orElse(null);
                     String sha = plan.get(InstallPlans.FETCHED_SHA).orElse(null);

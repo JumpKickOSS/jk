@@ -15,6 +15,7 @@ import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -84,7 +85,16 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
-                Opt.value("<layout>", "Source tree: traditional (default) | simple.", "--layout"),
+                Opt.value(
+                        "<layout>",
+                        "Tree: "
+                                + Layout.TOKEN_TRADITIONAL
+                                + " (default) | "
+                                + Layout.TOKEN_SIMPLE
+                                + " | "
+                                + Layout.TOKEN_AUTO
+                                + ".",
+                        "--layout"),
                 Opt.value("<module>", "Kotlin module name (-> project.module).", "--kotlin-module"),
                 Opt.flag("Force a standalone project (not a module).", "--no-module"),
                 Opt.flag("", "--no-member").hide()); // undocumented synonym for --no-module
@@ -114,14 +124,15 @@ public final class NewCommand implements CliCommand {
     Path directory;
     GlobalOptions global;
 
-    @SuppressWarnings("rawtypes")
-    private static final BuildPlanKey<List> CANDIDATES = BuildPlanKey.of("candidates", List.class);
+    private static final BuildPlanKey<List<NewJdkCandidate>> CANDIDATES =
+            BuildPlanKey.list("candidates", NewJdkCandidate.class);
 
-    private static final BuildPlanKey<TerminalSession> TERMINAL = BuildPlanKey.of("terminal", TerminalSession.class);
-    private static final BuildPlanKey<JdkCatalog> CATALOG = BuildPlanKey.of("catalog", JdkCatalog.class);
-    private static final BuildPlanKey<Answers> ANSWERS = BuildPlanKey.of("answers", Answers.class);
-    private static final BuildPlanKey<NewJdkCandidate> PICKED = BuildPlanKey.of("picked", NewJdkCandidate.class);
-    private static final BuildPlanKey<NewInputs> INPUTS = BuildPlanKey.of("inputs", NewInputs.class);
+    private static final BuildPlanKey<TerminalSession> TERMINAL =
+            BuildPlanKey.scalar("terminal", TerminalSession.class);
+    private static final BuildPlanKey<JdkCatalog> CATALOG = BuildPlanKey.scalar("catalog", JdkCatalog.class);
+    private static final BuildPlanKey<Answers> ANSWERS = BuildPlanKey.scalar("answers", Answers.class);
+    private static final BuildPlanKey<NewJdkCandidate> PICKED = BuildPlanKey.scalar("picked", NewJdkCandidate.class);
+    private static final BuildPlanKey<NewInputs> INPUTS = BuildPlanKey.scalar("inputs", NewInputs.class);
 
     /** Set during scaffold when the new project was registered as a workspace module. */
     private record Module(Path root, String rel, String projectName) {}
@@ -181,7 +192,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * Walk up from {@code startDir} for a parent {@code jk.toml}; stop at {@code.git} or
+     * Walk up from {@code startDir} for a parent {@code jk.toml}; stop at {@code .git} or
      * {@code $HOME}. {@code --no-module} → empty.
      */
     static Optional<Path> detectParentDir(Path startDir, Path home, boolean noModule) {
@@ -198,7 +209,7 @@ public final class NewCommand implements CliCommand {
     /**
      * Where to begin the parent search — the directory the project will live <em>in</em> (its
      * target's parent). For {@code jk new foo} that's the cwd; for {@code jk new /abs/foo} it's
-     * {@code /abs}; for {@code.} / no arg it's the cwd (the module is the cwd itself, or
+     * {@code /abs}; for {@code .} / no arg it's the cwd (the module is the cwd itself, or
      * cwd/&lt;name&gt;).
      */
     private Path detectionStartDir(Path cwd) {
@@ -328,8 +339,7 @@ public final class NewCommand implements CliCommand {
                 .execute(ctx -> {
                     ctx.label("run wizard");
                     TerminalSession terminal = ctx.require(TERMINAL);
-                    @SuppressWarnings("unchecked")
-                    List<NewJdkCandidate> candidates = (List<NewJdkCandidate>) ctx.require(CANDIDATES);
+                    List<NewJdkCandidate> candidates = ctx.require(CANDIDATES);
 
                     Answers preset = NewWizard.wizardPresetName(directory, cwd)
                             .map(n -> Answers.of(Map.of("name", (Object) n)))
@@ -409,6 +419,7 @@ public final class NewCommand implements CliCommand {
 
         BuildPlan plan = BuildPlan.builder("new")
                 .interactive(true)
+                .stateKeys(CANDIDATES, TERMINAL, CATALOG, ANSWERS, PICKED, INPUTS)
                 .addTask(prewarm)
                 .addTask(wizardStep)
                 .addTask(installJdk)
@@ -536,7 +547,7 @@ public final class NewCommand implements CliCommand {
                         parentDir.toString(),
                         inputs.group(),
                         inputs.lang().hoconValue(),
-                        inputs.layout(),
+                        inputs.layout().token(),
                         null,
                         inputs.isRunnable(),
                         inputs.jdk(),
@@ -626,12 +637,13 @@ public final class NewCommand implements CliCommand {
                                         : NewInputs.Language.JAVA;
         var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage;
         // Traditional (Maven) is the product default. --layout simple opts into the Mill-like tree.
-        var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank()) ? layoutFlag.toLowerCase() : "traditional";
+        Layout resolvedLayout =
+                (layoutFlag != null && !layoutFlag.isBlank()) ? Layout.parse(layoutFlag) : Layout.TRADITIONAL;
         var resolvedMain = plugin
                 ? Optional.<String>empty()
                 : isExecutable
-                        ? Optional.of(NewWizard.deriveMainFqcn(
-                                resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
+                        ? Optional.of(
+                                NewWizard.deriveMainFqcn(resolvedGroup, resolvedLang, resolvedLayout == Layout.SIMPLE))
                         : Optional.<String>empty();
         // A plugin's jk-plugin-sdk dependency is emitted by NewJkBuildRenderer, not via curated deps.
         var resolvedDeps = plugin ? List.<String>of() : NewWizard.parseDeps(depsCsv);
@@ -708,8 +720,9 @@ public final class NewCommand implements CliCommand {
         boolean resolvedNative = isExecutable && targets.contains("native");
 
         // Layout comes from its own dedicated step; traditional if the step was skipped.
-        String resolvedLayout =
-                answers.has("layout") && !answers.get("layout").isBlank() ? answers.get("layout") : "traditional";
+        Layout resolvedLayout = answers.has("layout") && !answers.get("layout").isBlank()
+                ? Layout.parse(answers.get("layout"))
+                : Layout.TRADITIONAL;
         Optional<String> resolvedKotlinModule = Optional.empty();
         var deps = new ArrayList<String>(answers.getList("libraries"));
         if (resolvedLang == NewInputs.Language.KOTLIN) {
@@ -720,7 +733,7 @@ public final class NewCommand implements CliCommand {
         }
 
         var resolvedMain = isExecutable
-                ? Optional.of(NewWizard.deriveMainFqcn(resolvedGroup, resolvedLang, "simple".equals(resolvedLayout)))
+                ? Optional.of(NewWizard.deriveMainFqcn(resolvedGroup, resolvedLang, resolvedLayout == Layout.SIMPLE))
                 : Optional.<String>empty();
 
         return new NewInputs(

@@ -244,7 +244,7 @@ public final class BuildPlanConsole {
      * As {@link #runBuildPlanInto(BuildPlan, Path, String, AggregateContext)}, but with the module's reserved
      * {@code slice} of the calibrated total (its pre-scan estimate). The slice scales the module's
      * own 0→100% into its share of the aggregate bar so the bar advances cumulatively without
-     * backtracking. Pass the same estimate that was summed into {@link AggregateContext#calibrate}.
+     * backtracking. Pass the same estimate that was summed into {@code AggregateContext#calibrate}.
      */
     public static BuildPlanResult runBuildPlanInto(
             BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, long slice) {

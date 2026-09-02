@@ -25,7 +25,7 @@ class CasPrewriterTest {
      * finish_uses_latest_content_...}, {@code finish_rehashes_when_content_changes_...}) claim to
      * exercise a rewrite <em>after</em> pre-processing, and would have passed unchanged if
      * pre-processing had never happened, because {@code finish} content-hashes regardless. Waiting
-     * on the blob makes the precondition an assertion (JK-2446).
+     * on the blob makes the precondition an assertion.
      */
     private static void awaitPreprocessed(Cas cas, String... contents) throws InterruptedException {
         for (String content : contents) {

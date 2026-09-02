@@ -10,7 +10,7 @@ import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
- * Machine-scoped Giter8 template sources from {@code ~/.config/jk/config.toml} ({@code [templates]}).
+ * Machine-scoped Giter8 template sources from {@code ~/.jk/config.toml} ({@code [templates]}).
  *
  * <pre>{@code
  * [templates]
@@ -70,7 +70,7 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
         return new JkTemplatesConfig(DEFAULT_OFFICIAL, List.of());
     }
 
-    /** Load from {@code ~/.config/jk/config.toml}. */
+    /** Load from {@code ~/.jk/config.toml}. */
     public static JkTemplatesConfig resolve() {
         return resolve(JkDirs.userConfigFile());
     }

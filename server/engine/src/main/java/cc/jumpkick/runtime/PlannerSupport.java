@@ -44,7 +44,6 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -189,7 +188,7 @@ public final class PlannerSupport {
      */
     static List<Path> assemblyDependencyJars(Path moduleDir, JkBuild project, Path lockFile, Path cache)
             throws IOException {
-        return ModuleRuntimeClasspath.jars(moduleDir, project, lockFile, JkStores.cas(cache));
+        return ModuleRuntimeClasspath.jars(moduleDir, project, lockFile, JkStores.storeCas());
     }
 
     /**
@@ -221,7 +220,7 @@ public final class PlannerSupport {
     /**
      * Scala stdlib jars to fold into the freshness stamp for a module with {@code .scala} sources, so
      * a scala-version bump (which swaps the stdlib jar's content identity) invalidates the stat-only
-     * fast path instead of silently skipping the compile against the old compiler (JK-2295). Empty for
+     * fast path instead of silently skipping the compile against the old compiler. Empty for
      * a non-Scala module. Cheap on a warm closure cache (a directory listing, no network).
      */
     static List<Path> scalaStampLibs(TaskContext ctx, Path moduleDir, boolean compact, Cas cas) {
@@ -314,7 +313,7 @@ public final class PlannerSupport {
      * the whole tree, at 305&nbsp;µs per file on Windows, with a {@code createDirectories} per file on
      * top. Worse, {@code PlannerSupport.mainStampClasspath} puts those merged class directories into
      * the compile stamp's inputs and {@code FreshnessStamp} compares them by mtime, so the churn was
-     * also invalidating the stamp it fed. The owner's identity skip is what fixes both (JK-1032).
+     * also invalidating the stamp it fed. The owner's identity skip is what fixes both.
      */
     static void copyResources(Path resourceDir, Path classesDir) throws IOException {
         PathUtil.copyTree(resourceDir, classesDir);
@@ -445,7 +444,7 @@ public final class PlannerSupport {
             } else {
                 // Not a built sibling — self-host by reusing the running jk's plugin
                 // jar (located via its sha resource + CAS, or a -D override).
-                Path located = wj.get().locateStored(JkStores.cas(JkDirs.cache()));
+                Path located = wj.get().locateStored(JkStores.storeCas());
                 if (located != null) props.put(wj.get().jarProperty(), located.toString());
             }
         }
@@ -488,7 +487,7 @@ public final class PlannerSupport {
             if (jar != null && Files.isRegularFile(jar)) {
                 props.put(w.jarProperty(), jar.toAbsolutePath().toString());
             } else {
-                Path located = w.locateStored(JkStores.cas(JkDirs.cache()));
+                Path located = w.locateStored(JkStores.storeCas());
                 if (located != null) props.put(w.jarProperty(), located.toString());
             }
         }
@@ -578,12 +577,8 @@ public final class PlannerSupport {
      * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
      * nested-engine CLI tests. Keeps the host engine's socket alone.
      *
-     * <p><strong>Fully sandboxed product layout</strong> — {@code JK_HOME} mirrors XDG, so cache
-     * lands in {@code $JK_HOME/cache} and the store in {@code $JK_HOME/data/store}. Never point {@code JK_CACHE_DIR} or {@code JK_STORE_DIR} at the host: a
-     * prior bug set them to the developer's real trees so {@code SelfNukeCommandTest} /
-     * {@code jk cache nuke} / {@code jk self nuke --data} wiped action-cache and install-local
-     * workers mid-{@code jk build}. After that, post-green {@code jk explain} reported a full
-     * rebuild and subsequent tests could not find {@code jk-test-runner}.
+     * <p>{@code JK_HOME} relocates cache and store together. Nested destructive tests must never
+     * receive the host's {@code JK_CACHE_DIR} or {@code JK_STORE_DIR}.
      *
      * <p>Plugin/worker jars for nested suites still arrive via {@code -Djk.*.plugin.jar} props
      * ({@link #enrichCliTestProps}), not by sharing the host store.
@@ -602,7 +597,7 @@ public final class PlannerSupport {
         //
         // It is not a Unix-socket path budget any more: the only module that takes this path is
         // jk-cli (see needsNestedEngineIsolation), and it declares JK_ENGINE_TRANSPORT=tcp in
-        // both builds (JK-1065), so the depth of target/ costs nothing. A module that wanted
+        // both builds, so the depth of target/ costs nothing. A module that wanted
         // nested engines on the Unix transport would need a short root again.
         Path stateDir = jkHome.resolve("engine-state").resolve(runId);
         Files.createDirectories(stateDir);
@@ -671,7 +666,7 @@ public final class PlannerSupport {
         // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build --all`) forecasts "tests cached" off the unit-tier marker and the whole
-        // workspace short-circuits to "up to date" without running the widened tier (JK-2203).
+        // workspace short-circuits to "up to date" without running the widened tier.
         return testStampExtras(
                 testStampWorkerJars(dir, project),
                 effectiveSelection(SessionContext.current().testSelection(), dir),
@@ -742,7 +737,7 @@ public final class PlannerSupport {
             throws IOException {
         List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
-        // forecast's source list must cover the same files the live run stamps (JK-2203).
+        // forecast's source list must cover the same files the live run stamps.
         var resolved = SessionContext.current().testSelection().resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         List<Path> stampSrcs = new ArrayList<>();

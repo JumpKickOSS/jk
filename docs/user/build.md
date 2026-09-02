@@ -26,7 +26,7 @@ hits and misses before you run — [Explain](explain.md).
 
 `jk clean` deletes project `target/` outputs. The next build restores jars/classes/binaries
 from the action cache when inputs are unchanged (discovery + I/O only). Input fingerprints
-also live under `~/.cache/jk/projects/…` so clean does not force a full rebuild forecast.
+also live under `~/.jk/cache/projects/…` so clean does not force a full rebuild forecast.
 
 ## Parallelism (`-j`)
 
@@ -46,7 +46,7 @@ host’s 64.
 |-------|---------|
 | CLI | `-j` / `--jobs` (wins) |
 | Env | `JK_JOBS` (or `JK_ENGINE_JOBS`) |
-| Machine TOML | `~/.config/jk/config.toml` → `[engine] jobs = N` |
+| Machine TOML | `~/.jk/config.toml` → `[engine] jobs = N` |
 
 There is no `--parallel` / `--no-parallel`; use `-j` / `-j1`. Test workers (`-w`) are
 separate — [Test](test.md#within-module-workers--w).

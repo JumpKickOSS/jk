@@ -96,7 +96,7 @@ public final class NativePlans {
     /**
      * As above with {@code decorate}: request-level Inputs decoration (workers, profile, variant +
      * client env, module set, ephemeral actions) applied by the one orchestrator so the NATIVE
-     * branch honors the same knobs as PACKAGE (JK-2102). {@code null} = none.
+     * branch honors the same knobs as PACKAGE. {@code null} = none.
      */
     public static BuildPlan moduleBuildPlan(
             Path moduleDir,
@@ -157,7 +157,7 @@ public final class NativePlans {
      * Build-family exit-code mapping for a failed module plan: a native-step "main class"
      * misconfiguration or an image "no-main" diagnostic exits {@link Exit#USAGE}, a test failure
      * exits 4, anything else 1. Shared by the workspace path for native AND image terminals
-     * (JK-2099/JK-2100).
+     *.
      */
     public static int failureExitCode(BuildPlan plan, BuildPlanResult result) {
         for (BuildPlanResult.Diagnostic d : result.errors()) {

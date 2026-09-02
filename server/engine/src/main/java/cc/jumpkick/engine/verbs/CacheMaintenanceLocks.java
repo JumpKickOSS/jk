@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Taking a lock is not a write, so nothing here creates the cache tree. It used to: the file
  * lock needs somewhere to put {@code .prune.lock}, and an unconditional {@code createDirectories}
  * gave it one. That put the root back after {@code jk cache nuke} — a command whose whole contract
- * is {@code rm -rf} on that path and which deliberately leaves the engine running (JK-1773) — on
+ * is {@code rm -rf} on that path and which deliberately leaves the engine running — on
  * the next pass any surface made, including passes about the artifact store that only borrow this
  * lock. An absent root has no contents to protect and no concurrent pruner to exclude, so the body
  * runs under the engine gate alone and the writers create what they need, when they need it.

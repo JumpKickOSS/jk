@@ -7,9 +7,11 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.AffectedTestsReport;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.LockRequest;
 import cc.jumpkick.engine.protocol.OutdatedReport;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.engine.protocol.SyncRequest;
+import cc.jumpkick.engine.protocol.UpdateRequest;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -76,17 +78,18 @@ final class EngineResolveAdapter {
             throws IOException {
         return streamCascade(
                 paths,
-                ProtoJobs.lockRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.features(),
-                        req.noDefaultFeatures(),
-                        req.sources(),
-                        req.repoUrl() != null ? req.repoUrl().toString() : null,
-                        req.offline(),
-                        req.force(),
-                        req.verbose(),
-                        req.conservative()),
+                new LockRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.features(),
+                                req.noDefaultFeatures(),
+                                req.sources(),
+                                req.repoUrl() != null ? req.repoUrl().toString() : null,
+                                req.offline(),
+                                req.force(),
+                                req.verbose(),
+                                req.conservative())
+                        .encode(),
                 handler,
                 "lock");
     }
@@ -109,18 +112,19 @@ final class EngineResolveAdapter {
     }
 
     private static String updateRequestLine(EngineRequests.UpdateRequest req, boolean gitOnly, String gitTarget) {
-        return ProtoJobs.updateRequest(
-                req.entryDir().toString(),
-                req.cache().toString(),
-                req.features(),
-                req.noDefaultFeatures(),
-                req.repoUrl() != null ? req.repoUrl().toString() : null,
-                gitOnly,
-                gitTarget,
-                req.offline(),
-                req.force(),
-                req.verbose(),
-                req.platform());
+        return new UpdateRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.features(),
+                        req.noDefaultFeatures(),
+                        req.repoUrl() != null ? req.repoUrl().toString() : null,
+                        gitOnly,
+                        gitTarget,
+                        req.offline(),
+                        req.force(),
+                        req.verbose(),
+                        req.platform())
+                .encode();
     }
 
     /**
@@ -146,16 +150,17 @@ final class EngineResolveAdapter {
 
             send(
                     writer,
-                    ProtoJobs.syncRequest(
-                            req.entryDir().toString(),
-                            req.cache().toString(),
-                            req.jdksDir() != null ? req.jdksDir().toString() : null,
-                            req.repoUrl() != null ? req.repoUrl().toString() : null,
-                            req.sources(),
-                            req.offline(),
-                            req.force(),
-                            req.refresh(),
-                            req.verbose()));
+                    new SyncRequest(
+                                    req.entryDir().toString(),
+                                    req.cache().toString(),
+                                    req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                    req.repoUrl() != null ? req.repoUrl().toString() : null,
+                                    req.sources(),
+                                    req.offline(),
+                                    req.force(),
+                                    req.refresh(),
+                                    req.verbose())
+                            .encode());
 
             return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
                 private final List<Task> steps = new ArrayList<>();

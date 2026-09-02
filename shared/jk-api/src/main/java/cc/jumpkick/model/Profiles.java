@@ -62,9 +62,7 @@ public record Profiles(Map<String, Profile> byName) {
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */
     public static String autoSelect(Map<String, String> env) {
-        return EnvValues.bool(env::get, "CI").orElse(false)
-                        || env.containsKey("GITHUB_ACTIONS")
-                        || env.containsKey("GITLAB_CI")
+        return EnvValues.isCi(env::get) || env.containsKey("GITHUB_ACTIONS") || env.containsKey("GITLAB_CI")
                 ? "ci"
                 : null;
     }

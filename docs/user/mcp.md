@@ -22,7 +22,7 @@ Fix a failing build: [Troubleshooting](troubleshooting.md).
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory
 (`http-token`). Same token as the dashboard.
 
-Disable MCP only: `[mcp] enabled = false` in `~/.config/jk/config.toml` (or
+Disable MCP only: `[mcp] enabled = false` in `~/.jk/config.toml` (or
 `JK_MCP_ENABLED=false`) — `/mcp` 404s; dashboard stays up; `mcpUrl` is `null`.
 
 SSE budget: `[mcp] max-event-streams` / `JK_MCP_MAX_EVENT_STREAMS` (default **16**).

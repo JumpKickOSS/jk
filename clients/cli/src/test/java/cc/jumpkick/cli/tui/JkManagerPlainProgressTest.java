@@ -234,7 +234,7 @@ class JkManagerPlainProgressTest {
 
     @Test
     void plain_process_output_surfaces_on_step_failure() {
-        // JK-2163: plain mode has no Ctrl-O and no settle dump — a tool crash must dump the
+        // : plain mode has no Ctrl-O and no settle dump — a tool crash must dump the
         // buffered ring, or its only evidence stays invisible.
         var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {

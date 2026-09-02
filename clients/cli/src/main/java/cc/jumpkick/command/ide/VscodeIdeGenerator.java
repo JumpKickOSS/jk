@@ -24,12 +24,12 @@ import java.util.Set;
  *
  * <p>Rather than the fragile "invisible project" {@code java.project.*} settings (single output
  * path, no live cross-module source deps), it generates native <b>Eclipse project metadata</b>
- * {@code.project} / {@code.classpath} / {@code.settings/org.eclipse.jdt.core.prefs} per module
+ * {@code .project} / {@code .classpath} / {@code .settings/org.eclipse.jdt.core.prefs} per module
  * which JDT-LS consumes directly and which supports per-module output dirs, live sibling <i>source</i>
  * references, test/main split, and per-module JDK levels. Workspace-wide bits (JDK runtimes, LS
- * vmargs, disabling the Maven/Gradle importers) go in {@code.vscode/settings.json}.
+ * vmargs, disabling the Maven/Gradle importers) go in {@code .vscode/settings.json}.
  *
- * <p>JDT-LS compiles into {@code target/jdt/classes/{main,test}} (see {@link BuildLayout#jdtClassesDir})
+ * <p>JDT-LS compiles into {@code target/jdt/classes/{main,test}} (see {@code BuildLayout#jdtClassesDir})
  * — isolated from jk's own {@code target/classes} so the two incremental compilers never fight.
  */
 public final class VscodeIdeGenerator implements IdeGenerator {

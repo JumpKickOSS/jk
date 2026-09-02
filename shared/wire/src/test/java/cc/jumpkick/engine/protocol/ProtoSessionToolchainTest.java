@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  * {@code Session} and never serialised, so every engine-side resolver walked its {@code SWITCH} tier
  * against an empty selection and fell through to whichever JDK the shell that started the daemon
  * happened to name. The symptom was not a missing override but a build whose JDK depended on how the
- * daemon had been launched (JK-1021).
+ * daemon had been launched.
  */
 class ProtoSessionToolchainTest {
 

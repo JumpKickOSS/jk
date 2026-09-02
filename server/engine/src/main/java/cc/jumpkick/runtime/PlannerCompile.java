@@ -64,7 +64,7 @@ public final class PlannerCompile {
     // the two sides can never agree on — a phantom rebuild reported forever, or (running the other
     // way) a stale artifact blessed. Six such drifts were live at once, and three of them were in
     // this one request: scalaVersion, compilerClasspath and the Groovy stubs --source-path
-    // (JK-2479), joined by javaHome the moment forJavac started hashing it (JK-2460).
+    // , joined by javaHome the moment forJavac started hashing it.
     //
     // A text guard can compare which FIELDS each side sets (checkForecastKeyParity arm B) but not
     // which VALUES it puts in them, so the field list is only half the problem. These four methods
@@ -87,7 +87,7 @@ public final class PlannerCompile {
     /**
      * What {@code BuildPlanner.JAVA_SOURCES} holds: the module's {@code .java} plus the extra-src
      * overlay, plus <em>every</em> {@code .scala} (a mixed Java+Scala module compiles through one
-     * Zinc session, so the Scala sources are javac's inputs too — JK-2320). {@code javaSeed} is the
+     * Zinc session, so the Scala sources are javac's inputs too —). {@code javaSeed} is the
      * caller's already-walked {@code .java} list, so the common path does not walk twice.
      */
     public static List<Path> javaAndScalaSources(JkBuild project, Path moduleDir, boolean compact, List<Path> javaSeed)
@@ -220,7 +220,7 @@ public final class PlannerCompile {
     /**
      * compile-main's freshness-stamp inputs. The stamp is the cheap gate in front of the action
      * key, so it has to move on the same facts: a scala-version bump must invalidate the stat-only
-     * fast path (JK-2295), which it only does if the resolved stdlib jars are in here.
+     * fast path, which it only does if the resolved stdlib jars are in here.
      */
     public static List<Path> mainStampInputs(
             List<Path> compileCp,
@@ -283,7 +283,7 @@ public final class PlannerCompile {
                     Path javaOut = classes;
                     // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root
                     // .scala) that PlannerSetup published — no need to re-walk the tree for .scala here
-                    // (JK-2320). hasScala below reads it directly.
+                    // . hasScala below reads it directly.
                     List<Path> declared = javaSources(ctx);
                     List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls);
                     if (sources != declared) {
@@ -297,19 +297,16 @@ public final class PlannerCompile {
                         ctx.put(BUILD_OUTCOME, "no-sources");
                         return;
                     }
-                    @SuppressWarnings("unchecked")
-                    List<Path> baseClasspath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> baseClasspath = ctx.require(CLASSPATH);
                     Path groovyJar = cx.mixedGroovy() ? groovyCompileJar(ctx, cas) : null;
-                    @SuppressWarnings("unchecked")
-                    List<Path> processorCp =
-                            (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+                    List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                     boolean rerun = in.session().config().rebuildOr(false);
                     // Resolve the Scala toolchain before the stamp check so the stdlib jars are part
                     // of the freshness inputs — a scala-version bump must invalidate the stat-only
-                    // fast path (JK-2295). Cheap on a warm closure cache. Gate on the *merged* source
+                    // fast path. Cheap on a warm closure cache. Gate on the *merged* source
                     // set (which includes extra-src / plugin-root .scala published by PlannerSetup),
                     // not the narrow main-roots walk — otherwise a variant-overlay .scala reaches the
-                    // Zinc worker with the Java-only dummy compiler and fails cryptically (JK-2302).
+                    // Zinc worker with the Java-only dummy compiler and fails cryptically.
                     boolean hasScala =
                             sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
                     ScalaCompile.Setup scalaSetup =
@@ -333,8 +330,7 @@ public final class PlannerCompile {
                         ctx.progress(sources.size());
                         return;
                     }
-                    @SuppressWarnings("unchecked")
-                    List<String> javacArgs = (List<String>) ctx.require(JAVAC_ARGS);
+                    List<String> javacArgs = ctx.require(JAVAC_ARGS);
                     CompileRequest request = mainCompileRequest(new MainCompile(
                             sources,
                             baseClasspath,
@@ -417,7 +413,7 @@ public final class PlannerCompile {
                     ctx.put(BUILD_OUTCOME, r.outcome());
                     ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
                     Path mainClasses = ctx.require(MAIN_CLASSES);
-                    // The abi idx advances by exactly what this compile did (JK-2610): a cache hit
+                    // The abi idx advances by exactly what this compile did: a cache hit
                     // or no-op leaves it alone (the restored classes were indexed when first
                     // compiled), an incremental compile re-hashes only its compiled sources'
                     // classes, and only a missing/empty idx pays the full tree scan.
@@ -543,8 +539,7 @@ public final class PlannerCompile {
                         ctx.put(KOTLIN_OUTCOME, "no-sources");
                         return;
                     }
-                    @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> classpath = ctx.require(CLASSPATH);
                     // Freshness inputs: Kotlin sources plus — in a mixed module
                     // the Java sources, since kotlinc compiles against the Java
                     // output (kotlincCp includes `classes`) and a Java edit can
@@ -671,8 +666,7 @@ public final class PlannerCompile {
                         ctx.put(GROOVY_OUTCOME, "no-sources");
                         return;
                     }
-                    @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> classpath = ctx.require(CLASSPATH);
                     // Freshness inputs: Groovy sources plus — in a mixed module — the Java
                     // sources, since joint mode resolves against them (any Java edit can make
                     // our.class files or retained stubs stale). Same conservative posture as

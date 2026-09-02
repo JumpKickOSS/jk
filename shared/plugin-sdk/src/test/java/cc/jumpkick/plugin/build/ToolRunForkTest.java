@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The fork half of {@link TaskExec.ToolRun}: {@code start()} is the one {@code ProcessBuilder} in
- * the plugin family, and {@code run()} / {@code stream()} are drains over it (JK-2432).
+ * the plugin family, and {@code run()} / {@code stream()} are drains over it.
  *
  * <p>{@link ToolRunTest} pins the argv without forking; these cases fork the JVM running the test,
  * because the three knobs the sweep needed — a child environment, line-at-a-time draining, and

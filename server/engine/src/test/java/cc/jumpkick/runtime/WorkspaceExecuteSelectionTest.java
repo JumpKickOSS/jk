@@ -89,7 +89,7 @@ class WorkspaceExecuteSelectionTest {
 
     @Test
     void test_only_plans_still_package_consumed_prereqs() throws Exception {
-        // JK-2177: dependents compile against the prereq's sibling JAR; a testOnly plan that
+        // : dependents compile against the prereq's sibling JAR; a testOnly plan that
         // recompiled classes but never repackaged left dependents building — and green-running
         // tests — against stale code.
         Path lib = module("lib", "lib", "");
@@ -122,7 +122,7 @@ class WorkspaceExecuteSelectionTest {
 
     @Test
     void symlinked_seed_still_expands_prereqs() throws Exception {
-        // JK-2101: cone identity is the canonical path — a seed reached through a symlink must
+        // : cone identity is the canonical path — a seed reached through a symlink must
         // still match its graph module and pull dirty prereqs into the cone.
         Path core = module("jk-core", "core", "");
         Path cli = module("jk-cli", "cli", """

@@ -43,7 +43,7 @@ class NativeCommandEligibilityTest {
 
     @Test
     void enabled_false_module_never_enters_through_the_fallback() throws Exception {
-        // JK-2089: [native] enabled = false keeps the table but opts out. With no enabled table
+        // : [native] enabled = false keeps the table but opts out. With no enabled table
         // anywhere, the fallback must skip the disabled module even though it has a unique main.
         Path off = moduleDisabledNative("off");
         Path app = module("app", true, false);

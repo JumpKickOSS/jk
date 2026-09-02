@@ -28,7 +28,7 @@ class PublishCommandTest {
     private HttpServer server;
     private URI base;
     private final Map<String, byte[]> received = new HashMap<>();
-    /** When set, the metadata GET answers this status — the transient-failure shape (JK-2394). */
+    /** When set, the metadata GET answers this status — the transient-failure shape. */
     private volatile int metadataGetStatus = 0;
 
     @BeforeEach
@@ -44,7 +44,7 @@ class PublishCommandTest {
                 // A real repository serves what it stores. This used to answer 405 to every GET,
                 // which meant the metadata read always failed — publish swallowed that and wrote a
                 // single-version document, so the suite could not see the version list being
-                // truncated (JK-2394). Serving GET is what makes these tests exercise the merge.
+                // truncated. Serving GET is what makes these tests exercise the merge.
                 case "GET", "HEAD" -> {
                     if (metadataGetStatus != 0 && path.endsWith("maven-metadata.xml")) {
                         exchange.sendResponseHeaders(metadataGetStatus, -1);
@@ -293,7 +293,7 @@ class PublishCommandTest {
         Files.writeString(path, text);
     }
     /**
-     * The version list must accumulate across publishes. Before JK-2394 a failed metadata read was
+     * The version list must accumulate across publishes. Before a failed metadata read was
      * swallowed and replaced with a single-version document, so publishing 0.2.0 erased 0.1.0 — and
      * this suite could not see it, because its server answered 405 to every GET and so every read
      * "failed". This is the end-to-end assertion that would have caught it.
@@ -324,7 +324,7 @@ class PublishCommandTest {
 
     /**
      * A transient failure reading the existing metadata must not replace the version list with a
-     * single-version document. This is the end-to-end guard for JK-2394: the artifacts are already
+     * single-version document. This is the end-to-end guard for: the artifacts are already
      * uploaded at that point, so silently truncating is unrecoverable on a real repository.
      *
      * <p>A 403 rather than a 503 on purpose — `Http` never retries it, and a write-only deploy

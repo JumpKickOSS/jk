@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  * acting on that would let a compiler truncate a CAS blob in place, corrupting every action record
  * that references that content hash. {@code ActionCache} says the opposite in its own comments, and
  * {@code ActionCache} is right: it copies compile outputs rather than linking them, because compilers
- * rewrite class files in place (JK-1038).
+ * rewrite class files in place.
  *
  * <p>So the rule is: <strong>link out of the CAS only for a consumer that reads</strong> (a classpath
  * entry, a launcher's lib dir). A consumer that may rewrite the file gets a copy. Linking <em>into</em>
@@ -58,7 +58,7 @@ public final class Linking {
                 // Remember it for this volume pair rather than rediscovering it per file. On a mount
                 // that refuses links, every file used to pay a failed createLink (79.6 us on Windows,
                 // 17x Linux) before the 305 us copy — the capability question answered once per file
-                // instead of once per pair (JK-1038).
+                // instead of once per pair.
                 if (pair != null) LINKABLE.put(pair, Boolean.FALSE);
             }
         }

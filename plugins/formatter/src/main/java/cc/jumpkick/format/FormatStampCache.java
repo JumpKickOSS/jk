@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Settled-file stamps for one formatter configuration: <strong>one index file</strong> at
- * {@code <cache>/format-stamps/<configKey>.keys}, held in memory for the run and written once.
+ * {@code <cache>/format/stamps/<configKey>.keys}, held in memory for the run and written once.
  *
  * <p>A hit means the file's bytes are already settled under the config in the key, so the formatter
  * can skip it. Fail-open throughout: a lost or corrupt index costs one extra format pass and never
@@ -36,12 +36,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@code exists} plus a file creation: five syscalls, two of them creations, at ~200&nbsp;µs on NTFS
  * where Windows caps file creation at ~11,500/s and does not scale past four threads — so the
  * formatter's own thread pool could not amortise it. It was also strictly worse than the per-file
- * hash memo JK-1002 deleted, which at least did one {@code readAttributes}; JK-1002 measured that
+ * hash memo deleted, which at least did one {@code readAttributes}; measured that
  * layout as a <em>net loss</em> on Windows even against no cache at all.
  *
- * <p>The shape here is {@code FileHashMemo}'s post-JK-1002 shape, and its sibling
+ * <p>The shape here is {@code FileHashMemo}'s post- shape, and its sibling
  * {@code FormatFreshnessIndex} — the same feature's other half — was already an index. 13,508 file
- * creations and 12,458 mkdirs become one read and one write (JK-1034).
+ * creations and 12,458 mkdirs become one read and one write.
  */
 final class FormatStampCache {
 
@@ -146,7 +146,7 @@ final class FormatStampCache {
      * files across 12,458 directories, all of them zero bytes. Nothing reads it now, and retention
      * ranks the tier by mtime, so without this it would sit there for a week per entry and be
      * invisible to every byte report in the meantime. One {@code list} of a directory that normally
-     * holds a handful of index files; the same self-cleaning JK-1002's hash memo does on load.
+     * holds a handful of index files; the same self-cleaning's hash memo does on load.
      *
      * <p>Other configurations' indexes are kept — several coexist here, one per configuration a
      * workspace formats with, so two workers sweeping concurrently cannot delete each other's.

@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-/** JK-2102: the request-knob decoration shared by every assemblePlan branch. */
+/**: the request-knob decoration shared by every assemblePlan branch. */
 class BuildPlannerInputsWitherTest {
 
     @Test

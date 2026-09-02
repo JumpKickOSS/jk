@@ -61,7 +61,7 @@ public final class SessionContext {
      * subsequent build the <em>first</em> build's derived facts. A module that had no {@code
      * src/test/java} when the pool warmed had that scan memoized empty, and {@code jk test} then
      * reported "no test sources" — a green run — for every test written afterwards, until the engine
-     * restarted (JK-2620).
+     * restarted.
      *
      * <p>Capturing on the submitting thread and binding here makes the worker's ledger the one
      * belonging to the request that submitted the task. A {@code null} capture (a caller off a

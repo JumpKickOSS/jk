@@ -61,7 +61,7 @@ class CommandDispatchEnvelopeTest {
         // `hook-env` requires -s: the usage error is reported before dispatch begins a command,
         // so there is no envelope for it to open and nothing to close it. 64 is Exit.USAGE, spelled
         // as the literal a shell would see — an assertion on the constant would follow a value
-        // change and never notice it (JK-2417 moved this path off 2, jk's bad-config code).
+        // change and never notice it (moved this path off 2, jk's bad-config code).
         String err = Capture.stderr(() -> assertThat(Jk.execute("hook-env")).isEqualTo(64));
         assertThat(err).doesNotStartWith("\n");
         assertThat(err).contains("missing required argument");

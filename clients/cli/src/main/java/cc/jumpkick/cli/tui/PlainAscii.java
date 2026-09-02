@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
  * <h2>Mapping</h2>
  *
  * <table>
+ * <caption>Glyph fallbacks</caption>
  * <tr><th>Unicode</th><th>ASCII</th></tr>
  * <tr><td>… (ellipsis)</td><td>{@code ...}</td></tr>
  * <tr><td>• (bullet)</td><td>{@code -}</td></tr>

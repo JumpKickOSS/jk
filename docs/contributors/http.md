@@ -8,7 +8,7 @@ client code without being recorded anywhere.
 ## On by default
 
 `[http]` is **enabled by default** — loopback bind (`127.0.0.1`), **token-gated `/api/*`** (static shell
-open). It is not opt-in. Turn it off with `[http] enabled = false` in `~/.config/jk/config.toml` or
+open). It is not opt-in. Turn it off with `[http] enabled = false` in `~/.jk/config.toml` or
 `JK_HTTP_ENABLED=false`; a malformed config yields empty and fails closed (no server).
 
 JumpKick-owned listener JVMs carry `-Djava.net.preferIPv4Stack=true` on their spawn lines (engine,
@@ -129,7 +129,7 @@ last-known checkout path for build/graph ops.
 
 ### `GET /api/project/graph`
 
-Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
+Dependency graph for the Project page, same idea as `jk tree`:
 
 `GET /api/project/graph?dir=<path>&scopes=main,test&transitive=0|1`
 
@@ -271,9 +271,9 @@ The tier names come from `BuildMetrics.SCOPE_*`; the socket `metrics-entry` fram
 
 ### `GET /api/config`
 
-Effective machine `~/.config/jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
+Effective machine `~/.jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
 overridden }] }` for the Status Configuration panel — every known scalar key with its default and
-whether the effective value differs. Token-gated even on loopback (JK-1524): the payload names the
+whether the effective value differs. Token-gated even on loopback: the payload names the
 owner's config path and raw values, the same class as `/api/projects/defaults`.
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash

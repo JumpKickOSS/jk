@@ -31,7 +31,7 @@ lombok = "latest"
 # jk's own product library, with jk-engine.toml stamped to name it by sha and a downgrade refused —
 # the one place jk installs jk. Declared so both the CLI (which owns that destination) and the
 # freshness check agree; before this the only record of the fact was a path-pattern match, and a
-# missing engine install read as "already done" (JK-1069).
+# missing engine install read as "already done".
 [install]
 product-lib = "jk-engine"
 

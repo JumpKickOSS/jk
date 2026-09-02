@@ -35,7 +35,7 @@ public final class CacheTier {
             // a real measure again. Both were meaningless while this tier was one empty marker file
             // per stamp: the cost was inodes and dirents that no byte report could see, which is why
             // it needed a count cap no other tier wanted. The cap now lives in memory, inside the
-            // index, where it can rank by use instead of by a stat of every file (JK-1034).
+            // index, where it can rank by use instead of by a stat of every file.
             case FORMAT_STAMPS -> Bound.files(Duration.ofDays(7), Bound.resetOverBytes(64L * 1024 * 1024));
 
             // `save()` rewrites the live index on every `jk format`, so mtime is an exact use clock

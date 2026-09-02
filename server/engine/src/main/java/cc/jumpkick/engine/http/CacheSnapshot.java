@@ -33,7 +33,7 @@ import java.util.function.Supplier;
  * <p>{@code totalBytes} is the <strong>cache root walked as one tree</strong> — the same number
  * {@code jk status} prints as "Size on Disk" and the same one {@code jk cache nuke} frees. It used
  * to be a five-term sum of section fields, three cache and two store, which is the hand list
- * JK-2488 retired on the CLI side for two independent reasons: it counted store bytes a nuke
+ * retired on the CLI side for two independent reasons: it counted store bytes a nuke
  * leaves, and it missed every cache tier nobody had thought to add to it ({@code hash-memo},
  * {@code kotlin-cp-snapshots}, {@code base-jre}, …). A directory is total by construction; a sum of
  * named sections is total only until the next tier lands. The store keeps its own figure in
@@ -189,7 +189,7 @@ public record CacheSnapshot(
     /**
      * Maven local repository size — informational; jk neither budgets nor prunes it. Walked once
      * inside {@link #capture(Path)} and stored on the snapshot; never call this on the render / SSE
-     * connect path, which must not walk a multi-GiB {@code ~/.m2} (JK-2293).
+     * connect path, which must not walk a multi-GiB {@code ~/.m2}.
      */
     static DiskUsage.Stats mavenLocalStats() {
         try {
@@ -206,8 +206,8 @@ public record CacheSnapshot(
      * the store in parallel.
      */
     public static CacheSnapshot capture(Path cacheRoot) {
-        Path storeCas = JkStores.resolve(cacheRoot, "sha256");
-        Path repos = JkStores.resolve(cacheRoot, "repos");
+        Path storeCas = JkStores.resolve("sha256");
+        Path repos = JkStores.resolve("repos");
         Path actions = CacheTree.ACTIONS.under(cacheRoot);
         Path cacheCas = CacheTree.CACHE_CAS.under(cacheRoot);
         Path stamps = CacheTree.FORMAT_STAMPS.under(cacheRoot);

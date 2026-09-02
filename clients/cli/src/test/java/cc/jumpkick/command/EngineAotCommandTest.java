@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  * {@code state/aot} for every parallel fork and every past run, and {@code EngineSpawn.aotCachePath}
  * sweeps every {@code engine-<version>-<16hex>} key that is not the live one. Planting a fixture of
  * exactly that shape in the shared directory made this class lose a race with whichever fork was
- * running {@code EngineAotCacheTest} — green alone, red in the tier (JK-2453). With a throwaway
+ * running {@code EngineAotCacheTest} — green alone, red in the tier. With a throwaway
  * root the directory holds exactly what the test put there, so the counts below can be exact.
  */
 @IsolatedState

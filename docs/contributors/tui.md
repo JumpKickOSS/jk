@@ -1,7 +1,7 @@
 # TUI style guide
 
 **Audience:** CLI authors and agents touching `clients/cli` human output  
-**Status:** living guide (JK-1372)  
+**Status:** living guide
 **Related:** [machine-output.md](../user/machine-output.md) (agents / CI / JSONL)
 
 ## Product stance
@@ -29,7 +29,7 @@ API: `cc.jumpkick.cli.tui.JkWedge` (`CommandWedge` is the print helpers).
 
 | Work shape | Chrome |
 |------------|--------|
-| Bounded known progress | JkWedge + Progress (plan `JkManager`, or `JdkDownloadBar`) |
+| Bounded known progress | JkWedge + Progress. Painted live by `LiveLine` (`JdkDownloadBar`) or by `JkManagerView` (the plan header) — one geometry, two regions |
 | Indeterminate / short | Spinner-only wedge (`CommandWedge.analyzing` / `Spinner.showWedge`) |
 | Settled | Static icon — `CommandWedge.ok` / `fail` / `chip` (never leave a spinner running) |
 
@@ -114,7 +114,7 @@ Workspace plans (`jk build`, `jk test`, `jk run`, `jk native`, `jk image`) keep 
 They are not written into terminal scrollback and they are not part of the process-output peek.
 Settle wipes the live region, so those lines do not remain after the result chip.
 
-### Blank-line envelope (JK-1373)
+### Blank-line envelope
 
 Every **human** command prints:
 
@@ -123,7 +123,7 @@ Every **human** command prints:
 
 `CliOutput` owns the rule. The first `out` / `err` / `stdout()` / `stderr()` write of a leaf command inserts the leading blank. Dispatch calls `CliOutput.beginCommand(scriptMode)` before `run` and `CliOutput.closeEnvelope()` after — including on exception, after the error line, which goes through `CliOutput.err`. The trailing blank lands on whichever stream wrote last, so a command that ends on a stderr failure gets its gap there and a redirected stdout stays clean. Settles do **not** close. Plugin-declared commands (dispatched over the wire, not via `CliCommand`) share the same envelope.
 
-Spinners, `JkManager`, `JdkDownloadBar`, and wizards (`markEnvelopeStarted` after their own leading blank) share the same flag, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blanks.
+Spinners, `JkManager`, `LiveLine` (for `JdkDownloadBar`), and wizards (`markEnvelopeStarted` after their own leading blank) share the same flag, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blanks.
 
 Commands do **not** have to remember `envelopeStart` / `printOk` for the blank to appear. `CliOutput.out(JkWedge.chipLine(…))` is enough.
 
@@ -149,7 +149,7 @@ These commands intentionally emit only machine-consumable stdout. Every row but 
 
 | Command | Typical stdout | Consumer |
 |---------|----------------|----------|
-| `jk activate <shell>` | PATH + hooks + completions | `eval "$("$HOME/.local/bin/jk" activate bash)"` |
+| `jk activate <shell>` | PATH + hooks + completions | `eval "$("$HOME/.jk/bin/jk" activate bash)"` |
 | `jk hook-env -s <shell>` | Env sync lines | shell hook |
 | `jk jdk home` | `export JAVA_HOME=…` | `eval "$(jk jdk home)"` |
 | `jk auth token [provider]` | Single-line token | scripts / curl |
@@ -164,7 +164,7 @@ These commands intentionally emit only machine-consumable stdout. Every row but 
 
 Adding a new exception requires updating this table and the override that backs it.
 
-## List/status surfaces and hybrid settles (JK-1375)
+## List/status surfaces and hybrid settles
 
 Classification of wave-2 commands — implemented as listed; changing a row means
 changing the code (and vice versa):
@@ -212,12 +212,12 @@ Rendered rows go out through `CliOutput`, so the envelope opens on the first one
 | Command | Why |
 |---------|-----|
 | `jk trust list` | scriptable one-path-per-line contract; agents/paste into shell |
-| `jk repo search` | plain aligned `coordinate  versions` list (formerly `jk cache search`); piped/scripted like `jk trust list` |
+| `jk repo search` | plain aligned `coordinate  versions` list; piped/scripted like `jk trust list` |
 | `jk inspect` / `jk tasks inspect` | scrape-friendly `key: value` blocks for humans and agents |
 | `jk shell` | prints one line then hands the terminal to the spawned shell — no chrome |
 | `jk auth login` | device-flow prompts own the terminal; spinner while waiting, wedge on settle |
 
-## Glyph modes (JK-1376, JK-1970)
+## Glyph modes
 
 | Mode | Trigger | Chrome |
 |------|---------|--------|
@@ -283,11 +283,12 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
-| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, 30s heartbeat, `built`/`done`, `jk: ` prefix) |
+| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, 30s heartbeat, `built`/`done`, `jk: ` prefix). Bar width is a parameter: `Progress.DEFAULT_SEGMENTS` 40, `NARROW_SEGMENTS` 32 where the caller does not control the trailing text |
+| Live one-row region | `cli/tui/LiveLine.java` — animator, cursor, OSC taskbar, in-place repaint, Ctrl-C settle. Takes an already-clipped row per frame (`JkWedge.renderLiveLine`), so it never decides how anything looks. Splits silent (`--no-progress`, script mode) from plain (`--no-ansi`, says what happened, paints no moving row) from animating |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |
 | Trees | `cli/tui/Tree.java` — optional title/root, {@code Gap} / {@code BodyFit}, pills, hanging rich text |
 | Glyphs | `cli/tui/Glyphs.java` |
 | Live plan | `cli/tui/JkManager.java` |
-| Spinner / bar | `Spinner.java`, `SpinnerProgressBar.java` |
+| Spinner / bar | `Spinner.java`, `SpinnerProgressBar.java`. `Spinner` still carries its own copy of the live-region loop |
 | Theme / ANSI gate | `cli/theme/Theme.java` (`styleNamed` for RichText tokens) |
 | Mode fixtures | `cli/tui/TuiModeFixturesTest.java` |

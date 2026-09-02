@@ -179,7 +179,7 @@ public final class AffectedTestRanker {
         List<String> exclude =
                 in.selection() == null ? List.of() : in.selection().excludeTags();
         // Local changed types score first; a dependency module's classified types (foreign) fill
-        // in behind them so a dependent's importers rank too (JK-2606). Local wins a duplicate.
+        // in behind them so a dependent's importers rank too. Local wins a duplicate.
         LinkedHashMap<String, ClassAbi.Kind> scoreable = new LinkedHashMap<>(changed);
         if (in.foreignChanged() != null) {
             for (var e : in.foreignChanged().entrySet()) scoreable.putIfAbsent(e.getKey(), e.getValue());

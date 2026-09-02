@@ -170,7 +170,7 @@ public final class JUnitLauncher {
     private boolean cliTempDirSupport;
 
     /**
-     * {@code.../target/classes/test} → module root ({@code.../}). Null when layout is nonstandard.
+     * {@code .../target/classes/test} → module root ({@code .../}). Null when layout is nonstandard.
      */
     static Path inferModuleDir(Path testClassesDir) {
         if (testClassesDir == null) return null;
@@ -198,7 +198,7 @@ public final class JUnitLauncher {
 
     /**
      * {@code [test] serial-tags}: class-level tags whose classes run on a single trailing worker
-     * instead of the sharded pool (JK-2184). Partitioning is per class — a method-level serial
+     * instead of the sharded pool. Partitioning is per class — a method-level serial
      * tag inside an otherwise-untagged class still shards with its class.
      */
     public JUnitLauncher withSerialTags(List<String> tags) {
@@ -552,7 +552,7 @@ public final class JUnitLauncher {
             lastClasses.add(last);
             final int totalWorkers = actualWorkers;
             // Virtual: the thread blocks on the child's stdout for the worker's whole life —
-            // exactly the shape VT is for (JK-2212).
+            // exactly the shape VT is for.
             Thread t = Thread.ofVirtual()
                     .name("jk-test-worker-" + workerId)
                     .start(() -> exits[idx] = driveWorker(
@@ -602,7 +602,7 @@ public final class JUnitLauncher {
         // A worker that died mid-suite while its siblings kept going used to vanish silently:
         // its in-flight class was neither run nor reported, so the suite went green with a
         // shortfall. Surface every abnormal exit as a failure naming the worker's last class
-        // (idle-watchdog kills land here too — JK-2202). Skipped on user cancel: those exits
+        // (idle-watchdog kills land here too —). Skipped on user cancel: those exits
         // are the kill we asked for.
         if (worstExit != 0 && !SessionCancel.cancelled()) {
             for (int i = 0; i < actualWorkers; i++) {
@@ -631,7 +631,7 @@ public final class JUnitLauncher {
      * per-worker {@code JK_STATE_DIR}. Engine identity is keyed on (state, store), so a shared
      * state dir means one socket for every worker — and one worker's engine force-stop aborts
      * its siblings mid-request. The suffix stays short: the state dir holds Unix domain sockets,
-     * and the JDK stops binding past 102 characters (JK-2183; the budget is
+     * and the JDK stops binding past 102 characters (; the budget is
      * {@code UnixSocketPaths.MAX_PATH_LENGTH}, proven there by binding).
      */
     static Map<String, String> workerEnv(Map<String, String> base, int workerId, Path tmp) {
@@ -653,7 +653,7 @@ public final class JUnitLauncher {
      * Inactivity window for pull-mode test workers. Generous: single tests are legitimately
      * slow (the Android ladder runs minutes per class), but the runner emits an event per test
      * start/finish, so a silent worker is a hung one — a JLine tty probe once stalled a worker
-     * (and the whole suite) for 3.5h with zero output (JK-2201/JK-2202). Override:
+     * (and the whole suite) for 3.5h with zero output. Override:
      * {@code -Djk.test.worker.idle.ms} / {@code JK_TEST_WORKER_IDLE_MS}; {@code 0} disables.
      */
     static long workerIdleTimeoutMs() {
@@ -762,7 +762,7 @@ public final class JUnitLauncher {
      * {@code writeRunnerSha} task).
      *
      * <p>Until jk-test-runner ships to Maven Central, the user is responsible for side-loading the
-     * jar into the CAS — typically by running {@code./gradlew:test-runner:installLocalCas} in jk's
+     * jar into the CAS — typically by running {@code ./gradlew :test-runner:installLocalCas} in jk's
      * own tree. Once the runner is published, {@code jk sync} will populate the CAS automatically.
      *
      * <p>Throws {@link IOException} with side-load instructions if the jar isn't in the CAS at the
@@ -773,7 +773,7 @@ public final class JUnitLauncher {
         // Location (override → CAS-by-SHA) is shared with every other worker via
         // PluginJar; adapt its IllegalStateException to this method's IOException.
         try {
-            return PluginJar.TEST_RUNNER.locate(JkStores.cas(cacheRoot));
+            return PluginJar.TEST_RUNNER.locate(JkStores.storeCas());
         } catch (IllegalStateException e) {
             throw new IOException("jk test: " + e.getMessage(), e);
         }

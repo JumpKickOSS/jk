@@ -12,7 +12,7 @@ import cc.jumpkick.engine.listen.SseEventSink;
 import cc.jumpkick.engine.listen.WireEventSink;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.TimelineEvent;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -73,7 +73,7 @@ public final class EngineListeners {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a == null) return;
         a.flushTimeline().ifPresent(path -> {
-            if (writer != null) WireWriter.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
+            if (writer != null) WireWriter.sendQuiet(writer, new TimelineEvent(path.toString()).encode());
         });
     }
 

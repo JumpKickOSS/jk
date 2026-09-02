@@ -112,7 +112,7 @@ class KmpRedirectsMemoTest {
             assertThat(secondStarted.await(10, TimeUnit.SECONDS)).isTrue();
             // "Started" is not "parked on the in-flight future", and the gap between them was
             // covered by a bare Thread.sleep(50) — a guess about this machine, and no assertion
-            // (JK-2446). Parking is not directly observable, but being off the CPU is: wait for the
+            // . Parking is not directly observable, but being off the CPU is: wait for the
             // second caller's thread to leave RUNNABLE before releasing the first one.
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
             while (secondThread.get().getState() == Thread.State.RUNNABLE && System.nanoTime() < deadline) {

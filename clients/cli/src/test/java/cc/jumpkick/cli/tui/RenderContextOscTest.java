@@ -121,7 +121,7 @@ class RenderContextOscTest {
 
     @Test
     void non_sgr_csi_is_dropped_but_sgr_passes() {
-        // JK-2109: cursor motion / erase CSI from raw tool output must never reach the live
+        // : cursor motion / erase CSI from raw tool output must never reach the live
         // region; SGR coloring stays.
         String in = "\u001b[1Aup\u001b[2K \u001b[31mred\u001b[0m";
         String out = RenderContext.truncateVisible(in, 40);

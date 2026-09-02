@@ -280,7 +280,7 @@ public record ProjectInfo(
      * The ONE wire encoding for the module set: an ordered {@code dir → name} object
      * ({@code Jsonl.strMap}), so dirs and names cannot misalign on decode — the old parallel
      * {@code moduleDirs}/{@code moduleNames} arrays forced every consumer to defend with
-     * size-min clamps (JK-2168).
+     * size-min clamps.
      */
     private Map<String, String> zipModules() {
         var out = new LinkedHashMap<String, String>();

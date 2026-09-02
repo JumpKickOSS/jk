@@ -102,7 +102,7 @@ public final class ManifestDeps {
      * treated as a floating version selector (the Cargo-style {@code name = "1.2.3"} form).
      * </ul>
      *
-     * <p>A leading {@code.} or {@code /} is a local-path shorthand — a consume-only path dependency
+     * <p>A leading {@code .} or {@code /} is a local-path shorthand — a consume-only path dependency
      * ({@link Dependency#pathByName}), built compile/package-only. A local sibling that should be
      * built fully (with tests) belongs in {@code [workspace] modules} instead.
      */
@@ -532,7 +532,7 @@ public final class ManifestDeps {
      * <li>{@code url#sha!subdir} / {@code url!subdir#sha} — sha with subdir
      * </ul>
      *
-     * <p>The {@code @} ref delimiter is searched only after the last {@code /} or {@code:} in the
+     * <p>The {@code @} ref delimiter is searched only after the last {@code /} or {@code :} in the
      * URL, so the {@code git@host} userinfo form is not confused for an embedded ref. The {@code #}
      * and {@code !} delimiters are searched from the start of the string (they are not valid in
      * standard git URL paths without encoding).

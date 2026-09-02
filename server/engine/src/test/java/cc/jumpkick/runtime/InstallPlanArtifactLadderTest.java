@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  * terminal's <em>upstream</em> closure. Requiring package-jar alone therefore pruned the assembly
  * and minified tails that {@code appendDeclaredTails} had just re-rooted the plan onto — so
  * {@code jk install} on a project declaring {@code assembly = true} built no fat jar and installed
- * a thin-jar launcher (JK-1071).
+ * a thin-jar launcher.
  */
 class InstallPlanArtifactLadderTest {
 

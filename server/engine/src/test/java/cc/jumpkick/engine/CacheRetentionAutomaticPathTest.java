@@ -38,7 +38,7 @@ class CacheRetentionAutomaticPathTest {
         // the gate is not this test's subject, and JK_HOME keeps every path it reads inside tmp.
         Path overBudget = overStoreBudget(cache, 32L * 1024 * 1024);
         Path abandoned = abandonedTier(cache.resolve("runs"), "2026-05-01");
-        Path stamp = file(cache.resolve("format-stamps/ab/cd/Src.java.stamp"), "");
+        Path stamp = file(cache.resolve("format/stamps/ab/cd/Src.java.stamp"), "");
         List<String> log = new CopyOnWriteArrayList<>();
 
         System.setProperty("jk.env.JK_HOME", home.toAbsolutePath().toString());

@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Emits IntelliJ IDEA project files ({@code.idea/} + {@code *.iml}) from {@link IdeModel}. Modules
+ * Emits IntelliJ IDEA project files ({@code .idea/} + {@code *.iml}) from {@link IdeModel}. Modules
  * map to stable {@code jk-<vendor>-<level>} SDKs in the global {@code jdk.table.xml}.
  */
 public final class IntellijIdeGenerator implements IdeGenerator {

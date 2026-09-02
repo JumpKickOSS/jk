@@ -90,7 +90,7 @@ public final class Cas {
     }
 
     /**
-     * As {@link #put(byte)} with the content hash already computed by the caller (verified
+     * As {@link #put(byte[])} with the content hash already computed by the caller (verified
      * downloads hash the payload anyway) — the CAS trusts it and skips a second full hash.
      */
     public Path put(byte[] data, String hex) throws IOException {
@@ -104,7 +104,7 @@ public final class Cas {
 
     /**
      * Stream {@code in} into the CAS, hashing as the bytes flow through a fixed buffer so the full
-     * payload is never resident in memory — the memory-safe counterpart to {@link #put(byte)} for
+     * payload is never resident in memory — the memory-safe counterpart to {@link #put(byte[])} for
      * large artifacts fetched off the network. The content's own SHA-256 becomes its key, so the hash
      * isn't known until the stream is drained: bytes land in a temp file first, then move atomically
      * into place. The caller owns closing {@code in}.
@@ -185,7 +185,7 @@ public final class Cas {
         Files.createDirectories(target.getParent());
         Path tmp = Files.createTempFile(target.getParent(), ".put-", ".tmp");
         // Cleanup on the failure path only: moveInto consumed tmp on success, so a finally unlink
-        // is a guaranteed miss once per blob (JK-1029).
+        // is a guaranteed miss once per blob.
         boolean moved = false;
         try {
             Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);

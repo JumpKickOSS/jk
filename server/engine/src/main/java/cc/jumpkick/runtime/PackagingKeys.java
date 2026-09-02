@@ -39,11 +39,11 @@ import java.util.TreeMap;
  * module, so no text scan can. Two live defects were exactly that shape:
  *
  * <ul>
- * <li><b>JK-2480.</b> Both {@code package-assembly} sites emitted {@code main:}; the build read
+ * <li><b>.</b> Both {@code package-assembly} sites emitted {@code main:}; the build read
  *     {@code project.mainClass()} and the forecast {@code PluginModule.mainClass(dir, project)},
  *     which answers {@code WORKER_MAIN} for a plugin worker. A worker module with
  *     {@code assembly = true} could therefore never forecast up-to-date.
- * <li><b>JK-2491.</b> A module packaged by a plugin (spring-boot, grails, quarkus, minified) runs
+ * <li><b>.</b> A module packaged by a plugin (spring-boot, grails, quarkus, minified) runs
  *     the packager under a token bag that has nothing to do with the plain jar's, and the forecast
  *     had no arm for it at all — it priced {@code package-jar} against the plain-jar key, which
  *     that build never computes.
@@ -250,7 +250,7 @@ public final class PackagingKeys {
         // [manifest] attributes ride inside the facts token — they reach the packager, so they key it.
         tokens.add("facts:" + facts.token());
         // The JDK the packager runs against reaches the body as spec.javaHome and decides the
-        // bytecode it may rewrite or the launcher it embeds, so it keys the output (JK-2460).
+        // bytecode it may rewrite or the launcher it embeds, so it keys the output.
         tokens.add("jdk:" + ActionKey.jdkToken(p.javaHome()));
         // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
         tokens.add("packaging:" + p.decls().packager().name());
@@ -409,7 +409,7 @@ public final class PackagingKeys {
     /**
      * Whether the plugin packs this module's main artifact instead of jk's {@code JarPackager}.
      * This is {@code PlannerPackage.packageJarStep}'s own dispatch, spelled once so the forecast
-     * asks exactly the question the build answers (JK-2491) — the gap survived because the
+     * asks exactly the question the build answers — the gap survived because the
      * forecast had no way to take the branch and the guard's exemption said so accurately.
      */
     static boolean ownsPackaging(Owner owner) {

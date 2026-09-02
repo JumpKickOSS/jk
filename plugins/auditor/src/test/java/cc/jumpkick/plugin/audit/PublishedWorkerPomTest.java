@@ -31,7 +31,7 @@ import org.w3c.dom.Element;
  * {@code pom.withXml} artifactId remap that never matched a node — {@code asNode()} parses
  * namespace-aware, so {@code node.name()} is a {@code QName} printing {@code
  * {http://maven.apache.org/POM/4.0.0}artifactId} and the comparison against the bare string was
- * always false (JK-2497). Code that looks right and silently does nothing is exactly what a test
+ * always false. Code that looks right and silently does nothing is exactly what a test
  * that reads the artifact catches and an inspection does not.
  *
  * <p>The repository is the one {@code stageWorkerRepo} writes — byte for byte what {@code

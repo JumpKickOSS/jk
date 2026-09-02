@@ -112,4 +112,37 @@ class VerboseListenerTest {
         assertThat(plain).contains("FAILED Second.b()");
         assertThat(plain.indexOf("FAILED First.a()")).isLessThan(plain.indexOf("FAILED Second.b()"));
     }
+
+    @Test
+    void two_threads_on_one_step_never_lose_a_line() throws Exception {
+        // The buffer handoff is a per-step transaction: copying a synchronized list outside its
+        // monitor could throw CME out of output(), and a line added between remove and copy
+        // landed on a dead list — silently dropped.
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
+        var v = new VerboseListener(out, out);
+        int blocksPerThread = 200;
+        Thread[] threads = new Thread[4];
+        for (int t = 0; t < threads.length; t++) {
+            int id = t;
+            threads[t] = new Thread(() -> {
+                for (int i = 0; i < blocksPerThread; i++) {
+                    String marker = "FAILED T" + id + "N" + i + "()";
+                    v.output("run-tests", "Test Failure");
+                    v.output("run-tests", marker);
+                    v.output("run-tests", "Test Failure end");
+                }
+            });
+        }
+        for (Thread t : threads) t.start();
+        for (Thread t : threads) t.join();
+        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(1));
+
+        String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        for (int t = 0; t < threads.length; t++) {
+            for (int i = 0; i < blocksPerThread; i++) {
+                assertThat(plain).contains("FAILED T" + t + "N" + i + "()");
+            }
+        }
+    }
 }

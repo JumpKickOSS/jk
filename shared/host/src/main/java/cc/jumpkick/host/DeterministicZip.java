@@ -71,7 +71,7 @@ public final class DeterministicZip {
      * {@link java.util.zip.DeflaterOutputStream}'s <strong>512-byte</strong> buffer, which turned a
      * 9&nbsp;MB engine jar into ~18,000 {@code write(2)} calls where 64&nbsp;KB gives ~143. On NTFS
      * every one of those traverses the full filter stack, and an antivirus minifilter that hooks
-     * writes rather than closes sees 18,000 IRPs on one file (JK-1029).
+     * writes rather than closes sees 18,000 IRPs on one file.
      *
      * <p>Buffering cannot change the bytes produced — entry order, timestamps and compression are
      * this class's business and are unaffected.

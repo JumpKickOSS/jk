@@ -40,7 +40,7 @@ public final class TestWorkers {
         return clampByHeap(Math.max(1, raw));
     }
 
-    /** Mill-shaped auto: one class → 1; else {@code min(jobs, classCount)}. */
+    /** Mill-shaped auto: one class → 1; else {@code min(jobs, classCount)} — {@code jobs} pre-shared. */
     public static int auto(int jobs, int classCount) {
         if (classCount <= 1) return 1;
         int j = Math.max(1, jobs);

@@ -21,7 +21,7 @@ public final class CatalogReadOps {
     public record Request(
             Path dir,
             Path cache,
-            // Store root for cached-version lookups (repos/ lives there, JK-2176); null =
+            // Store root for cached-version lookups (repos/ lives there); null =
             // derive from the ambient store. Explicit so tests can isolate.
             Path store,
             String query,
@@ -55,8 +55,8 @@ public final class CatalogReadOps {
             List<String> cached = List.of();
             if (req.includeCached()) {
                 // repos/ lives under the STORE root — the same tree MavenRepo writes through
-                // cas.root() (JK-2176); the cache root never holds repo artifacts.
-                Path store = req.store() != null ? req.store() : JkStores.storeRootFor(cache);
+                // cas.root; the cache root never holds repo artifacts.
+                Path store = req.store() != null ? req.store() : JkStores.store();
                 List<String> versions = new ArrayList<>(RepoArtifactStore.allVersions(
                         store, src.module().group(), src.module().artifact()));
                 versions.sort((a, b) -> Versions.compare(b, a));

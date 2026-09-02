@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,7 +41,7 @@ class BuildPlanTest {
 
     @Test
     void an_unreported_step_throwable_reaches_listeners_not_just_the_result() {
-        // JK-2199: the synthesized "exception" diagnostic landed only in the result's
+        // : the synthesized "exception" diagnostic landed only in the result's
         // diagnostics, which never cross the wire on the workspace path — a GlobException
         // out of copy-resources failed the module with no message anywhere.
         List<String> seen = new ArrayList<>();
@@ -315,11 +318,12 @@ class BuildPlanTest {
 
     @Test
     void typed_state_flows_between_phases() {
-        BuildPlanKey<String> NAME = BuildPlanKey.of("name", String.class);
-        BuildPlanKey<Integer> COUNT = BuildPlanKey.of("count", Integer.class);
+        BuildPlanKey<String> NAME = BuildPlanKey.scalar("name", String.class);
+        BuildPlanKey<Integer> COUNT = BuildPlanKey.scalar("count", Integer.class);
         List<String> consumed = new ArrayList<>();
 
         var plan = BuildPlan.builder("flow")
+                .stateKeys(NAME, COUNT)
                 .addTask(Task.builder("producer")
                         .execute(ctx -> {
                             ctx.put(NAME, "widget");
@@ -343,9 +347,133 @@ class BuildPlanTest {
     }
 
     @Test
+    void publish_rejects_wrong_list_element_type() {
+        BuildPlanKey<List<String>> names = BuildPlanKey.list("names", String.class);
+        BuildPlan plan = planPublishing(names, List.of("ok", 7));
+
+        BuildPlanResult result = plan.run();
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errors().getFirst().message())
+                .isEqualTo("plan state 'names' element [1] expected java.lang.String but was java.lang.Integer");
+    }
+
+    @Test
+    void read_revalidates_a_list_mutated_after_publish() {
+        BuildPlanKey<List<String>> names = BuildPlanKey.list("names", String.class);
+        List<String> published = new ArrayList<>();
+        published.add("ok");
+        var plan = BuildPlan.builder("mutated-state")
+                .stateKeys(names)
+                .addTask(Task.builder("producer")
+                        .execute(ctx -> {
+                            ctx.put(names, published);
+                            published.add(null);
+                        })
+                        .build())
+                .addTask(Task.builder("consumer")
+                        .requires("producer")
+                        .execute(ctx -> ctx.require(names))
+                        .build())
+                .build();
+
+        BuildPlanResult result = plan.run();
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errors().getFirst().message())
+                .isEqualTo("plan state 'names' element [1] expected java.lang.String but was null");
+    }
+
+    @Test
+    void publish_rejects_wrong_map_key_type() {
+        BuildPlanKey<Map<String, Integer>> counts = BuildPlanKey.map("counts", String.class, Integer.class);
+        BuildPlan plan = planPublishing(counts, Map.of(7, 1));
+
+        BuildPlanResult result = plan.run();
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errors().getFirst().message())
+                .isEqualTo("plan state 'counts' map key expected java.lang.String but was java.lang.Integer");
+    }
+
+    @Test
+    void publish_rejects_wrong_map_value_type() {
+        BuildPlanKey<Map<String, Integer>> counts = BuildPlanKey.map("counts", String.class, Integer.class);
+        BuildPlan plan = planPublishing(counts, Map.of("wrong", "one"));
+
+        BuildPlanResult result = plan.run();
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errors().getFirst().message())
+                .isEqualTo(
+                        "plan state 'counts' map value for key 'wrong' expected java.lang.Integer but was java.lang.String");
+    }
+
+    @Test
+    void same_name_reuse_rejects_incompatible_descriptor() {
+        BuildPlanKey<String> scalar = BuildPlanKey.scalar("shared", String.class);
+        BuildPlanKey<List<String>> list = BuildPlanKey.list("shared", String.class);
+        assertThatThrownBy(
+                        () -> BuildPlan.builder("reuse").stateKeys(scalar, list).build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "plan state key 'shared' reused with incompatible type: expected java.lang.String but actual list<java.lang.String>");
+    }
+
+    @Test
+    void unrelated_plans_can_use_the_same_name_with_different_descriptors() {
+        BuildPlan first = BuildPlan.builder("first")
+                .stateKeys(BuildPlanKey.scalar("shared", String.class))
+                .build();
+        BuildPlan second = BuildPlan.builder("second")
+                .stateKeys(BuildPlanKey.list("shared", String.class))
+                .build();
+
+        assertThat(first.name()).isEqualTo("first");
+        assertThat(second.name()).isEqualTo("second");
+    }
+
+    @Test
+    void runtime_rejects_a_key_that_disagrees_with_the_declared_descriptor() {
+        BuildPlanKey<String> scalar = BuildPlanKey.scalar("shared", String.class);
+        BuildPlanKey<List<String>> list = BuildPlanKey.list("shared", String.class);
+        var plan = BuildPlan.builder("runtime-reuse")
+                .stateKeys(scalar)
+                .addTask(Task.builder("consumer").execute(ctx -> ctx.get(list)).build())
+                .build();
+
+        BuildPlanResult result = plan.run();
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errors().getFirst().message())
+                .isEqualTo(
+                        "plan state key 'shared' reused with incompatible type: expected java.lang.String but actual list<java.lang.String>");
+    }
+
+    private static BuildPlan planPublishing(BuildPlanKey<?> key, Object value) {
+        return BuildPlan.builder("invalid-publish")
+                .stateKeys(key)
+                .addTask(Task.builder("producer")
+                        .execute(ctx -> invokePut(ctx, key, value))
+                        .build())
+                .build();
+    }
+
+    private static void invokePut(TaskContext context, BuildPlanKey<?> key, Object value) throws Exception {
+        Method put = TaskContext.class.getMethod("put", BuildPlanKey.class, Object.class);
+        try {
+            put.invoke(context, key, value);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof Exception cause) throw cause;
+            throw e;
+        }
+    }
+
+    @Test
     void require_throws_when_key_missing() {
-        BuildPlanKey<String> MISSING = BuildPlanKey.of("missing", String.class);
+        BuildPlanKey<String> MISSING = BuildPlanKey.scalar("missing", String.class);
         var plan = BuildPlan.builder("oops")
+                .stateKeys(MISSING)
                 .addTask(Task.builder("reader")
                         .execute(ctx -> ctx.require(MISSING))
                         .build())

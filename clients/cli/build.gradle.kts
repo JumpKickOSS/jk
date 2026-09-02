@@ -38,7 +38,7 @@ dependencies {
     testCompileOnly(libs.jetbrains.annotations)
     // The tree's shared test primitives (`cc.jumpkick.testing`): `Await`, `ShortTempDirs`,
     // `SysProps`, `LoopbackHttp`. A separate source set of :host, so `checkCliRuntimeClasspath`
-    // below still sees a runtime classpath with no test code and no JUnit on it (JK-2443).
+    // below still sees a runtime classpath with no test code and no JUnit on it.
     testImplementation(testFixtures(project(":host")))
     testImplementation(testFixtures(project(":core")))
 }
@@ -54,9 +54,9 @@ val intellijParserSrc by tasks.registering(Sync::class) {
 }
 sourceSets.test { java.srcDir(intellijParserSrc.map { it.destinationDir }) }
 
-// JK-2139: the native client must not see the plugin SPI jar (codec is :host).
+// The native client must not see the plugin SPI jar (codec is :host).
 //
-// JK-2443 added the test-fixtures entries. `:host` now carries a `testFixtures` source set (the
+// The test-fixtures entries came later. `:host` now carries a `testFixtures` source set (the
 // tree's shared test primitives) and `:cli` consumes it as `testImplementation`, so the fixtures —
 // and JUnit, which they compile against — are one wrong configuration keyword away from the native
 // image. That mistake would not fail anything else: the image would just get bigger and start
@@ -94,9 +94,9 @@ val checkCliRuntimeClasspath by tasks.registering {
     }
 }
 
-// JK-2151: native reachability — CLI main must not name parser / plugin-schema types.
+// Native reachability — CLI main must not name parser / plugin-schema types.
 //
-// JK-2489 closed the hole this guard was written for and could not previously state: the ban listed
+// A later pass closed the hole this guard was written for and could not previously state: the ban listed
 // twelve type names but not `org.tomlj` itself, because `BuildLogicTaskScan` named `TomlValues` and
 // `org.tomlj.TomlTable` to read `[build].logic` — one violation, in the guard's own module, for as
 // long as the guard has existed. `TomlScan` reads that key now (see `BuildLogicToml`), so the two
@@ -130,7 +130,7 @@ val checkCliNoParseTypes by tasks.registering {
             banned.filter { text.contains(it) }.map { "${f.name}: $it" }
         }
         if (hits.isNotEmpty()) {
-            throw GradleException("CLI main must not reference parser/plugin-schema types (JK-2151): $hits")
+            throw GradleException("CLI main must not reference parser/plugin-schema types: $hits")
         }
     }
 }
@@ -138,7 +138,7 @@ tasks.named("check") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNo
 tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 
 // ---------------------------------------------------------------------------
-// JK-2453: a test that names the ambient state root must declare it throwaway.
+// A test that names the ambient state root must declare it throwaway.
 //
 // `clients/cli/build/test-jk-home` is ONE JK_HOME shared by all of the tier's parallel forks and by
 // every run before this one — no task cleans it, so `state/` is ambient input. A test that resolves
@@ -153,10 +153,10 @@ tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoPa
 // and not the annotation is exactly the violation.
 //
 // Scope is the STATE root only. The artifact store has a second spelling (`JkStores.store()`) and
-// two suites that deliberately prime the shared store rather than isolate it (JK-2451); ratcheting
+// two suites that deliberately prime the shared store rather than isolate it; ratcheting
 // that root needs those declared first, so this guard does not pretend to cover it.
 // ---------------------------------------------------------------------------
-// Guard G31 (JK-2453).
+// Guard G31.
 val checkTestRootsDeclared by tasks.registering {
     group = "verification"
     description = "Fail when a :cli test reads the ambient state root without @IsolatedState"
@@ -174,7 +174,7 @@ val checkTestRootsDeclared by tasks.registering {
         if (hits.isNotEmpty()) {
             throw GradleException(
                     "The tier's JK_HOME is shared across forks and across runs, so a test that reads the "
-                            + "ambient state root inherits state instead of establishing it (JK-2453). "
+                            + "ambient state root inherits state instead of establishing it. "
                             + "Annotate the class with @IsolatedState: " + hits)
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
@@ -184,7 +184,7 @@ tasks.named("check") { dependsOn(checkTestRootsDeclared) }
 tasks.named("test") { dependsOn(checkTestRootsDeclared) }
 
 // ---------------------------------------------------------------------------
-// G22 — JK-2449: the IDE clients are wired to jk by string, and nothing checked the strings.
+// G22 — the IDE clients are wired to jk by string, and nothing checked the strings.
 //
 // `clients/intellij` and `clients/vscode` are not modules of this build (the IntelliJ plugin is a
 // standalone Gradle build; the VS Code extension is JavaScript), so no compiler ever looks at
@@ -343,7 +343,7 @@ val checkIdeClientWiring by tasks.registering {
         if (problems.isNotEmpty()) {
             throw GradleException(
                     "The IDE clients are not compiled by this build, so their wiring to jk is only ever checked"
-                            + " here (JK-2449):\n        " + problems.sorted().joinToString("\n        "))
+                            + " here:\n        " + problems.sorted().joinToString("\n        "))
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
@@ -402,7 +402,7 @@ dependencies {
 
 // Root for this task's sandboxes. It must be OUTSIDE the checkout (see cliTestTmpDirShort below);
 // its length is no longer a constraint, because the tier binds no Unix domain socket — it speaks
-// loopback TCP (JK-1065). The old `length <= 60` gate here was a budget against `sun_path` that
+// loopback TCP. The old `length <= 60` gate here was a budget against `sun_path` that
 // was never derived from the suffix it had to leave room for: on macOS it admitted the 48-char
 // per-user $TMPDIR, which composed a 103-byte socket path against the 102 the JDK will bind, and
 // every engine-spawning test in this tier failed. The platform tmpdir is the right answer now, and
@@ -415,7 +415,7 @@ val cliTestStateDirShort =
 // @TempDir root for the integration tier. It MUST live outside the repo checkout: the shared
 // convention points java.io.tmpdir at build/tmp (inside clients/cli, which has its own jk.toml),
 // so @TempDir project dirs would find — and the "promote to workspace" tests would MUTATE — the
-// real repo's jk.toml (JK-2329). That is the whole requirement now; path length is not part of it.
+// real repo's jk.toml. That is the whole requirement now; path length is not part of it.
 val cliTestTmpDirShort =
         shortTmpRoot.resolve(
                 "jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
@@ -446,10 +446,10 @@ tasks.named<Test>("test") {
     // terminal's own config. Unpinned, the developer's terminal decides whether PUA caps appear and
     // TUI assertions differ between Ghostty, Terminal.app, and CI. Tests that exercise the glyphs
     // pass caps explicitly (withCaps / NerdFontCaps args), so pinning the ambient default off costs
-    // no coverage (JK-1970).
+    // no coverage.
     environment("JK_NERD_FONT", "false")
     // EngineTestExtension (materialize + stop-after-every-class) stays unloaded here: the unit
-    // tier must not spawn engines. That is the conventions default for every tier since JK-2447,
+    // tier must not spawn engines. That is the conventions default for every tier,
     // so this tier states nothing; `integrationTest` below is the one that overrides it.
     systemProperty(
             "junit.jupiter.tempdir.deletion.strategy.default",
@@ -461,7 +461,7 @@ tasks.named<Test>("test") {
 
 tasks.named<Test>("integrationTest") {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    // As :cli:test — keep ambient terminal detection out of rendered-output assertions (JK-1970).
+    // As :cli:test — keep ambient terminal detection out of rendered-output assertions.
     environment("JK_NERD_FONT", "false")
     // Single fork: one resident engine / JK_STATE_DIR per suite.
     maxParallelForks = 1
@@ -486,7 +486,7 @@ tasks.named<Test>("integrationTest") {
     // and the second is the bigger one:
     //   * a TCP port has no `sun_path` budget, so the sandbox root's length stops being load-
     //     bearing — a macOS per-user $TMPDIR composed a 103-byte socket path against the JDK's
-    //     102-byte limit and every engine-spawning test in this tier failed to bind (JK-1065);
+    //     102-byte limit and every engine-spawning test in this tier failed to bind;
     //   * Windows is otherwise the only user of this lane, so it was carried by two forced-property
     //     tests. Now the whole tier exercises it, everywhere.
     // Environment, not -D: EngineSpawn's child inherits the environment, not our properties.
@@ -514,7 +514,7 @@ tasks.named<Test>("integrationTest") {
         val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
         environment("JK_HOME", testJkHome)
         environment("JK_JDKS_DIR", "$testJkHome/jdks")
-        val store = file("$testJkHome/data/store") // JK_HOME mirrors XDG: store is <data>/store
+        val store = file("$testJkHome/store")
         listOf(
                         ":kotlin-compiler",
                         ":groovy-compiler",
@@ -598,7 +598,7 @@ graalvmNative {
 
 
 // ---------------------------------------------------------------------------
-// Guard G27 (JK-2432): the terminal is handed to a child in exactly one place.
+// Guard G27: the terminal is handed to a child in exactly one place.
 //
 // `CliOutput.handOffTerminal(pb)` restores the terminal out of whatever mode jk put it in and then
 // starts the child on inherited stdio. Those two steps are a pair, and spelling them separately is

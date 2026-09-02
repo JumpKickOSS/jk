@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -193,7 +194,7 @@ public final class DoctorCommand implements CliCommand {
      * {@code --verify-linked}: {@link #VERIFIED} matches the stored baseline, {@link #DRIFTED}
      * does not, {@link #FIRST_SEEN} had no baseline to compare against, and {@link #EMPTY} means the
      * digest was {@link JdkFingerprint#EMPTY_TREE} — nothing was hashed, which is a finding, not a
-     * fingerprint (JK-2467).
+     * fingerprint.
      */
     private enum ToolRowKind {
         PRUNED,
@@ -316,7 +317,7 @@ public final class DoctorCommand implements CliCommand {
 
     /**
      * Fingerprint one symlinked tool home and compare it against the digest the last run stored at
-     * {@code <slug>/<version>.fingerprint}. Before JK-2467 that marker was written and never read by
+     * {@code <slug>/<version>.fingerprint}. Before that marker was written and never read by
      * anything in the tree, so {@code --verify-linked} verified nothing; the read is what makes the
      * write mean something.
      *
@@ -359,8 +360,8 @@ public final class DoctorCommand implements CliCommand {
     }
 
     private static String checkJson(Check c) {
-        return "{\"status\":" + Jsonl.quote(c.status.name().toLowerCase()) + ",\"detail\":" + Jsonl.quote(c.detail)
-                + "}";
+        return "{\"status\":" + Jsonl.quote(c.status.name().toLowerCase(Locale.ROOT)) + ",\"detail\":"
+                + Jsonl.quote(c.detail) + "}";
     }
 
     private static String formatUptime(long secs) {

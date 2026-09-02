@@ -62,7 +62,7 @@ public final class IdeCommand implements CliCommand {
         opts.add(Opt.flag("Print engine ide-model JSON only (no files).", "--print-model"));
         opts.add(Opt.value(
                         "<dir>",
-                        "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
+                        "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
                         "--cache-dir")
                 .hide());
         opts.add(CommonOpts.jdksDir());

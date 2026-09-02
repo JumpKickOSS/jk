@@ -99,7 +99,7 @@ public final class LockManifestDigest {
      * would recompute the identical digest N times" — and three per-module call sites did exactly
      * that, on top of the three per build. Each run read <em>every</em> contributing manifest in full.
      * Re-validating the recorded stamps costs one {@code readAttributes} per file instead
-     * (JK-1028).
+     *.
      *
      * <p>Not a {@code StampedMemo}: the stamp here is the set of files the previous run discovered,
      * which is only known after doing the work, so validation has to walk the recorded set rather

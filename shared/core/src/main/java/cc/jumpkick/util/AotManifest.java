@@ -593,7 +593,7 @@ public final class AotManifest {
             sb.append('\n');
         }
         // Durable: the manifest indexes on-disk AOT caches, and a torn target strands them — reconcile
-        // can rebuild it, but only if it can still be read (JK-1037).
+        // can rebuild it, but only if it can still be read.
         AtomicWrites.replaceDurably(path(aotDir), sb.toString());
     }
 

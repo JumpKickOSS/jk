@@ -5,14 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.BuildRequest;
+import cc.jumpkick.engine.protocol.SingleBuildRequest;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Workspace request encoding: the session's resolved test selection must ride the wire (JK-2181).
+ * Workspace request encoding: the session's resolved test selection must ride the wire.
  * Without it the engine falls back to each module's {@code [test]} excludes, and a widened run
  * ({@code --all} / {@code --include-tags}) is silently served from the unit-tier test stamp.
  */
@@ -30,7 +31,7 @@ class EngineJobsEncodeTest {
 
         String json = EngineJobs.encodeWorkspaceRequest(request(), session);
 
-        assertThat(ProtoJobs.testSelectionOf(json)).isEqualTo(widened);
+        assertThat(BuildRequest.decode(json).selection()).isEqualTo(widened);
         assertThat(json).contains("\"allSuites\":true").contains("\"includeTags\":[\"integration\"]");
     }
 
@@ -39,10 +40,10 @@ class EngineJobsEncodeTest {
         TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
 
         String json =
-                ProtoJobs.singleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, widened);
+                new SingleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, widened).encode();
 
-        assertThat(ProtoJobs.testSelectionOf(json)).isEqualTo(widened);
-        assertThat(ProtoJobs.singleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false))
+        assertThat(SingleBuildRequest.decode(json).selection()).isEqualTo(widened);
+        assertThat(new SingleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, null).encode())
                 .doesNotContain("allSuites");
     }
 
@@ -51,6 +52,6 @@ class EngineJobsEncodeTest {
         String json = EngineJobs.encodeWorkspaceRequest(request(), Session.defaults());
 
         assertThat(json).doesNotContain("includeTags").doesNotContain("allSuites");
-        assertThat(ProtoJobs.testSelectionOf(json)).isEqualTo(TestSelection.DEFAULT);
+        assertThat(BuildRequest.decode(json).selection()).isEqualTo(TestSelection.DEFAULT);
     }
 }

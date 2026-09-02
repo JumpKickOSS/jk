@@ -12,7 +12,7 @@ import java.util.Map;
 /**
  * The help-screen painter for jk's model-driven rendering path. Paints from a {@link CommandModel}
  * record (built by {@link CommandModels}). Colors come from the active {@link Theme}; escapes from
- * {@link Ansi}.
+ * {@code Ansi}.
  */
 public final class HelpRenderer {
 
@@ -177,7 +177,7 @@ public final class HelpRenderer {
      */
     /**
      * Model-driven short-help screen: looks up commands from the {@link CommandDispatch} registry
-     * instead of picocli's CommandSpec map. Called from {@link Jk#run()} now that all commands are
+     * instead of picocli's CommandSpec map. Called from {@code Jk#run} now that all commands are
      * ported.
      */
     public static void printShortHelp(

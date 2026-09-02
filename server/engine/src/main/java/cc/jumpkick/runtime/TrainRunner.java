@@ -101,7 +101,7 @@ public final class TrainRunner {
         for (TrainConfig.Profile profile : profiles) {
             log.accept("train profile `" + profile.name() + "`");
             Path agentOut = TrainLayout.agentDir(target, profile.name());
-            deleteRecursively(agentOut);
+            PathUtil.deleteRecursivelyOrThrow(agentOut);
             Files.createDirectories(agentOut);
 
             List<String> cmd = new ArrayList<>();
@@ -312,7 +312,7 @@ public final class TrainRunner {
         }
         String mainClass = project.mainClass();
         if (cache != null && mainClass != null && Files.isRegularFile(lockFile)) {
-            var resolver = new ClasspathResolver(JkStores.cas(cache));
+            var resolver = new ClasspathResolver(JkStores.storeCas());
             var lock = LockfileReader.read(lockFile);
             List<Path> cp = new ArrayList<>();
             cp.add(mainJar);
@@ -437,15 +437,6 @@ public final class TrainRunner {
         int exit = process.isAlive() ? -1 : process.exitValue();
         synchronized (out) {
             return new Output(out.toString(), exit);
-        }
-    }
-
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted((a, b) -> b.compareTo(a)).toList()) {
-                Files.deleteIfExists(p);
-            }
         }
     }
 

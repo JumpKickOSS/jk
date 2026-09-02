@@ -26,7 +26,7 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
      * <p>{@code jk jdk install}, {@code jk install} and friends append text they are handed, so at
      * the default width the row measured 90–92 columns on an 80-column terminal and the label was
      * the only thing left to ellipsize. Eight cells off the bar buys eight columns of label back and
-     * the bar still reads at a glance (JK-2602).
+     * the bar still reads at a glance.
      */
     public static final int NARROW_SEGMENTS = 32;
 

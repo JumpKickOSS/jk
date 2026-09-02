@@ -9,7 +9,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * One set of workspace-build defaults for every client (JK-2213): HTTP/MCP jobs and bare wire
+ * One set of workspace-build defaults for every client: HTTP/MCP jobs and bare wire
  * requests behave exactly like the CLI — parallel module tests, streaming scheduler concurrency.
  */
 class WorkspaceBuildVerbDefaultsTest {

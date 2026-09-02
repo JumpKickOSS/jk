@@ -237,13 +237,30 @@ class NewCommandTest {
     void help_lists_traditional_before_simple() {
         String newHelp =
                 Capture.stdout(() -> assertThat(Jk.execute("new", "--help")).isZero());
-        assertThat(newHelp).contains("Source tree: traditional (default) | simple.");
+        assertThat(newHelp).contains("Tree: traditional (default) | simple | auto.");
         assertThat(newHelp.indexOf("traditional")).isLessThan(newHelp.indexOf("simple"));
 
         String initHelp =
                 Capture.stdout(() -> assertThat(Jk.execute("init", "--help")).isZero());
-        assertThat(initHelp).contains("Source tree: traditional (default) | simple.");
+        assertThat(initHelp).contains("Tree: traditional (default) | simple | auto.");
         assertThat(initHelp.indexOf("traditional")).isLessThan(initHelp.indexOf("simple"));
+    }
+
+    @Test
+    void unknown_layout_flag_is_usage_error(@TempDir Path tempDir) {
+        String err = Capture.stderr(() -> assertThat(Jk.execute(
+                        "new",
+                        "--group",
+                        "com.example",
+                        "--name",
+                        "widget",
+                        "--layout",
+                        "mill",
+                        "--no-module",
+                        tempDir.toString()))
+                .isEqualTo(64));
+        assertThat(err).contains("layout must be");
+        assertThat(tempDir.resolve("jk.toml")).doesNotExist();
     }
 
     @Test

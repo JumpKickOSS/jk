@@ -1,4 +1,4 @@
-# JK-1066 — tag-triggered release build + sign for jumpkick.build layout.
+# Tag-triggered release build + sign for the jumpkick.build layout.
 #
 # Trigger: push tag v0.12.0 (or any vX.Y.Z matching JkVersion without the v).
 #

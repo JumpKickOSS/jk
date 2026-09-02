@@ -92,7 +92,7 @@ class CompileCommandTest {
 
     @Test
     void empty_affected_selection_is_a_no_op_not_the_whole_graph(@TempDir Path tempDir) throws Exception {
-        // JK-2154: the wire treats empty selectedModules as "everything", so an
+        // : the wire treats empty selectedModules as "everything", so an
         // --affected-since that matches nothing must short-circuit client-side.
         Path proj = tempDir.resolve("proj");
         Files.createDirectories(proj);

@@ -10,17 +10,20 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,8 +32,16 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /**
- * Named DAG of {@link Task}s for one invocation: readiness-level scheduling, progress, diagnostics,
- * and a terminal {@link BuildPlanResult}. Cancellation is cooperative at the step level: a flag is
+ * Named DAG of {@link Task}s for one invocation: first-ready scheduling, progress, diagnostics,
+ * and a terminal {@link BuildPlanResult}.
+ *
+ * <p><strong>Admission is first-ready, not batch-per-level.</strong> A step starts the moment its
+ * {@code requires()} are all ok, rather than waiting for every peer that happened to become ready
+ * at the same time. The distinction is the whole point of declaring narrow edges: {@code
+ * native-image} requires only {@code package-jar}, and {@code PlannerTails} deliberately makes
+ * {@code run-tests} a leaf so packaging can overlap it. Under the old level executor a 0.4 s
+ * assembly and a 30 s native-image sat behind their module's test suite anyway, because they
+ * shared a level with it — the DAG said they could overlap and the executor refused. Cancellation is cooperative at the step level: a flag is
  * set, futures are cancelled after a short grace ({@link #COOPERATIVE_CANCEL_GRACE}). OS-level
  * worker JVMs are shut down by the engine ({@code JobWorkers},soft then force within
  * ~500 ms — never hang.
@@ -75,11 +86,20 @@ public final class BuildPlan {
     /** Cross-step shared state — typed via {@link BuildPlanKey}. Reads happen via TaskContext. */
     private final ConcurrentHashMap<String, Object> state = new ConcurrentHashMap<>();
 
-    BuildPlan(String name, boolean interactive, List<Task> steps, List<BuildPlanListener> listeners) {
+    /** Runtime descriptors registered for state names, including names whose value was removed. */
+    private final ConcurrentHashMap<String, BuildPlanKey<?>> stateKeys = new ConcurrentHashMap<>();
+
+    BuildPlan(
+            String name,
+            boolean interactive,
+            List<Task> steps,
+            List<BuildPlanListener> listeners,
+            Collection<BuildPlanKey<?>> stateKeys) {
         this.name = Objects.requireNonNull(name);
         this.interactive = interactive;
         this.steps = List.copyOf(steps);
         this.listeners = new CopyOnWriteArrayList<>(listeners);
+        for (BuildPlanKey<?> key : stateKeys) this.stateKeys.put(key.name(), key);
         // Validate the DAG up front so misconfigurations fail loudly.
         validate(this.steps);
     }
@@ -172,42 +192,90 @@ public final class BuildPlan {
         // single body call returns. Only started when some step opts in.
         ScheduledExecutorService interpTimer = startInterpolationTimer();
 
-        // Step 2: run steps by readiness levels.
+        // Step 2: first-ready admission (see #admissionOrder for why the order is what it is).
         Set<String> completedOk = new HashSet<>();
-        List<Task> remaining = new ArrayList<>(topoSort(steps));
+        List<Task> notStarted = new ArrayList<>(admissionOrder(steps, weights));
+        // One event per started async step. Bounded by the step count, so an unbounded queue
+        // cannot grow: every offer is matched by exactly one take below.
+        BlockingQueue<Done> events = new LinkedBlockingQueue<>();
+        Set<CompletableFuture<TaskStatus>> outstanding = ConcurrentHashMap.newKeySet();
+        int running = 0;
+        boolean failed = false;
         try {
-            while (!remaining.isEmpty() && !cancelled.get()) {
-                List<Task> ready = remaining.stream()
-                        .filter(p -> completedOk.containsAll(p.requires()))
-                        .toList();
-                if (ready.isEmpty()) {
-                    // Either remaining steps all depend on a failed predecessor
-                    // (mark them CANCELLED) or there's a programming bug. Bail.
-                    break;
-                }
-                remaining.removeAll(ready);
-                boolean levelOk = runLevel(ready, initialTicks, weights);
-                for (Task p : ready) {
-                    if (isOk(statuses.get(p.name()))) {
-                        completedOk.add(p.name());
+            while (true) {
+                // Admit everything whose requires() are now satisfied. Re-scan after each
+                // inline SYNC step, because finishing one can make later steps ready.
+                boolean admittedInline = true;
+                while (admittedInline && !cancelled.get() && !failed) {
+                    admittedInline = false;
+                    for (Iterator<Task> it = notStarted.iterator(); it.hasNext(); ) {
+                        Task p = it.next();
+                        if (!completedOk.containsAll(p.requires())) continue;
+                        it.remove();
+                        if (p.kind() == TaskKind.SYNC) {
+                            // SYNC never touches a worker pool: it runs on the plan thread, one
+                            // at a time, exactly as the wave executor ran it. Admission stalls for
+                            // its duration, which is why SYNC is reserved for near-zero steps
+                            // (parse-build, write-stamp, joins) and every heavy step is IO/CPU.
+                            TaskStatus s = startStep(p, initialTicks, weights, null, null);
+                            if (isOk(s)) {
+                                completedOk.add(p.name());
+                                admittedInline = true;
+                            } else {
+                                failed = true;
+                            }
+                            break; // re-scan from the top: readiness changed
+                        }
+                        startStep(p, initialTicks, weights, events, outstanding);
+                        running++;
                     }
                 }
-                if (!levelOk) {
-                    cancelled.set(true);
+                if (running == 0) break; // nothing in flight and nothing admissible
+                Done done;
+                try {
+                    done = events.take();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     break;
                 }
+                running--;
+                outstanding.remove(done.future());
+                if (isOk(done.status())) completedOk.add(done.task().name());
+                else failed = true;
+                if (failed && !cancelled.get()) {
+                    // A step failed while siblings are still running. Unlike the wave executor —
+                    // where the expensive tails had not started yet, so returning early was free —
+                    // first-ready means a 30 s native-image can already be in flight when a 5 s
+                    // test suite goes red. Waiting for it would make every failed build as slow as
+                    // a successful one, so flip the cooperative flag now: running steps observe
+                    // ctx.cancelled() and bail, and runOneStep terminals them CANCELLED rather
+                    // than FAIL (the "sibling fail" arm it already documents).
+                    cancelled.set(true);
+                    try {
+                        Thread.sleep(COOPERATIVE_CANCEL_GRACE.toMillis());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    for (CompletableFuture<TaskStatus> f : outstanding) {
+                        if (!f.isDone()) f.cancel(true);
+                    }
+                }
+                // Loop back and keep draining until `running` hits zero: cancelling a future
+                // completes it, so each started step still yields exactly one event and the
+                // drain terminates. OS-level worker JVMs are killed by the engine (JobWorkers).
             }
         } finally {
             if (interpTimer != null) interpTimer.shutdownNow();
         }
 
-        // Any remaining (un-run) steps are CANCELLED because a dep failed.
-        for (Task p : remaining) {
+        // Any un-started steps are CANCELLED because a dep failed (or the plan was cancelled).
+        for (Task p : notStarted) {
             statuses.put(p.name(), TaskStatus.CANCELLED);
             reports.add(new BuildPlanResult.StepReport(p.name(), TaskStatus.CANCELLED, Duration.ZERO, p.requires()));
         }
+        if (failed) cancelled.set(true);
 
-        // Session cancel (Ctrl-C / BUILD_CANCEL) may never call requestCancel — fold it in so the
+        // Session cancel (Ctrl-C / CANCEL_REQUEST) may never call requestCancel — fold it in so the
         // result's userCancelled flag reaches the journal/metrics path.
         if (SessionCancel.cancelled()) {
             userRequestedCancel.set(true);
@@ -267,51 +335,75 @@ public final class BuildPlan {
         return interpTimer;
     }
 
+    /** One finished async step, queued back to the admitting thread. */
+    private record Done(Task task, TaskStatus status, CompletableFuture<TaskStatus> future) {}
+
     /**
-     * Dispatch one readiness level. SYNC steps run inline (sequentially); IO/CPU steps run in
-     * parallel on their respective pools. Returns true when every step in the level succeeded; false
-     * on the first fail (triggers cooperative cancellation).
+     * Mark a step RUNNING, announce it, and run it: inline on the calling thread for SYNC, or on
+     * the kind's pool otherwise. Returns the terminal status for SYNC and {@code null} for async
+     * (whose result arrives on {@code events}).
      */
-    private boolean runLevel(List<Task> ready, Map<String, Integer> initialTicks, Map<String, Integer> weights) {
-        List<CompletableFuture<TaskStatus>> futures = new ArrayList<>();
-        for (Task p : ready) {
-            int ticks = initialTicks.getOrDefault(p.name(), 0);
-            int weight = weights.getOrDefault(p.name(), ticks);
-            statuses.put(p.name(), TaskStatus.RUNNING);
-            String stepName = p.name();
-            String stepGroup = p.group().orElse(null);
-            emit(l -> l.stepStart(stepName, stepGroup, ticks));
-            Executor exec = executorFor(p.kind());
-            if (p.kind() == TaskKind.SYNC) {
-                futures.add(CompletableFuture.completedFuture(runOneStep(p, ticks, weight)));
-            } else {
-                futures.add(CompletableFuture.supplyAsync(() -> runOneStep(p, ticks, weight), exec));
-            }
+    private TaskStatus startStep(
+            Task p,
+            Map<String, Integer> initialTicks,
+            Map<String, Integer> weights,
+            BlockingQueue<Done> events,
+            Set<CompletableFuture<TaskStatus>> outstanding) {
+        int ticks = initialTicks.getOrDefault(p.name(), 0);
+        int weight = weights.getOrDefault(p.name(), ticks);
+        statuses.put(p.name(), TaskStatus.RUNNING);
+        String stepName = p.name();
+        String stepGroup = p.group().orElse(null);
+        emit(l -> l.stepStart(stepName, stepGroup, ticks));
+        if (p.kind() == TaskKind.SYNC) {
+            return runOneStep(p, ticks, weight);
         }
+        CompletableFuture<TaskStatus> f =
+                CompletableFuture.supplyAsync(() -> runOneStep(p, ticks, weight), executorFor(p.kind()));
+        outstanding.add(f);
+        // whenComplete fires exactly once per future, including when we cancel it, which is what
+        // lets the drain loop count events down to zero. The derived future is deliberately dropped
+        // — `f` is the one we keep so it stays cancellable.
+        f.whenComplete((s, ex) -> events.add(new Done(p, s, f)));
+        return null;
+    }
 
-        boolean ok = true;
-        for (CompletableFuture<TaskStatus> f : futures) {
-            try {
-                TaskStatus s = f.get();
-                if (!isOk(s)) ok = false;
-            } catch (Exception e) {
-                ok = false;
+    /**
+     * Order steps for admission: longest remaining weighted chain first, declaration order to
+     * break ties.
+     *
+     * <p>Readiness alone decides *whether* a step may start, so any order is correct. Order still
+     * matters for two reasons. Steps compete for {@code PluginSlots} permits — the process-wide cap
+     * on live worker JVMs — so whichever ready step is submitted first gets the permit, and a
+     * 30 s native-image should win that race against a leaf that packages a sources jar. And
+     * {@link #topoSort} seeds its ready set from a {@link HashMap}, so without an explicit tiebreak
+     * two runs of the same plan submit in different orders; declaration index makes it repeatable.
+     */
+    private static List<Task> admissionOrder(List<Task> steps, Map<String, Integer> weights) {
+        Map<String, List<String>> dependents = new HashMap<>();
+        Map<String, Integer> declIndex = new HashMap<>();
+        for (int i = 0; i < steps.size(); i++) declIndex.put(steps.get(i).name(), i);
+        for (Task p : steps) {
+            for (String r : p.requires()) {
+                dependents.computeIfAbsent(r, k -> new ArrayList<>()).add(p.name());
             }
         }
-
-        if (!ok && !cancelled.get()) {
-            cancelled.set(true);
-            // Give cooperative shutdown a window before we interrupt.
-            try {
-                Thread.sleep(COOPERATIVE_CANCEL_GRACE.toMillis());
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
+        Map<String, Integer> height = new HashMap<>();
+        // topoSort is dependency-first, so walking it backwards means every dependent's height is
+        // already known. The DAG is validated acyclic in the constructor, so this terminates.
+        List<Task> topo = topoSort(steps);
+        for (int i = topo.size() - 1; i >= 0; i--) {
+            String n = topo.get(i).name();
+            int best = 0;
+            for (String d : dependents.getOrDefault(n, List.of())) {
+                best = Math.max(best, height.getOrDefault(d, 0));
             }
-            for (CompletableFuture<TaskStatus> f : futures) {
-                if (!f.isDone()) f.cancel(true);
-            }
+            height.put(n, Math.max(0, weights.getOrDefault(n, 0)) + best);
         }
-        return ok;
+        List<Task> ordered = new ArrayList<>(steps);
+        ordered.sort(Comparator.comparingInt((Task p) -> -height.getOrDefault(p.name(), 0))
+                .thenComparingInt(p -> declIndex.getOrDefault(p.name(), 0)));
+        return ordered;
     }
 
     /**
@@ -378,7 +470,7 @@ public final class BuildPlan {
                 // Emit too: the result's diagnostics never cross the wire on the workspace
                 // path, so without this a step that throws without ctx.error (e.g. a
                 // GlobException out of copy-resources) failed the module with NO message
-                // anywhere — CLI and details.jsonl both showed a bare FAIL (JK-2199).
+                // anywhere — CLI and details.jsonl both showed a bare FAIL.
                 if (!cancel) {
                     emit(l -> l.error(step.name(), "exception", message));
                 }
@@ -452,27 +544,44 @@ public final class BuildPlan {
         return errors;
     }
 
-    ConcurrentHashMap<String, Object> stateRef() {
-        return state;
-    }
-
     /**
      * Read a step-stashed value after {@link #run} has returned. Command bodies use this to surface
      * state steps produced — resolved lockfile, JDK outcome, etc. — into their summary output
      * without needing a separate holder object.
      */
     public <T> Optional<T> get(BuildPlanKey<T> key) {
+        BuildPlanKey<?> declared = stateKeys.get(key.name());
+        if (declared == null) return Optional.empty();
+        requireCompatible(declared, key);
         Object raw = state.get(key.name());
         if (raw == null) return Optional.empty();
-        if (!key.type().isInstance(raw)) {
-            throw new ClassCastException("plan state '"
-                    + key.name()
-                    + "' is "
-                    + raw.getClass().getName()
-                    + " not "
-                    + key.type().getName());
+        return Optional.of(key.cast(raw));
+    }
+
+    <T> void put(BuildPlanKey<T> key, T value) {
+        BuildPlanKey<?> declared = stateKeys.get(key.name());
+        if (declared == null) {
+            throw new IllegalArgumentException("plan state key '" + key.name() + "' was not declared by the BuildPlan");
         }
-        return Optional.of(key.type().cast(raw));
+        requireCompatible(declared, key);
+        if (value == null) {
+            state.remove(key.name());
+            return;
+        }
+        state.put(key.name(), key.cast(value));
+    }
+
+    private static void requireCompatible(BuildPlanKey<?> declared, BuildPlanKey<?> accessed) {
+        if (!declared.sameType(accessed)) throw incompatibleKey(declared, accessed);
+    }
+
+    private static IllegalArgumentException incompatibleKey(BuildPlanKey<?> expected, BuildPlanKey<?> actual) {
+        return new IllegalArgumentException("plan state key '"
+                + actual.name()
+                + "' reused with incompatible type: expected "
+                + expected.description()
+                + " but actual "
+                + actual.description());
     }
 
     // --- DAG validation + topo sort -----------------------------------
@@ -588,6 +697,7 @@ public final class BuildPlan {
         private boolean interactive = false;
         private final List<Task> steps = new ArrayList<>();
         private final List<BuildPlanListener> listeners = new ArrayList<>();
+        private final List<BuildPlanKey<?>> stateKeys = new ArrayList<>();
         private String terminal;
 
         Builder(String name) {
@@ -627,6 +737,18 @@ public final class BuildPlan {
             return this;
         }
 
+        /** Declare state descriptors used by tasks in this plan. */
+        public Builder stateKeys(BuildPlanKey<?>... keys) {
+            Collections.addAll(stateKeys, keys);
+            return this;
+        }
+
+        /** Declare state descriptors used by tasks in this plan. */
+        public Builder stateKeys(Collection<? extends BuildPlanKey<?>> keys) {
+            stateKeys.addAll(keys);
+            return this;
+        }
+
         /**
          * Keep only the terminal task and its upstream {@link Task#requires()} closure. Call after
          * all tasks are added (including command tails). Unknown terminal names fail at
@@ -649,7 +771,18 @@ public final class BuildPlan {
 
         public BuildPlan build() {
             List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal);
-            return new BuildPlan(name, interactive, selected, listeners);
+            validateStateKeys(stateKeys);
+            return new BuildPlan(name, interactive, selected, listeners, stateKeys);
+        }
+    }
+
+    private static void validateStateKeys(List<BuildPlanKey<?>> keys) {
+        Map<String, BuildPlanKey<?>> byName = new HashMap<>();
+        for (BuildPlanKey<?> key : keys) {
+            BuildPlanKey<?> existing = byName.putIfAbsent(key.name(), key);
+            if (existing != null && !existing.sameType(key)) {
+                throw incompatibleKey(existing, key);
+            }
         }
     }
 

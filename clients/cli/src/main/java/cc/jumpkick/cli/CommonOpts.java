@@ -19,7 +19,7 @@ public final class CommonOpts {
 
     /**
      * Cache-tier root override (action index + cache CAS + format stamps). Default is {@code
-     * $JK_CACHE_DIR}, else {@code $JK_HOME/cache} ({@code ~/.cache/jk}). Does <em>not</em> move the
+     * $JK_CACHE_DIR}, else {@code $JK_HOME/cache} ({@code ~/.jk/cache}). Does <em>not</em> move the
      * artifact store ({@code JK_STORE_DIR}). Engine-hosted commands pass the resolved path on the
      * wire so the resident engine uses the same tree.
      */

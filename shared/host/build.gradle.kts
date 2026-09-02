@@ -48,7 +48,7 @@ listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name 
 }
 
 // ---------------------------------------------------------------------------
-// Guard (letter assigned at landing, JK-2443): a test fixture never reaches production.
+// Guard (letter assigned at landing): a test fixture never reaches production.
 //
 // Defect it prevents: the one way a shared test artifact can be catastrophically wrong. `:host` and
 // `:plugin-sdk` are the two modules every jk process and every third-party plugin links, and both
@@ -71,7 +71,7 @@ listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name 
 // Self-fail arms: the publication files must exist and be non-trivial, the scan must find build
 // scripts, and it must find at least one real `testFixtures(` usage — a scan that sees no fixtures
 // at all would pass this guard while the whole mechanism had been deleted.
-// Guard G34 (JK-2443).
+// Guard G34.
 val checkTestFixturesStayOutOfProduction by tasks.registering {
     group = "verification"
     description = "Fail when a testFixtures variant reaches a publication, a POM or a production configuration"
@@ -88,9 +88,19 @@ val checkTestFixturesStayOutOfProduction by tasks.registering {
                 root.file("shared/plugin-sdk/build/publications/sdk/pom-default.xml"),
                 root.file("shared/plugin-sdk/build/publications/sdk/module.json"))
     }
-    val buildScripts = fileTree(rootProject.layout.projectDirectory) {
-        include("build.gradle.kts", "*/*/build.gradle.kts", "buildSrc/src/main/kotlin/*.gradle.kts")
+    // Declare the scripts as FILES, not as a tree rooted at the repo. A fileTree whose root is the
+    // root project directory overlaps `:dist`'s output directory (build/dist), and Gradle then
+    // rejects the task with "uses this output of task ':dist' without declaring a dependency" —
+    // which made `./gradlew build dist` fail on every invocation after the first, once build/dist
+    // existed. The guard only ever reads these specific scripts.
+    val scriptFiles = mutableListOf(rootProject.layout.projectDirectory.file("build.gradle.kts").asFile)
+    rootProject.subprojects.forEach {
+        scriptFiles.add(it.layout.projectDirectory.file("build.gradle.kts").asFile)
     }
+    val conventionScripts = fileTree(rootProject.layout.projectDirectory.dir("buildSrc/src/main/kotlin")) {
+        include("*.gradle.kts")
+    }
+    val buildScripts = files(scriptFiles.filter { it.isFile }, conventionScripts)
     inputs.files(buildScripts).withPropertyName("buildScripts")
     val stamp = layout.buildDirectory.file("guards/test-fixtures-out-of-production.ok")
     outputs.file(stamp)
@@ -155,10 +165,10 @@ val checkTestFixturesStayOutOfProduction by tasks.registering {
 }
 // `check` only, not `jar`: arm 1 reads this module's own generated module metadata, which Gradle
 // derives from the jar, so hanging it off `jar` too is a genuine cycle. `checkAll` depends on every
-// module's `check` (JK-2498), so it runs in the gate either way.
+// module's `check`, so it runs in the gate either way.
 tasks.named("check") { dependsOn(checkTestFixturesStayOutOfProduction) }
 
-// Published, because `cc.jumpkick:jk-plugin-sdk` api-exposes these types (JK-2466). Without
+// Published, because `cc.jumpkick:jk-plugin-sdk` api-exposes these types. Without
 // coordinates here Gradle rendered the SDK's only dependency from its own defaults —
 // `jk:host:unspecified`, a coordinate no repository can serve — so the SDK was unresolvable for
 // every consumer. This module stays a leaf: coordinates and a publication are not a dependency,
@@ -207,9 +217,9 @@ publishing {
 }
 
 // ---------------------------------------------------------------------------
-// Guard G24 (JK-2492): the AOT refusal marker is spelled in exactly one file.
+// Guard G24: the AOT refusal marker is spelled in exactly one file.
 //
-// Defect it prevents: the fourth copy of a rule that already has an owner. JK-2396 made
+// Defect it prevents: the fourth copy of a rule that already has an owner. An earlier pass made
 // `AotCacheFiles` the single owner of the JEP 514 marker name and converged five modules onto it;
 // `EngineInstall` went on open-coding `.aot.noaot` / `.noaot` in three places, and that copy
 // agreed with the owner only by luck. The last time the two spellings disagreed — `<stem>.noaot`
@@ -416,7 +426,7 @@ fun javaCodeOnly(src: String): String {
     return out.toString()
 }
 
-// Guard G30 (JK-2490).
+// Guard G30.
 val checkPropertiesStoreOwner by tasks.registering {
     group = "verification"
     description = "Fail the build on a Properties.store() call in main sources (use DeterministicProperties.render)"

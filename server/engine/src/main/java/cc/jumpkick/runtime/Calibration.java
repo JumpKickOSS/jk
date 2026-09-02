@@ -27,7 +27,7 @@ import lombok.Builder;
  * Machine-scoped cold ETA priors + continuous host learning).
  *
  * <p><b>Bootstrap:</b> {@link #ensure} runs a multi-phase {@link HardwareProbe} when no usable
- * {@code ~/.local/state/jk/builds/host-metrics.toml} exists (or on {@code --force}). Network probes
+ * {@code ~/.jk/state/builds/host-metrics.toml} exists (or on {@code --force}). Network probes
  * (JUnit jar fetch + resolve micro-GET) are <strong>on by default</strong>; opt out with global
  * {@code --offline}.
  *

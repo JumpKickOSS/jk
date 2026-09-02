@@ -1,0 +1,28 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+# Language level 21: d8 desugars 21-bytecode today; the host JDK 25 cross-compiles it.
+java = 21
+kotlin = "latest"
+
+[android]
+namespace   = "$package$"
+compile-sdk = 36
+min-sdk     = 24
+compose     = true
+
+[platform-dependencies]
+compose-bom = { group = "androidx.compose", name = "compose-bom", version = "latest" }
+
+[dependencies]
+# activity-compose is androidx.activity's group — the Compose BOM does not manage it.
+activity-compose = { group = "androidx.activity", name = "activity-compose", version = "latest" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+
+[test-dependencies]
+junit-jupiter = "latest"
+
+[repositories]
+central = "https://repo.maven.apache.org/maven2/"
+google  = "https://dl.google.com/dl/android/maven2/"

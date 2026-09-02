@@ -89,7 +89,7 @@ class BuildCleanRestoreTest {
 
             // The wiped module must forecast dirty (restore), not fully cached + skipped.
             BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
-            Cas cas = JkStores.cas(cache);
+            Cas cas = JkStores.storeCas();
             ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
             List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, false);
             assertThat(plan).hasSize(1);
@@ -178,7 +178,7 @@ class BuildCleanRestoreTest {
             // Under --skip-tests the TestStamp escape hatch (its key fingerprints the missing
             // classes dir) is gone, so only the restore gate schedules the module.
             BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
-            Cas cas = JkStores.cas(cache);
+            Cas cas = JkStores.storeCas();
             ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
             List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, true);
             assertThat(plan).hasSize(1);

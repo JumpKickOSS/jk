@@ -10,7 +10,7 @@ import cc.jumpkick.config.NerdFontCaps;
 import org.junit.jupiter.api.Test;
 
 /**
- * Geometry of a line that gets repainted in place (JK-2602).
+ * Geometry of a line that gets repainted in place.
  *
  * <p>{@code jk jdk install lts} printed a screenful of stacked half-frames instead of one moving
  * bar. The cause was arithmetic, not animation: the wedge plus a 40-cell bar plus
@@ -52,7 +52,8 @@ class LiveLineGeometryTest {
                 int budget = RenderContext.rowColumnBudget(columns);
                 for (NerdFontCaps caps : new NerdFontCaps[] {NerdFontCaps.NONE, NerdFontCaps.ALL}) {
                     for (int pct : new int[] {0, 1, 5, 37, 64, 99, 100}) {
-                        String line = downloadWedge(pct, Progress.NARROW_SEGMENTS).renderLiveLine(ctx(columns, caps));
+                        String line =
+                                downloadWedge(pct, Progress.NARROW_SEGMENTS).renderLiveLine(ctx(columns, caps));
                         assertThat(RenderContext.visibleWidth(line))
                                 .as("cols=%d caps=%s pct=%d must not wrap", columns, caps, pct)
                                 .isLessThanOrEqualTo(budget);
@@ -101,9 +102,11 @@ class LiveLineGeometryTest {
             assertThat(Progress.DEFAULT_SEGMENTS).isEqualTo(40);
             assertThat(Progress.NARROW_SEGMENTS).isEqualTo(32);
             // At 100% every cell is filled, so the cell count IS the width.
-            assertThat(barCells(downloadWedge(100, Progress.DEFAULT_SEGMENTS).renderLiveLine(ctx(200, NerdFontCaps.ALL))))
+            assertThat(barCells(
+                            downloadWedge(100, Progress.DEFAULT_SEGMENTS).renderLiveLine(ctx(200, NerdFontCaps.ALL))))
                     .isEqualTo(Progress.DEFAULT_SEGMENTS);
-            assertThat(barCells(downloadWedge(100, Progress.NARROW_SEGMENTS).renderLiveLine(ctx(200, NerdFontCaps.ALL))))
+            assertThat(barCells(
+                            downloadWedge(100, Progress.NARROW_SEGMENTS).renderLiveLine(ctx(200, NerdFontCaps.ALL))))
                     .isEqualTo(Progress.NARROW_SEGMENTS);
             assertThat(new Progress(1, 2).narrow().segments()).isEqualTo(Progress.NARROW_SEGMENTS);
             return null;
@@ -116,7 +119,8 @@ class LiveLineGeometryTest {
         // previous frame's trailing `%` survived underneath. It now settles exactly like a
         // cancelled build, differing only in the subject.
         NoAnsi.forcedAnsi(() -> {
-            String jdk = JkWedge.cancelled("JDK", "JDK download", true, "took 4.0s").renderLine(ctx(80, NerdFontCaps.ALL));
+            String jdk =
+                    JkWedge.cancelled("JDK", "JDK download", true, "took 4.0s").renderLine(ctx(80, NerdFontCaps.ALL));
             String build = JkWedge.cancelled("Build", true, "took 398ms").renderLine(ctx(80, NerdFontCaps.ALL));
 
             assertThat(TestAnsi.strip(jdk)).contains("JDK download was cancelled by user");
@@ -126,7 +130,9 @@ class LiveLineGeometryTest {
                     .doesNotContain(String.valueOf(ProgressBar.FILLED_CHAR))
                     .doesNotContain(String.valueOf(ProgressBar.EMPTY_CHAR));
             // Same chrome: identical once the differing subject is removed.
-            assertThat(jdk.replace("JDK download was", "job was").replace(" JDK ", " Build ").replace("took 4.0s", "took 398ms"))
+            assertThat(jdk.replace("JDK download was", "job was")
+                            .replace(" JDK ", " Build ")
+                            .replace("took 4.0s", "took 398ms"))
                     .isEqualTo(build);
             return null;
         });

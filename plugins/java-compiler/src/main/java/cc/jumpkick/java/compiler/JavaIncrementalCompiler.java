@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
@@ -75,7 +76,7 @@ public final class JavaIncrementalCompiler implements Plugin {
                         }
                     };
             // Keep the worst (highest) exit code: a later compile error (1) must not overwrite an
-            // earlier usage/unknown error (Exit.USAGE) — JK-2316.
+            // earlier usage/unknown error (Exit.USAGE) —.
             worst = Math.max(worst, code);
         }
     }
@@ -168,16 +169,7 @@ public final class JavaIncrementalCompiler implements Plugin {
     }
 
     private static void deleteTree(Path workdir) {
-        if (workdir == null) return;
-        try (var walk = Files.walk(workdir)) {
-            walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (Exception ignored) {
-                }
-            });
-        } catch (Exception ignored) {
-            // temp workdir is best-effort
-        }
+        // temp workdir is best-effort; the owner swallows failures
+        if (workdir != null) PathUtil.deleteRecursively(workdir);
     }
 }

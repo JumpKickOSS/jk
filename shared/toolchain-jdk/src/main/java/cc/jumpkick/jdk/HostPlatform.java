@@ -7,7 +7,7 @@ import java.util.Locale;
 /**
  * The host's OS / architecture in the vocabulary the JetBrains JDK feed uses ({@code linux} /
  * {@code macOS} / {@code windows}; {@code x86_64} / {@code aarch64}). Separate from {@link
- * Platform}, which encodes foojay vocabulary for the dormant {@link DiscoClient} path.
+ * Platform}, which encodes foojay vocabulary for the dormant {@code DiscoClient} path.
  *
  * <p>Hosts the feed doesn't cover (AIX, FreeBSD, 32-bit x86, arm32, Alpine/musl) return {@link
  * #UNSUPPORTED} so callers can surface a clean "set JAVA_HOME explicitly" message instead of

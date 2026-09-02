@@ -18,7 +18,7 @@ import java.util.stream.Stream;
 /**
  * Best-effort upsert of {@code jk-<vendor>-<level>} SDKs into JetBrains global
  * {@code jdk.table.xml} (write counterpart to {@link IntellijJdkTable}). Points at the stable
- * {@link StableJdkPointer} path. A running IDE may clobber the file on exit — prefer a closed IDE.
+ * {@code StableJdkPointer} path. A running IDE may clobber the file on exit — prefer a closed IDE.
  */
 public final class IntellijSdkRegistrar {
 

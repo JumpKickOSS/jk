@@ -55,7 +55,7 @@ public final class JshellCommand implements CliCommand {
                 Opt.flag("Skip build; use existing classes + lock classpath only.", "--no-build"),
                 Opt.value(
                                 "<dir>",
-                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
+                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
                                 "--cache-dir")
                         .hide(),
                 CommonOpts.jdksDir(),

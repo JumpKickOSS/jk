@@ -84,7 +84,7 @@ class JavaApIncrementalCompileTest {
     }
 
     /**
-     * JK-2286: when an isolating processor stops generating a file — its annotation was removed from
+     *: when an isolating processor stops generating a file — its annotation was removed from
      * the origin — the previously generated source and its class must be deleted, not left to ship in
      * the jar. Zinc can't do this because generated files are not in its source set.
      */
@@ -108,7 +108,7 @@ class JavaApIncrementalCompileTest {
     }
 
     /**
-     * JK-2300: a processor that writes a file with no originating elements (arity 0 — a common
+     *: a processor that writes a file with no originating elements (arity 0 — a common
      * META-INF/services writer) has unknown provenance and must be treated as aggregating (full
      * rebuild), not silently classified isolating.
      */

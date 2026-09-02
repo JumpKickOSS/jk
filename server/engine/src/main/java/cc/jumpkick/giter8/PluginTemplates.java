@@ -2,6 +2,7 @@
 package cc.jumpkick.giter8;
 
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.JkDirs;
@@ -47,7 +48,7 @@ public final class PluginTemplates {
 
     private static List<TemplateSpec> scanJarCached(String pluginId, Path jar) {
         // One readAttributes via FileStamp, not size-then-mtime: the pair used to be two syscalls per
-        // plugin jar on every picker and resolve call (JK-1048).
+        // plugin jar on every picker and resolve call.
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(jar);
         if (stamp == null) return scanJar(pluginId, jar); // unstatable — scan without memoizing
         List<TemplateSpec> hit = SCAN_CACHE.get(jar.toAbsolutePath().normalize(), stamp, () -> scanJar(pluginId, jar));
@@ -128,9 +129,11 @@ public final class PluginTemplates {
             Files.createDirectories(tmp);
             Path dest = Files.createTempDirectory(tmp, "jk-g8-");
             try {
-                copyTree(src, dest);
+                // Cross-provider copy (zipfs -> default): PathUtil resolves by string, so the
+                // jar-internal separators land correctly on the host filesystem.
+                PathUtil.copyTree(src, dest);
             } catch (IOException e) {
-                deleteQuietly(dest);
+                PathUtil.deleteRecursively(dest); // best-effort cleanup of a failed extract
                 throw new IOException("failed to extract " + prefix + " from " + jar + ": " + e.getMessage(), e);
             }
             return dest;
@@ -157,41 +160,5 @@ public final class PluginTemplates {
     private static FileSystem zipfs(Path jar) throws IOException {
         URI uri = URI.create("jar:" + jar.toAbsolutePath().toUri());
         return FileSystems.newFileSystem(uri, Map.of());
-    }
-
-    private static void copyTree(Path src, Path dest) throws IOException {
-        try (var walk = Files.walk(src)) {
-            for (Path p : walk.toList()) {
-                Path rel = src.relativize(p);
-                Path out = dest;
-                String relStr = rel.toString().replace('\\', '/');
-                if (relStr.startsWith("/")) relStr = relStr.substring(1);
-                if (!relStr.isEmpty() && !relStr.equals(".")) {
-                    for (String part : relStr.split("/")) {
-                        if (part.isEmpty() || part.equals(".")) continue;
-                        out = out.resolve(part);
-                    }
-                }
-                if (Files.isDirectory(p)) {
-                    Files.createDirectories(out);
-                } else if (Files.isRegularFile(p) && !Files.isSymbolicLink(p)) {
-                    if (out.equals(dest)) continue;
-                    Files.createDirectories(out.getParent());
-                    Files.copy(p, out);
-                }
-            }
-        }
-    }
-
-    private static void deleteQuietly(Path root) {
-        if (root == null || !Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            for (Path f :
-                    walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList()) {
-                Files.deleteIfExists(f);
-            }
-        } catch (IOException ignored) {
-            // best-effort cleanup of a failed extract
-        }
     }
 }

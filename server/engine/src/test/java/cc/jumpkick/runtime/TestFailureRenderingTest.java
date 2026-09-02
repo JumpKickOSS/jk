@@ -85,7 +85,7 @@ class TestFailureRenderingTest {
     }
 
     /**
-     * The point of collapsing {@code TestSummary.Failure} into {@link TestFailureInfo} (JK-2424): a
+     * The point of collapsing {@code TestSummary.Failure} into {@link TestFailureInfo}: a
      * summary failure now <em>is</em> the wire record, so source context reaches a plan diagnostic.
      * The old summary-local record had no {@code file}/{@code line}/{@code snippet} components at
      * all, and its {@code toInfo()} adapter minted them empty — a lossy hop no caller could route

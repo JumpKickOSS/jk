@@ -372,10 +372,10 @@ public final class CacheCommand extends GroupCommand {
      * {@code CachePlans.purgeActionCache} — the last delete of a nuke either way.
      *
      * <p>Recreating the tier directories empty was the old shape, and it is what made a nuke that
-     * printed {@code ~/.cache/jk} under "Path to Delete" leave {@code ~/.cache/jk} standing. The
+     * printed {@code ~/.jk/cache} under "Path to Delete" leave {@code ~/.jk/cache} standing. The
      * engine no longer mints it back either: {@code CacheMaintenanceLocks} stopped creating the
      * tree just to have somewhere for {@code .prune.lock}, so a live engine's next maintenance
-     * pass leaves a nuked root nuked (JK-2499).
+     * pass leaves a nuked root nuked.
      *
      * <p><strong>Windows.</strong> The engine emits its plan-finish line from inside the
      * maintenance lock, so this delete can start while the engine's {@code .prune.lock} handle is

@@ -40,7 +40,7 @@ final class ModuleSelectors {
     /**
      * True when any module selector is active. Every build-family command guards its selection
      * resolution with this — a hand-rolled disjunction is how {@code jk native --affected} shipped
-     * accepting the flag and ignoring it (JK-2608).
+     * accepting the flag and ignoring it.
      */
     static boolean anySelector(String modulesSpec, String affectedSince, boolean affectedWip) {
         return affectedWip

@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2083: the preflight dirty memo certifies package outputs only. A terminal-target run
+ *: the preflight dirty memo certifies package outputs only. A terminal-target run
  * (native/image) hitting a PACKAGE-stored all-clean memo would skip the target-aware forecast
  * and never produce its binary ({@code jk build && jk native} reporting success with no
  * artifact). Terminal targets must neither consult nor store the memo.

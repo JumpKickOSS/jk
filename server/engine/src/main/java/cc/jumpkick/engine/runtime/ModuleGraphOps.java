@@ -55,7 +55,7 @@ public final class ModuleGraphOps {
                         return ModuleGraphAck.error(selected.errorMessage());
                     }
                     // A selector that validates but matches nothing must render the empty
-                    // graph, not silently the full single-module one (JK-2167).
+                    // graph, not silently the full single-module one.
                     emptyMatch = selected != null && selected.moduleDirs().isEmpty();
                 }
                 graph = emptyMatch

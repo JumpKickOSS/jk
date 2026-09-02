@@ -40,21 +40,20 @@ jk self nuke                      # all targets (default); confirms first
 jk self nuke --cache --state -y
 ```
 
-| `jk self nuke` flag | Deletes | Keeps |
-|---------------------|---------|-------|
-| `--all` | Every target below (default when none named) | — |
-| `--cache` | Same as `jk cache nuke` | Artifact store, PATH, JDKs |
-| `--data` | The product data root (`JK_DATA_DIR`, default `~/.local/share/jk`): the artifact store via `jk storage nuke`, plus every other child of that root (`versions/`, `completions/`, …) | Active engine version (`<data>/lib`), forge/repo credentials, PATH, JDKs |
-| `--state` | Engine sockets, AOT, builds, scratch tmp | — |
-| `--config` | User config | — |
+One target per root, no aliases:
 
-`--store` is still accepted as a hidden alias for `--data`, but it now wipes the whole
-data root rather than just the store subtree. Under the `JK_HOME` umbrella the data root is
-`$JK_HOME/data`, so `--data` covers `$JK_HOME/data/*` (store included) and leaves the other
-four roots to `--cache`, `--state`, and `--config`.
+| `jk self nuke` flag | Deletes | |
+|---------------------|---------|---|
+| `--all` | Every target below (default when none named) | |
+| `--cache` | `~/.jk/cache` — same as `jk cache nuke` | |
+| `--store` | `~/.jk/store`, whole-tree: `repos/`, `tools/`, `templates/`, `completions/`, `android-sdk/` | |
+| `--state` | `~/.jk/state` — engine sockets, AOT, builds, scratch tmp | |
+| `--config` | `~/.jk/config.toml` and the per-app `~/.jk/config/` tree | |
 
-Does **not** delete `jk` / `jkx` on PATH, managed JDKs, or forge/repo credentials
-(`jk repo logout` removes those).
+Always kept, whichever targets you name: `~/.jk/bin` (PATH launchers), `~/.jk/lib` (the live
+engine and installed app jars), `~/.jk/creds` (forge and per-repo credentials — `jk repo
+logout` removes those) and the managed JDKs. Those are roots of their own, so no target's
+delete reaches them.
 
 ## Budgets
 
@@ -64,7 +63,7 @@ Does **not** delete `jk` / `jkx` on PATH, managed JDKs, or forge/repo credential
 | `jk cache usage` — incremental state | `[cache] incremental-max-size-gb` / `JK_INCREMENTAL_MAX_SIZE_GB` | **512** MiB |
 
 ```toml
-# ~/.config/jk/config.toml
+# ~/.jk/config.toml
 [cache]
 max-cache-size-gb = 4
 incremental-max-size-gb = 0.5

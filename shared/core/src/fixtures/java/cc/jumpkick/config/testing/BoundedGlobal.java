@@ -40,7 +40,7 @@ public interface BoundedGlobal {
      * command through the CLI entry point installs the resolved one. A guard that names 324
      * offenders has found one structural fact, not 324 defects.
      *
-     * <p>Such a global is still bounded and restored — that is JK-1010's value and it does not
+     * <p>Such a global is still bounded and restored — that is's value and it does not
      * depend on attribution.
      */
     default boolean attributable() {

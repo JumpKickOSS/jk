@@ -100,6 +100,34 @@ val moduleDirs: List<Path> = children(root)
     .flatMap { children(it) }
     .filterNot { rel(it) in nonModuleTrees }
 
+/**
+ * Every regular file in the checkout that a reader could see, minus build output, VCS metadata and
+ * binaries. The two tree-wide guards (G49, G50) need this: their whole point is that a rule scoped
+ * by extension is a rule that gets missed next time, so the walk is broad and the *guard* decides
+ * what it cares about.
+ *
+ * Excluded by name rather than by accident, same reasoning as [nonModuleTrees].
+ */
+val treeFiles: List<Path> by lazy {
+    val skipDirs = setOf("build", "target", ".git", ".gradle", ".firebase", "node_modules", ".board", ".kotlin")
+    val skipExt = listOf(
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".jar", ".zip", ".xz", ".gz",
+        ".class", ".aot", ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe")
+    val out = mutableListOf<Path>()
+    Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
+        override fun preVisitDirectory(d: Path, a: BasicFileAttributes): FileVisitResult =
+            if (d != root && d.fileName.toString() in skipDirs) FileVisitResult.SKIP_SUBTREE
+            else FileVisitResult.CONTINUE
+
+        override fun visitFile(f: Path, a: BasicFileAttributes): FileVisitResult {
+            val name = f.fileName.toString()
+            if (a.isRegularFile && skipExt.none { name.endsWith(it) }) out.add(f)
+            return FileVisitResult.CONTINUE
+        }
+    })
+    out.sortedBy { rel(it) }
+}
+
 fun javaIn(sourceSet: String): List<Path> =
     moduleDirs.flatMap { filesUnder(it.resolve("src/$sourceSet/java"), ".java") }
 
@@ -2395,6 +2423,360 @@ guard("G45", "checkBlindWalkRatchet") {
 //
 // What stays here is what genuinely spans modules. See code-as-art.md, "Where a guard runs".
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Guards that had no twin here until the parity sweep
+//
+// Each of these was written on the Gradle side and stayed there, so `jk build` reported the house
+// rules green while enforcing five fewer of them than `./gradlew build`. That is worse than an
+// unenforced rule: the self-hosted build is the one contributors run, and it was the one lying.
+// G51 below is the ratchet that stops the next one drifting.
+// ---------------------------------------------------------------------------
+
+// Path -> why this verb may reach JDK removal. A bare list rots; the reason is the point.
+val jdkRemovalCallers = mapOf(
+    "clients/cli/src/main/java/cc/jumpkick/command/JdkUpdateCommand.java"
+        to "`jk jdk update` queues the superseded install and drains it, after asking (default yes)")
+
+guard("G46", "checkJdkRemovalConfined") {
+    // Self-fail: the guard has to keep pointing at code that still exists and still carries the
+    // ownership re-check, or it silently guards nothing.
+    val garbage = owner("shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkGarbage.java")
+    val missingMembers = listOf("isJkOwned", "drain", "enqueue").filterNot { garbage.contains(it) }
+    if (missingMembers.isNotEmpty()) {
+        error("JdkGarbage no longer has ${missingMembers.joinToString(", ")}, so this guard is"
+            + " guarding a shape that has moved. Update or retire it deliberately.")
+    }
+    val allowedMissing = jdkRemovalCallers.keys.filterNot { Files.isRegularFile(at(it)) }
+    if (allowedMissing.isNotEmpty()) {
+        error("G46's allowlist names files that no longer exist:"
+            + " ${allowedMissing.joinToString(", ")}. The verb was renamed or removed — update the"
+            + " allowlist in the same change.")
+    }
+    val hits = mutableListOf<String>()
+    mainJava.forEach { f ->
+        val here = rel(f)
+        if (here.endsWith("/jdk/JdkGarbage.java")) return@forEach
+        // Comments blanked so the javadoc that explains this rule is not itself a violation.
+        val lines = codeOf(f).lines()
+        if (here.endsWith("/jdk/StableJdkPointer.java")) {
+            lines.forEachIndexed { i, line ->
+                if (line.contains("deleteRecursively")) {
+                    hits.add("$here:${i + 1}: the stable pointer must not delete a tree — a"
+                        + " populated directory at the pointer name is an install")
+                }
+            }
+            return@forEach
+        }
+        if (here in jdkRemovalCallers) return@forEach
+        lines.forEachIndexed { i, line ->
+            if (line.contains("JdkGarbage")) hits.add("$here:${i + 1}: JdkGarbage is reachable from here")
+        }
+    }
+    if (hits.isNotEmpty()) {
+        error("JDK removal reached from outside an explicit `jk jdk` verb:\n" + bullets(hits)
+            + "\n  Removing a JDK is minutes of download and may be pinned by an IDE, a shell, a"
+            + " .sdkmanrc, or another project's lockfile, so it happens only when the user asked for"
+            + " it. Provisioning installs; it does not collect."
+            + "\n  If a new verb legitimately removes JDKs, add it to `jdkRemovalCallers` and say why."
+            + "\n  Allowed today:\n"
+            + jdkRemovalCallers.entries.joinToString("\n") { "    ${it.key}\n        ${it.value}" })
+    }
+}
+
+guard("G47", "checkCaseConversionLocale") {
+    if (mainJava.isEmpty()) {
+        error("G47 scanned zero main sources — the gate has silently lost its scope.")
+    }
+    val bare = Regex("""\.to(?:Lower|Upper)Case\(\)""")
+    val hits = mainJava.mapNotNull { f ->
+        val n = countIn(guardTextOf(f), bare)
+        if (n > 0) "${rel(f)}: $n" else null
+    }
+    if (hits.isNotEmpty()) {
+        error("A case conversion without Locale.ROOT misparses under tr_TR/az ('i' ⇄ 'I' do not"
+            + " round-trip — \"MAIN\".toLowerCase() is \"maın\"). Pass Locale.ROOT; identifiers"
+            + " are not user language:\n" + bullets(hits))
+    }
+}
+
+guard("G48", "checkNoGluedInlineTag") {
+    val sources = mainJava + testJava + fixtureJava
+    if (sources.isEmpty()) {
+        error("G48 scanned zero sources — the gate has silently lost its scope.")
+    }
+    // The payload class excludes letters so `link` cannot half-match `linkplain`; the glued family
+    // is punctuation ({@code.asc}, {@code:}, {@code,}), never a letter. Raw text on purpose: the
+    // defect lives in comments, which every other guard here blanks.
+    val glued = Regex("""\{@(?:code|value|linkplain|link)[^\s}a-zA-Z]""")
+    val hits = sources.mapNotNull { f ->
+        val n = countIn(text(f), glued)
+        if (n > 0) "${rel(f)}: $n" else null
+    }
+    if (hits.isNotEmpty()) {
+        error("An inline Javadoc tag needs a space before its payload — {@code .asc}, not the glued"
+            + " form, which renders as literal garbage and can block FQCN shortening for the whole"
+            + " file:\n" + bullets(hits))
+    }
+}
+
+val singleHomeAllowedLines = mapOf(
+    "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
+        to Regex("""env\.apply\("XDG_CONFIG_HOME"\)"""),
+    "shared/toolchain-jdk/src/main/java/cc/jumpkick/discovery/MiseProbe.java"
+        to Regex("""MISE_DATA_DIR|XDG_DATA_HOME|\.local/share/mise"""),
+    "shared/toolchain-jdk/src/test/java/cc/jumpkick/discovery/MiseProbeTest.java"
+        to Regex("""XDG_DATA_HOME|\.local/share/mise"""),
+    "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/IntellijJdkTable.java"
+        to Regex("""env\.apply\("(?:APPDATA|XDG_CONFIG_HOME)"\)"""),
+    "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/IntellijJdkTableTest.java"
+        to Regex("""XDG_CONFIG_HOME"""),
+    "shared/core/src/test/java/cc/jumpkick/util/JkDirsTest.java"
+        to Regex(""""(?:XDG_[A-Z_]+|LOCALAPPDATA|APPDATA)""""),
+    "clients/cli/src/main/java/cc/jumpkick/cli/engine/RetiredEngineLayouts.java"
+        to Regex("""env\.apply\("(?:XDG_DATA_HOME|XDG_STATE_HOME|LOCALAPPDATA)"\)"""),
+    "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineFleetTest.java"
+        to Regex(""""LOCALAPPDATA""""),
+    "clients/cli/src/test/java/cc/jumpkick/command/WrapperTemplateTest.java"
+        to Regex("""doesNotContain\("(?:XDG_|JK_BIN_DIR|JK_INSTALL_DIR)"""))
+
+guard("G49", "checkSingleHomeRoot") {
+    val missing = singleHomeAllowedLines.keys.filterNot { Files.isRegularFile(at(it)) }
+    if (missing.isNotEmpty()) {
+        error("The allowlist exempts files that no longer exist, so this guard is weaker than it"
+            + " reads: " + missing.sorted().joinToString(", ") + ". Drop the entries, or fix the paths.")
+    }
+    val extensions = listOf(
+        ".java", ".kt", ".kts", ".md", ".sh", ".ps1", ".bat",
+        // The dashboard renders paths to users; it was outside this ban until a hard-coded
+        // ~/.config/jk/config.toml fallback shipped in its config panel.
+        ".html", ".js", ".mjs", ".css")
+    val banned = listOf(
+        Regex("""\.local/share"""), Regex("""\.local/state"""), Regex("""\.local/bin"""),
+        Regex("""\.cache/jk"""), Regex("""\.config/jk"""),
+        Regex("""XDG_[A-Z_]+"""), Regex("""LOCALAPPDATA"""), Regex("""APPDATA"""),
+        Regex("""<data>"""),
+        Regex("""(?i)\bdata root\b"""), Regex("""(?i)\bdata/lib\b"""),
+        Regex("""\$\{?JK_HOME\}?[/\\]data\b"""), Regex("""--data(?:-dir)?\b"""),
+        Regex("""(?:homeDir\(\)|JkDirs\.home\(\))\.resolve\("data"\)"""),
+        Regex("""JK_DATA_DIR|JK_BUILDS_DIR|JK_TMP_DIR|JK_BIN_DIR|JK_INSTALL_DIR"""),
+        Regex("""JK_CONFIG_DIR|JK_CONFIG_FILE"""))
+    val fixtures = listOf(
+        "the data root",
+        "\$JK_HOME/data/lib",
+        "\${JK_HOME}/data",
+        """homeDir().resolve("data")""",
+        "jk self nuke --data")
+    val missedFixtures = fixtures.filter { sample -> banned.none { it.containsMatchIn(sample) } }
+    if (missedFixtures.isNotEmpty()) error("G49 no longer catches its fixtures: $missedFixtures")
+    var candidates = 0
+    val hits = mutableListOf<String>()
+    treeFiles.forEach { f ->
+        val name = f.fileName.toString()
+        if (extensions.none { name.endsWith(it) }) return@forEach
+        candidates++
+        val here = rel(f)
+        var source = text(f)
+        val markers = when (here) {
+            "build.gradle.kts" -> "// Guard G49:" to "// Guard: the published installers"
+            ".jk/after-build.kts" -> "val singleHomeAllowedLines =" to "// The two places a ticket id"
+            else -> null
+        }
+        if (markers != null) {
+            var inside = false
+            var starts = 0
+            var ends = 0
+            source = source.lineSequence().filter { line ->
+                if (!inside && line.startsWith(markers.first)) {
+                    inside = true
+                    starts++
+                }
+                if (inside && line.startsWith(markers.second)) {
+                    inside = false
+                    ends++
+                }
+                !inside && !line.startsWith(markers.first)
+            }.joinToString("\n")
+            if (starts != 1 || ends != 1) error("Cannot isolate the G49 definition in $here")
+        }
+        val allowed = singleHomeAllowedLines[here]
+        val found = source.lineSequence().withIndex().flatMap { (index, line) ->
+            val visible = allowed?.replace(line, "") ?: line
+            banned.asSequence().mapNotNull { it.find(visible)?.value?.let { value -> "$value:${index + 1}" } }
+        }.distinct().toList()
+        if (found.isNotEmpty()) hits.add("$here: ${found.joinToString(", ")}")
+    }
+    if (candidates == 0) {
+        error("Scanned zero files — the tree walk broke and this guard is passing vacuously.")
+    }
+    if (hits.isNotEmpty()) {
+        error("jk lives under \$HOME/.jk, on every platform, and these name a layout it does not"
+            + " have:\n" + bullets(hits.sorted())
+            + "\n  Resolve paths through cc.jumpkick.util.JkDirs (JK_HOME, plus JK_STORE_DIR /"
+            + " JK_CACHE_DIR / JK_STATE_DIR / JK_JDKS_DIR). If you are reading ANOTHER program's"
+            + " files, allow only the exact token shape here.")
+    }
+}
+
+// The two places a ticket id is the subject rather than a reference.
+val ticketIdExempt = mapOf(
+    "AGENTS.md" to "documents the board protocol an agent follows, ids included",
+    "docs/contributors/comments.md" to "states the ban, using ids as its own examples")
+
+guard("G50", "checkNoTicketIds") {
+    val missing = ticketIdExempt.keys.filterNot { Files.isRegularFile(at(it)) }
+    if (missing.isNotEmpty()) {
+        error("The allowlist exempts files that no longer exist: "
+            + missing.sorted().joinToString(", ") + ". Drop the entries, or fix the paths.")
+    }
+    // Extension-blind on purpose. Every scope this rule was given by extension is where it was
+    // missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS
+    // held ~50 after the second, and a Giter8 template wrote one into a user's own new project.
+    val id = Regex("""\bJK-\d{4}\b""")
+    var candidates = 0
+    val hits = mutableListOf<String>()
+    treeFiles.forEach { f ->
+        candidates++
+        val here = rel(f)
+        if (here in ticketIdExempt) return@forEach
+        val found = try {
+            id.findAll(text(f)).map { it.value }.distinct().take(4).toList()
+        } catch (e: Exception) {
+            return@forEach // not decodable as text; nothing to read
+        }
+        if (found.isNotEmpty()) hits.add("$here: ${found.joinToString(", ")}")
+    }
+    if (candidates == 0) {
+        error("Scanned zero files — the tree walk broke and this guard is passing vacuously.")
+    }
+    if (hits.isNotEmpty()) {
+        error("A ticket id names a tracker this repository's readers do not have:\n"
+            + bullets(hits.sorted())
+            + "\n  State the invariant or the defect instead — history belongs in the commit"
+            + " message, not the tree. Worst case is a Giter8 template, which writes the id into a"
+            + " user's own project.")
+    }
+}
+
+guard("G52", "checkTestTierDocs") {
+    val model = text(at("buildSrc/src/main/kotlin/TestTiers.kt"))
+    val constants = Regex("""const val (\w+) = "([^"]+)"""")
+        .findAll(model)
+        .associate { it.groupValues[1] to it.groupValues[2] }
+    val tierPattern = Regex(
+        """TestTier\(\s*(\w+),\s*include\s*=\s*(emptySet\(\)|setOf\([^)]*\)),\s*exclude\s*=\s*(emptySet\(\)|setOf\([^)]*\)|slowTags\.toSet\(\))\s*,?\s*\)""")
+    val slowTags = Regex("""val slowTags = listOf\(([^)]*)\)""")
+        .find(model)?.groupValues?.get(1)
+        ?.let { Regex(""""([^"]+)"""").findAll(it).map { match -> match.groupValues[1] }.toSet() }
+        ?: error("G52 cannot read TestTiers.slowTags")
+    fun values(expression: String): Set<String> =
+        if (expression == "slowTags.toSet()") slowTags
+        else Regex(""""([^"]+)"""").findAll(expression).map { it.groupValues[1] }.toCollection(linkedSetOf())
+    val tiers = tierPattern.findAll(model).map { match ->
+        Triple(
+            constants[match.groupValues[1]]
+                ?: error("G52 cannot resolve tier constant ${match.groupValues[1]}"),
+            values(match.groupValues[2]),
+            values(match.groupValues[3]))
+    }.toList()
+    if (tiers.size != 5) error("G52 read ${tiers.size} tiers from TestTiers.all; expected 5")
+    val gatingNames = Regex("""val gating = setOf\(([^)]*)\)""")
+        .find(model)?.groupValues?.get(1)
+        ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)?.toSet()
+        ?: error("G52 cannot read TestTiers.gating")
+    val gating = gatingNames.map { constants[it] ?: error("G52 cannot resolve gating constant $it") }.toSet()
+    fun tags(items: Set<String>, fallback: String = "—") =
+        if (items.isEmpty()) fallback else items.joinToString(", ") { "`$it`" }
+    val expected = buildString {
+        appendLine("<!-- test-tiers:start -->")
+        appendLine("| Command | Includes | Excludes | In `checkAll`? |")
+        appendLine("|---------|----------|----------|----------------|")
+        tiers.forEach { (task, include, exclude) ->
+            appendLine(
+                "| `./gradlew $task` | "
+                    + tags(include, "untagged")
+                    + " | "
+                    + tags(exclude)
+                    + " | "
+                    + if (task in gating) "yes |" else "no |")
+        }
+        append("<!-- test-tiers:end -->")
+    }
+    val docs = text(at("docs/contributors/test-suite-tiers.md"))
+    val actual = Regex("""(?s)<!-- test-tiers:start -->.*?<!-- test-tiers:end -->""")
+        .find(docs)?.value
+        ?: error("test-suite-tiers.md is missing its generated tier table markers")
+    if (actual != expected) {
+        error("test-suite-tiers.md differs from TestTiers; replace its marked table with:\n$expected")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Guard G51: both builds enforce the same house rules.
+//
+// The mirror of the Gradle `checkGuardParity` task, and deliberately duplicated: a parity check
+// that only one build runs has exactly the shape of the problem it exists to prevent. What is NOT
+// duplicated is the exception list — `guard-parity.txt` is the single owner, and both sides read
+// it, so a letter can never be excused on one side and demanded on the other.
+//
+// What went wrong without it: G46, G47, G48, G49 and G50 were written on the Gradle side and never
+// grew a twin here, so `jk build` printed "house rules clean" while enforcing 36 of the 41 it
+// claimed. Both gates print a count, and neither count is wrong about itself, so nothing surfaced.
+// ---------------------------------------------------------------------------
+
+guard("G51", "checkGuardParity") {
+    // The same four spellings the registry scan uses, for the same reason: a scan for any subset
+    // silently misses the rest.
+    val marker = Regex("""(?m)^\s*(?://|/\*)?\s*(?:Guard G(\d+)\b|G(\d+)\s*—)|guard\("G(\d+)"""")
+    fun lettersIn(body: String): Set<Int> = marker.findAll(body)
+        .map { m -> m.groupValues.drop(1).first { it.isNotEmpty() }.toInt() }
+        .toSortedSet()
+
+    val gradleScripts = treeFiles.filter {
+        val here = rel(it)
+        here.endsWith(".gradle.kts") || (here.startsWith("buildSrc/src/main/kotlin/") && here.endsWith(".kts"))
+    }
+    if (gradleScripts.isEmpty()) {
+        error("Found no Gradle build scripts to compare against — the tree walk broke and this"
+            + " guard is passing vacuously.")
+    }
+    val gradle = lettersIn(gradleScripts.joinToString("\n") { text(it) })
+    val jk = lettersIn(text(at(".jk/after-build.kts")))
+    if (gradle.isEmpty() || jk.isEmpty()) {
+        error("Read no guard letters from one of the two sides (gradle=${gradle.size},"
+            + " jk=${jk.size}) — the scan broke and this guard is passing vacuously.")
+    }
+    val excused = Regex("""(?m)^G(\d+)\s""")
+        .findAll(text(at("guard-parity.txt"))).map { it.groupValues[1].toInt() }.toSet()
+    if (excused.isEmpty()) {
+        error("guard-parity.txt lists no letters, so this guard would pass over anything.")
+    }
+    val gradleOnly = (gradle - jk - excused).sorted()
+    val jkOnly = (jk - gradle - excused).sorted()
+    // An exception nobody needs is a rule quietly weakened: it tells a reader parity was
+    // impossible when it is now a fact.
+    val stale = excused.filter { it in gradle && it in jk }.sorted()
+    val faults = mutableListOf<String>()
+    if (gradleOnly.isNotEmpty()) {
+        faults.add("enforced by Gradle only: " + gradleOnly.joinToString(", ") { "G$it" }
+            + " — add the twin here")
+    }
+    if (jkOnly.isNotEmpty()) {
+        faults.add("enforced by this gate only: " + jkOnly.joinToString(", ") { "G$it" }
+            + " — add the twin to buildSrc, or record in guard-parity.txt why it is"
+            + " self-hosted-only")
+    }
+    if (stale.isNotEmpty()) {
+        faults.add("excused in guard-parity.txt but present on BOTH sides: "
+            + stale.joinToString(", ") { "G$it" } + " — drop the entry, parity is real now")
+    }
+    if (faults.isNotEmpty()) {
+        error("The two builds do not enforce the same house rules:\n" + bullets(faults)
+            + "\n  A contributor runs `jk build`; a gate that enforces less than it claims is worse"
+            + " than no gate. Port the rule, or record in guard-parity.txt why the letter cannot"
+            + " live in both.")
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Verdict

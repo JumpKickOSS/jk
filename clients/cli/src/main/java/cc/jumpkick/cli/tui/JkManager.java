@@ -36,7 +36,7 @@ import java.util.Map;
  * {@link OutputCapture} owns the {@code System.out} swap, and {@link Countdown} owns the
  * remaining-work anchors. What stays here is the {@code done} flag and the one lock over it —
  * settle, dismiss, close and the SIGINT {@link #renderCanceled} race to set it and each tears the
- * region down differently, so it must have exactly one writer (JK-2434, under 1,200).
+ * region down differently, so it must have exactly one writer (, under 1,200).
  */
 public final class JkManager implements AutoCloseable, LiveRegion {
 
@@ -284,7 +284,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             } else if (!Theme.active().isAnsi()
                     && !SessionContext.current().config().verboseOr(false)) {
                 // Plain mode buffers tool stdout (suppressed unless -v); a crash is the one
-                // moment it must surface — verbose already printed it live (JK-2163).
+                // moment it must surface — verbose already printed it live.
                 plain.dumpProcessOutput();
             }
         }

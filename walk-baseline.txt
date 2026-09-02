@@ -1,15 +1,15 @@
-# G45 (JK-1031) ratchet: blind Files.walk / walkFileTree / newDirectoryStream / list calls
+# G45 ratchet: blind Files.walk / walkFileTree / newDirectoryStream / list calls
 # per module in src/main/java. A module may only shrink. Prefer
 # PathUtil.forEachRegularFile, which hands the walk's attributes to the visitor instead of
 # discarding them and re-resolving each path to ask again.
 #
-# Measured 2026-08-26 after JK-1031 migrated the hot path (FreshnessStamp.newerThan,
-# TaskForecaster.resourcesOutOfSync, CasSweep, TmpGc) and JK-1030 reordered 24 predicate
+# Measured 2026-08-26, after the hot path (FreshnessStamp.newerThan,
+# TaskForecaster.resourcesOutOfSync, CasSweep, TmpGc) migrated and 24 predicate
 # chains. The tail is long and each remaining site needs its own read -- some walks want
 # directories, some want a depth limit, some want ordering -- so this ships as a ratchet
 # rather than a ban, which makes the rule monotonic today instead of unwinnable.
 #
-# 2026-08-31 (JK-2624): server/engine 87 -> 85. JK-2532 landed AbiMemo and ClasspathAbi
+# 2026-08-31: server/engine 87 -> 85. AbiMemo and ClasspathAbi landed
 # carrying one blind walk each and did not move this line, so the guard was red at HEAD.
 # Rather than raise it, four walks were converted to PathUtil.forEachRegularFile:
 # ClasspathAbi.extractDir, BuildJournal.sizeOf (which was asking Files.size per file for a
@@ -19,27 +19,43 @@
 #
 # 2026-08-31: server/engine 85 -> 84. Dead CompileSupport.anySourceUnder (private
 # Files.walk; hasSources already uses Languages.anySourceUnder).
+#
+# 2026-08-31: server/engine 84 -> 83. FreshnessStamp.newerThan directory walk now
+# PathUtil.forEachEntry (attrs the walk already read, including directory mtimes).
+#
+# Per-job VFS: Languages.anySourceUnder, ExecPlans.countSources, TestSupport estimates
+# read InputTrees. PreflightMemo still live-walks on Overflow.
+#
+# clients/cli 13: store deletion is planned as one guarded whole-tree operation.
+#
+# 2026-09-01: the groovyc SOURCE set is the hashed set — the worker walk and
+# ActionKey.forGroovyc's Files.walk are gone (GroovycInputs); PluginTemplates, TrainRunner,
+# OfficialTemplatesFreshen, JavaIncrementalCompiler and QuarkusAugmentMain hand copy/delete
+# to PathUtil. server/engine 80 -> 74, shared/core 15 -> 14, plugins/java-compiler
+# 3 -> 2, plugins/quarkus 10 -> 9, plugins/groovy-compiler 1 -> 0; TaskForecaster and
+# JavaCompile existence probes now terminate via PathUtil.anyRegularFile.
 
-clients/cli 14
+clients/cli 13
 plugins/android 10
 plugins/formatter 2
-plugins/groovy-compiler 1
+plugins/groovy-compiler 0
 plugins/image-builder 8
-plugins/java-compiler 3
+plugins/java-compiler 2
 plugins/micronaut 1
 plugins/minified 2
 plugins/protobuf 1
-plugins/quarkus 10
+plugins/quarkus 9
 plugins/spring-boot 1
 plugins/test-runner 1
-# +1 (JK-2616): AbiIndex.fingerprintWithNested lists ONE package directory (depth-1 siblings
+# +1: AbiIndex.fingerprintWithNested lists ONE package directory (depth-1 siblings
 # Owner$*.class of a recompiled class) — a recursive attribute-carrying walk is the wrong shape.
-server/engine 84
+server/engine 74
 server/toolchain 1
 shared/client-io 15
-shared/core 16
+shared/core 14
 shared/dynamic-surface 2
-shared/host 4
+# +3: PathUtil.forEachEntry / forEachChild / anyRegularFile — the owner itself, not callers.
+shared/host 7
 shared/toolchain-jdk 30
 shared/wire 1
 

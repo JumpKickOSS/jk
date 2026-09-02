@@ -11,7 +11,7 @@ import java.util.Map;
  * flat-scalar-fields discipline as the engine wire protocol ({@code EngineProtocol}). Rendering
  * (and therefore escaping) is {@link MiniJson}, the engine's single JSON home; this class only
  * contributes the builder ergonomics the HTTP handlers use in ~40 places. Public (not
- * package-private) because {@code EngineServer} builds {@link HttpEvents} payloads.
+ * package-private) because {@code EngineServer} builds {@code HttpEvents} payloads.
  */
 public final class JsonOut {
 

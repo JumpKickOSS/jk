@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -23,7 +24,7 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
     public ArtifactMemo {
         Objects.requireNonNull(coordinate, "coordinate");
         Objects.requireNonNull(sha256, "sha256");
-        sha256 = sha256.strip().toLowerCase();
+        sha256 = sha256.strip().toLowerCase(Locale.ROOT);
     }
 
     /** Memo path for a Maven-relative artifact path. */
@@ -37,7 +38,7 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
         // a base name in one version dir. That cannot happen under Maven layout: a coordinate has one
         // packaging, so PubGrub never places two primary artifacts in the same group/artifact/version
         // dir. POMs and other extensions keep their full name (foo-1.0.pom.jk). (The sibling-deleting
-        // removeShas path that made this dangerous was removed with JK-2304.)
+        // removeShas path that made this dangerous was removed with.)
         String n = artifactFileName;
         if (n.endsWith(".jar") || n.endsWith(".aar") || n.endsWith(".zip")) {
             return n.substring(0, n.lastIndexOf('.')) + ".jk";
@@ -53,7 +54,7 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
             String coord = lines.get(0).strip();
             long mtime = Long.parseLong(lines.get(1).strip());
             long size = Long.parseLong(lines.get(2).strip());
-            String sha = lines.get(3).strip().toLowerCase();
+            String sha = lines.get(3).strip().toLowerCase(Locale.ROOT);
             if (coord.isBlank() || sha.length() != 64) return Optional.empty();
             return Optional.of(new ArtifactMemo(coord, mtime, size, sha));
         } catch (IOException | NumberFormatException e) {
@@ -86,7 +87,7 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
      */
     public static boolean verify(Path blob, Path jkFile, String coordinate, String expectedSha256) throws IOException {
         if (!Files.isRegularFile(blob) || expectedSha256 == null || expectedSha256.isBlank()) return false;
-        String want = expectedSha256.strip().toLowerCase();
+        String want = expectedSha256.strip().toLowerCase(Locale.ROOT);
         Optional<ArtifactMemo> memo = read(jkFile);
         if (memo.isPresent() && memo.get().stillMatches(blob, want)) return true;
         String actual = Hashing.sha256Hex(blob);

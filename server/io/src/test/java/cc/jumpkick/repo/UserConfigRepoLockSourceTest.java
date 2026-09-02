@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A repository declared in the machine-local {@code ~/.config/jk/config.toml} reaches the lockfile:
+ * A repository declared in the machine-local {@code ~/.jk/config.toml} reaches the lockfile:
  * {@code LockOrchestrator} writes each artifact's {@code source} as {@code <name>+<baseUrl>}, and
  * {@code jk-lock.toml} is committed. So whatever that base URL carries is committed with it.
  *
@@ -38,25 +38,29 @@ class UserConfigRepoLockSourceTest {
 
     @AfterEach
     void clearOverride() {
-        System.clearProperty("jk.env.JK_CONFIG_FILE");
+        System.clearProperty("jk.env.JK_HOME");
     }
 
-    /** {@code JkDirs} reads every environment variable through a system-property seam. */
-    private static List<RepositorySpec> userConfigRepositories(Path configFile, String url) throws Exception {
-        Files.createDirectories(configFile.getParent());
-        Files.writeString(configFile, """
+    /**
+     * {@code JkDirs} reads every environment variable through a system-property seam. The user
+     * config is {@code <home>/config.toml}, so pointing the home at a scratch dir is how a test
+     * substitutes one.
+     */
+    private static List<RepositorySpec> userConfigRepositories(Path home, String url) throws Exception {
+        Files.createDirectories(home);
+        Files.writeString(home.resolve("config.toml"), """
             [repositories.internal]
             url = "%s"
             groups = ["com.acme"]
             """.formatted(url));
-        System.setProperty("jk.env.JK_CONFIG_FILE", configFile.toString());
+        System.setProperty("jk.env.JK_HOME", home.toString());
         return GlobalConfig.repositories();
     }
 
     @Test
     void a_credential_in_a_user_declared_repo_url_cannot_reach_the_lockfile(@TempDir Path tmp) throws Exception {
         List<RepositorySpec> declared = userConfigRepositories(
-                tmp.resolve("config/jk/config.toml"), "https://" + USER + ":" + TOKEN + "@nexus.example.com/repo");
+                tmp.resolve("home"), "https://" + USER + ":" + TOKEN + "@nexus.example.com/repo");
 
         assertThat(declared).hasSize(1);
         assertThat(declared.get(0).url().getUserInfo())
@@ -86,8 +90,8 @@ class UserConfigRepoLockSourceTest {
     /** Same for a bare token as the whole userinfo, which is how forge registries are usually pasted. */
     @Test
     void a_bare_token_userinfo_is_stripped_too(@TempDir Path tmp) throws Exception {
-        List<RepositorySpec> declared = userConfigRepositories(
-                tmp.resolve("config/jk/config.toml"), "https://ghp_" + TOKEN + "@maven.pkg.github.com/acme");
+        List<RepositorySpec> declared =
+                userConfigRepositories(tmp.resolve("home"), "https://ghp_" + TOKEN + "@maven.pkg.github.com/acme");
 
         MavenRepo repo =
                 new MavenRepo(declared.get(0).name(), declared.get(0).url(), new Http(), new Cas(tmp.resolve("store")));
@@ -99,8 +103,7 @@ class UserConfigRepoLockSourceTest {
     /** Stripping is surgical: a credential-free user repo reaches the lockfile exactly as declared. */
     @Test
     void a_credential_free_user_repo_is_recorded_verbatim(@TempDir Path tmp) throws Exception {
-        List<RepositorySpec> declared =
-                userConfigRepositories(tmp.resolve("config/jk/config.toml"), "https://nexus.example.com/repo/");
+        List<RepositorySpec> declared = userConfigRepositories(tmp.resolve("home"), "https://nexus.example.com/repo/");
 
         MavenRepo repo =
                 new MavenRepo(declared.get(0).name(), declared.get(0).url(), new Http(), new Cas(tmp.resolve("store")));

@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
  * <p>The table is <strong>total</strong>: the engine's retention pass reclaims any top-level entry
  * no constant here names. That cuts both ways, and the second way is why this enum is in the host
  * leaf rather than beside the pass that reads it. A tier is written by one process and reclaimed,
- * measured and wiped by others — {@code base-jre} by the image-builder worker, {@code format-stamps}
+ * measured and wiped by others — {@code base-jre} by the image-builder worker, {@code format/stamps}
  * by the formatter worker, {@code sha256} by the CAS, all three by {@code jk cache} in the native
  * client — so a name spelled at the producer and re-spelled at the reclaimer is a rename that
  * half-lands: the producer keeps filling a directory the sweep now calls residue, or the sweep
@@ -37,11 +37,15 @@ public enum CacheTree {
      */
     CACHE_CAS("sha256"),
 
-    /** One empty marker file per formatted source, written by the formatter worker. */
-    FORMAT_STAMPS("format-stamps"),
+    /**
+     * One empty marker file per formatted source, written by the formatter worker. Nested with
+     * {@link #FORMAT_FRESHNESS} under one {@code format/} container so the cache root reads as a
+     * layout; the two stay separate stores with their own bounds.
+     */
+    FORMAT_STAMPS("format/stamps"),
 
     /** One index per formatter configuration, rewritten in place on every {@code jk format}. */
-    FORMAT_FRESHNESS("format-freshness"),
+    FORMAT_FRESHNESS("format/freshness"),
 
     /** Content hashes keyed by absolute path, sharded two hex digits deep. */
     HASH_MEMO("hash-memo"),
@@ -113,9 +117,19 @@ public enum CacheTree {
         return bookkeeping.isEmpty();
     }
 
-    /** Every entry name the retention pass recognises — the whitelist its residue sweep spares. */
+    /**
+     * Every <em>top-level</em> name the retention pass recognises — the whitelist its residue
+     * sweep spares. A nested entry ({@code format/stamps}) contributes its first segment, or the
+     * sweep would reclaim the container directory as unknown.
+     */
     public static Set<String> entries() {
-        return Arrays.stream(values()).map(CacheTree::entry).collect(Collectors.toUnmodifiableSet());
+        return Arrays.stream(values())
+                .map(CacheTree::entry)
+                .map(e -> {
+                    int slash = e.indexOf('/');
+                    return slash < 0 ? e : e.substring(0, slash);
+                })
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     /** What {@code jk cache nuke} wipes and {@code jk cache usage} measures: everything jk caches. */

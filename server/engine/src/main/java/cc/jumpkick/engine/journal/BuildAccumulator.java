@@ -177,7 +177,7 @@ public final class BuildAccumulator {
     }
 
     /**
-     * Genuine user/deadline cancellation — set by {@link #markUserCancelled} when BUILD_CANCEL /
+     * Genuine user/deadline cancellation — set by {@link #markUserCancelled} when CANCEL_REQUEST /
      * mid-job EOF / deadline fires, or by a finished plan with
      * {@link BuildPlanResult#userCancelled}. Not the racy end-of-request EOF after a terminal
      * outcome (that is ignored in {@link #markUserCancelled} / {@link #toRecord}).
@@ -191,7 +191,7 @@ public final class BuildAccumulator {
      * No-op once {@link #stamp} recorded a verdict. For a non-{@code explicit} signal (socket
      * EOF), also a no-op once a module/plan reported failure ({@code anyFailure}): the client often closes
      * the socket the instant it reads a terminal failure, and that EOF must not re-label a
-     * test/compile failure as cancelled. An {@code explicit} signal (BUILD_CANCEL, dashboard
+     * test/compile failure as cancelled. An {@code explicit} signal (CANCEL_REQUEST, dashboard
      * cancel, wall deadline) is not that race — a genuine abort after a module failure still
      * journals as cancelled.
      */
@@ -581,7 +581,7 @@ public final class BuildAccumulator {
      * Fold in one plan's affected-tests slice ({@code --affected} runs). Workspace builds call it
      * per module; the merged report is written to {@code jk-tests-affected.md} at request-finish.
      * The accumulator lives exactly one request, so a later run never inherits this run's rows
-     * (JK-2607).
+     *.
      */
     public synchronized void addAffected(@Nullable AffectedTests slice) {
         if (slice == null) return;
@@ -655,7 +655,7 @@ public final class BuildAccumulator {
         boolean cancelledEffective = resolveCancelledFlag(success, userCancelled, cancelled);
         // One derivation, cancelled arm first: a row labelled cancelled carries the code every
         // shell already means by an interrupt, so `$?` and `jk history` agree about the same run.
-        // Until JK-2485 every cancel wrote FAILURE and read back as an ordinary failed build; the
+        // Until every cancel wrote FAILURE and read back as an ordinary failed build; the
         // exit of work that stopped before it could rule is not evidence of anything else.
         int exit = cancelledEffective
                 ? Exit.INTERRUPTED

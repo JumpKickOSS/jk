@@ -30,10 +30,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort build history under
- * {@code ~/.local/state/jk/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
+ * {@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
  * {@code record.json}, {@code details.jsonl}, {@code jk-results.md}, {@code metrics.toml}, and
  * optional snapshots.
  *
@@ -506,7 +508,7 @@ public final class BuildJournal {
     /**
      * Run dirs located by {@link #rawFinishedRecordByRequestId} — a wait loop re-reads one
      * {@code record.json} per poll instead of re-scanning the journal. Bounded residue: cleared
-     * wholesale once full (same posture as {@code METRICS_LOCKS}).
+     * wholesale once full — safe for a value cache (nothing holds these entries).
      */
     private final ConcurrentHashMap<Long, Path> runDirsByRequestId = new ConcurrentHashMap<>();
 
@@ -522,11 +524,11 @@ public final class BuildJournal {
             if (Files.isDirectory(dir)) return readFinished(dir, requestId);
             runDirsByRequestId.remove(requestId, dir); // pruned since memoized — re-locate
         }
-        for (Loaded l : loadNewest(200)) {
-            if (l.record().requestId() != requestId) continue;
+        for (RawLoaded l : loadNewestRaw(200, null)) {
+            if (scanLong(l.json(), "requestId") != requestId) continue;
             if (runDirsByRequestId.size() >= 1_024) runDirsByRequestId.clear();
             runDirsByRequestId.put(requestId, l.dir());
-            return l.record().running() ? Optional.empty() : Optional.of(l.json());
+            return scanTrue(l.json(), "running") ? Optional.empty() : Optional.of(l.json());
         }
         return Optional.empty();
     }
@@ -535,23 +537,105 @@ public final class BuildJournal {
         Path record = dir.resolve(RECORD);
         if (!Files.isRegularFile(record)) return Optional.empty();
         try {
-            String json = Files.readString(record, StandardCharsets.UTF_8);
-            BuildRecord parsed = Json.read(json);
-            if (parsed == null || parsed.requestId() != requestId || parsed.running()) return Optional.empty();
+            String json = Files.readString(record, StandardCharsets.UTF_8).strip();
+            if (scanLong(json, "requestId") != requestId || scanTrue(json, "running")) return Optional.empty();
             return Optional.of(json);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
     }
 
-    /** The newest {@code limit} records as their raw JSON — no second read (see {@link #loadNewest}). */
+    /** The newest {@code limit} records as their raw JSON, never parsed — see {@link #loadNewestRaw}. */
     public List<String> rawRecords(int limit) {
+        return rawRecords(limit, null);
+    }
+
+    /**
+     * As {@link #rawRecords(int)}, counting only rows passing {@code filter} (a lexical gate such
+     * as the history kind check) toward {@code limit} — the caller stops over-reading N× to be
+     * left with enough survivors.
+     */
+    public List<String> rawRecords(int limit, @Nullable Predicate<String> filter) {
         List<String> out = new ArrayList<>();
-        for (Loaded l : loadNewest(Math.max(limit, 0))) {
-            if (out.size() >= limit) break;
+        for (RawLoaded l : loadNewestRaw(Math.max(limit, 0), filter)) {
             out.add(l.json());
         }
         return out;
+    }
+
+    /** Raw JSON with its run dir and a lexical sort key — no {@link BuildRecord} graph built. */
+    private record RawLoaded(String json, Path dir, long sortKey) {}
+
+    /**
+     * The raw-only twin of {@link #loadNewest}: the synthetic filter and the newest-first sort
+     * are lexical scans, so a raw-history consumer never pays a full {@code Json.read} per row —
+     * complete record graphs, diagnostics and snippets included, were being built only to read
+     * two fields and be discarded. Rows are journal-authored, so the same first-occurrence
+     * lexical posture as {@code HttpHistoryApi}'s scans holds.
+     */
+    private List<RawLoaded> loadNewestRaw(int limit, @Nullable Predicate<String> filter) {
+        List<RawLoaded> out = new ArrayList<>();
+        for (Path dir : entryDirs()) {
+            if (out.size() >= limit) break;
+            Path record = dir.resolve(RECORD);
+            if (!Files.isRegularFile(record)) continue;
+            String json;
+            try {
+                json = Files.readString(record, StandardCharsets.UTF_8).strip();
+            } catch (IOException e) {
+                continue;
+            }
+            // A torn or non-object file must never ride verbatim into a JSON array response —
+            // the full parse used to be the (accidental) gate for that.
+            if (json.isEmpty() || json.charAt(0) != '{' || json.charAt(json.length() - 1) != '}') continue;
+            if (scanTrue(json, "synthetic")) continue;
+            if (filter != null && !filter.test(json)) continue;
+            long sort = scanLong(json, "finishedAt");
+            if (sort <= 0) sort = scanLong(json, "startedAt");
+            out.add(new RawLoaded(json, dir, sort));
+        }
+        out.sort(Comparator.comparingLong(RawLoaded::sortKey).reversed());
+        return out;
+    }
+
+    /** First {@code "name": <integer>} occurrence, lexically; 0 when absent or not a number. */
+    static long scanLong(String json, String name) {
+        int start = scanValueStart(json, name);
+        if (start < 0) return 0;
+        int end = start;
+        while (end < json.length() && (Character.isDigit(json.charAt(end)) || json.charAt(end) == '-')) end++;
+        if (end == start) return 0;
+        try {
+            return Long.parseLong(json.substring(start, end));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** True when {@code "name": true} occurs, lexically. */
+    static boolean scanTrue(String json, String name) {
+        int start = scanValueStart(json, name);
+        return start >= 0 && json.startsWith("true", start);
+    }
+
+    /**
+     * Index just past {@code "name" <ws> : <ws>}, or -1. Records are pretty-printed
+     * ({@code MiniJson.writePretty}), so the whitespace around the colon is real.
+     */
+    private static int scanValueStart(String json, String name) {
+        String quoted = '"' + name + '"';
+        int at = json.indexOf(quoted);
+        while (at >= 0) {
+            int i = at + quoted.length();
+            while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+            if (i < json.length() && json.charAt(i) == ':') {
+                i++;
+                while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+                return i;
+            }
+            at = json.indexOf(quoted, at + 1);
+        }
+        return -1;
     }
 
     /** The newest {@code limit} records, parsed — the rest of the journal is never read. */

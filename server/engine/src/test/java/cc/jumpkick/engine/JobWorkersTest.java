@@ -81,7 +81,7 @@ class JobWorkersTest {
 
     @Test
     void late_register_after_shutdown_kills_on_arrival_and_leaks_nothing() throws Exception {
-        // JK-2096: a cpu-pool thread still draining after cancel may register a fresh process
+        // : a cpu-pool thread still draining after cancel may register a fresh process
         // AFTER shutdownForRequest ran. It must not resurrect a BY_REQUEST entry (permanent
         // leak) nor escape the kill.
         long req = 97L;
@@ -147,7 +147,7 @@ class JobWorkersTest {
             assertThat(p.isAlive()).isFalse();
             // LIVENESS, not performance: the grace asked for above is 300ms, so 3s is 10x it.
             // What this can catch is a shutdown that ignores its grace entirely; what it must not
-            // become is a measurement of how fast this machine forks and reaps (JK-2446).
+            // become is a measurement of how fast this machine forks and reaps.
             assertThat(ms)
                     .as("honoured the 300ms grace rather than waiting out the child's own 120s sleep")
                     .isLessThan(3_000L);

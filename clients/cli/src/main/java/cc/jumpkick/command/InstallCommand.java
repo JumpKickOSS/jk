@@ -33,6 +33,7 @@ import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
 import cc.jumpkick.tool.JarManifest;
+import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
 import cc.jumpkick.tool.ToolProvenance;
@@ -51,6 +52,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -59,7 +61,7 @@ import java.util.Set;
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
  * Cache-installs the thin jar and POM into {@code repos/jk-local}; applications also get a launcher
- * under {@code ~/.local/bin}. Plugin workers are those same repo jars — launch reconstructs the
+ * under {@code ~/.jk/bin}. Plugin workers are those same repo jars — launch reconstructs the
  * classpath from the POM.
  */
 public final class InstallCommand {
@@ -108,7 +110,8 @@ public final class InstallCommand {
             return Exit.CONFIG;
         }
 
-        boolean isJar = filePath.getFileName().toString().toLowerCase().endsWith(".jar");
+        boolean isJar =
+                filePath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar");
         Optional<Coordinate> detected = Optional.empty();
         if (isJar) {
             try {
@@ -144,7 +147,7 @@ public final class InstallCommand {
         // File-install writes directly to repos/jk-local/ (the JAR is already on disk, no project
         // metadata for a POM, so ~/.m2 write is not appropriate here). Route to the store root:
         // resolvers read repos/jk-local and the classpath CAS from the store.
-        RepoArtifactStore.writeToLocalStore(JkStores.storeRootFor(cache), MavenLayout.artifactPath(coord), filePath);
+        RepoArtifactStore.writeToLocalStore(JkStores.store(), MavenLayout.artifactPath(coord), filePath);
 
         if (!global.outputIsJson()) {
             CliOutput.out("Installed " + Coords.gav(coord) + " to the local store");
@@ -171,6 +174,8 @@ public final class InstallCommand {
             return Exit.USAGE;
         }
         String bin = binName != null && !binName.isBlank() ? binName : resolved.defaultBin();
+        Integer invalidBin = rejectInvalidLauncherName(bin);
+        if (invalidBin != null) return invalidBin;
         Path cacheDir = cacheDir();
         Path envsRoot = stateDir().resolve("tools").resolve("envs");
         Path binDir = binDir();
@@ -256,6 +261,10 @@ public final class InstallCommand {
 
     /** Package-private: {@code jk tool install <project-dir>} delegates here. */
     int runProjectInstallBuildPlan(Path projectDir, String planName) throws IOException {
+        if (binName != null && !binName.isBlank()) {
+            Integer invalidBin = rejectInvalidLauncherName(binName);
+            if (invalidBin != null) return invalidBin;
+        }
         Path cacheDir = cacheDir();
         Path binDir = binDir();
 
@@ -439,9 +448,7 @@ public final class InstallCommand {
             if (productLibStale(infoByDir.get(mod))) installed.add(mod);
         }
         if (installed.isEmpty() && !json) {
-            // A no-op and a success used to render identically — nothing printed either way. The
-            // whole reason this verb was wrong for so long is that "already installed" and "did
-            // not look" are indistinguishable outputs (JK-1069).
+            // Keep a no-op distinguishable from a skipped install check in human output.
             CommandWedge.printOk("Install", "everything already installed");
         }
         for (Path mod : installed) {
@@ -534,7 +541,7 @@ public final class InstallCommand {
      * plan (link set + launcher script or a direct native-binary link); this process applies it —
      * copy each pair, write the launcher, mark executables. Returns the launcher path. A module
      * that declares {@code [install] product-lib} is materialized into jk's own product library
-     * instead of linked into {@code ~/.local/bin}.
+     * instead of linked into {@code ~/.jk/bin}.
      */
     private Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib) throws IOException {
         ExecPlan plan = EngineClient.execPlan(
@@ -557,16 +564,12 @@ public final class InstallCommand {
         // Declared product-lib install: route through EngineInstall so a new jar is published
         // beside any mapped predecessor, a downgrade is refused, and the pointer toml is written
         // coherently — none of which the generic copy + AppInstallConfig.write below provides.
-        //
-        // Asked of the manifest, not of the destination path. This used to match
-        // `<productLib>/jk-engine/` on the link dest and `return null` mid-loop, which meant the
-        // one module whose install is not a coordinate was recognised nowhere a freshness check
-        // could see it — so a missing engine read as "already installed" (JK-1069).
+        // The manifest declares product-lib intent; a destination path cannot establish it.
         if (!productLib.isBlank()) {
             Path src = productLibSource(plan);
             if (src == null) return null;
             String version = engineInstallVersion(projectDir, src);
-            new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.cas(cacheDir), src);
+            new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.storeCas(), src);
             return null; // a jar the client launches — no launcher/bin to link
         }
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
@@ -591,8 +594,15 @@ public final class InstallCommand {
         return bin;
     }
 
+    private static Integer rejectInvalidLauncherName(String name) {
+        var error = LauncherName.validationError(name);
+        if (error.isEmpty()) return null;
+        CommandWedge.printFail("Install", error.get());
+        return Exit.USAGE;
+    }
+
     /**
-     * Persist {@code $JK_CONFIG_DIR/<bin>/config.toml} for fat/minified installs (jar under
+     * Persist {@code <home>/config/<bin>/config.toml} for fat/minified installs (jar under
      * {@code productLib/<bin>/}). Honors {@code [application].config} templates and {@code
      * jk-config.*} system properties. The engine is not this path — it writes {@code jk-engine.toml}
      * beside the jar via {@link EngineInstall}.
@@ -604,7 +614,7 @@ public final class InstallCommand {
         if (parent == null) return;
         // Only fat/minified installs (jar at productLib/<bin>/<jar>) carry a config entry keyed by
         // <bin>. A native binary lands directly in the PATH bin dir, so its parent is that bin dir —
-        // treating it as the app name wrote a junk config/bin/config.toml (JK-2312).
+        // treating it as the app name wrote a junk config/bin/config.toml.
         Path grand = parent.getParent();
         Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
         if (grand == null || !grand.toAbsolutePath().normalize().equals(productLib)) return;

@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Twenty-eight call sites scanned files with no memo between them, and seven asked the same file
  * the same question. `JkM2Config.resolve` sits on per-artifact paths, so a 500-artifact sync re-read
- * `~/.config/jk/config.toml` over a thousand times (JK-1033).
+ * `~/.jk/config.toml` over a thousand times.
  */
 class TomlScanReadBudgetTest {
 

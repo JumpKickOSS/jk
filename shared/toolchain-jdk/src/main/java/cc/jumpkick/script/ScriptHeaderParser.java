@@ -6,6 +6,7 @@ import cc.jumpkick.model.VersionSelector;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
@@ -153,7 +154,7 @@ public final class ScriptHeaderParser {
                     break;
                 }
             }
-            String name = (spaceIdx < 0 ? line.substring(2) : line.substring(2, spaceIdx)).toLowerCase();
+            String name = (spaceIdx < 0 ? line.substring(2) : line.substring(2, spaceIdx)).toLowerCase(Locale.ROOT);
             String value = spaceIdx < 0 ? "" : line.substring(spaceIdx + 1).trim();
             return new ParsedDirective(name, value);
         }

@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
  *       {@code incremental-kotlin}) — the literal anywhere. These words mean exactly one thing in
  *       jk, so a stricter arm costs nothing and covers the shape arm 1 cannot see: a name held in
  *       a {@code String[]} or {@code List.of(…)} and resolved through a variable. That shape is
- *       precisely what JK-2508 deleted from {@code CacheSnapshot}, {@code CacheInventoryOps} and
+ * precisely what deleted from {@code CacheSnapshot}, {@code CacheInventoryOps} and
  *       {@code ActionCachePrune}, so leaving it undetectable would invite it straight back.
  * </ul>
  *
@@ -111,7 +111,7 @@ class ActionTreeTest {
                 .hasSizeGreaterThan(SOURCES_WHEN_WRITTEN);
         assertThat(hits)
                 .as("an action-index directory is named once, in cc.jumpkick.host.ActionTree "
-                        + "(JK-2508). Use ActionTree.<ENTRY>.under(CacheTree.ACTIONS.under(cacheRoot)); "
+                        + ". Use ActionTree.<ENTRY>.under(CacheTree.ACTIONS.under(cacheRoot)); "
                         + "it is on every production module's classpath.")
                 .isEmpty();
     }

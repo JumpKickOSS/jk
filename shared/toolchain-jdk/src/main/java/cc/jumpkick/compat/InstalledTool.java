@@ -4,7 +4,7 @@ package cc.jumpkick.compat;
 import java.nio.file.Path;
 import java.util.Objects;
 
-/** A build tool that {@link ToolInstaller} has placed under {@code $JK_STORE_DIR/tools/}. */
+/** A build tool that {@code ToolInstaller} has placed under {@code $JK_STORE_DIR/tools/}. */
 public record InstalledTool(BuildTool tool, String version, Path home) {
 
     public InstalledTool {

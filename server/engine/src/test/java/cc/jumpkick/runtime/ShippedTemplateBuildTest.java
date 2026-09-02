@@ -44,7 +44,7 @@ class ShippedTemplateBuildTest {
 
     /** The plugins that bundle templates; jar paths are wired by {@code :engine:networkTest}. */
     private static final List<PluginJar> TEMPLATE_PLUGINS =
-            List.of(PluginJar.SPRING_BOOT, PluginJar.GRAILS, PluginJar.QUARKUS, PluginJar.MICRONAUT);
+            List.of(PluginJar.SPRING_BOOT, PluginJar.GRAILS, PluginJar.QUARKUS, PluginJar.MICRONAUT, PluginJar.ANDROID);
 
     /**
      * Templates that cannot build in-gate, by id, each with the reason. A template named here is
@@ -53,6 +53,11 @@ class ShippedTemplateBuildTest {
      * fixed, and the template rejoins the loop.
      */
     private static final Map<String, String> UNBUILDABLE = Map.of(
+            "kotlin/android/compose",
+                    "needs a provisioned Android SDK with accepted licenses (jk android licenses"
+                            + " --yes), which the gate must not do to the host; verified"
+                            + " out-of-gate 2026-09-01 — lock resolves, jk build emits the debug"
+                            + " APK, jk test passes 2 JVM tests. Render is gated below.",
             "java/quarkus/hello",
                     "pom.xml writes the Maven property reference ${quarkus.platform.version}, which the"
                             + " Giter8 renderer cannot parse (STException); the use site needs"
@@ -73,6 +78,38 @@ class ShippedTemplateBuildTest {
                             + " rejects --release 26");
 
     private static final String GRAILS_HELLO = TemplateSpec.idOf("groovy", "grails", "hello");
+
+    /**
+     * The compose starter cannot build in-gate (see {@link #UNBUILDABLE}) but its <em>render</em>
+     * must not rot: Compose/Kotlin sources are full of {@code $}-interpolation hazards for the
+     * Giter8 renderer, which is exactly the defect class that sank the quarkus starters.
+     */
+    @Test
+    void android_compose_scaffolds_and_renders(@TempDir Path tmp) throws Exception {
+        registerTemplatePlugins();
+        String id = TemplateSpec.idOf("kotlin", "android", "compose");
+        TemplateSpec spec = discoverShippedTemplates().stream()
+                .filter(s -> s.id().equals(id))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("the android plugin jar no longer bundles " + id));
+
+        Path tmpl = PluginTemplates.materialize(spec.pluginId(), spec.language(), spec.framework(), spec.name());
+        Path dest = tmp.resolve("compose");
+        int written = Giter8Apply.apply(tmpl, dest, Map.of(), Giter8Maven.central(false));
+
+        assertThat(written).as("files scaffolded from %s", id).isGreaterThanOrEqualTo(6);
+        assertThat(dest.resolve("jk.toml")).exists();
+        assertThat(dest.resolve("src/main/AndroidManifest.xml")).exists();
+        assertThat(Files.readString(dest.resolve("jk.toml")))
+                .contains("compose     = true")
+                .contains("compose-bom");
+        try (var walk = Files.walk(dest)) {
+            assertThat(walk.filter(f -> f.getFileName().toString().equals("MainActivity.kt"))
+                            .findFirst())
+                    .as("the activity rendered under the package dir")
+                    .isPresent();
+        }
+    }
 
     @Test
     void grails_hello_scaffolds_and_builds(@TempDir Path tmp) throws Exception {

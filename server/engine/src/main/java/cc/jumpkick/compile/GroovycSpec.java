@@ -15,9 +15,10 @@ import java.util.Map;
  * The Groovy half of a worker compile: what {@link WorkerCompileDriver} tells {@code
  * jk-groovy-compiler} that it does not tell {@code jk-kotlin-compiler}. groovyc takes no project
  * JDK — there is no {@code -jdk-home} here and no {@code javaHome} on {@link GroovycRequest} —
- * and it has a joint-compilation pass Kotlin does not: {@code stubsOut} and {@code javaSourceRoots}
- * are the inputs to it, and the processor path rides along so the swept javac pass runs the same
- * annotation processors jk's real javac lane does.
+ * and it has a joint-compilation pass Kotlin does not: {@code stubsOut} is its scratch, the
+ * {@code SOURCE} lines already carry the roots' Java neighborhood ({@link GroovycInputs}), and the
+ * processor path rides along so the swept javac pass runs the same annotation processors jk's real
+ * javac lane does.
  */
 final class GroovycSpec {
 
@@ -33,14 +34,10 @@ final class GroovycSpec {
         if (request.workDir() != null) layout.put("workdir", request.workDir());
         sw.layout(layout);
         if (request.stubsOut() != null) sw.extra("stubsOut", request.stubsOut());
-        if (!request.javaSourceRoots().isEmpty()) {
-            sw.configList(
-                    "javaSourceRoots",
-                    request.javaSourceRoots().stream()
-                            .map(p -> p.toAbsolutePath().toString())
-                            .toList());
-        }
-        for (Path src : request.sources()) sw.source(src);
+        // SOURCE carries the whole joint compile set (explicit sources plus the roots' .java
+        // neighborhood) — exactly what ActionKey.forGroovyc hashed. The worker compiles
+        // spec.sources() verbatim and never walks a tree.
+        for (Path src : GroovycInputs.compileSet(request)) sw.source(src);
         for (Path cp : request.classpath()) sw.cp(cp, PluginProtocol.ROLE_COMPILE);
         for (Path pp : request.processorPath()) sw.cp(pp, PluginProtocol.ROLE_PROCESSOR);
         for (String arg : request.extraArgs()) sw.arg(arg);

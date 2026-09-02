@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 /**
  * A golden for the bytes {@code dynamic-surface.json} carries. The module used to hold a private
  * escaper on the grounds that it had to stay dependency-free, and this test existed to pin that
- * copy against {@code Jsonl.quote}; the copy is gone (JK-2422) and the module links {@code :host}
+ * copy against {@code Jsonl.quote}; the copy is gone and the module links {@code :host}
  * like everything else, so what is left to pin is the file format itself.
  *
  * <p>The expected forms stay spelled out rather than computed from the owner: a golden that calls

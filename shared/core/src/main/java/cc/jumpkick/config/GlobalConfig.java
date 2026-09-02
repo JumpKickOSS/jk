@@ -12,7 +12,7 @@ import java.util.function.Function;
 import org.tomlj.TomlParseResult;
 
 /**
- * Machine-scoped preferences from {@code ~/.config/jk/config.toml}: root-level UI flags (e.g.
+ * Machine-scoped preferences from {@code ~/.jk/config.toml}: root-level UI flags (e.g.
  * {@code nerd-font}) and global {@code [repositories]}. Not project-overridable; env overrides
  * apply. Project {@code [repositories]} win on name collision; global fills gaps.
  */
@@ -28,7 +28,7 @@ public final class GlobalConfig {
      *       {@code --color never}. Absolute: beats even an explicit env override.
      *   <li>env {@code JK_NERD_FONT} — the full value set, including the mode words.
      *   <li>env {@code NERD_FONT} — the host-wide cross-tool variable, booleans only.
-     *   <li>{@code ~/.config/jk/config.toml} root-level {@code nerd-font}.
+     *   <li>{@code ~/.jk/config.toml} root-level {@code nerd-font}.
      *   <li>default {@code "auto"} → {@link NerdFontDetect}.
      * </ol>
      *
@@ -68,7 +68,7 @@ public final class GlobalConfig {
         // whatever TERM/CI the host happens to set.
         if (config.forceAnsiOr(false)) return false;
         if ("dumb".equals(env.apply("TERM"))) return true;
-        return EnvValues.bool(env, "CI").orElse(false);
+        return EnvValues.isCi(env);
     }
 
     /**
@@ -193,7 +193,7 @@ public final class GlobalConfig {
                         .orElse(null)));
     }
 
-    /** Clear the memoized config parse. For tests that rewrite {@code ~/.config/jk/config.toml} in one JVM. */
+    /** Clear the memoized config parse. For tests that rewrite {@code ~/.jk/config.toml} in one JVM. */
     static void clearCache() {
         CONFIG_CACHE.clear();
         SCAN_CACHE.clear();
@@ -201,7 +201,7 @@ public final class GlobalConfig {
     }
 
     /**
-     * User-global {@code [image]} defaults from {@code ~/.config/jk/config.toml} — the layer under
+     * User-global {@code [image]} defaults from {@code ~/.jk/config.toml} — the layer under
      * a project's {@code [image]} table ({@link JkBuildParser#imageConfig(Path)}). Lenient, like
      * everything else read from this file: a malformed config yields
      * {@link ManifestImage.ImageConfigData#EMPTY} rather than failing a packaging run.
@@ -222,7 +222,7 @@ public final class GlobalConfig {
     // Repositories
 
     /**
-     * Repositories declared in the {@code [repositories]} table of {@code ~/.config/jk/config.toml}.
+     * Repositories declared in the {@code [repositories]} table of {@code ~/.jk/config.toml}.
      * Returns an empty list when the file is absent, the table is missing, or any entry is
      * malformed (lenient — global config must never fail a build).
      */

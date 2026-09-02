@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A command body forks JDK tools off the <em>build's</em> JDK, through the same
- * {@link TaskExec.ToolRun} a step and a packager get (JK-2432).
+ * {@link TaskExec.ToolRun} a step and a packager get.
  *
  * <p>{@link PluginCommandExec} had neither {@code javaHome()} nor {@code tool()}, so android's five
  * command-side launchers read {@code System.getProperty("java.home")} — which inside a forked

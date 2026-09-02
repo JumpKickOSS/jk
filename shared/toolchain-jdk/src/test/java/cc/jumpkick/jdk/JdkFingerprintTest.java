@@ -57,14 +57,9 @@ class JdkFingerprintTest {
     }
 
     /**
-     * A symlinked tool home fingerprints the tree it points at — which is the entire content of
-     * {@code jk doctor --verify-linked}, because jk symlinks a tool home whenever it discovers a
-     * host install instead of downloading one (JK-2467).
-     *
-     * <p>Before the fix, {@code Files.walkFileTree} without {@code FOLLOW_LINKS} handed the
-     * symlinked root to {@code visitFile}, which rejected it, so the manifest was empty and every
-     * linked tool on every run reported {@link JdkFingerprint#EMPTY_TREE}. Both halves matter here:
-     * the digest must equal the target's, and it must move when the target does.
+     * A symlinked tool home fingerprints the tree it points at — what
+     * {@code jk doctor --verify-linked} needs when jk discovers a host install. The digest equals
+     * the target's and moves when the target does.
      */
     @Test
     void a_symlinked_root_fingerprints_the_tree_it_points_at(@TempDir Path tmp) throws IOException {
@@ -84,11 +79,8 @@ class JdkFingerprintTest {
     }
 
     /**
-     * An empty tree hashes to a digest with a name, asserted by value.
-     *
-     * <p>This test used to assert {@code .hasSize(64)} and nothing else, which is how JK-2467
-     * shipped: {@code e3b0c442…} is 64 characters, so the test passed for the one value the broken
-     * {@code compute} could produce. A length assertion on a digest is not a test of a digest.
+     * An empty tree hashes to {@link JdkFingerprint#EMPTY_TREE}, asserted by value — not merely by
+     * length.
      */
     @Test
     void an_empty_tree_hashes_to_the_named_empty_digest(@TempDir Path tmp) throws IOException {
@@ -99,15 +91,8 @@ class JdkFingerprintTest {
     }
 
     /**
-     * The launcher accessors are the single owner of {@code <javaHome>/bin/java} (JK-2393,
-     * JK-2457). A hand-built path drops the {@code .exe} and every fork built that way is dead on
-     * Windows, so the suffix is pinned here rather than left to whichever host runs the suite.
-     *
-     * <p>The shape is asserted at the owner, not at a call site: guard G1 is what proves the 22
-     * former hand-rolled sites go through here, and four of them — the android bundletool fork, the
-     * image-builder jarmode fork, the engine's AOT trainer sidecar and its `[build] logic` fork —
-     * were the ones missing the suffix. {@code tool} carries the same rule for a launcher named at
-     * runtime, which is what a plugin worker does.
+     * Launcher accessors own {@code <javaHome>/bin/java} (with {@code .exe} on Windows).
+     * {@code tool} applies the same rule for a launcher named at runtime.
      */
     @Test
     void launcher_paths_carry_the_windows_exe_suffix(@TempDir Path tmp) {

@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Renders a {@link JkBuild} as a Maven {@code pom.xml} (companion to {@link PomImporter}).
+ * Renders a {@link JkBuild} as a Maven {@code pom.xml} (companion to {@code PomImporter}).
  * Platform → dependencyManagement import; processor → annotationProcessorPaths; workspace root →
  * packaging pom + modules. Features/profiles stripped; floating selectors collapse with a warning.
  */

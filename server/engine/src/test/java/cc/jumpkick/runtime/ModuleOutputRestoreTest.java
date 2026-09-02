@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The outputs-missing probe must see class files at ANY package depth (JK-2214): a depth-capped
+ * The outputs-missing probe must see class files at ANY package depth: a depth-capped
  * walk missed everything under three segments, so all {@code cc.jumpkick.*} modules read as
  * "outputs missing" and the restore path re-ran the whole fully-cached workspace on every build.
  */

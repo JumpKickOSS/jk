@@ -31,8 +31,7 @@ class OutputWindowTest {
 
     @Test
     void append_reports_acceptance_even_when_ring_is_full() {
-        // JK-2085: once full, every accepted append evicts one line — size stays constant, so a
-        // before/after size compare misreads acceptance as a blank-strip.
+        // Once full, every accepted append still returns true and evicts one line; size alone is not rejection.
         OutputWindow w = new OutputWindow();
         for (int i = 0; i < OutputWindow.MAX_LINES; i++) w.append("fill-" + i);
         assertThat(w.append("over-capacity")).isTrue();
@@ -43,7 +42,7 @@ class OutputWindowTest {
 
     @Test
     void writeAbove_keeps_printing_past_ring_capacity_when_not_animating() {
-        // JK-2085: piped/CI plan mode (animate=false) printed nothing after the 200th line.
+        // Piped/CI plan mode (animate=false) prints every tool line, including past ring capacity.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
@@ -59,8 +58,7 @@ class OutputWindowTest {
 
     @Test
     void no_ansi_plan_animate_prints_plainly_hidden_or_visible() {
-        // JK-2091: --no-ansi TTY animate mode has no live region — the ANSI path leaked raw
-        // escapes when the peek was visible and swallowed tool output entirely when hidden.
+        // --no-ansi TTY animate mode has no live region; tool output prints as plain text hidden or visible.
         var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             CliOutput.beginCommand(false);
@@ -95,7 +93,7 @@ class OutputWindowTest {
 
     @Test
     void reopen_never_redumps_committed_lines() {
-        // JK-2092: open dumps into permanent scrollback; close→reopen must dump only new lines.
+        // Open dumps into permanent scrollback; close→reopen must dump only new lines.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
@@ -126,8 +124,7 @@ class OutputWindowTest {
 
     @Test
     void full_viewport_keeps_rule_and_header_and_trims_tree_rows() {
-        // JK-2106: at a full viewport the tail-slice deleted the separator (and one more over,
-        // the header). Trimming must sacrifice tree rows instead.
+        // At a full viewport, trimming sacrifices tree rows — never the separator or header.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
@@ -150,8 +147,7 @@ class OutputWindowTest {
 
     @Test
     void piped_plan_output_preserves_blank_lines_verbatim() {
-        // JK-2108: the peek ring strips blanks, but piped/CI output prints tool lines verbatim —
-        // docs/tui.md promises the non-TTY path is unchanged.
+        // The peek ring strips blanks; piped/CI output prints tool lines verbatim.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
@@ -356,11 +352,7 @@ class OutputWindowTest {
 
     @Test
     void peek_open_lifts_the_live_region_before_it_prints_the_pane() {
-        // JK-2434: the cursor lift is this file's most fragile invariant and it used to be four
-        // copy-pasted sequences (JK-2092 / JK-2106 / JK-2109 were each a bug in one of them). It is
-        // one method now, so pin what it must do: the pane paint starts by climbing over the live
-        // region, never by appending under it — appending leaves every later repaint one region
-        // too low and the wipe erases finished output instead.
+        // Pane paint starts by climbing over the live region, never by appending under it.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);

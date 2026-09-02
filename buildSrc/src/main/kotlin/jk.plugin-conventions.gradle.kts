@@ -23,7 +23,7 @@ version = "0.12.0"
 
 val workerArtifact = "jk-${project.name}"
 
-// No `maven-publish` here, deliberately (JK-2497). A worker's POM is the flattened one
+// No `maven-publish` here, deliberately. A worker's POM is the flattened one
 // `writeWorkerPom` builds further down: it resolves the entire runtime classpath itself, names
 // every coordinate in it, and `stageWorkerRepo` / `installLocal` stage a jar for each — which is
 // what lands in store/repos/jk-local and what scripts/publish-maven-repo.sh uploads. A
@@ -345,7 +345,7 @@ tasks.register("installLocal") {
 }
 
 // ---------------------------------------------------------------------------
-// Guard G25 (JK-2429): `plugins/` holds TWO architectures, and a module's family is declared once.
+// Guard G25: `plugins/` holds TWO architectures, and a module's family is declared once.
 //
 // The families, verified over all 15 modules at cf478a40:
 //
@@ -359,7 +359,7 @@ tasks.register("installLocal") {
 // 2 config-key cases, 4 `run()` shapes) was mostly one family being read as a style violation of
 // the other. A uniformity rule has to be written per family, so the family has to be checkable.
 //
-// Why this and not a `plugins/` vs `workers/` directory split (JK-2429's original proposal,
+// Why this and not a `plugins/` vs `workers/` directory split (the original proposal,
 // withdrawn — see docs/contributors/code-as-art.md, "Layers"): the descriptor's presence already
 // declares the family. A second directory declaring it again is a copy that has to be kept in
 // sync, and a guard reading the directory would still have to consult the descriptor to know
@@ -567,13 +567,13 @@ tasks.named("check") { dependsOn(checkPluginFamily) }
 tasks.named("jar") { dependsOn(checkPluginFamily) }
 
 // ---------------------------------------------------------------------------
-// Guard G26 (JK-2432): a plugin does not roll its own fork.
+// Guard G26: a plugin does not roll its own fork.
 //
 // `TaskExec.ToolRun.start()` is the one `ProcessBuilder` construction the plugin family needs: it
 // resolves the executable head (`JdkFingerprint.tool`, which owns the Windows `.exe` shape), merges
 // stderr, applies the cwd and the child environment, and `run()` / `stream()` are drains over it.
 // Every exec surface hands one out — TaskExec.tool for a step, PackageIo.tool for a packager and,
-// since JK-2432, PluginCommandExec.tool for a command body.
+// PluginCommandExec.tool for a command body.
 //
 // Defect it prevents: ten hand-rolled launchers, and what they got wrong. `PluginCommandExec` had
 // no `tool()` and no `javaHome()`, so android's command bodies read
@@ -594,7 +594,7 @@ tasks.named("jar") { dependsOn(checkPluginFamily) }
 val pluginForkExemptions = mapOf(
         // Three container-runtime forks (`docker`/`podman` `info`, `run`, `stop`). The runtime is a
         // PATH *name* the user may configure, not a resolved path, and `ToolRun` absolutises its
-        // executable head — so expressing these needs a PATH-search owner first (JK-2493).
+        // executable head — so expressing these needs a PATH-search owner first.
         "src/main/java/cc/jumpkick/plugin/image/AotCacheTrainer.java" to 3)
 
 val checkPluginForkOwner by tasks.registering {

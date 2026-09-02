@@ -54,7 +54,7 @@ class AggregateModuleListenerTest {
 
     @Test
     void non_animating_buffered_output_prints_once_via_the_settled_block() {
-        // JK-2090: with a buffer and animate=false, output/error must buffer ONLY — writeAbove
+        // : with a buffer and animate=false, output/error must buffer ONLY — writeAbove
         // prints immediately in that mode and the module-finish block prints the buffer again,
         // so doing both showed every tool and diagnostic line twice in piped/CI workspace builds.
         var buf = new ByteArrayOutputStream();
@@ -76,7 +76,7 @@ class AggregateModuleListenerTest {
 
     @Test
     void live_path_repeats_the_compiler_pill_grouped_path_stacks() {
-        // JK-2110: on the animating (live) path parallel modules interleave in the merged
+        // : on the animating (live) path parallel modules interleave in the merged
         // stream, so a headerless second report could land under another module's output.
         var buf = new ByteArrayOutputStream();
         JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", true);

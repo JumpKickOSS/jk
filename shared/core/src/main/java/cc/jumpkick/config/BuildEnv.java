@@ -15,12 +15,12 @@ import java.util.function.UnaryOperator;
  * <p>Resolution, lowest wins to highest:
  *
  * <ol>
- * <li>{@code.env} at the workspace root, then the module — see {@link EnvLookup}
+ * <li>{@code .env} at the workspace root, then the module — see {@link EnvLookup}
  * <li>the request's {@code clientEnv}, i.e. the shell that ran {@code jk}
  * <li>the engine's own environment, as a last resort
  * </ol>
  *
- * <p>Both halves used to be wrong in different places. {@code.env} was unreachable outside the few
+ * <p>Both halves used to be wrong in different places. {@code .env} was unreachable outside the few
  * sites that had been threaded an environment, and the caller's shell environment was invisible to
  * anything that called {@code System.getenv} inside the engine — a long-lived daemon started from
  * some earlier shell, so {@code FOO=x jk build} had no effect.
@@ -39,7 +39,7 @@ public final class BuildEnv {
      * <p>The engine is a daemon, so a direct read answers from whichever shell started it — days
      * earlier, with a different JDK. Eight sites did that, and the symptom was not a missing override
      * but a build whose JDK depended on how the daemon had been launched, so {@code jk engine stop}
-     * changed what got compiled (JK-1021).
+     * changed what got compiled.
      *
      * <p>Guard G38 reads this list and bans these spellings in {@code server/} and {@code shared/}
      * main sources, so a ninth site fails the build. {@code clients/} is exempt: there the process
@@ -53,7 +53,7 @@ public final class BuildEnv {
      *       a build path reads it directly).
      *   <li>{@code GRAALVM_HOME} — a home path, not a spec, so it does not fit that selection. Its
      *       reads go through {@link #ambient}, which prefers the request and falls back to this
-     *       process; carrying it as a typed field is JK-1039.
+     * process; carrying it as a typed field is.
      *   <li>{@code JAVA_HOME} — banned, never forwarded. It names the machine's default JVM and
      *       feeds a late fallback tier, and forwarding it through {@link #MACHINE} would also inject
      *       it into every spawned test JVM through a channel no action key can see — the hole
@@ -74,7 +74,7 @@ public final class BuildEnv {
      *
      * <p>Owned here so the client forward list and the test-JVM seed cannot disagree. Platform
      * spellings differ; both lists stay short on purpose — every entry reaches a test JVM through a
-     * channel no action key can see.
+     * channel no action key can.
      */
     public static final List<String> MACHINE = Os.isWindows()
             ? List.of(
@@ -161,7 +161,7 @@ public final class BuildEnv {
     }
 
     /**
-     * Redactor for {@code.env}-sourced values at {@code moduleDir}. Use before any
+     * Redactor for {@code .env}-sourced values at {@code moduleDir}. Use before any
      * free-form text (wire events, journal, errors) leaves the process, and before a value enters
      * a cache key.
      */

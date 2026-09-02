@@ -17,7 +17,7 @@ class EngineVerbBridgeSessionTest {
 
     @Test
     void a_request_without_a_cache_field_falls_back_to_the_engine_cache() {
-        // project-info stopped sending `cache` when nothing read it (JK-2168); JK-1040 then gave
+        // project-info stopped sending `cache` when nothing read it; then gave
         // the verb a session, and resolving one dereferenced the field that was no longer there.
         String request = ProtoReads.projectInfoRequest("/tmp/whatever", null, null, false);
         assertThat(request).doesNotContain("\"cache\"");

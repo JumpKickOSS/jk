@@ -11,7 +11,7 @@ import java.lang.annotation.Target;
  *
  * <p>Per named global, never a wildcard. A class that needs to leak more than one is worth a review
  * comment, and a blanket opt-out would turn the guard off exactly where it is most needed — the
- * classes that drive the production install paths are the ones {@code JK-1010} was filed about.
+ * classes that drive the production install paths are the ones {@code} was filed about.
  *
  * <p><b>No current users, and that is the expected state.</b> The two attributed globals —
  * {@code theme} and {@code terminal-size} — have no deliberate writers left in the tree: the tests

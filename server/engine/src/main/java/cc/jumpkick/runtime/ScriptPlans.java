@@ -59,26 +59,23 @@ public final class ScriptPlans {
     private ScriptPlans() {}
 
     // Cross-step keys (mode-specific, but all live in the same record).
-    static final BuildPlanKey<ScriptHeader> HEADER = BuildPlanKey.of("script-header", ScriptHeader.class);
-    public static final BuildPlanKey<Path> CLASSES_DIR = BuildPlanKey.of("classes-dir", Path.class);
+    static final BuildPlanKey<ScriptHeader> HEADER = BuildPlanKey.scalar("script-header", ScriptHeader.class);
+    public static final BuildPlanKey<Path> CLASSES_DIR = BuildPlanKey.scalar("classes-dir", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    private static final BuildPlanKey<List> WORKER_CP = BuildPlanKey.of("kotlin-worker-cp", List.class);
+    private static final BuildPlanKey<List<Path>> WORKER_CP = BuildPlanKey.list("kotlin-worker-cp", Path.class);
 
-    public static final BuildPlanKey<Path> KT_STDLIB = BuildPlanKey.of("kotlin-stdlib", Path.class);
-    public static final BuildPlanKey<Path> KOTLINC_BIN = BuildPlanKey.of("kotlinc-bin", Path.class);
-    public static final BuildPlanKey<String> MAIN_CLASS = BuildPlanKey.of("main-class", String.class);
+    public static final BuildPlanKey<Path> KT_STDLIB = BuildPlanKey.scalar("kotlin-stdlib", Path.class);
+    public static final BuildPlanKey<Path> KOTLINC_BIN = BuildPlanKey.scalar("kotlinc-bin", Path.class);
+    public static final BuildPlanKey<String> MAIN_CLASS = BuildPlanKey.scalar("main-class", String.class);
 
-    @SuppressWarnings("rawtypes")
-    public static final BuildPlanKey<List> CLASSPATH = BuildPlanKey.of("classpath", List.class);
+    public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
 
-    @SuppressWarnings("rawtypes")
-    private static final BuildPlanKey<List> JAR_DECLARED_DEPS = BuildPlanKey.of("jar-declared-deps", List.class);
+    private static final BuildPlanKey<List<Dependency>> JAR_DECLARED_DEPS =
+            BuildPlanKey.list("jar-declared-deps", Dependency.class);
 
-    /** The finished plan's classpath, as the typed list the raw {@link #CLASSPATH} key stores. */
-    @SuppressWarnings("unchecked")
+    /** The finished plan's classpath. */
     public static List<Path> classpathOf(BuildPlan plan) {
-        return (List<Path>) plan.get(CLASSPATH).orElse(List.of());
+        return plan.get(CLASSPATH).orElse(List.of());
     }
 
     /** {@code classes/} for compiled output, under the state dir, keyed by the source bytes' hash. */
@@ -126,7 +123,7 @@ public final class ScriptPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
-                    Cas cas = JkStores.cas(cacheDir);
+                    Cas cas = JkStores.storeCas();
                     Http http = new Http();
                     RepoGroup repos = buildRepos(header, repoUrl, http, cas);
                     try {
@@ -156,8 +153,7 @@ public final class ScriptPlans {
                     }
                     ctx.label("javac " + script.getFileName());
                     Files.createDirectories(classesDir);
-                    @SuppressWarnings("unchecked")
-                    List<Path> cp = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> cp = ctx.require(CLASSPATH);
                     CompileResult result = compileJava(script, header, classesDir, cp);
                     if (!result.success()) {
                         for (var d : result.diagnostics()) {
@@ -179,6 +175,7 @@ public final class ScriptPlans {
                 .build();
 
         return BuildPlan.builder("run-java")
+                .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH)
                 .addTask(parseHeader)
                 .addTask(resolveDeps)
                 .addTask(compile)
@@ -241,7 +238,7 @@ public final class ScriptPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
-                    Cas cas = JkStores.cas(cacheDir);
+                    Cas cas = JkStores.storeCas();
                     Http http = new Http();
                     RepoGroup repos = buildRepos(header, repoUrl, http, cas);
                     try {
@@ -265,7 +262,7 @@ public final class ScriptPlans {
                             header.kotlinVersion() != null
                                     ? "resolve kotlin compiler " + header.kotlinVersion()
                                     : "resolve kotlin compiler");
-                    Cas cas = JkStores.cas(cacheDir);
+                    Cas cas = JkStores.storeCas();
                     RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
                     try {
                         KotlinPluginSetup.Prepared prep = KotlinPluginSetup.prepare(repos, cas, header.kotlinVersion());
@@ -298,8 +295,7 @@ public final class ScriptPlans {
                     }
                     ctx.label("kotlinc " + script.getFileName());
                     Files.createDirectories(classesDir);
-                    @SuppressWarnings("unchecked")
-                    List<Path> depsClasspath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> depsClasspath = ctx.require(CLASSPATH);
                     int jvmTarget = header.release() != null
                             ? header.release()
                             : Runtime.version().feature();
@@ -311,8 +307,7 @@ public final class ScriptPlans {
                     Path workingDir = ActionTree.INCREMENTAL_KOTLIN
                             .under(CacheTree.ACTIONS.under(cacheDir))
                             .resolve(ActionKey.qualifiedTaskId("script", classesDir));
-                    @SuppressWarnings("unchecked")
-                    List<Path> workerCp = (List<Path>) ctx.require(WORKER_CP);
+                    List<Path> workerCp = ctx.require(WORKER_CP);
                     // @file:DependsOn/@file:Repository were resolved by jk (parseKotlin);
                     // kotlinc can't compile them — feed it a line-preserving neutralized copy.
                     List<Path> ktSources = withDeclaredSources(script, header);
@@ -347,6 +342,7 @@ public final class ScriptPlans {
                 .build();
 
         return BuildPlan.builder("run-kt")
+                .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH, WORKER_CP, KT_STDLIB)
                 .addTask(parseHeader)
                 .addTask(resolveDeps)
                 .addTask(resolveKotlinc)
@@ -379,7 +375,7 @@ public final class ScriptPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
-                    Cas cas = JkStores.cas(cacheDir);
+                    Cas cas = JkStores.storeCas();
                     RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
                     try {
                         ctx.put(CLASSPATH, resolveClasspath(header.deps(), repos));
@@ -408,6 +404,7 @@ public final class ScriptPlans {
                 })
                 .build();
         return BuildPlan.builder("run-kts")
+                .stateKeys(CLASSPATH, KOTLINC_BIN)
                 .addTask(resolveDeps)
                 .addTask(resolveKotlinc)
                 .build();
@@ -463,8 +460,7 @@ public final class ScriptPlans {
                 .requires(TaskNames.INSPECT_JAR)
                 .ticks(1)
                 .execute(ctx -> {
-                    @SuppressWarnings("unchecked")
-                    List<Dependency> declaredDeps = (List<Dependency>) ctx.require(JAR_DECLARED_DEPS);
+                    List<Dependency> declaredDeps = ctx.require(JAR_DECLARED_DEPS);
                     List<Path> classpath = new ArrayList<>();
                     classpath.add(jar);
                     if (declaredDeps.isEmpty()) {
@@ -475,7 +471,7 @@ public final class ScriptPlans {
                     }
                     ctx.label("fetch " + declaredDeps.size() + " embedded deps");
                     Files.createDirectories(cacheDir);
-                    Cas cas = JkStores.cas(cacheDir);
+                    Cas cas = JkStores.storeCas();
                     Http http = new Http();
                     RepoGroup repos = new RepoGroup(List.of(new MavenRepo(
                             RepositorySpec.CENTRAL,
@@ -494,6 +490,7 @@ public final class ScriptPlans {
                 .build();
 
         return BuildPlan.builder("run-jar")
+                .stateKeys(MAIN_CLASS, JAR_DECLARED_DEPS, CLASSPATH)
                 .addTask(inspect)
                 .addTask(resolveJarDeps)
                 .build();

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# JK-1175 — cold / warm / no-op wall times for netty-echo (JK-1174 sample).
+# Cold / warm / no-op wall times for the netty-echo sample.
 # Usage: ./scripts/netty-echo-bench.sh [project-dir]
 # Optional: RUNS=5 JK_BIN=jk
 set -euo pipefail

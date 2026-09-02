@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * Module-relative source path → FQC, resolved against the module's <em>actual</em> source roots
  * (traditional {@code src/main/java/…} and compact {@code src/…} / {@code test/src/…} alike), so a
  * compact module's dirty {@code src/com/acme/Foo.java} classifies as {@code com.acme.Foo} instead
- * of losing its first package segment to string surgery (JK-2609).
+ * of losing its first package segment to string surgery.
  *
  * <p>When the module dir does not exist on disk (pure ranker unit tests) or a path is under none
  * of the configured roots, classification falls back to the ranker's original string heuristics —
@@ -91,7 +91,7 @@ final class SourceFqcs {
         return fallback(rel, suites);
     }
 
-    /** The pre-JK-2609 string heuristics, for fake module dirs and paths outside every root. */
+    /** The string heuristics, for fake module dirs and paths outside every root. */
     private static Hit fallback(String rel, Set<String> suites) {
         if (AffectedTestRanker.isTestSource(rel)) {
             Kind kind = AffectedTestRanker.suiteContains(rel, suites) ? Kind.TEST_SELECTED : Kind.TEST_OUTSIDE;

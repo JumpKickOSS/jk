@@ -35,7 +35,7 @@ public final class JavaHomes {
         try {
             Lockfile lock = readLockSoft(projectDir);
             JkBuild build = readBuildSoft(projectDir);
-            // The request's environment, not the daemon's — see JK-1021.
+            // The request's environment, not the daemon's.
             UnaryOperator<String> env = BuildEnv.forModule(projectDir);
             JdkResolution.Request req = new JdkResolution.Request(
                     projectDir,
@@ -111,7 +111,7 @@ public final class JavaHomes {
      */
     public static Path runningJavaHome() {
         String home = System.getProperty("java.home");
-        // Ambient on purpose, and not the JK-1021 defect: the question is which JVM *this process*
+        // Ambient on purpose, and not the defect: the question is which JVM *this process*
         // runs on, not which JDK the request asked for. Inside the engine `java.home` is always set,
         // so the fallback only fires in the native CLI — where the process is the caller's shell and
         // its own environment is the right answer.

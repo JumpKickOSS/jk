@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * A dirty module's half of cross-module affected ranking (JK-2606): right after compile — when the
+ * A dirty module's half of cross-module affected ranking: right after compile — when the
  * pre-compile ABI baseline still exists in memory — classify this module's dirty production types
  * and publish {@code FQC → kind} onto the invocation's {@link AffectedChanged} carrier. Dependent
  * modules' {@code run-tests} (always after their dependencies' compiles) read the carrier to rank

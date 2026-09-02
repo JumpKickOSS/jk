@@ -75,7 +75,7 @@ final class BuildTails {
      * <ul>
      * <li>nothing entered → {@code all modules up to date}
      * <li>entered modules, none did productive work → {@code checked N modules, all up to date}
-     * <li>some productive work → {@code built K modules} (optionally {@code, checked M})
+     * <li>some productive work → {@code built K modules} (optionally {@code , checked M})
      * </ul>
      *
      * @param modules outcomes from this run (may be empty on the fully-cached shortcut)

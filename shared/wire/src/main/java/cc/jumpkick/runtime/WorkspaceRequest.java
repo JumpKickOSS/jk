@@ -279,6 +279,34 @@ public record WorkspaceRequest(
                 keepGoing);
     }
 
+    /**
+     * Replace the within-module test-worker request. Used once per workspace build to turn the
+     * {@code 0 = auto} spelling into this graph's fair share (see
+     * {@code WorkspaceExecute.resolveAutoWorkers}) before any module is planned, so the memory plan
+     * and every module plan agree on one number.
+     */
+    public WorkspaceRequest withWorkers(int workers) {
+        return new WorkspaceRequest(
+                entryDir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                dirtyHint,
+                applyMemoryPlan,
+                freshenLock,
+                testOnly,
+                variant,
+                clientEnv,
+                ephemeralActions,
+                spec,
+                modules,
+                keepGoing);
+    }
+
     /** Effective target: explicit spec, else TEST when {@link #testOnly}. */
     public WorkspaceTarget target() {
         WorkspaceSpec s = spec == null ? WorkspaceSpec.DEFAULT : spec;

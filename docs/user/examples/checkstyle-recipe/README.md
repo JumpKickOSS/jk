@@ -51,7 +51,7 @@ $ jk tool install com.puppycrawl.tools:checkstyle:14.1.0
 
 ```console
 $ jk tool install com.puppycrawl.tools:checkstyle:14.1.0 --main com.puppycrawl.tools.checkstyle.Main
-jk: + Tool > Installed com.puppycrawl.tools:checkstyle:14.1.0 → ~/.local/bin/checkstyle
+jk: + Tool > Installed com.puppycrawl.tools:checkstyle:14.1.0 → ~/.jk/bin/checkstyle
 ```
 
 jk resolved Checkstyle's transitive deps (antlr, guava, picocli, saxon, …) and wrote a launcher
@@ -63,7 +63,7 @@ $ jk tool list
 +------------+----------------------------------------+--------+-----------------------------------+
 | Tool       | Coordinates                            | Source | Launcher                          |
 +------------+----------------------------------------+--------+-----------------------------------+
-| checkstyle | com.puppycrawl.tools:checkstyle:14.1.0 |        | ~/.local/bin/checkstyle           |
+| checkstyle | com.puppycrawl.tools:checkstyle:14.1.0 |        | ~/.jk/bin/checkstyle           |
 +------------+----------------------------------------+--------+-----------------------------------+
 ```
 

@@ -21,8 +21,8 @@ import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.jdk.JdkToolUninstaller;
+import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -127,8 +127,7 @@ public final class JdkUninstallCommand implements CliCommand {
     Path jdksDir;
     GlobalOptions global;
 
-    @SuppressWarnings("rawtypes")
-    private static final BuildPlanKey<List> VICTIMS = BuildPlanKey.of("victims", List.class);
+    private static final BuildPlanKey<List<JdkHit>> VICTIMS = BuildPlanKey.list("victims", JdkHit.class);
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -321,7 +320,7 @@ public final class JdkUninstallCommand implements CliCommand {
                         // The <vendor>-<major> symlink is a third, independent pointer, and it was
                         // not reconciled at all: removing ~/.jdks/temurin-25.0.4.1 left
                         // ~/.jdks/temurin-25 aimed at nothing, so an IDE holding that stable path
-                        // had a broken SDK — the one thing the pointer exists to prevent (JK-2627).
+                        // had a broken SDK — the one thing the pointer exists to prevent.
                         // Newest survivor of that vendor and major takes the name; none left, name
                         // retired.
                         StableJdkPointer.healAfterRemovals(
@@ -340,6 +339,7 @@ public final class JdkUninstallCommand implements CliCommand {
 
         BuildPlan plan = BuildPlan.builder("jdk-uninstall")
                 .interactive(true)
+                .stateKeys(VICTIMS)
                 .addTask(deleteStep)
                 .addTask(reconcile)
                 .build();

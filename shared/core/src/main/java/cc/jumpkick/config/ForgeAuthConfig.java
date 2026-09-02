@@ -65,7 +65,7 @@ public final class ForgeAuthConfig {
     /**
      * Discover and merge client-id config across the standard layers, matching {@link
      * JkConfigLoader#load}'s precedence via the shared {@link ConfigSources}: user-global {@code
-     * ~/.config/jk/config.toml} &lt; project {@code jk.toml} (or explicit {@code --config-file}). {@code
+     * ~/.jk/config.toml} &lt; project {@code jk.toml} (or explicit {@code --config-file}). {@code
      * noConfig} short-circuits all file layers.
      */
     public static ForgeAuthConfig discover(Path startDir, boolean noConfig, Optional<Path> explicitConfigFile) {

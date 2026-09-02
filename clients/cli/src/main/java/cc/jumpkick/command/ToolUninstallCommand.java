@@ -13,8 +13,8 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,7 +40,7 @@ public final class ToolUninstallCommand implements CliCommand {
         return List.of(
                 Opt.value("<dir>", "Override the tool state directory. Default: $JK_STATE_DIR.", "--state-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the bin directory. Default: $JK_BIN_DIR or ~/.local/bin.", "--bin-dir")
+                Opt.value("<dir>", "Override the bin directory. Default: ~/.jk/bin.", "--bin-dir")
                         .hide());
     }
 
@@ -58,38 +58,26 @@ public final class ToolUninstallCommand implements CliCommand {
         String name = in.positionals().get(0);
         Integer buildTool = uninstallBuildTool(name);
         if (buildTool != null) return buildTool;
+        var invalidName = LauncherName.validationError(name);
+        if (invalidName.isPresent()) {
+            CommandWedge.printFail("Uninstall", invalidName.get());
+            return Exit.USAGE;
+        }
         Path stateDir = in.value("state-dir").map(Path::of).orElse(null);
         Path binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
         Path state = stateDir != null ? stateDir : JkDirs.state();
         Path bin = binDirOverride != null ? binDirOverride : JkDirs.binDir();
-        Path envDir = state.resolve("tools").resolve("envs").resolve(name);
-        Path launcher = bin.resolve(name);
-        Path winLauncher = bin.resolve(name + ".cmd");
+        Path envDir = LauncherName.resolveChild(state.resolve("tools").resolve("envs"), name);
+        Path launcher = LauncherName.resolveChild(bin, name);
+        Path winLauncher = LauncherName.resolveChild(bin, name + ".cmd");
 
         boolean envExists = Files.isDirectory(envDir);
-        // Ours only if jk wrote it. `bin` is ~/.local/bin by default — the distro's binaries, pip
-        // and npm shims and symlinks into other tools all live there, so a NAME is not a claim.
-        // This used to delete on existence alone, which removed the user's binary and reported
-        // success (JK-2626); every launcher jk writes says so on line two.
-        List<Path> ours = Stream.of(launcher, winLauncher)
-                .filter(JkOwnership::isGeneratedLauncher)
-                .toList();
-        List<Path> theirs = Stream.of(launcher, winLauncher)
-                .filter(Files::exists)
-                .filter(p -> !JkOwnership.isGeneratedLauncher(p))
-                .toList();
+        // A leaf name in jk's private bin directory is owned regardless of launcher contents.
+        List<Path> ours = Stream.of(launcher, winLauncher).filter(Files::exists).toList();
 
         if (!envExists && ours.isEmpty()) {
-            // Say which of the two it is. "Not installed" over somebody's binary of the same name
-            // reads like jk looked and found nothing, when it looked and found something it must
-            // not touch.
-            if (theirs.isEmpty()) {
-                CliOutput.out(name + " is not installed.");
-                return 0;
-            }
-            CliOutput.err(theirs.getFirst() + " was not created by jk — leaving it alone.");
-            CliOutput.err("Remove it yourself if you meant to; jk only removes launchers it wrote.");
-            return Exit.CONFIG;
+            CliOutput.out(name + " is not installed.");
+            return 0;
         }
 
         if (envExists) {
@@ -99,11 +87,6 @@ public final class ToolUninstallCommand implements CliCommand {
             Files.deleteIfExists(p);
         }
         CommandWedge.printOk("Uninstall", "Removed " + name);
-        // A foreign file left behind while the env dir went is worth a word, or the tool looks
-        // half-removed for a reason the user cannot see.
-        for (Path p : theirs) {
-            CliOutput.err("Left " + p + " in place — jk did not create it.");
-        }
         return 0;
     }
 

@@ -228,8 +228,9 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
 
     @Test
     void api_project_files_and_file_are_identity_scoped() throws Exception {
-        Path buildsDir = stateDir.resolve("file-builds");
-        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        Path buildsRoot = stateDir.resolve("file-state");
+        Path buildsDir = buildsRoot.resolve("builds");
+        System.setProperty("jk.env.JK_STATE_DIR", buildsRoot.toString());
         try {
             Path checkout = stateDir.resolve("src-app");
             Files.createDirectories(checkout.resolve("src"));
@@ -398,7 +399,7 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
             assertThat(ctl.statusCode()).isEqualTo(200);
             assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo(ctlContent);
         } finally {
-            System.clearProperty("jk.env.JK_BUILDS_DIR");
+            System.clearProperty("jk.env.JK_STATE_DIR");
         }
     }
 
@@ -407,8 +408,9 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         // getQuery() already percent-decodes, and a second URLDecoder pass mapped '+'
         // to space and truncated at a decoded '&' — so any file the tree listed with those
         // characters could never be opened, and %252e%252e relied on validation order alone.
-        Path buildsDir = stateDir.resolve("decode-builds");
-        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        Path buildsRoot = stateDir.resolve("decode-state");
+        Path buildsDir = buildsRoot.resolve("builds");
+        System.setProperty("jk.env.JK_STATE_DIR", buildsRoot.toString());
         try {
             Path checkout = stateDir.resolve("src-decode");
             Files.createDirectories(checkout.resolve("src"));
@@ -448,7 +450,7 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                             .statusCode())
                     .isEqualTo(404);
         } finally {
-            System.clearProperty("jk.env.JK_BUILDS_DIR");
+            System.clearProperty("jk.env.JK_STATE_DIR");
         }
     }
 

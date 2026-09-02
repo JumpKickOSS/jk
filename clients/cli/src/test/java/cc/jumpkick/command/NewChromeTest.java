@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
 import java.util.List;
@@ -40,7 +41,7 @@ class NewChromeTest {
                 false,
                 false,
                 NewInputs.Language.JAVA,
-                "traditional",
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 List.of(),
                 true,

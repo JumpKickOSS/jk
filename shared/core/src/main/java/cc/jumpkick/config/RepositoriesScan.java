@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 /**
  * Client-side line scanner for {@code [repositories]}. It exists because credentials must resolve
  * on the client — secrets never ride the wire — and {@code checkCliNoParseTypes} keeps the full
- * parser off the native image (JK-2151), so the CLI cannot reach
+ * parser off the native image, so the CLI cannot reach
  * {@link RepositoryToml#repositories}. Exotic TOML → absent entry, never a wrong value.
  *
  * <p>It is a second <em>substrate</em>, not a second reader: the meaning of a

@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockPaths;
@@ -32,11 +33,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Machine-local preflight memos: dirty-set, graph structure, and plan shape. Written under
- * {@code <entry>/target/.jk/preflight/} and dual-written to {@code ~/.cache/jk/projects/<id>/preflight/}
+ * {@code <entry>/target/.jk/preflight/} and dual-written to {@code ~/.jk/cache/projects/<id>/preflight/}
  * so {@code jk clean} does not erase input fingerprints. Never git-committed; miss or corrupt →
  * full recompute (fail-open).
  *
@@ -53,9 +53,15 @@ public final class PreflightMemo {
 
     /**
      * Serialize shape-memo upserts per entry directory. Parallel prepare races
-     * read-modify-write on a single file; last writer must not drop peer modules' rows.
+     * read-modify-write on a single file; last writer must not drop peer modules' rows. Striped,
+     * not keyed: a clear-on-overflow map could invalidate a monitor a peer was holding —
+     * reintroducing exactly the dropped-rows race this exists to stop.
      */
-    private static final ConcurrentHashMap<Path, Object> SHAPE_LOCKS = new ConcurrentHashMap<>();
+    private static final Object[] SHAPE_LOCKS = new Object[64];
+
+    static {
+        for (int i = 0; i < SHAPE_LOCKS.length; i++) SHAPE_LOCKS[i] = new Object();
+    }
 
     private PreflightMemo() {}
 
@@ -253,7 +259,7 @@ public final class PreflightMemo {
      * In-tree copy, written only while {@code target/} is alive. Memo stores run after the
      * plan's terminal event reaches the client, so a fast follow-up {@code jk clean [--force]}
      * can wipe target in the gap — recreating {@code target/.jk} here resurrected the dir the
-     * clean just removed AND left a memo claiming outputs that no longer exist (JK-2205). The
+     * clean just removed AND left a memo claiming outputs that no longer exist. The
      * durable copy is authoritative; the in-tree copy is inspection-only.
      */
     private static void writeInTree(Path file, Path entryDir, String body) throws IOException {
@@ -273,7 +279,7 @@ public final class PreflightMemo {
         try {
             Path root = entryDir.toAbsolutePath().normalize();
             Path file = graphMemoFile(entryDir);
-            // Same clean-race guard as the dirty memo (JK-2205): never resurrect target/.
+            // Same clean-race guard as the dirty memo: never resurrect target/.
             if (!Files.isDirectory(entryDir.resolve(BuildLayout.TARGET))) return;
             Files.createDirectories(file.getParent());
             List<Path> unitDirs = new ArrayList<>();
@@ -560,9 +566,7 @@ public final class PreflightMemo {
     public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, BuildPlanShape shape) {
         if (shape == null) return;
         Path root = entryDir.toAbsolutePath().normalize();
-        // Clear-on-overflow (ProjectIds idiom): one entry per entry dir ever prepared.
-        if (SHAPE_LOCKS.size() >= 4_096) SHAPE_LOCKS.clear();
-        Object lock = SHAPE_LOCKS.computeIfAbsent(root, k -> new Object());
+        Object lock = SHAPE_LOCKS[Math.floorMod(root.hashCode(), SHAPE_LOCKS.length)];
         synchronized (lock) {
             try {
                 Path file = shapeMemoFile(entryDir);
@@ -641,6 +645,7 @@ public final class PreflightMemo {
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
+            InputTrees.coverModule(moduleDir);
             MessageDigest md = Hashing.newSha256();
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
@@ -658,44 +663,64 @@ public final class PreflightMemo {
             }
             for (Path r : roots) {
                 if (!Files.isDirectory(r)) continue;
-                Files.walkFileTree(r, new SimpleFileVisitor<>() {
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        if (attrs.isRegularFile()) {
-                            feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
-                            if (mtimeMode) {
-                                feed(md, Long.toString(attrs.size()));
-                                feed(md, Long.toString(attrs.lastModifiedTime().toMillis()));
-                            } else {
-                                // Stream, don't slurp: this is the DEFAULT path (mtime mode is
-                                // opt-in), it runs over every file under the module including
-                                // resources, and the engine's heap budget is 256 MB SerialGC — a
-                                // single large resource was a transient allocation of its full
-                                // size.
-                                try (var in = Files.newInputStream(file)) {
-                                    byte[] buf = HASH_BUFFER.get();
-                                    int n;
-                                    while ((n = in.read(buf)) > 0) {
-                                        md.update(buf, 0, n);
-                                    }
-                                    md.update((byte) 0);
-                                } catch (IOException e) {
-                                    feed(md, "unreadable");
-                                }
+                var snap = InputTrees.of(r);
+                if (snap.overflow()) {
+                    Files.walkFileTree(r, new SimpleFileVisitor<>() {
+                        @Override
+                        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                            if (attrs.isRegularFile()) {
+                                feedFingerprint(
+                                        md,
+                                        moduleDir,
+                                        file,
+                                        attrs.size(),
+                                        attrs.lastModifiedTime().toMillis(),
+                                        mtimeMode);
                             }
+                            return FileVisitResult.CONTINUE;
                         }
-                        return FileVisitResult.CONTINUE;
-                    }
 
-                    @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
+                        @Override
+                        public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                            // A file that vanished or cannot be statted is not a reason to
+                            // abandon the fingerprint into the always-rebuild fallback.
+                            return FileVisitResult.CONTINUE;
+                        }
+                    });
+                    continue;
+                }
+                for (var ref : snap.files()) {
+                    feedFingerprint(md, moduleDir, ref.path(), ref.size(), ref.mtimeMillis(), mtimeMode);
+                }
             }
             return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
+        }
+    }
+
+    /**
+     * One byte contract for both walk shapes: the digest must not depend on whether the tree came
+     * from a snapshot or a live walk, or a module crossing the retain boundary between runs would
+     * rebuild for no input change.
+     */
+    private static void feedFingerprint(
+            MessageDigest md, Path moduleDir, Path file, long size, long mtimeMillis, boolean mtimeMode) {
+        feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
+        if (mtimeMode) {
+            feed(md, Long.toString(size));
+            feed(md, Long.toString(mtimeMillis));
+            return;
+        }
+        try (var in = Files.newInputStream(file)) {
+            byte[] buf = HASH_BUFFER.get();
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                md.update(buf, 0, n);
+            }
+            md.update((byte) 0);
+        } catch (IOException e) {
+            feed(md, "unreadable");
         }
     }
 

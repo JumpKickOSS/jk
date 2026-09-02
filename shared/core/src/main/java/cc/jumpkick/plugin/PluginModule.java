@@ -8,7 +8,7 @@ import java.nio.file.Path;
 
 /**
  * Detects a plugin-worker module from on-disk authoring files — not from {@code [application]}.
- * Presence of {@code jk-plugin.toml} (or the {@link Plugin} ServiceLoader registration) means the
+ * Presence of {@code jk-plugin.toml} (or the {@code Plugin} ServiceLoader registration) means the
  * process entry is {@link #WORKER_MAIN}; authors do not declare it.
  */
 public final class PluginModule {

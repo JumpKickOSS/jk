@@ -14,7 +14,6 @@ import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -249,7 +248,7 @@ public enum PluginJar {
 
     /** Locate using the default jk CAS ({@code $JK_CACHE_DIR}). */
     public Path locate() {
-        return locate(JkStores.cas(JkDirs.cache()));
+        return locate(JkStores.storeCas());
     }
 
     /** As {@link #locate(Cas)} but {@code null} (not throwing) when the plugin can't be located. */

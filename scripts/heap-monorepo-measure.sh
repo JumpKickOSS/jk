@@ -188,7 +188,7 @@ PY
 
 rm -f "$peak_file"
 
-# --- idle settle + optional gate (JK-1942) ----------------------------------
+# --- idle settle + optional gate --------------------------------------------
 # The engine's idle boundary (post-build) drops process memos and runs one GC; with the
 # heap-return flags on the spawn line, committed heap must snap back near live within one
 # idle cycle. Gate on the BEST post-build sample so GC timing jitter cannot flake CI.
@@ -204,7 +204,7 @@ for i in $(seq 1 "$IDLE_WAIT_S"); do
  c=$(field "$j" heapCommittedBytes)
  u=$(field "$j" heapUsedBytes)
  [[ -z "$c" || -z "$u" ]] && continue
- # A -1 sentinel means the ack lacked the field (JK-1971) — not a measurement.
+ # A -1 sentinel means the ack lacked the field — not a measurement.
  [[ "$c" -lt 0 || "$u" -lt 0 ]] && continue
  if [[ -z "$best_c" || "$c" -lt "$best_c" ]]; then best_c=$c; fi
  if [[ -z "$best_u" || "$u" -lt "$best_u" ]]; then best_u=$u; fi
@@ -217,7 +217,7 @@ for i in $(seq 1 "$IDLE_WAIT_S"); do
 done
 
 echo
-echo "## Idle settle (JK-1942 committed-after-idle)"
+echo "## Idle settle (committed-after-idle)"
 echo "| metric | bytes | MiB |"
 echo "|---|---:|---:|"
 echo "| best heapUsed after idle | ${best_u:-?} | $(mib "${best_u:-0}") |"
@@ -227,7 +227,7 @@ gate_ec=0
 if [[ -n "${GATE_COMMITTED_MIB:-}" || -n "${GATE_USED_MIB:-}" ]]; then
  if [[ -z "$best_c" || -z "$best_u" ]]; then
   # No valid sample in IDLE_WAIT_S seconds (engine dead or status broken) is a gate
-  # failure, not a pass — the unmeasured case is the one most worth catching (JK-1971).
+  # failure, not a pass — the unmeasured case is the one most worth catching.
   echo "GATE FAIL: no valid heap samples collected during idle settle (engine unreachable?)"
   gate_ec=1
  elif ! python3 - <<PY

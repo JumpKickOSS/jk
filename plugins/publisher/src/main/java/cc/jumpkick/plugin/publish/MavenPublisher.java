@@ -76,7 +76,7 @@ public final class MavenPublisher {
 
     /**
      * Upload {@code artifacts} for {@code project} with no signing — every artifact gets its four
-     * checksum files but no {@code.asc} or {@code.sigstore} sidecar. See {@link
+     * checksum files but no {@code .asc} or {@code .sigstore} sidecar. See {@link
      * #publish(Project, Iterable, SigningOptions)} for the signed variant.
      */
     public Result publish(Project project, Iterable<Artifact> artifacts) throws IOException, InterruptedException {
@@ -85,7 +85,7 @@ public final class MavenPublisher {
 
     /**
      * Upload {@code artifacts} for {@code project}. Per artifact: body + four checksums; optional
-     * {@code.asc} / {@code.sigstore} (each with their own checksums).
+     * {@code .asc} / {@code .sigstore} (each with their own checksums).
      */
     public Result publish(Project project, Iterable<Artifact> artifacts, SigningOptions signing)
             throws IOException, InterruptedException {

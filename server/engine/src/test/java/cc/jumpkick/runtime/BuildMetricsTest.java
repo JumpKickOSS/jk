@@ -35,6 +35,30 @@ class BuildMetricsTest {
     }
 
     @Test
+    void a_pre_rename_schema_1_store_decodes_to_empty(@TempDir Path dir) throws Exception {
+        // The step->task rename changed the shape under schema 1; the version check IS the
+        // migration — priors re-learn in one run, dual reads do not live forever.
+        Files.writeString(file(dir), """
+                {"schema": 1,
+                 "invocations": [{"kind": "build", "dir": "/p", "ok": {"count": 1}}],
+                 "steps": [{"dir": "/p", "step": "compile-java", "ok": {"count": 1}}]}
+                """);
+        BuildMetrics.clearMemo();
+        assertThat(BuildMetrics.load(file(dir)).isEmpty()).isTrue();
+    }
+
+    @Test
+    void a_schema_2_store_round_trips(@TempDir Path dir) {
+        record(
+                dir.resolve("m.json"),
+                build("/p", true, 800, new BuildMetrics.StepSample("/p", "compile-java", "SUCCESS", 500)),
+                1L);
+        BuildMetrics m = BuildMetrics.load(dir.resolve("m.json"));
+        assertThat(m.isEmpty()).isFalse();
+        assertThat(m.invocation("build", "/p")).isPresent();
+    }
+
+    @Test
     void empty_store_has_no_entries(@TempDir Path dir) {
         BuildMetrics.clearMemo();
         BuildMetrics m = BuildMetrics.load(file(dir));
@@ -51,10 +75,9 @@ class BuildMetricsTest {
      */
     @Test
     void default_path_with_engine_like_cwd_uses_machine_wide_aggregates(@TempDir Path state) throws Exception {
-        // JK_HOME (engine test harness) wins over JK_STATE_DIR for builds/ — pin JK_BUILDS_DIR.
-        String prevBuilds = System.getProperty("jk.env.JK_BUILDS_DIR");
+        String prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
         Path builds = state.resolve("builds");
-        System.setProperty("jk.env.JK_BUILDS_DIR", builds.toString());
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         BuildMetrics.clearSessionAggregatesMemo();
         BuildMetrics.clearMemo();
         var prior = SessionContext.current();
@@ -89,16 +112,16 @@ class BuildMetricsTest {
             SessionContext.install(prior);
             BuildMetrics.clearSessionAggregatesMemo();
             BuildMetrics.clearMemo();
-            if (prevBuilds == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
-            else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuilds);
+            if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
+            else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
         }
     }
 
     @Test
     void default_path_with_jk_toml_cwd_stays_project_scoped(@TempDir Path state) throws Exception {
-        String prevBuilds = System.getProperty("jk.env.JK_BUILDS_DIR");
+        String prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
         Path builds = state.resolve("builds");
-        System.setProperty("jk.env.JK_BUILDS_DIR", builds.toString());
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         BuildMetrics.clearSessionAggregatesMemo();
         BuildMetrics.clearMemo();
         var prior = SessionContext.current();
@@ -135,8 +158,8 @@ class BuildMetricsTest {
             SessionContext.install(prior);
             BuildMetrics.clearSessionAggregatesMemo();
             BuildMetrics.clearMemo();
-            if (prevBuilds == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
-            else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuilds);
+            if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
+            else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
         }
     }
 

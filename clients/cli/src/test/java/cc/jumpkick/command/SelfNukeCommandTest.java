@@ -62,9 +62,8 @@ class SelfNukeCommandTest {
         // before this overlay). A stub jar here just reproduces "no build engine" (exit 1).
         String suiteHome = System.getenv("JK_HOME");
         if (suiteHome != null && !suiteHome.isBlank()) {
-            Path fromLib = Path.of(suiteHome).resolve("data").resolve("lib").resolve("jk-engine");
-            Path toLib = Files.createDirectories(
-                    isolatedHome.resolve("data").resolve("lib").resolve("jk-engine"));
+            Path fromLib = Path.of(suiteHome).resolve("lib").resolve("jk-engine");
+            Path toLib = Files.createDirectories(isolatedHome.resolve("lib").resolve("jk-engine"));
             if (Files.isDirectory(fromLib)) {
                 try (var stream = Files.list(fromLib)) {
                     for (Path p : stream.toList()) {
@@ -116,31 +115,30 @@ class SelfNukeCommandTest {
 
     @Test
     void an_unreachable_engine_still_removes_everything_that_needs_no_engine() throws Exception {
-        // The store and cache nukes run engine-side; state, config and the data root's own children
-        // do not. An engine that cannot start used to unwind the whole command, so a user who had
-        // just approved a table of paths got an error about the engine and every path still there
-        // (JK-2015).
+        // The store and cache nukes run engine-side; state and config do not. An engine that
+        // cannot start used to unwind the whole command, so a user who had just approved a table
+        // of paths got an error about the engine and every path still there.
         JkDirs dirs = JkDirs.current();
-        Path config = dirs.configDir().resolve("config.toml");
-        Path versions = dirs.dataDir().resolve("versions");
+        Path config = dirs.userConfigFilePath();
+        Path perApp = dirs.configDir().resolve("demo");
         Files.createDirectories(config.getParent());
         Files.writeString(config, "x = 1");
-        Files.createDirectories(versions);
-        Files.writeString(versions.resolve("v.toml"), "v");
+        Files.createDirectories(perApp);
+        Files.writeString(perApp.resolve("config.toml"), "v");
 
         int exit = capture(() -> runNuke(new BrokenEngine(), true));
 
         assertThat(exit).as("a partial nuke must not report success").isNotZero();
         assertThat(config).as("config needs no engine to delete").doesNotExist();
-        assertThat(versions).as("data-root children need no engine to delete").doesNotExist();
+        assertThat(perApp).as("per-app config needs no engine to delete").doesNotExist();
     }
 
     @Test
     void an_unreachable_engine_names_what_it_could_not_remove() throws Exception {
         // Silence here is the actual harm: the paths that survive are exactly the ones the user
         // cannot see, so the command has to say which targets it left behind.
-        Files.createDirectories(JkDirs.current().configDir());
-        Files.writeString(JkDirs.current().configDir().resolve("config.toml"), "x = 1");
+        Files.createDirectories(JkDirs.current().homeDir());
+        Files.writeString(JkDirs.current().userConfigFilePath(), "x = 1");
 
         String err = captureText(() -> runNuke(new BrokenEngine(), true));
 
@@ -155,7 +153,7 @@ class SelfNukeCommandTest {
         // daemon it would spawn writes logs, an AOT index and a JDK registry into the state dir it
         // is pretending to delete. The cache preview is a purely local walk, so the dry run keeps
         // it, and even a failing preview must not turn the dry run red or write anything.
-        Path config = JkDirs.current().configDir().resolve("config.toml");
+        Path config = JkDirs.current().userConfigFilePath();
         Files.createDirectories(config.getParent());
         Files.writeString(config, "x = 1");
         long before = countFiles(isolatedHome);
@@ -199,30 +197,32 @@ class SelfNukeCommandTest {
      * Roots deliberately kept: the nuke must never schedule them. Keyed by {@link JkDirs} accessor
      * name so the failure message can name the method an author needs to look at.
      */
-    private static final Set<String> KEPT_ROOTS =
-            Set.of("binDirectory", "jdksDir", "productLibDir", "binDir", "jdks", "productLib");
-
-    /**
-     * Roots deleted child-by-child rather than as one row, so the root itself is never scheduled
-     * but everything under it (minus {@link SelfNukeCommand.Guards}) is.
-     */
-    private static final Set<String> ENUMERATED_ROOTS = Set.of("dataDir", "data");
+    private static final Set<String> KEPT_ROOTS = Set.of(
+            "binDirectory",
+            "binDir",
+            "jdksDir",
+            "jdks",
+            "productLibDir",
+            "productLib",
+            "credsDir",
+            "creds",
+            // The umbrella itself is never a row: --all empties the roots inside it and leaves
+            // bin, lib and creds standing, so scheduling the home would delete all three.
+            "homeDir",
+            "home");
 
     /**
      * Every directory jk owns is either nuked or deliberately kept — and adding a new one to
      * {@link JkDirs} without deciding which fails here.
      *
-     * <p>Within a root the nuke is already exhaustive: cache, state, builds, tmp and config are
-     * removed whole-tree, the store is removed whole-tree engine-side, and the data root is
-     * enumerated child-by-child against the guards. What was *not* whitelist-shaped is the set of
-     * roots itself — a hand-maintained list that a fourteenth accessor would silently fall out of,
+     * <p>Within a root the nuke is already exhaustive: each root is removed whole-tree (the store
+     * engine-side), so everything beneath it goes with it. What was *not* whitelist-shaped is the
+     * set of roots itself — a hand-maintained list that a new accessor would silently fall out of,
      * leaving files behind that a user who ran {@code --all} believes are gone.
      */
     @Test
     void every_JkDirs_root_is_either_nuked_or_deliberately_kept() throws Exception {
         JkDirs dirs = JkDirs.current();
-        // plan() enumerates the data root's children off disk, so it has to exist to be walked.
-        Files.createDirectories(dirs.dataDir());
         Files.createDirectories(dirs.configDir());
         List<Path> planned = SelfNukeCommand.plan(dirs, EnumSet.allOf(Target.class)).stream()
                 .map(SelfNukeCommand.PurgeRow::path)
@@ -232,7 +232,7 @@ class SelfNukeCommandTest {
         for (Method m : JkDirs.class.getMethods()) {
             if (m.getParameterCount() != 0 || m.getReturnType() != Path.class) continue;
             String name = m.getName();
-            if (KEPT_ROOTS.contains(name) || ENUMERATED_ROOTS.contains(name)) continue;
+            if (KEPT_ROOTS.contains(name)) continue;
             // Statics answer through JkDirs.current(), which reads the same jk.env overlay the
             // test's `dirs` came from — so a static-only accessor (the common shape in JkDirs)
             // is walked like everything else instead of slipping past the tripwire.
@@ -245,14 +245,14 @@ class SelfNukeCommandTest {
         assertThat(unaccounted)
                 .as("JkDirs grew a root that `jk self nuke --all` neither deletes nor keeps on"
                         + " purpose. Add a row for it in SelfNukeCommand.plan(), or name it in"
-                        + " KEPT_ROOTS/ENUMERATED_ROOTS here with the reason it survives.")
+                        + " KEPT_ROOTS here with the reason it survives.")
                 .isEmpty();
     }
 
     @Test
     void the_kept_roots_are_actually_kept() throws Exception {
         JkDirs dirs = JkDirs.current();
-        Files.createDirectories(dirs.dataDir());
+        Files.createDirectories(dirs.credsDir());
         List<Path> planned = SelfNukeCommand.plan(dirs, EnumSet.allOf(Target.class)).stream()
                 .map(SelfNukeCommand.PurgeRow::path)
                 .toList();
@@ -268,22 +268,22 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void wipeRoots_never_includes_bin_jdks_or_the_product_lib() throws Exception {
+    void wipeRoots_never_includes_bin_jdks_creds_or_the_product_lib() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path bin = dirs.binDirectory().toAbsolutePath().normalize();
         Path jdks = dirs.jdksDir().toAbsolutePath().normalize();
         Path productLib = dirs.productLibDir().toAbsolutePath().normalize();
+        Path creds = dirs.credsDir().toAbsolutePath().normalize();
         Files.createDirectories(productLib);
+        Files.createDirectories(creds);
 
         List<Path> roots = SelfNukeCommand.wipeRoots(dirs);
         for (Path r : roots) {
             Path abs = r.toAbsolutePath().normalize();
-            assertThat(abs).isNotEqualTo(bin);
-            assertThat(abs).isNotEqualTo(jdks);
-            assertThat(abs).isNotEqualTo(productLib);
-            assertThat(abs.startsWith(bin)).isFalse();
-            assertThat(abs.startsWith(jdks)).isFalse();
-            assertThat(abs.startsWith(productLib)).isFalse();
+            for (Path guarded : List.of(bin, jdks, productLib, creds)) {
+                assertThat(abs).isNotEqualTo(guarded);
+                assertThat(abs.startsWith(guarded)).isFalse();
+            }
         }
     }
 
@@ -298,30 +298,30 @@ class SelfNukeCommandTest {
         JkDirs dirs = JkDirs.current();
         Path storeLib = dirs.storeDir().resolve("lib").toAbsolutePath().normalize();
         Files.createDirectories(storeLib.resolve("jk-java-compiler"));
-        Files.createDirectories(dirs.dataDir());
 
-        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
+        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
 
         assertThat(roots).anyMatch(storeLib::startsWith);
     }
 
+    /**
+     * One row, the root itself — completions, android-sdk and the CAS are all inside it now, so
+     * there is nothing left to enumerate child-by-child.
+     */
     @Test
-    void data_target_takes_the_store_root_plus_every_other_data_child() throws Exception {
+    void store_target_is_exactly_the_store_root() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path store = dirs.storeDir().toAbsolutePath().normalize();
-        Path data = dirs.dataDir().toAbsolutePath().normalize();
         Files.createDirectories(store.resolve("sha256"));
-        Files.createDirectories(dirs.storeDir().resolve("lib"));
-        Files.createDirectories(data.resolve("android-sdk"));
-        Files.createDirectories(data.resolve("completions"));
+        Files.createDirectories(store.resolve("android-sdk"));
+        Files.createDirectories(store.resolve("completions"));
 
-        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
-        assertThat(roots).containsExactlyInAnyOrder(store, data.resolve("android-sdk"), data.resolve("completions"));
+        assertThat(SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE))).containsExactly(store);
     }
 
     @Test
     @Tag("integration")
-    void data_nuke_wipes_store_and_data_children_keeps_engine_credentials_and_bin() throws Exception {
+    void store_nuke_wipes_the_store_and_keeps_engine_credentials_and_bin() throws Exception {
         JkDirs dirs = JkDirs.current();
         // The isolated home carries a REAL materialized engine (isolateHome copy) — the hosted
         // nuke needs it to run, and its survival is exactly what this test asserts.
@@ -329,9 +329,9 @@ class SelfNukeCommandTest {
         Path cas = dirs.storeDir().resolve("sha256");
         Path lib = dirs.storeDir().resolve("lib").resolve("jk-java-compiler");
         Path bin = dirs.binDirectory();
-        Path creds = dirs.dataDir().resolve("credentials");
-        Path repoCreds = dirs.dataDir().resolve("repo-credentials");
-        Path completions = dirs.dataDir().resolve("completions");
+        Path creds = dirs.credsDir().resolve("forge");
+        Path repoCreds = dirs.credsDir().resolve("repo");
+        Path completions = dirs.storeDir().resolve("completions");
         Files.createDirectories(engineHome);
         Files.createDirectories(cas.resolve("ab"));
         Files.writeString(cas.resolve("ab/blob"), "cas");
@@ -353,7 +353,6 @@ class SelfNukeCommandTest {
         Files.createDirectories(completions);
         Files.writeString(completions.resolve("zsh"), "#compdef jk");
 
-        // --store is the hidden pre-widening alias for --data; exercise it here.
         int exit = capture(() -> Jk.execute("self", "nuke", "--store", "-y"));
         assertThat(exit).isZero();
         // storage nuke: entire store, including plugin lib
@@ -362,9 +361,9 @@ class SelfNukeCommandTest {
         assertThat(repoJar)
                 .as("the Maven-layout tree goes too — this is what a worker holds open")
                 .doesNotExist();
-        // the rest of the data root goes with it
+        // completions live under the store now, so they go with it
         assertThat(completions).doesNotExist();
-        // product-lib engine, credentials, and PATH survive
+        // product-lib engine, credentials, and PATH survive — each a root of its own
         assertThat(engineHome).isDirectory();
         assertThat(creds.resolve("github.json")).exists();
         assertThat(repoCreds.resolve("central.json")).exists();
@@ -373,14 +372,13 @@ class SelfNukeCommandTest {
 
     /**
      * Every row of the confirm table, not one of them. The "Path to Delete" column may only list
-     * paths that are gone <em>as directories</em> afterwards; JK-2455 made that true for the cache
+     * paths that are gone <em>as directories</em> afterwards; made that true for the cache
      * and state roots and left the artifact store emptied-but-standing, which is the same table
-     * saying "delete" and meaning "empty". {@code wipeRoots} is the row set the table prints for
-     * {@code --data}: the delegated store row plus every unguarded child of the data root.
+     * saying "delete" and meaning "empty". {@code wipeRoots} is the row set the table prints.
      */
     @Test
     @Tag("integration")
-    void data_nuke_removes_every_path_the_confirm_table_listed() throws Exception {
+    void store_nuke_removes_every_path_the_confirm_table_listed() throws Exception {
         JkDirs dirs = JkDirs.current();
         Files.createDirectories(dirs.productLibDir().resolve("jk-engine"));
         Path cas = dirs.storeDir().resolve("sha256/ab");
@@ -389,24 +387,23 @@ class SelfNukeCommandTest {
         Path tools = dirs.storeDir().resolve("lib").resolve("jk-java-compiler"); // <store>/lib — a child of the store
         Files.createDirectories(tools);
         Files.writeString(tools.resolve("plugin.jar"), "plugin");
-        Files.createDirectories(dirs.dataDir().resolve("completions"));
-        Files.writeString(dirs.dataDir().resolve("completions/zsh"), "#compdef jk");
-        Files.createDirectories(dirs.dataDir().resolve("android-sdk"));
-        Path creds = dirs.dataDir().resolve("credentials");
+        Files.createDirectories(dirs.storeDir().resolve("completions"));
+        Files.writeString(dirs.storeDir().resolve("completions/zsh"), "#compdef jk");
+        Files.createDirectories(dirs.storeDir().resolve("android-sdk"));
+        Path creds = dirs.credsDir().resolve("forge");
         Files.createDirectories(creds);
         Files.writeString(creds.resolve("github.json"), "{}");
-        Path repoCreds = dirs.dataDir().resolve("repo-credentials");
+        Path repoCreds = dirs.credsDir().resolve("repo");
         Files.createDirectories(repoCreds);
         Files.writeString(repoCreds.resolve("central.json"), "{}");
         Files.createDirectories(dirs.binDirectory());
         Path foreign = dirs.binDirectory().resolve("uv");
         Files.writeString(foreign, "foreign-tool");
 
-        // Captured before the nuke: planData enumerates the data root's children as they are now.
-        List<Path> tableRows = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
+        List<Path> tableRows = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
         assertThat(tableRows).contains(dirs.storeDir().toAbsolutePath().normalize());
 
-        assertThat(capture(() -> Jk.execute("self", "nuke", "--data", "-y"))).isZero();
+        assertThat(capture(() -> Jk.execute("self", "nuke", "--store", "-y"))).isZero();
 
         for (Path row : tableRows) {
             assertThat(row).as("row printed under Path to Delete: %s", row).doesNotExist();
@@ -427,7 +424,7 @@ class SelfNukeCommandTest {
      */
     @Test
     @Tag("integration")
-    void data_and_state_nuke_leaves_no_engine_to_write_the_state_dir_back() throws Exception {
+    void store_and_state_nuke_leaves_no_engine_to_write_the_state_dir_back() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path cas = dirs.storeDir().resolve("sha256");
         Files.createDirectories(dirs.productLibDir().resolve("jk-engine"));
@@ -436,20 +433,11 @@ class SelfNukeCommandTest {
         Files.createDirectories(dirs.stateDir().resolve("aot"));
         Files.writeString(dirs.stateDir().resolve("aot/marker"), "aot");
 
-        int exit = capture(() -> Jk.execute("self", "nuke", "--data", "--state", "-y"));
+        int exit = capture(() -> Jk.execute("self", "nuke", "--store", "--state", "-y"));
 
         assertThat(exit).isZero();
         assertThat(EngineFleet.listThisHome()).isEmpty();
         assertThat(dirs.stateDir()).doesNotExist();
-    }
-
-    @Test
-    void data_flag_keeps_store_as_a_hidden_alias_on_the_same_key() {
-        var opt = new SelfNukeCommand()
-                .options().stream().filter(o -> o.matches("--data")).findFirst().orElseThrow();
-        assertThat(opt.canonicalName()).isEqualTo("data");
-        assertThat(opt.matches("--store")).isTrue();
-        assertThat(opt.names()).doesNotContain("--store"); // alias: parsed, never shown in help
     }
 
     @Test
@@ -524,21 +512,19 @@ class SelfNukeCommandTest {
         Files.deleteIfExists(marker);
     }
 
+    /** Config is two paths under the home root, and the home root is not one of them. */
     @Test
-    void config_under_jk_home_targets_config_dir_not_umbrella_home() throws Exception {
+    void config_targets_the_config_file_and_the_per_app_tree_never_the_home_root() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-cfg");
         Path home = root.resolve("home");
-        Path outsideBin = root.resolve("outside-bin");
-        Files.createDirectories(home.resolve("data/lib"));
+        Files.createDirectories(home.resolve("lib"));
         Files.createDirectories(home.resolve("config"));
-        Files.createDirectories(outsideBin);
         JkDirs dirs = JkDirs.of(
-                env("JK_HOME", home.toString(), "JK_BIN_DIR", outsideBin.toString()),
-                root.resolve("userhome").toString());
+                env("JK_HOME", home.toString()), root.resolve("userhome").toString());
 
         List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.CONFIG));
         Path homeAbs = home.toAbsolutePath().normalize();
-        assertThat(roots).containsExactly(homeAbs.resolve("config"));
+        assertThat(roots).containsExactlyInAnyOrder(homeAbs.resolve("config.toml"), homeAbs.resolve("config"));
         assertThat(roots).noneMatch(p -> p.equals(homeAbs));
     }
 
@@ -546,8 +532,8 @@ class SelfNukeCommandTest {
     void guard_refuses_rows_that_contain_the_product_lib() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-anc");
         Path home = root.resolve("home");
-        Files.createDirectories(home.resolve("data/lib"));
-        // JK_STATE_DIR mis-pointed at the umbrella root: state nuke must not take the whole tree.
+        Files.createDirectories(home.resolve("lib"));
+        // JK_STATE_DIR mis-pointed at the home root: state nuke must not take the whole tree.
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString(), "JK_STATE_DIR", home.toString()),
                 root.resolve("userhome").toString());
@@ -555,25 +541,25 @@ class SelfNukeCommandTest {
         List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STATE));
         Path homeAbs = home.toAbsolutePath().normalize();
         assertThat(roots).noneMatch(p -> p.equals(homeAbs));
-        assertThat(roots).noneMatch(p -> homeAbs.resolve("data/lib").startsWith(p));
+        assertThat(roots).noneMatch(p -> homeAbs.resolve("lib").startsWith(p));
     }
 
     @Test
     void guard_refuses_a_store_root_that_contains_the_product_lib() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-store");
         Path home = root.resolve("home");
-        Files.createDirectories(home.resolve("data/lib"));
-        // JK_STORE_DIR mis-pointed at the umbrella root: the store row is delegated whole-tree to
-        // the engine-side wipe, which deletes whatever root it is named — so the guards have to
-        // refuse the row client-side.
+        Files.createDirectories(home.resolve("lib"));
+        // JK_STORE_DIR mis-pointed at the home root: the store row is delegated whole-tree to the
+        // engine-side wipe, which deletes whatever root it is named — so the guards have to refuse
+        // the row client-side.
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString(), "JK_STORE_DIR", home.toString()),
                 root.resolve("userhome").toString());
 
-        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
+        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
         Path homeAbs = home.toAbsolutePath().normalize();
         assertThat(roots).noneMatch(p -> p.equals(homeAbs));
-        assertThat(roots).noneMatch(p -> homeAbs.resolve("data/lib").startsWith(p));
+        assertThat(roots).noneMatch(p -> homeAbs.resolve("lib").startsWith(p));
     }
 
     @Test
@@ -581,7 +567,7 @@ class SelfNukeCommandTest {
         String prev = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", isolatedHome.toString());
         try {
-            Files.createDirectories(JkDirs.current().dataDir().resolve("versions"));
+            Files.createDirectories(JkDirs.current().configDir().resolve("demo"));
             var hosted = new SelfNukeCommand.Hosted() {
                 boolean storageAsked;
 
@@ -612,7 +598,7 @@ class SelfNukeCommandTest {
         String prev = System.getProperty("jk.env.JK_CACHE_DIR");
         System.setProperty("jk.env.JK_CACHE_DIR", isolatedHome.toString());
         try {
-            Files.createDirectories(JkDirs.current().dataDir().resolve("versions"));
+            Files.createDirectories(JkDirs.current().configDir().resolve("demo"));
             var hosted = new SelfNukeCommand.Hosted() {
                 boolean cacheAsked;
 
@@ -657,63 +643,66 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void data_wipe_roots_is_store_plus_data_children_for_injected_dirs() throws Exception {
+    void store_wipe_root_is_exactly_the_store_for_injected_dirs() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-seam");
         Path home = root.resolve("home");
-        // JK_HOME mirrors XDG: store is $JK_HOME/data/store and the live engine $JK_HOME/data/lib.
-        Files.createDirectories(home.resolve("data/store/lib"));
-        Files.createDirectories(home.resolve("data/store/sha256"));
-        Files.createDirectories(home.resolve("data/lib/jk-engine"));
-        Files.createDirectories(home.resolve("data/completions"));
+        Files.createDirectories(home.resolve("store/repos"));
+        Files.createDirectories(home.resolve("store/completions"));
+        Files.createDirectories(home.resolve("lib/jk-engine"));
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString()), root.resolve("userhome").toString());
 
-        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
-        Path data = home.toAbsolutePath().normalize().resolve("data");
-        assertThat(roots).containsExactlyInAnyOrder(data.resolve("store"), data.resolve("completions"));
-        assertThat(roots).noneMatch(p -> p.equals(data.resolve("lib")));
+        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
+        Path homeAbs = home.toAbsolutePath().normalize();
+        assertThat(roots).containsExactly(homeAbs.resolve("store"));
+        assertThat(roots).noneMatch(p -> p.equals(homeAbs.resolve("lib")));
     }
 
+    /**
+     * A root a user pointed at another volume is reached through a symlink, and the guards compare
+     * real paths for exactly that case: {@code JK_STORE_DIR} aimed at a link whose target is the
+     * product lib must be refused, not followed.
+     */
     @Test
-    void symlinked_bin_dir_is_protected_via_realpath() throws Exception {
+    void a_symlinked_root_that_resolves_onto_a_guarded_tree_is_refused() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-link");
         Path home = root.resolve("home");
-        Path realBin = home.resolve("data").resolve("bin"); // a bin dir living inside the data root
-        Path linkBin = root.resolve("linked-bin");
-        Files.createDirectories(realBin);
-        Files.writeString(realBin.resolve("jk"), "#!/bin/sh\n");
+        Path realLib = home.resolve("lib");
+        Path link = root.resolve("linked-store");
+        Files.createDirectories(realLib.resolve("jk-engine"));
         try {
-            Files.createSymbolicLink(linkBin, realBin);
+            Files.createSymbolicLink(link, realLib);
         } catch (UnsupportedOperationException | IOException e) {
             return; // filesystem without symlink support — nothing to verify here
         }
         JkDirs dirs = JkDirs.of(
-                env("JK_HOME", home.toString(), "JK_BIN_DIR", linkBin.toString()),
+                env("JK_HOME", home.toString(), "JK_STORE_DIR", link.toString()),
                 root.resolve("userhome").toString());
 
-        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
-        Path realBinAbs = realBin.toAbsolutePath().normalize();
-        assertThat(roots).noneMatch(p -> p.equals(realBinAbs) || realBinAbs.startsWith(p));
+        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
+        Path realLibAbs = realLib.toAbsolutePath().normalize();
+        assertThat(roots).noneMatch(p -> p.equals(realLibAbs) || realLibAbs.startsWith(p));
     }
 
+    /**
+     * Structure, not a carve-out: {@code creds} and {@code lib} are siblings of {@code store}, so
+     * a whole-tree store wipe cannot reach either. This is the assertion that would have to be
+     * deleted before {@code --store} could log a user out.
+     */
     @Test
-    void data_sweeps_siblings_of_the_store_but_never_credentials_or_the_engine_jar() throws Exception {
+    void store_nuke_can_never_reach_creds_or_the_engine_jar() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-cred");
-        Path userHome = root.resolve("userhome");
-        JkDirs dirs = JkDirs.of(env(), userHome.toString());
-        Path data = dirs.dataDir();
-        Files.createDirectories(data.resolve("credentials"));
-        Files.createDirectories(data.resolve("repo-credentials"));
-        Files.createDirectories(data.resolve("completions"));
-        Files.createDirectories(data.resolve("lib").resolve("jk-engine"));
-        Files.createDirectories(data.resolve("store").resolve("sha256"));
+        JkDirs dirs = JkDirs.of(env(), root.resolve("userhome").toString());
+        Files.createDirectories(dirs.credsDir().resolve("forge"));
+        Files.createDirectories(dirs.credsDir().resolve("repo"));
+        Files.createDirectories(dirs.productLibDir().resolve("jk-engine"));
+        Files.createDirectories(dirs.storeDir().resolve("completions"));
 
-        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.DATA));
-        Path dataAbs = data.toAbsolutePath().normalize();
-        assertThat(roots).containsExactlyInAnyOrder(dataAbs.resolve("store"), dataAbs.resolve("completions"));
-        assertThat(roots).doesNotContain(dataAbs.resolve("credentials"));
-        assertThat(roots).doesNotContain(dataAbs.resolve("repo-credentials"));
-        assertThat(roots).doesNotContain(dataAbs.resolve("lib"));
+        List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.allOf(Target.class));
+        Path creds = dirs.credsDir().toAbsolutePath().normalize();
+        Path lib = dirs.productLibDir().toAbsolutePath().normalize();
+        assertThat(roots).noneMatch(p -> creds.equals(p) || creds.startsWith(p));
+        assertThat(roots).noneMatch(p -> lib.equals(p) || lib.startsWith(p));
     }
 
     private static Function<String, String> env(String... kv) {

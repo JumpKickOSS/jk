@@ -224,15 +224,11 @@ public final class PlannerPackage {
                     ctx.label("write freshness stamp");
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path javaOut = classes; // javac always writes to java/main/
-                    @SuppressWarnings("unchecked")
-                    List<Path> sources = (List<Path>) ctx.require(JAVA_SOURCES);
-                    @SuppressWarnings("unchecked")
-                    List<Path> baseClasspath = (List<Path>) ctx.require(CLASSPATH);
-                    @SuppressWarnings("unchecked")
-                    List<Path> processorCp =
-                            (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+                    List<Path> sources = ctx.require(JAVA_SOURCES);
+                    List<Path> baseClasspath = ctx.require(CLASSPATH);
+                    List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                     // Match compile-java's freshness inputs exactly, including the processor path and
-                    // the Scala stdlib jars (JK-2295).
+                    // the Scala stdlib jars.
                     List<Path> stampInputs = new ArrayList<>(mainStampClasspath(
                             baseClasspath,
                             processorCp,
@@ -283,8 +279,7 @@ public final class PlannerPackage {
                     }
                     ctx.label("write freshness stamp");
                     Path classes = ctx.require(MAIN_CLASSES);
-                    @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> classpath = ctx.require(CLASSPATH);
                     List<Path> freshInputs = new ArrayList<>(kotlinSources(ctx));
                     if (mixedWithJava) freshInputs.addAll(javaSources(ctx));
                     FreshnessStamp.write(
@@ -319,8 +314,7 @@ public final class PlannerPackage {
                     }
                     ctx.label("write freshness stamp");
                     Path classes = ctx.require(MAIN_CLASSES);
-                    @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> classpath = ctx.require(CLASSPATH);
                     List<Path> freshInputs = new ArrayList<>(groovySources(ctx));
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
                     FreshnessStamp.write(

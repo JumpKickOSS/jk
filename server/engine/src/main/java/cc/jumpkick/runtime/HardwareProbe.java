@@ -70,11 +70,8 @@ final class HardwareProbe {
     /**
      * Where the probe may read and write Maven-layout artifacts. {@code storeRoot} is the
      * <em>artifact</em> store ({@link JkDirs#store()}), never the cache root: a jar the probe
-     * fetches is an ordinary Central download that a later resolve can reuse, and the cache root
-     * is the tree {@code jk cache nuke} removes wholesale and {@code jk status} reports as the
-     * user's cache size. Neither factory takes a path, so no caller can hand this a cache root the
-     * way {@code Calibration.probe} used to (JK-2456) — the root comes from {@link JkDirs}, which
-     * a test redirects wholesale rather than per call site.
+     * fetches is an ordinary Central download that a later resolve can reuse. The root always comes
+     * from {@link JkDirs}; tests redirect that wholesale rather than per call site.
      */
     record Options(boolean allowNetwork, Path storeRoot) {
         static Options offline() {
@@ -116,8 +113,7 @@ final class HardwareProbe {
 
             long forkMs = maxWarm(sample(javaExe, "-version"));
             long javacMs = measureJavac(javacExe);
-            // Validity gate BEFORE the expensive probesa broken javac used to pay
-            // disk I/O + hash CPU + the full worker-JVM suite just to discard the result.
+            // Validity gate before the expensive probes — skip disk/hash/worker work on a broken javac.
             if (forkMs <= 0 || javacMs <= 0) return null;
             long diskMs = measureDiskIo();
             long hashMs = measureHashCpu();
@@ -387,7 +383,7 @@ final class HardwareProbe {
 
     /**
      * One Central GET. Production is {@link #httpGet}; the injection point exists so a test can
-     * drive the whole fetch-and-publish route — the part JK-2456 got wrong — without a network
+     * drive the whole fetch-and-publish route — the part got wrong — without a network
      * and without a mutable static base URL.
      */
     @FunctionalInterface
@@ -404,10 +400,7 @@ final class HardwareProbe {
      * As {@link #resolveJunitClasspath(Options)} with the Central transport supplied.
      *
      * <p>Reads the artifact store's per-repo Maven views then the Maven local repository, and on a
-     * miss with network fetches into the <em>store</em>. It used to read and write {@code
-     * <cache>/repos/}, a fourth Maven tree that no resolver consults, that {@code jk status} counts
-     * as cache and {@code jk cache nuke} deletes — so calibration both inflated the cache figure
-     * and re-downloaded the same seven jars after every nuke.
+     * miss with network fetches into the <em>store</em> so later resolves can reuse the jars.
      */
     static List<Path> resolveJunitClasspath(Options opts, CentralFetch fetch) {
         // artifactId → (group path, version)
@@ -522,8 +515,7 @@ final class HardwareProbe {
     /**
      * Publish verified Central bytes as an ordinary store entry — {@code <store>/repos/central/…}
      * plus the {@code .jk} memo, written through {@link RepoArtifactStore} exactly as a resolve
-     * would. The memo is the difference between an artifact a later resolve can hash-verify and
-     * reuse, and the seven orphan jars this probe used to leave under the cache root.
+     * would, so a later resolve can hash-verify and reuse the artifact.
      */
     private static Path storeCentralJar(Path storeRoot, String relativeMavenPath, byte[] body) throws IOException {
         if (storeRoot == null) return null;

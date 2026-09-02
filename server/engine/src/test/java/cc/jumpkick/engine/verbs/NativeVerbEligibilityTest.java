@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2087: the HTTP native job's target selection must respect the explicit module selection and
+ *: the HTTP native job's target selection must respect the explicit module selection and
  * the {@code [native]} gate. The old "empty eligible ⇒ image every module" fallback launched
  * unrequested multi-minute native-image runs; eligibility was also computed over the
  * dirty-filtered subset, so a dirty non-native module flipped the fallback on.
@@ -65,7 +65,7 @@ class NativeVerbEligibilityTest {
 
     @Test
     void table_presence_anywhere_disables_the_unique_main_fallback(@TempDir Path tmp) throws Exception {
-        // JK-2087 (b): eligibility must consider the FULL module set. When cli has a [native]
+        // (b): eligibility must consider the FULL module set. When cli has a [native]
         // table, a unique-main lib is NOT eligible via fallback — even if only lib were dirty.
         Path lib = module(tmp, "lib", false, true);
         Path cli = module(tmp, "cli", true, true);
@@ -75,7 +75,7 @@ class NativeVerbEligibilityTest {
 
     @Test
     void enabled_false_module_is_excluded_from_the_fallback(@TempDir Path tmp) throws Exception {
-        // JK-2089: an explicit [native] enabled = false must not re-enter via unique-main.
+        // : an explicit [native] enabled = false must not re-enter via unique-main.
         Path off = module(tmp, "off", false, true);
         Files.writeString(
                 off.resolve("jk.toml"), Files.readString(off.resolve("jk.toml")) + "\n[native]\nenabled = false\n");

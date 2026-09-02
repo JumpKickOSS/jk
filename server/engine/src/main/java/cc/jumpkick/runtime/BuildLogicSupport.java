@@ -10,6 +10,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskNames;
@@ -28,7 +29,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -95,6 +95,35 @@ public final class BuildLogicSupport {
                             + " after-build and gate are the invocation root's anchors";
             throw misplaced(logicDir, s, where, use);
         }
+    }
+
+    /**
+     * The one jk-authored prefix on a failed script. The body below it is the host's output
+     * verbatim — its first error line already carries the script's own file:line, so
+     * nothing is computed here and nothing buries it. A host-lifecycle failure ("the .kts host
+     * died") already carries its own single prefix and passes through.
+     */
+    static IllegalStateException scriptFailure(Path scriptFile, Throwable root) {
+        String msg =
+                root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
+        if (msg.startsWith("[build] logic")) {
+            return new IllegalStateException(msg, root);
+        }
+        return new IllegalStateException("[build] logic script " + scriptFile.getFileName() + " failed:\n" + msg, root);
+    }
+
+    /**
+     * A failure that already carries the one prefix is not wrapped again — the failing task's
+     * name is the step label the CLI renders, and restating it in the message only pushed the
+     * script's file:line further from the reader.
+     */
+    static RuntimeException taskFailure(String taskName, Exception e) {
+        if (e instanceof IllegalStateException ise
+                && ise.getMessage() != null
+                && ise.getMessage().startsWith("[build] logic")) {
+            return ise;
+        }
+        return new IllegalStateException("[build] logic task " + taskName + " failed: " + e.getMessage(), e);
     }
 
     private static IllegalStateException misplaced(
@@ -236,7 +265,7 @@ public final class BuildLogicSupport {
             } catch (Exception e) {
                 if (e instanceof InterruptedException ie) throw ie;
                 if (e instanceof IOException ioe) throw ioe;
-                throw new IllegalStateException("[build] logic task " + simple + " failed: " + e.getMessage(), e);
+                throw taskFailure(simple, e);
             }
             // Only a success is recorded: the throw above leaves this line unreached, so a failing
             // script is re-run next build rather than replaying its own red.
@@ -292,11 +321,7 @@ public final class BuildLogicSupport {
                     }
                     if (root instanceof InterruptedException ie) throw ie;
                     if (root instanceof IOException ioe) throw ioe;
-                    String msg = root.getMessage() != null
-                            ? root.getMessage()
-                            : root.getClass().getSimpleName();
-                    throw new IllegalStateException(
-                            "[build] logic script " + scriptFile.getFileName() + " failed: " + msg, root);
+                    throw scriptFailure(scriptFile, root);
                 }
             };
             String kindLabel = kind == BuildLogicScripts.ScriptKind.KTS ? "script-kts" : "script";
@@ -361,14 +386,6 @@ public final class BuildLogicSupport {
     }
 
     /**
-     * Directories a workspace-wide key must not descend into: build outputs, VCS metadata, and
-     * tool state. Everything here is either derived from the inputs being hashed — so including it
-     * would make the key a function of its own result — or churn no script is reading.
-     */
-    private static final Set<String> WORKSPACE_KEY_SKIP =
-            Set.of(BuildLayout.TARGET, "build", ".git", ".gradle", ".idea", "node_modules");
-
-    /**
      * What a workspace-root script can read, as cache-key tokens: <strong>every file in the
      * checkout</strong> except build output and VCS metadata.
      *
@@ -387,11 +404,10 @@ public final class BuildLogicSupport {
     private static List<String> workspaceInputTokens(Path rootDir) throws IOException {
         Path root = rootDir.toAbsolutePath().normalize();
         List<String> tokens = new ArrayList<>();
-        PathUtil.forEachRegularFile(
-                root, dir -> WORKSPACE_KEY_SKIP.contains(dir.getFileName().toString()), (file, attrs) -> {
-                    Path abs = file.toAbsolutePath().normalize();
-                    tokens.add("ws:" + root.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
-                });
+        PathUtil.forEachRegularFile(root, WalkSkip::workspaceKey, (file, attrs) -> {
+            Path abs = file.toAbsolutePath().normalize();
+            tokens.add("ws:" + root.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
+        });
         Collections.sort(tokens);
         return tokens;
     }
@@ -416,10 +432,7 @@ public final class BuildLogicSupport {
 
     /** True when {@code dir} holds no regular file at any depth. */
     private static boolean isEmptyDir(Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) return true;
-        boolean[] seen = {false};
-        PathUtil.forEachRegularFile(dir, (file, attrs) -> seen[0] = true);
-        return !seen[0];
+        return !PathUtil.anyRegularFile(dir, d -> false, p -> true);
     }
 
     /**

@@ -83,10 +83,10 @@ public interface VerbHost {
      * <p>The second rule a journaled verb lives by, next to {@link #sendQuiet}: worker error text
      * is raw process output, {@code .env} values are secret by source, and the terminal reaches
      * the user's terminal, the dashboard and the journal. Three of the four emitters used to skip
-     * the masking call because nothing in {@code List<String>} said they had to (JK-2387). The
+     * the masking call because nothing in {@code List<String>} said they had to. The
      * event now takes {@link Redacted}, whose only mint is
      * {@link cc.jumpkick.config.SecretRedactor#redactAll} — so a fifth verb that forgets does not
-     * compile. Redaction is {@code .env}-scoped; forge and repository tokens are JK-2406.
+     * compile. Redaction is {@code .env}-scoped; forge and repository tokens stay out.
      *
      * <p>One redactor is built for the whole list: constructing one walks for a workspace root and
      * parses {@code .env}.

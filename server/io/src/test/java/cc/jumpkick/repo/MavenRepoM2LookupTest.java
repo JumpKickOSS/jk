@@ -81,7 +81,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void prefers_the_sha256_sidecar_over_sha1(@TempDir Path tmp) throws Exception {
-        // JK-2321: when the repo publishes .sha256, adopt an ~/.m2 hit on the strong digest and do
+        // : when the repo publishes.sha256, adopt an ~/.m2 hit on the strong digest and do
         // NOT fall back to the collision-broken .sha1.
         seedM2(tmp.resolve("m2"), REAL);
         serve("/" + REL + ".sha256", 200, Hashing.sha256Hex(REAL).getBytes(StandardCharsets.UTF_8));

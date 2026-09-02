@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -315,6 +316,60 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void concurrent_same_etag_writes_yield_one_ok_and_one_conflict(@TempDir Path root) throws Exception {
+        // Compare-then-write is atomic per path: without the per-path monitor, two PUTs carrying
+        // the same etag could both pass the comparison and the second silently clobbered the
+        // first — the exact lost update the etag exists to prevent. Repeat rounds to give the
+        // race a real chance; the invariant must hold every time.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        for (int round = 0; round < 50; round++) {
+            Files.writeString(root.resolve("src/Main.java"), "class Main { /* v" + round + " */ }\n");
+            var read = (WorkspaceFileAccess.ReadResult.Ok) WorkspaceFileAccess.read(root, "src/Main.java");
+            String etag = read.body().etag();
+
+            var results = new WorkspaceFileAccess.WriteResult[2];
+            var barrier = new CyclicBarrier(2);
+            Thread a = new Thread(() -> {
+                await(barrier);
+                results[0] = WorkspaceFileAccess.write(root, "src/Main.java", "class A {}\n", etag);
+            });
+            Thread b = new Thread(() -> {
+                await(barrier);
+                results[1] = WorkspaceFileAccess.write(root, "src/Main.java", "class B {}\n", etag);
+            });
+            a.start();
+            b.start();
+            a.join();
+            b.join();
+
+            long oks = Arrays.stream(results)
+                    .filter(r -> r instanceof WorkspaceFileAccess.WriteResult.Ok)
+                    .count();
+            long conflicts = Arrays.stream(results)
+                    .filter(r -> r instanceof WorkspaceFileAccess.WriteResult.Conflict)
+                    .count();
+            assertThat(oks).as("round %d: exactly one writer wins", round).isEqualTo(1);
+            assertThat(conflicts)
+                    .as("round %d: the loser learns it lost", round)
+                    .isEqualTo(1);
+            String onDisk = Files.readString(root.resolve("src/Main.java"));
+            String winner = results[0] instanceof WorkspaceFileAccess.WriteResult.Ok ? "class A {}\n" : "class B {}\n";
+            assertThat(onDisk)
+                    .as("round %d: the winner's bytes are on disk", round)
+                    .isEqualTo(winner);
+        }
+    }
+
+    private static void await(CyclicBarrier barrier) {
+        try {
+            barrier.await();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
     void write_rejects_images_and_traversal(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("docs"));
@@ -587,7 +642,7 @@ class WorkspaceFileAccessTest {
     @Test
     void resolve_root_uses_identity_only(@TempDir Path checkout, @TempDir Path buildsDir) throws Exception {
         writeJkToml(checkout, "demo");
-        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        System.setProperty("jk.env.JK_STATE_DIR", buildsDir.toString());
         try {
             var identity = ProjectIdentity.resolve(checkout);
             ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
@@ -597,7 +652,7 @@ class WorkspaceFileAccessTest {
                     .isEmpty();
             assertThat(WorkspaceFileAccess.resolveRoot("")).isEmpty();
         } finally {
-            System.clearProperty("jk.env.JK_BUILDS_DIR");
+            System.clearProperty("jk.env.JK_STATE_DIR");
         }
     }
 

@@ -142,10 +142,10 @@ public final class WorkspaceExecute {
      * can plan once for its own concurrency instead of letting each call overwrite the shared
      * {@code HeapPlan}/{@code PluginSlots} state sized for just itself.
      */
-    public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
+    public static WorkspaceResult buildWorkspace(WorkspaceRequest incoming, WorkspaceBuildListener listener) {
         JkBuild entryBuild;
         try {
-            entryBuild = JkBuildParser.parse(req.entryDir().resolve(ManifestPaths.MANIFEST));
+            entryBuild = JkBuildParser.parse(incoming.entryDir().resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
             WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
             listener.onWorkspaceFinish(r);
@@ -153,14 +153,14 @@ public final class WorkspaceExecute {
         }
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
-        if (req.freshenLock()) {
-            Path rootLock = LockPaths.lockFile(req.entryDir());
-            boolean lockStale = WorkspaceLock.workspaceLockStale(req.entryDir(), entryBuild, rootLock);
+        if (incoming.freshenLock()) {
+            Path rootLock = LockPaths.lockFile(incoming.entryDir());
+            boolean lockStale = WorkspaceLock.workspaceLockStale(incoming.entryDir(), entryBuild, rootLock);
             if (lockStale) {
                 // Countdown during lock: price lock + a coarse remaining-build prior so the TUI
                 // does not pure count-up for the whole re-lock window. Remaining-work semantics —
                 // the CLI converts via elapsed + remaining after each onEtaEstimate.
-                long lockEta = WorkspaceLock.estimateLockMillis(req.entryDir(), req.cache());
+                long lockEta = WorkspaceLock.estimateLockMillis(incoming.entryDir(), incoming.cache());
                 // Do not seed from full-build history here — that flashes multi-minute ETAs on
                 // restore-shaped runs (clean → build). Use a small lock+floor provisional only.
                 long provisionalBuild = EffortWeights.MS_PER_WEIGHT * 8L; // ~1.2s floor
@@ -168,7 +168,7 @@ public final class WorkspaceExecute {
             }
             listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
             BuildService.LockGuard guard =
-                    WorkspaceLock.ensureWorkspaceLockFresh(req.entryDir(), req.cache(), lockStale);
+                    WorkspaceLock.ensureWorkspaceLockFresh(incoming.entryDir(), incoming.cache(), lockStale);
             if (guard.status() != 0) {
                 WorkspaceResult r = new WorkspaceResult(
                         false,
@@ -183,7 +183,7 @@ public final class WorkspaceExecute {
         listener.onPreflight("graph", 0, 0, "Resolving module graph…");
         BuildGraph.Result graph;
         try {
-            graph = BuildGraph.resolve(req.entryDir(), entryBuild);
+            graph = BuildGraph.resolve(incoming.entryDir(), entryBuild);
         } catch (IOException e) {
             WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
             listener.onWorkspaceFinish(r);
@@ -196,8 +196,8 @@ public final class WorkspaceExecute {
         }
         List<BuildGraph.BuildUnit> units = graph.topoOrder();
         // compare to prior structure memo before overwriting (fail-open).
-        boolean graphMemoHit = PreflightMemo.graphStructureMatches(req.entryDir(), graph);
-        PreflightMemo.storeGraph(req.entryDir(), graph);
+        boolean graphMemoHit = PreflightMemo.graphStructureMatches(incoming.entryDir(), graph);
+        PreflightMemo.storeGraph(incoming.entryDir(), graph);
         if (Perf.ENABLED && graphMemoHit) {
             System.err.println("[jk-perf] preflight-graph-memo structure-match units=" + units.size());
         }
@@ -208,12 +208,12 @@ public final class WorkspaceExecute {
             return r;
         }
         // Selection cone (native/image/-m): filter before dirty forecast and ETA.
-        graph = applySelectionCone(graph, req);
+        graph = applySelectionCone(graph, incoming);
         units = graph.topoOrder();
         if (units.isEmpty()) {
             // A NON-EMPTY selection that matches nothing is an error, not a clean no-op —
             // success(0) here silently "built" a mistyped -m selection.
-            WorkspaceSpec spec = req.spec();
+            WorkspaceSpec spec = incoming.spec();
             if (spec != null && spec.hasSelection()) {
                 String sel = spec.selectedModules().stream()
                         .map(Path::toString)
@@ -228,23 +228,13 @@ public final class WorkspaceExecute {
             listener.onWorkspaceFinish(r);
             return r;
         }
-        // Size worker-JVM heaps/concurrency from free memory before any fork (engine resource plan).
-        int cap = Runtime.getRuntime().availableProcessors();
-        boolean parallelTests = SessionContext.current().parallelTests();
-        int width = BuildGraph.maxReadyWidth(units, graph.edges());
-        // A module-concurrency cap (e.g. -j1 → 1) bounds the peak module count for both the
-        // memory plan and the ETA below, so serial builds size heaps and estimate time as serial.
-        if (req.maxModuleConcurrency() > 0) width = Math.min(width, req.maxModuleConcurrency());
-        if (req.applyMemoryPlan()) {
-            JvmOptions.planAndApply(HeapPlan.requestedJvms(width, effectiveWorkers(req), parallelTests, cap));
-        }
 
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : units) moduleDirs.add(u.dir());
         // Modules some entered module depends on: dependents' compile classpath consumes their
         // JAR (WorkspaceClasspath), so even test-only plans must package them — a testOnly plan
         // for a consumed prereq recompiled classes but left the jar stale, and dependents
-        // compiled (and green-tested) against old code (JK-2177).
+        // compiled (and green-tested) against old code.
         Set<Path> jarConsumed = new LinkedHashSet<>();
         for (Set<Path> prereqs : graph.edges().values()) {
             for (Path p : prereqs) jarConsumed.add(BuildGraph.canonicalPath(p));
@@ -257,14 +247,14 @@ public final class WorkspaceExecute {
         Set<Path> dirty;
         Set<Path> restoreNeeded = Set.of();
         BuildForecasting.Preflight preflight = null;
-        if (req.dirtyHint() != null) {
+        if (incoming.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
             // Client -m / cwd selection is the seed; expand to build prereqs so a selected
             // member is not scheduled without the siblings it compiles against.
-            dirty = ModuleHints.withPrereqs(graph, req.dirtyHint());
+            dirty = ModuleHints.withPrereqs(graph, incoming.dirtyHint());
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
-        } else if (req.testOnly()) {
+        } else if (incoming.testOnly()) {
             // Workspace {@code jk test} with no client dirty hint: run every module in the
             // (already cone-filtered) graph — not a cache-forecast subset.
             listener.onPreflight("checking", 0, 0, "Testing all selected modules…");
@@ -273,7 +263,12 @@ public final class WorkspaceExecute {
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             preflight = BuildForecasting.forecastWithFingerprints(
-                    graph, req.cache(), req.skipTests(), req.entryDir(), req.target(), terminalTargetDirs(units, req));
+                    graph,
+                    incoming.cache(),
+                    incoming.skipTests(),
+                    incoming.entryDir(),
+                    incoming.target(),
+                    terminalTargetDirs(units, incoming));
             dirty = preflight.dirty();
             restoreNeeded = preflight.restoreNeeded();
             String msg;
@@ -285,7 +280,7 @@ public final class WorkspaceExecute {
         }
         Perf.end(
                 "ws-forecast(hint="
-                        + (req.dirtyHint() != null)
+                        + (incoming.dirtyHint() != null)
                         + ",dirty="
                         + dirty.size()
                         + ",restore="
@@ -296,7 +291,7 @@ public final class WorkspaceExecute {
         // Inputs clean + outputs missing: restore from action cache, then treat as fully cached.
         if (dirty.isEmpty()
                 && !restoreNeeded.isEmpty()
-                && req.target() == WorkspaceTarget.PACKAGE
+                && incoming.target() == WorkspaceTarget.PACKAGE
                 && !SessionContext.current().config().rebuildOr(false)
                 && !SessionContext.current().config().forceOr(false)) {
             listener.onPreflight("restore", 0, restoreNeeded.size(), "Restoring outputs…");
@@ -304,7 +299,8 @@ public final class WorkspaceExecute {
             listener.onEtaEstimate(restoreEta);
             List<Path> failed;
             try {
-                failed = ModuleOutputRestore.restoreAll(req.entryDir(), List.copyOf(restoreNeeded), req.cache());
+                failed = ModuleOutputRestore.restoreAll(
+                        incoming.entryDir(), List.copyOf(restoreNeeded), incoming.cache());
             } catch (IOException e) {
                 WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(Errors.text(e)));
                 listener.onWorkspaceFinish(r);
@@ -315,17 +311,17 @@ public final class WorkspaceExecute {
                 // Action-cache miss: fall through to normal RUN for those modules only.
                 dirty = new LinkedHashSet<>(failed);
             } else {
-                Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, req.entryDir());
+                Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, incoming.entryDir());
                 for (BuildGraph.BuildUnit u : units) {
                     linkModuleArtifacts(u.dir(), wsLinks);
                 }
-                if (req.dirtyHint() == null && !req.testOnly()) {
+                if (incoming.dirtyHint() == null && !incoming.testOnly()) {
                     Map<Path, String> fps =
                             preflight != null && !preflight.fingerprints().isEmpty()
                                     ? preflight.fingerprints()
-                                    : PreflightMemo.snapshotFingerprints(graph, req.skipTests());
+                                    : PreflightMemo.snapshotFingerprints(graph, incoming.skipTests());
                     if (!fps.isEmpty()) {
-                        PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), fps);
+                        PreflightMemo.storeDirty(incoming.entryDir(), graph, incoming.skipTests(), Set.of(), fps);
                     }
                 }
                 listener.onEtaEstimate(0);
@@ -344,7 +340,7 @@ public final class WorkspaceExecute {
         if (probing) {
             listener.onPreflight("calibrate", 0, 1, "Calibrating host…");
         }
-        Calibration.ensure(req.jdksDir());
+        Calibration.ensure(incoming.jdksDir());
         if (probing) {
             // complete=true drops the preflight row from the live tree (JkManager.preflight).
             listener.onPreflight("calibrate", 1, 1, "Calibrating host…");
@@ -357,6 +353,30 @@ public final class WorkspaceExecute {
         for (BuildGraph.BuildUnit u : units) {
             if (dirty.contains(u.dir())) dirtyUnits.add(u);
             else cleanUnits.add(u);
+        }
+
+        // Size worker-JVM heaps/concurrency from free memory before any fork (engine resource
+        // plan), and resolve `-w` auto in the same breath — both want the same number and both
+        // want it derived from the modules that will actually run.
+        //
+        // `dirtyUnits`, not `units`: a 30-module workspace where one module is dirty runs one
+        // module, and sizing off the graph's total width would hand that module a 1/13 share of a
+        // machine nobody else is using. Clean modules skip prepare and schedule entirely.
+        // This is also why the block sits here rather than up by the graph: the dirty set is not
+        // known any earlier, and it must still land before prepare, which forks the compiler
+        // worker for its forecast.
+        int cap = Runtime.getRuntime().availableProcessors();
+        boolean parallelTests = SessionContext.current().parallelTests();
+        int width = BuildGraph.maxReadyWidth(dirtyUnits, graph.edges());
+        // A module-concurrency cap (e.g. -j1 → 1) bounds the peak module count for both the
+        // memory plan and the ETA below, so serial builds size heaps and estimate time as serial.
+        if (incoming.maxModuleConcurrency() > 0) width = Math.min(width, incoming.maxModuleConcurrency());
+        // The parameter is `incoming` and everything past this line reads `req` on purpose: a
+        // second spelling of "how many test workers" is what let the memory plan's conservative 1
+        // reach TestWorkers as an explicit -w1 and silence the auto default entirely.
+        final WorkspaceRequest req = incoming.withWorkers(resolveAutoWorkers(incoming, width, cap));
+        if (req.applyMemoryPlan()) {
+            JvmOptions.planAndApply(HeapPlan.requestedJvms(width, req.workers(), parallelTests, cap));
         }
 
         // ---- R0 seed: SAME path as jk explain (HARD INVARIANT) ----
@@ -377,9 +397,12 @@ public final class WorkspaceExecute {
             // explainFromGraph uses package tails; native/image extra work is in the live
             // prepare weights. Dirty set already used target-aware forecast above.
         }
-        if (req.dirtyHint() != null) {
-            etaPlan = BuildForecasting.restrictToSelection(etaPlan, dirty);
-        }
+        // Price the set that will be SCHEDULED, always — not only when a client sent a dirty hint.
+        // `jk explain` is a plan for `jk build`, and the countdown is the same estimate; both were
+        // pricing every module the forecast walk called stale while the scheduler ran `dirtyUnits`.
+        // On a one-module edit that is 30 modules priced against 7 run. `--redo` is unaffected:
+        // there `dirty` is every module, so this is a no-op.
+        etaPlan = BuildForecasting.restrictToSelection(etaPlan, dirty);
         BuildService.EtaModel etaModel = BuildEta.estimateEtaModel(
                 etaPlan,
                 req.entryDir(),
@@ -796,7 +819,7 @@ public final class WorkspaceExecute {
             return b.build();
         }
         // A consumed prereq must package even on the test path: dependents compile against
-        // its sibling JAR, not its classes dir (JK-2177).
+        // its sibling JAR, not its classes dir.
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
         boolean testOnly = (target.testOnly() || req.testOnly()) && !consumed;
         BuildPlanner.Inputs inputs = moduleInputs(dir, req, moduleDirs, testOnly);
@@ -806,24 +829,57 @@ public final class WorkspaceExecute {
     }
 
     /**
-     * The one spelling of the request knobs every module plan must carry — workers (clamped),
-     * profile, project modules, variant + client env, ephemeral actions. Every terminal branch of
+     * The one spelling of the request knobs every module plan must carry — workers ({@code 0 =
+     * auto}, passed through), profile, project modules, variant + client env, ephemeral actions. Every terminal branch of
      * {@link #assemblePlan} applies this operator (the PACKAGE/INSTALL path via
      * {@link #moduleInputs}), so a branch cannot silently plan against a different manifest than
      * its siblings. The single-plan verbs build the same set from the request line
      * ({@code WorkspaceBuildVerb} and friends) — a different layer, not folded here.
      */
     static UnaryOperator<BuildPlanner.Inputs> requestKnobs(WorkspaceRequest req, Set<Path> moduleDirs) {
-        return in -> in.withWorkerCount(effectiveWorkers(req))
+        return in -> in.withWorkerCount(Math.max(0, req.workers()))
                 .withProfileName(req.profile())
                 .withProjectModules(moduleDirs)
                 .withVariant(req.variant(), req.clientEnv())
                 .withEphemeralActions(req.ephemeralActions());
     }
 
-    /** Request workers with the {@code 0 = auto} spelling clamped to one planned worker. */
-    private static int effectiveWorkers(WorkspaceRequest req) {
-        return req.workers() > 0 ? req.workers() : 1;
+    /**
+     * Resolve {@code -w} auto ({@code 0}) into within-module test workers for <em>this</em> graph:
+     * each module gets a fair share of the machine, {@code cap / width}. An explicit {@code -w N}
+     * is returned untouched.
+     *
+     * <p>jk gets its parallelism from modules first — {@code WorkspaceScheduler} runs up to
+     * {@code width} of them at once and module suites overlap by default. Within-module sharding is
+     * the second layer, and the two draw on one machine, which is the relationship
+     * {@link HeapPlan#requestedJvms} already encodes as {@code peak = width * workers}. Inverting
+     * it is what makes auto mean the same thing at both ends of the range instead of only one:
+     *
+     * <ul>
+     *   <li>30-module dogfood build, width 13 on 24 threads → <b>1</b> worker per module. The
+     *       modules already fill the machine; a second layer of forks only adds JVM starts.
+     *   <li>one dirty module, width 1 → <b>24</b>. Nothing else is running, so the suite should
+     *       shard as wide as its class count and free RAM allow — the case within-module sharding
+     *       was built for, and where it was measured to pay (5.8 s → 2.4 s at {@code -w4} on a
+     *       single module). Width comes from the <em>dirty</em> units for this reason: touching one
+     *       module in a 30-module workspace is the inner loop, and that build is narrow no matter
+     *       how wide the graph is.
+     * </ul>
+     *
+     * <p>This replaced a flat {@code workers > 0 ? workers : 1}, which was right for the wide case
+     * by accident and wrong everywhere else: {@code 1} does not read as "auto" downstream, it reads
+     * as an explicit request for one JVM ({@link cc.jumpkick.test.TestWorkers#resolve}), so
+     * {@code server/engine} ran 1407 tests in a single JVM even when it was the only module left.
+     *
+     * <p>Measured on the dogfood build before settling on the share: a flat auto of
+     * {@code min(jobs, classCount)} per module — every module sharding as if it were alone — took
+     * the wall from 73 s to 103 s. The whole-build curve is monotone in {@code -w} (73 s at
+     * {@code -w1}, 77 s at {@code -w2}, 81 s at {@code -w4}), which is why the share is divided by
+     * width rather than handed out per module.
+     */
+    static int resolveAutoWorkers(WorkspaceRequest req, int width, int cap) {
+        if (req.workers() > 0) return req.workers();
+        return Math.max(1, Math.max(1, cap) / Math.max(1, width));
     }
 
     /**
@@ -835,7 +891,7 @@ public final class WorkspaceExecute {
                 .apply(TaskForecaster.inputsFor(
                         dir,
                         req.cache(),
-                        effectiveWorkers(req),
+                        Math.max(0, req.workers()),
                         req.jdksDir(),
                         req.profile(),
                         req.skipTests(),
@@ -886,8 +942,8 @@ public final class WorkspaceExecute {
      * As {@link #runModule(ModulePlan, WorkspaceBuildListener)}, firing {@code artifactsReady}
      * the moment every artifact step other modules consume (package-jar, and package-assembly
      * when declared — {@code WorkspaceClasspath} sibling jars / {@code enrichCliTestProps}
-     * assemblies) is terminal-ok. With packaging no longer gated on run-tests (JK-2211) that is
-     * right after compile+resources, so dependents overlap this module's test suite (JK-2210).
+     * assemblies) is terminal-ok. With packaging no longer gated on run-tests that is
+     * right after compile+resources, so dependents overlap this module's test suite.
      * A failed or absent artifact step never fires — the scheduler publishes on completion
      * instead, and fail-fast or the dependent's own "sibling not built" reports it.
      */
@@ -926,7 +982,7 @@ public final class WorkspaceExecute {
         }
     }
 
-    /** Fire {@code artifactsReady} once when all of the plan's artifact steps finish ok (JK-2210). */
+    /** Fire {@code artifactsReady} once when all of the plan's artifact steps finish ok. */
     static void watchArtifactSteps(BuildPlan plan, Runnable artifactsReady) {
         Set<String> artifactSteps = new HashSet<>();
         for (Task step : plan.steps()) {

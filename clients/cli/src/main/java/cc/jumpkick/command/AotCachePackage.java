@@ -262,7 +262,7 @@ final class AotCachePackage {
     private static Path findCacheDir(Path projectDir) {
         // jk's output directory is BuildLayout.TARGET; `build/` is Gradle's and can only appear in an
         // imported tree. Probing it first on every successful build was a second ~100%-miss stat
-        // (JK-1042). One probe, then the legacy one only if the first misses.
+        // . One probe, then the legacy one only if the first misses.
         Path primary = projectDir.resolve(BuildLayout.TARGET).resolve("aot-cache");
         if (Files.isDirectory(primary)) return primary;
         Path legacy = projectDir.resolve("build/aot-cache");

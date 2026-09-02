@@ -17,7 +17,7 @@ import java.util.Set;
 /**
  * Renders a {@link JkBuild} (and workspace) as a Gradle Kotlin-DSL build: {@code
  * settings.gradle.kts} plus a {@code build.gradle.kts} per project. The export-direction companion
- * to {@link GradleImporter}.
+ * to the importer's {@code GradleImporter}.
  *
  * <p>Versions come from {@code jk-lock.toml} when present ({@code locked} maps {@code group:artifact} →
  * exact version), so the generated build reproduces what jk builds; otherwise the declared selector

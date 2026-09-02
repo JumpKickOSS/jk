@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  */
 public final class GradleResolver {
 
-    /** jk's bundled default when no wrapper is present. Matches {@code .sdkmanrc}. */
+    /** jk's bundled default when no wrapper is present. */
     public static final String DEFAULT_VERSION = "9.5.1";
 
     private static final String DEFAULT_BASE = "https://services.gradle.org/distributions/";

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The one tree copy. Twelve callers hand-rolled this and all twelve shared the same three defects
- * (JK-1032); these pin the behaviour that replaced them.
+ *; these pin the behaviour that replaced them.
  */
 class PathUtilCopyTreeTest {
 

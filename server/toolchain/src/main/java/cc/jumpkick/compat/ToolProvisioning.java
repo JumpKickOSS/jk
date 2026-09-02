@@ -69,7 +69,7 @@ public final class ToolProvisioning {
             return new Result(existing.get(), Result.Source.CACHED, "");
         }
         // 2. Broken cache entry — purge and continue. Through JkOwnership rather than a local
-        // three-arm copy: link-vs-populated-directory is the same question JK-2624 got wrong
+        // three-arm copy: link-vs-populated-directory is the same question got wrong
         // elsewhere, and having one answer is the point of the owner.
         if (existing.isPresent()) {
             JkOwnership.removeIfOwned(existing.get().home());

@@ -148,7 +148,7 @@ public enum BuildStage {
 
     /**
      * Infer stage from a task name when the builder did not set one. Single source of truth for
-     * ETA and fallback UI fold — same mapping historically in {@link TaskPhases}.
+     * ETA and fallback UI fold — same mapping historically in the engine's {@code TaskPhases}.
      */
     public static BuildStage ofTaskName(String taskName) {
         if (taskName == null || taskName.isBlank()) return OTHER;

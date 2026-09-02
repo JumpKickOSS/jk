@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutionException;
  * <p>Jib attaches none by itself: {@code RegistryImage.named(ref)} starts with an empty retriever
  * list and the caller opts in. Nothing here ever did, so every base-image pull — in tarball, daemon
  * <em>and</em> push mode — and every push was anonymous, and no private registry could be reached
- * at all (JK-2464). Constructing a {@code RegistryImage} anywhere but here is how that comes back,
+ * at all. Constructing a {@code RegistryImage} anywhere but here is how that comes back,
  * so the three sites that had one — the build's base pull, the base-JRE extraction {@code aot-cache}
  * performs, and the push target — go through {@link #base} and {@link #target} instead, and a test
  * fails if a fourth appears.
@@ -35,7 +35,7 @@ import java.util.concurrent.ExecutionException;
  * working and an explicit {@code jk repo login <registry>} wins over it.
  *
  * <p>jk's half arrives through the spec file's {@code secret} lines and never through argv: argv is
- * world-readable in {@code /proc}, which is the bug [[JK-2406]] fixed for keystore passwords.
+ * world-readable in {@code /proc}, which is the bug [[]] fixed for keystore passwords.
  */
 public final class RegistryAuth {
 

@@ -39,7 +39,7 @@ import org.junit.jupiter.api.condition.OS;
 /**
  * Ctrl-C with stdout redirected — a pipe, a CI log, {@code jk build | tee}. Every one of those is a
  * context where a runaway build is hardest to see and, if the handler only worked under a pty,
- * impossible to stop from the keyboard (JK-2463).
+ * impossible to stop from the keyboard.
  *
  * <p>Signals cannot be tested in-process: the handler ends in {@link Runtime#halt}, which would take
  * the test JVM with it. So each case spawns a real {@code jk} on this suite's classpath with its
@@ -55,8 +55,8 @@ import org.junit.jupiter.api.condition.OS;
  *   <li>the verb notices and unwinds first, so the entry point's {@code System.exit} does.
  * </ul>
  *
- * The second one exited {@code 1} until JK-2485 — the same Ctrl-C, a different number, decided by a
- * race no user can see.
+ * The second one exited {@code 1} until — the same Ctrl-C, a different number, decided by a
+ * race no user can.
  */
 @Tag("integration")
 @DisabledOnOs(OS.WINDOWS) // SIGINT is a POSIX signal; the Windows console path is Ctrl-C events
@@ -95,7 +95,7 @@ class GlobalCancelNonTtyTest {
     /**
      * The wedged-verb route. The stub engine answers the job and then goes quiet: it never pushes a
      * terminal and never acknowledges the cancel, so nothing but the SIGINT handler can end this
-     * process. If the handler no-ops when stdout is not a TTY — the JK-2463 report — the child
+     * process. If the handler no-ops when stdout is not a TTY — the report — the child
      * outlives the wait and this fails.
      *
      * <p>The load-bearing assertion is the {@code cancel-request} the engine received, not the exit
@@ -139,7 +139,7 @@ class GlobalCancelNonTtyTest {
      * engine settles the stream. The stub drops the job connection the moment the cancel arrives, so
      * the verb returns an ordinary failure and the entry point exits on the main thread — while the
      * handler is still parked on the unanswered cancel RPC and its {@code halt} is seconds away.
-     * Before JK-2485 that race decided whether a Ctrl-C reported {@code 130} or {@code 1}.
+     * Before that race decided whether a Ctrl-C reported {@code 130} or {@code 1}.
      */
     @Test
     void a_verb_that_unwinds_before_the_handler_halts_still_exits_interrupted() throws Exception {
@@ -216,7 +216,7 @@ class GlobalCancelNonTtyTest {
     }
 
     private static Path storeDir(Path home) {
-        return home.resolve("data").resolve("store");
+        return home.resolve("store");
     }
 
     /** A real {@code SIGINT}, delivered exactly as a shell's Ctrl-C would deliver it. */

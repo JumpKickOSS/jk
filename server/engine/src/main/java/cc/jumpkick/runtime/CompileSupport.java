@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.RequestScope;
-import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.SourceLayout;
@@ -21,7 +20,7 @@ import java.util.List;
 /**
  * Pure source-set helpers shared by the build plan and the git-source builder. Extracted out of
  * the CLI's {@code CompileCommand} so embedders can drive compilation inputs without depending on
- * {@code:cli}.
+ * {@code :cli}.
  */
 public final class CompileSupport {
 
@@ -91,11 +90,11 @@ public final class CompileSupport {
     }
 
     /**
-     * All main {@code.kt} files for a project.
+     * All main {@code .kt} files for a project.
      *
      * <ul>
      * <li>Standard layout: {@code src/main/kotlin/} and {@code src/main/java/}
-     * <li>Compact layout: {@code src/} (all {@code.kt} files)
+     * <li>Compact layout: {@code src/} (all {@code .kt} files)
      * </ul>
      */
     public static List<Path> collectKotlinSources(Path projectDir, boolean compact) throws IOException {
@@ -109,11 +108,11 @@ public final class CompileSupport {
     }
 
     /**
-     * All test {@code.kt} files for a project.
+     * All test {@code .kt} files for a project.
      *
      * <ul>
      * <li>Standard layout: {@code src/test/kotlin/} and {@code src/test/java/}
-     * <li>Compact (Mill-like) layout: {@code test/src/} (all {@code.kt} files)
+     * <li>Compact (Mill-like) layout: {@code test/src/} (all {@code .kt} files)
      * </ul>
      */
     public static List<Path> collectKotlinTestSources(Path projectDir, boolean compact) throws IOException {
@@ -127,7 +126,7 @@ public final class CompileSupport {
     }
 
     /**
-     * All main {@code.groovy} files for a project — roots from {@link
+     * All main {@code .groovy} files for a project — roots from {@link
      * cc.jumpkick.layout.ModuleLayout#mainGroovyRoots} (SIMPLE shares {@code src/} by extension).
      */
     public static List<Path> collectGroovySources(Path projectDir, boolean compact) throws IOException {
@@ -144,7 +143,7 @@ public final class CompileSupport {
     }
 
     /**
-     * All main {@code.scala} files for a project — roots from {@link
+     * All main {@code .scala} files for a project — roots from {@link
      * cc.jumpkick.layout.ModuleLayout#mainScalaRoots} (SIMPLE shares {@code src/} by extension).
      */
     public static List<Path> collectScalaSources(Path projectDir, boolean compact) throws IOException {
@@ -209,28 +208,15 @@ public final class CompileSupport {
 
     private static List<Path> collectFilesWithExtension(Path root, String extension) throws IOException {
         // Once per (root, extension) per request. The Groovy and Scala root sets deliberately
-        // include the Java root — a stray .groovy under src/main/java must still compile (JK-2479) —
+        // include the Java root — a stray.groovy under src/main/java must still compile —
         // and TaskForecaster runs the Java, Kotlin and Groovy collectors before it resolves which
         // languages the module actually uses. So src/main/java was walked four times per forecast
         // pass and src/test/java five, and the pass itself repeats across forecast, pricing, plan
-        // assembly and the test lane (JK-1043).
+        // assembly and the test lane.
         //
         // Request-scoped, so there is nothing to invalidate: a source tree is fixed for the length of
         // the build it was launched against, and a jk watch iteration is a new request with a new
         // scope.
-        return RequestScope.current().get(new ScanKey(root.toAbsolutePath().normalize(), extension), key -> {
-            List<Path> result = new ArrayList<>();
-            try {
-                PathUtil.forEachRegularFile(key.root(), (file, attrs) -> {
-                    if (file.getFileName().toString().endsWith(key.extension())) result.add(file);
-                });
-            } catch (IOException unreadable) {
-                return List.<Path>of();
-            }
-            return List.copyOf(result);
-        });
+        return InputTrees.of(root).withExtension(extension);
     }
-
-    /** Memo key for a source scan: one enumeration per directory per extension per request. */
-    private record ScanKey(Path root, String extension) {}
 }

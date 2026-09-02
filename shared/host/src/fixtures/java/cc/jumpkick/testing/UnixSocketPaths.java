@@ -21,7 +21,7 @@ package cc.jumpkick.testing;
  * every test that mkdirs outside the checkout, not only the ones that bind a socket; this class
  * owns the number, that one owns the place.
  *
- * <p>Only tests need this. Production sockets live under {@code ~/.local/state/jk/engine/}, which is
+ * <p>Only tests need this. Production sockets live under {@code ~/.jk/state/engine/}, which is
  * short by construction; it is {@code @TempDir} — nested under a build directory, under a checkout,
  * under a home directory — that overruns. {@code jk-cli}'s own suites no longer bind one at all
  * (the tier speaks loopback TCP), but the engine's still do.

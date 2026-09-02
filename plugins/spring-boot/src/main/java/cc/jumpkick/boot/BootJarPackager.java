@@ -196,7 +196,7 @@ public final class BootJarPackager {
 
     private static List<Path> collectFiles(Path root) throws IOException {
         List<Path> result = new ArrayList<>();
-        // // Attributes from the walk instead of a stat per entry (JK-1041 via JK-1031's owner).
+        // // Attributes from the walk instead of a stat per entry (via's owner).
         PathUtil.forEachRegularFile(root, (file, attrs) -> result.add(file));
         return result;
     }
@@ -225,7 +225,7 @@ public final class BootJarPackager {
      *
      * @param buildInfo {@code build-info.properties} keys (without the {@code build.} prefix);
      *     empty map = no entry
-     * @param sbom CycloneDX JSON bytes (see {@link CycloneDxSbom}); {@code null} = no SBOM
+     * @param sbom CycloneDX JSON bytes (see the engine's {@code CycloneDxSbom}); {@code null} = no SBOM
      * @param aotDirs Spring AOT output roots (generated classes / hint resources) merged into
      *     {@code BOOT-INF/classes} after the app's own files
      */

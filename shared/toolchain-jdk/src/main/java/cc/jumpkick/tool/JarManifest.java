@@ -19,8 +19,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Reads {@code META-INF/MANIFEST.MF} entries from a jar without unpacking. Used by {@link
- * ToolResolver} to discover the {@code Main-Class} for an installed tool.
+ * Reads {@code META-INF/MANIFEST.MF} entries from a jar without unpacking. Used by the
+ * toolchain's {@code ToolResolver} to discover the {@code Main-Class} for an installed tool.
  */
 public final class JarManifest {
 

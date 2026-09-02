@@ -21,7 +21,7 @@ import org.objectweb.asm.RecordComponentVisitor;
  * {@code ConstantValue} of {@code static final} fields, API annotations with values, record
  * components, permitted subclasses, {@code module-info}. Method bodies, private members, debug, and
  * {@code kotlin.Metadata} stay out. Named nested classes fold into their owner's fingerprint
- * ({@link #of(byte[], SortedMap)}) for affected-test ranking (JK-2616).
+ * ({@link #of(byte[], SortedMap)}) for affected-test ranking.
  */
 public final class ClassAbi {
 

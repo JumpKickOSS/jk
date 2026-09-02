@@ -42,7 +42,7 @@ public final class ProtoSession {
     }
 
     /**
-     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#TOOL_RESOLVE_REQUEST}
+     * As {@link ProtoEvents#planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#TOOL_RESOLVE_REQUEST}
      * result: the pinned {@code g:a:v} the resolve landed on (a floating spec's concrete version is
      * decided engine-side against maven-metadata), the resolved {@code Main-Class}, and the
      * transitive classpath in resolution order (absolute CAS paths — a flat string array, per the
@@ -97,8 +97,8 @@ public final class ProtoSession {
     }
 
     /**
-     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link
-     * #EngineProtocol.SCRIPT_PREPARE_REQUEST} result: the exec ingredients the client-side launch needs. Fields
+     * As {@link ProtoEvents#planFinish(String, boolean)}, additionally carrying a {@link
+     * EngineProtocol#SCRIPT_PREPARE_REQUEST} result: the exec ingredients the client-side launch needs. Fields
      * not applicable to the prepared mode (and everything on failure) are {@code null}/empty.
      */
     public static String planFinishScript(
@@ -172,7 +172,7 @@ public final class ProtoSession {
     }
 
     /**
-     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#CACHE_PRUNE_REQUEST}
+     * As {@link ProtoEvents#planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#CACHE_PRUNE_REQUEST}
      * summary: files removed + bytes freed (what would be removed, on a dry run). {@code -1} = the op
      * reported no count.
      */
@@ -274,7 +274,7 @@ public final class ProtoSession {
      * with the {@code JK_JDK} / {@code JK_GRAAL} environment spellings already folded in by the
      * client. They have to ride the request: the engine is a daemon, so a selection that stayed on
      * the client's {@code Session} was invisible to it, and every engine-side resolver fell through
-     * to whichever JDK the shell that started the daemon happened to name (JK-1021).
+     * to whichever JDK the shell that started the daemon happened to name.
      *
      * <p>Folding the switch and the env spelling into one field loses no fidelity.
      * {@code JdkResolution} walks {@code SWITCH} then {@code JK_ENV} with no tier between them, so
@@ -343,7 +343,7 @@ public final class ProtoSession {
      *
      * <p>A home path rather than a spec, so it cannot ride the {@code graal} field. It has to come
      * from the request for the same reason the specs do: a {@code System.getenv} inside a resident
-     * engine answers from the shell that started the daemon (JK-1039).
+     * engine answers from the shell that started the daemon.
      */
     public static Path graalHomeOf(String request) {
         String v = Jsonl.str(request, "graalHome");

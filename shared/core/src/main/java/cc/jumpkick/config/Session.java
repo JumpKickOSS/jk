@@ -44,7 +44,7 @@ public record Session(
          * <p>A home path, not a spec, which is why it cannot ride {@link #graalSpec}. It carries here
          * for the reason the specs do: the engine is a daemon, so a {@code System.getenv} inside it
          * answers from whichever shell started it, and a resident engine was picking the Graal that
-         * shell knew about rather than the one the caller named (JK-1039).
+         * shell knew about rather than the one the caller named.
          */
         @Nullable Path graalHome,
         @With boolean parallelTests,

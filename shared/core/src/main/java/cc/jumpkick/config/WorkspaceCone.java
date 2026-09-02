@@ -24,7 +24,7 @@ public final class WorkspaceCone {
      * {@code modulesByDir} when they match. Identity is the <em>canonical</em> (real) path —
      * same rule as the build graph — so symlinked checkouts do not silently drop prereqs: an
      * absolute-normalized-only compare missed a seed reached through a symlink, prereq
-     * expansion stopped, and the target built without its dirty prereqs (JK-2101).
+     * expansion stopped, and the target built without its dirty prereqs.
      */
     public static Set<Path> expand(Map<Path, JkBuild> modulesByDir, Collection<Path> seeds, Collection<Scope> scopes) {
         Map<Path, Path> byIdentity = new LinkedHashMap<>();

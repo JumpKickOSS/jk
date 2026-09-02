@@ -299,7 +299,7 @@ jk export maven             # round-trip POM for Central
 ```bash
 jkx com.diffplug.spotless:spotless-cli:2.45.0 -- check
 jk jdk install temurin-25 && jk jdk pin temurin-25
-eval "$("$HOME/.local/bin/jk" activate bash)"
+eval "$("$HOME/.jk/bin/jk" activate bash)"
 
 jk publish --sign --sigstore --slsa --sbom
 jk audit

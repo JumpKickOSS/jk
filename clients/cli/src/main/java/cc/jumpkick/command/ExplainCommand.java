@@ -141,7 +141,7 @@ public final class ExplainCommand implements CliCommand {
         // On single-project layouts, selectors only validate; the graph is one node.
         if (hasGraph) {
             // Resolve a relative --graph-out against the INVOCATION dir before graphDir is
-            // rehomed to the workspace root for member cwds (JK-2167).
+            // rehomed to the workspace root for member cwds.
             String graphOutPath = graphOut(in)
                     .map(o -> startDir.resolve(o).toAbsolutePath().normalize().toString())
                     .orElse(null);

@@ -55,7 +55,7 @@ class ProfilesTest {
     }
 
     /**
-     * The whole jk truth set, not just {@code true} (JK-2419). Before the sweep this reader spelled
+     * The whole jk truth set, not just {@code true}. Before the sweep this reader spelled
      * its own {@code equalsIgnoreCase("true")}, so a CI image exporting {@code CI=1} — the spelling
      * every other jk reader accepts — got the default profile and none of the {@code [profile.ci]}
      * settings, silently.

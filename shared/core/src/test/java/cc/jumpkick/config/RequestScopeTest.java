@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Facts derived once per request, and never carried into the next one.
  *
- * <p>Every cache JK-1027 wanted was blocked on the same question — when may it answer? — and the
+ * <p>Every cache wanted was blocked on the same question — when may it answer? — and the
  * answer here is structural rather than a policy: a scope is keyed on the request's {@code IoLedger},
  * which is created once per invocation and shared by every copy of the {@code Session}, so a scope
  * cannot outlive the request that made it. Nothing to invalidate, and a {@code jk watch} iteration
@@ -104,7 +104,7 @@ class RequestScopeTest {
 
     @Test
     void a_cpu_pool_worker_does_not_carry_one_requests_scope_into_the_next() {
-        // JK-2620. The pool grows lazily, so its workers are created inside whichever request first
+        // . The pool grows lazily, so its workers are created inside whichever request first
         // needed them, and IoLedger's holder is an InheritableThreadLocal — the worker was born
         // holding that request's ledger and kept it for the engine's life. Every later build's CPU
         // steps then read the FIRST build's derived facts: a module with no src/test/java when the

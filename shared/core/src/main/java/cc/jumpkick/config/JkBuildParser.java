@@ -57,7 +57,7 @@ public final class JkBuildParser {
      * tomlj parse but never the read — {@code Files.readString} ran before every lookup, hit or miss.
      * That is most of why a read-only {@code jk status} on a 31-module workspace read <b>379 MB</b>
      * in 260,971 read syscalls against 30 KB of manifest on disk: {@code parse} fans out over every
-     * sibling, so the same handful of files were re-read thousands of times (JK-1028).
+     * sibling, so the same handful of files were re-read thousands of times.
      */
     private static final StampedMemo<Path, ManifestStamp, JkBuild> PARSE_CACHE = StampedMemo.create();
 
@@ -116,7 +116,7 @@ public final class JkBuildParser {
     /**
      * Test seams: how often a manifest was asked for, and how often that cost a read.
      *
-     * <p>The ratio is the property JK-1028 is about, and it is not observable any other way — a
+     * <p>The ratio is the property is about, and it is not observable any other way — a
      * memo that returns the right answer while re-reading the file every time passes every
      * correctness test there is. {@code FileHashMemo} exports the same pair for the same reason.
      */

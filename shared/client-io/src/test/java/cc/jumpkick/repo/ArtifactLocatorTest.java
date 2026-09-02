@@ -37,7 +37,7 @@ class ArtifactLocatorTest {
         ArtifactLocator locator = new ArtifactLocator(store, m2, true);
         assertThat(locator.locate(pkg)).contains(m2Jar.toAbsolutePath().normalize());
 
-        // JK-2307: the m2 probe records its own `.m2.jk` memo, distinct from the store's `.jk`,
+        // : the m2 probe records its own `.m2.jk` memo, distinct from the store's `.jk`,
         // so the two blobs don't invalidate each other's fast path.
         Path storeSidecar = ArtifactMemo.jkPath(store.resolve("repos/central"), rel);
         Path m2Sidecar = storeSidecar.resolveSibling(

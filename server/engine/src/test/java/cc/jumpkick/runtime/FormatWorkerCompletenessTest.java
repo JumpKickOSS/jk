@@ -69,7 +69,16 @@ class FormatWorkerCompletenessTest {
                         freshness,
                         (path, status, msg, index, tot) -> observed.add(status)))
                 .build();
-        BuildPlan plan = BuildPlan.builder("format").addTask(format).build();
+        BuildPlan plan = BuildPlan.builder("format")
+                .stateKeys(
+                        FormatWorker.CHANGED,
+                        FormatWorker.CLEAN,
+                        FormatWorker.ERRORS,
+                        FormatWorker.TOTAL,
+                        FormatWorker.WORKER_EXIT,
+                        FormatWorker.PRE_CLEAN)
+                .addTask(format)
+                .build();
         return new Run(plan, plan.run(), observed);
     }
 

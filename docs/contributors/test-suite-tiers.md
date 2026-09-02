@@ -1,8 +1,6 @@
 # Test suite tiers (one tier per tag)
 
-**Goal:** default `./gradlew test` under **~5 minutes**; keep high-signal e2e on demand. (The old
-single-tier suite mixed engine/e2e, shadowJar+worker packaging deps, and Android multi-build tests
-into the default `test` task with no timeouts.)
+**Goal:** keep the branch gate under **~5 minutes** and high-signal e2e on demand.
 
 ## Commands
 
@@ -10,12 +8,19 @@ One tier per tag. The table is `buildSrc/src/main/kotlin/TestTiers.kt`; the `use
 filters are generated from it and guard **G23** (`checkNoOrphanTestTags`) re-derives the partition
 from the same object, so the two cannot drift.
 
+`./gradlew checkFast` is the canonical branch gate: every subproject `check` task (unit tests plus
+module guards) and every root structural guard. It is network-free. `checkAll` adds the integration
+tier.
+
+<!-- test-tiers:start -->
 | Command | Includes | Excludes | In `checkAll`? |
 |---------|----------|----------|----------------|
-| `./gradlew test` | Untagged unit tests | `integration`, `slow`, `network`, `bench` | yes |
-| `./gradlew integrationTest` | `integration` + `slow` | `network`, `bench` | yes |
-| `./gradlew networkTest` | `network` | `bench` | **no** — nightly only |
-| `./gradlew benchTest` | `bench` | — | **no** — on demand |
+| `./gradlew test` | untagged | `integration`, `slow`, `network`, `bench` | yes |
+| `./gradlew integrationTest` | `integration` | `slow`, `network`, `bench` | yes |
+| `./gradlew slowTest` | `slow` | `network`, `bench` | no |
+| `./gradlew networkTest` | `network` | `bench` | no |
+| `./gradlew benchTest` | `bench` | — | no |
+<!-- test-tiers:end -->
 
 Tag new heavy tests at class level:
 
@@ -26,20 +31,14 @@ Tag new heavy tests at class level:
 @Tag("bench")       // microbench only (never PR)
 ```
 
-**Every tag is run by exactly one task, and G23 fails the build if that stops being true.** It was
-not true before JK-2447: `test` excluded four tags and `integrationTest` re-included only two, so
-`@Tag("bench")` was run by nothing at all and `ForkedJavacAotBenchTest` had not executed in any gate
-since it was written. Adding a tag to `TestTiers.slowTags` without giving it a tier now fails the
-build on the same commit, before any test carries it.
+**Every tag is run by exactly one task.** G23 verifies the executable partition, and G52 verifies
+that the marked table above matches it.
 
 ### Why `network` is off the merge gate
 
-`checkAll` must not depend on the network. Sonatype enforces a per-IP quota on Maven Central and
-this repo has a documented history of 429s from it (JK-1277); a gate that needs a remote fails for
-reasons the change did not cause, and a red gate nobody believes is worse than no gate. Until
-JK-2447 the one `@Tag("network")` class reached `checkAll` anyway, because it also carried
-`@Tag("slow")` — the gate was network-dependent by accident rather than by decision. `networkTest`
-runs nightly in `ci-nightly.yml`, where a 429 costs a re-run instead of a blocked merge.
+`checkAll` must not depend on the network. Sonatype enforces a per-IP quota on Maven Central, so a
+gate that needs a remote fails for reasons the change did not cause. `networkTest` runs nightly in
+`ci-nightly.yml`, where a transient failure costs a re-run instead of a blocked merge.
 
 `bench` is off the gate for the opposite reason: a microbench prints medians and asserts nothing
 about deltas, so gating on it would gate on CI noise.
@@ -49,8 +48,7 @@ about deltas, so gating on it would gate on CI noise.
 Gradle's up-to-date check sees a task's declared inputs and nothing else. A test that shells out to
 `node`, `git`, `protoc` or `bundletool` therefore has a hole in it: the program that decides the
 outcome is invisible, so upgrading it **replays a cached green produced by a different runtime**
-(JK-2465 — same family as JK-2461, where the eight worker jars were not inputs, and JK-2441, where
-the JS sources were not).
+(same family as missing worker-jar inputs or missing JS sources on a test task).
 
 Declare it once, in the table at the top of `buildSrc/src/main/kotlin/jk.java-conventions.gradle.kts`:
 
@@ -74,10 +72,9 @@ and the fork happens only on the build after the tool actually changes.
 
 ## Redundancy / prune candidates (integration tier)
 
-**JK-2192 (2026-08-19): this backlog was worked and largely disproved at assertion
-level** — the Cache-e2e, JDK-install, and Android-ladder rows below looked like
-duplicates but cover different layers/assertions; see the ticket for the per-item
-disproofs before re-adding anything here.
+**Worked (2026-08-19) and largely disproved at assertion level** — the Cache-e2e,
+JDK-install, and Android-ladder rows below looked like duplicates but cover different
+layers/assertions; keep that distinction before re-adding anything here.
 
 Measured profiling of a full `integrationTest` is expensive; use this as a **manual prune backlog** when editing those areas:
 
@@ -93,10 +90,12 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-- **PR / push (`ci.yml`):** `./gradlew test` (unit tier) + commit-authorship scan  
+- **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier + every structural guard) and the
+  commit-authorship scan.
 - **Nightly (`ci-nightly.yml`):** `./gradlew integrationTest` **and** `./gradlew networkTest` on Linux  
-- Local pre-merge when you touch wire/engine/CLI: `./gradlew checkAll` — every module's `check`
-  (unit tier + every guard) plus `integrationTest`. Never `networkTest` or `benchTest`.
+- Local branch gate: `./gradlew checkFast`.
+- Local pre-merge when you touch wire/engine/CLI: `./gradlew checkAll` (`checkFast` plus
+  `integrationTest`). Never `networkTest` or `benchTest`.
 - `./gradlew benchTest` is manual; it gates nothing.
 
 ## Measuring integration wall time
@@ -110,7 +109,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 (Default task output dir for the custom `integrationTest` task is `build/test-results/integrationTest/`.)
 
-## Pure-jk product parity (JK-1134–1138)
+## Pure-jk product parity
 
 Gradle tiers remain how **this monorepo** is bootstrapped. Once dogfooding with `jk test`:
 

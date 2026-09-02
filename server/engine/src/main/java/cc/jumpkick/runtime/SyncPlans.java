@@ -14,7 +14,6 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -43,17 +42,18 @@ public final class SyncPlans {
     private SyncPlans() {}
 
     /** Cross-step plan keys. */
-    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
+    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.scalar("lockfile", Lockfile.class);
 
-    public static final BuildPlanKey<JkBuild> BUILD = BuildPlanKey.of("build", JkBuild.class);
+    public static final BuildPlanKey<JkBuild> BUILD = BuildPlanKey.scalar("build", JkBuild.class);
     public static final BuildPlanKey<JdkEnsure.Outcome> JDK_OUTCOME =
-            BuildPlanKey.of("jdk-outcome", JdkEnsure.Outcome.class);
+            BuildPlanKey.scalar("jdk-outcome", JdkEnsure.Outcome.class);
     public static final BuildPlanKey<CacheSync.Report> CAS_REPORT =
-            BuildPlanKey.of("cas-report", CacheSync.Report.class);
+            BuildPlanKey.scalar("cas-report", CacheSync.Report.class);
     public static final BuildPlanKey<JkPluginSync.Result> WORKER_REPORT =
-            BuildPlanKey.of("worker-report", JkPluginSync.Result.class);
-    public static final BuildPlanKey<Integer> WORKSPACE_MODULES = BuildPlanKey.of("workspace-modules", Integer.class);
-    public static final BuildPlanKey<Boolean> LOCKFILE_CREATED = BuildPlanKey.of("lockfile-created", Boolean.class);
+            BuildPlanKey.scalar("worker-report", JkPluginSync.Result.class);
+    public static final BuildPlanKey<Integer> WORKSPACE_MODULES =
+            BuildPlanKey.scalar("workspace-modules", Integer.class);
+    public static final BuildPlanKey<Boolean> LOCKFILE_CREATED = BuildPlanKey.scalar("lockfile-created", Boolean.class);
 
     /**
      * Sync plan for {@code dir}. {@code refresh} comes from ambient {@link SessionContext}.
@@ -117,7 +117,6 @@ public final class SyncPlans {
                                 lockFile,
                                 cache,
                                 repoUrl,
-                                JkVersion.VERSION,
                                 List.of(),
                                 true,
                                 ResolveObserver.NOOP,
@@ -164,7 +163,7 @@ public final class SyncPlans {
                     if (preScanDenominator == 0 && packages > 0) ctx.updateTicks(packages);
                     ctx.label("fetch deps");
 
-                    Cas cas = JkStores.cas(cache);
+                    Cas cas = JkStores.storeCas();
                     Http http = new Http();
                     JkBuild build = ctx.get(BUILD).orElse(null);
                     boolean mirrorToM2 = build != null && build.project().m2integration();
@@ -212,7 +211,7 @@ public final class SyncPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("sync jk workers");
-                    Cas cas = JkStores.cas(cache);
+                    Cas cas = JkStores.storeCas();
                     try {
                         var report = JkPluginSync.ensureInCas(cas, new JkPluginSync.Observer() {
                             @Override
@@ -261,7 +260,7 @@ public final class SyncPlans {
                     if (pluginEntries.isEmpty()) return;
                     ctx.updateTicks(pluginEntries.size());
                     ctx.label("sync plugins");
-                    Cas cas = JkStores.cas(cache);
+                    Cas cas = JkStores.storeCas();
                     JkBuild build = ctx.get(BUILD).orElse(null);
                     RepoGroup repos = build != null
                             ? RepoGroupBuilder.buildFor(build, repoUrl, cas)
@@ -337,7 +336,7 @@ public final class SyncPlans {
                     if (withSrc == 0) return;
                     ctx.updateTicks((int) withSrc);
                     ctx.label("sync sources");
-                    Cas cas = JkStores.cas(cache);
+                    Cas cas = JkStores.storeCas();
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {
@@ -376,6 +375,7 @@ public final class SyncPlans {
                 .build();
 
         return BuildPlan.builder("sync")
+                .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT, WORKER_REPORT, WORKSPACE_MODULES, LOCKFILE_CREATED)
                 .addTask(parseLock)
                 .addTask(ensureJdk)
                 .addTask(syncCas)
@@ -420,7 +420,7 @@ public final class SyncPlans {
         try {
             JkBuild project = build != null ? build : JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             ReachabilityMetadata.ensureExtracted(
-                    JkStores.storeRootFor(cache), RepoGroupBuilder.buildFor(project, repoUrl, cas), pin);
+                    JkStores.store(), RepoGroupBuilder.buildFor(project, repoUrl, cas), pin);
         } catch (IOException | RuntimeException e) {
             ctx.warn("native", "reachability metadata not materialized: " + e.getMessage());
         } catch (InterruptedException e) {

@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.task.RunNotices;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,22 +40,46 @@ class BuildLogicScriptsTest {
     }
 
     @Test
-    void discover_top_level_only(@TempDir Path dir) throws Exception {
+    void discover_runs_top_level_only_and_reports_what_it_will_not_run(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("before-compile.groovy"), "// ok\n");
         Files.writeString(dir.resolve("after-compile.groovy"), "// ok\n");
         Files.writeString(dir.resolve("after-resources.kts"), "// kts\n");
-        Files.writeString(dir.resolve("ignored.groovy"), "// no stem\n");
-        Path nested = dir.resolve("nested");
+        Files.writeString(dir.resolve("befor-compile.groovy"), "// typo\n");
+        Files.writeString(dir.resolve("helpers.txt"), "not a script\n");
+        Path nested = dir.resolve("scripts");
         Files.createDirectories(nested);
         Files.writeString(nested.resolve("before-package.groovy"), "// not top-level\n");
 
-        List<BuildLogicScripts.ScriptTask> tasks = BuildLogicScripts.discover(dir);
-        assertEquals(3, tasks.size());
-        assertEquals("after-compile", tasks.get(0).name());
-        assertEquals(BuildLogicScripts.ScriptKind.GROOVY, tasks.get(0).kind());
-        assertEquals("after-resources", tasks.get(1).name());
-        assertEquals(BuildLogicScripts.ScriptKind.KTS, tasks.get(1).kind());
-        assertEquals("before-compile", tasks.get(2).name());
+        List<String> warned = new ArrayList<>();
+        RunNotices.clear();
+        RunNotices.openSink(SessionContext.current().io(), (code, message) -> warned.add(message));
+        try {
+            List<BuildLogicScripts.ScriptTask> tasks = BuildLogicScripts.discover(dir);
+            assertEquals(3, tasks.size());
+            assertEquals("after-compile", tasks.get(0).name());
+            assertEquals(BuildLogicScripts.ScriptKind.GROOVY, tasks.get(0).kind());
+            assertEquals("after-resources", tasks.get(1).name());
+            assertEquals(BuildLogicScripts.ScriptKind.KTS, tasks.get(1).kind());
+            assertEquals("before-compile", tasks.get(2).name());
+
+            // A script that does not run and does not complain is indistinguishable from one
+            // that passed — the unknown stem names the valid set and suggests the closest, and
+            // the nested recognized stem says why it will not run. The .txt file is not a script
+            // and stays silent.
+            assertThat(warned).hasSize(2);
+            assertThat(warned).anySatisfy(w -> assertThat(w)
+                    .contains("befor-compile.groovy")
+                    .contains("will not run")
+                    .contains("Did you mean before-compile?")
+                    .contains("before-compile / after-compile / after-resources / before-package")
+                    .contains("after-build / gate"));
+            assertThat(warned).anySatisfy(w -> assertThat(w)
+                    .contains("scripts")
+                    .contains("before-package.groovy")
+                    .contains("top level"));
+        } finally {
+            RunNotices.clear();
+        }
     }
 
     @Test

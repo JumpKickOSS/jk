@@ -24,7 +24,7 @@ import java.util.Optional;
 
 /**
  * Incremental CLI session transcript as {@code details.jsonl} under the project run dir
- * ({@code ~/.local/state/jk/builds/projects/&lt;key&gt;/runs/&lt;id&gt;/details.jsonl}). Same event shape as
+ * ({@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;id&gt;/details.jsonl}). Same event shape as
  * {@code --output json}/{@code jsonl} ({@link JsonlShape}, schema 1), appended live so agents can
  * {@code tail -F} mid-run.
  *
@@ -205,7 +205,7 @@ public final class CliSessionTranscript {
      * <p>Through {@code TomlScan}, which owns reading scalars out of a {@code jk.toml} and memoizes
      * the file. This was the fourth hand-rolled reader of the same two keys in the client, complete
      * with its own {@code unquote} and its own {@code namespace} special-case — and it read the whole
-     * manifest to find them (JK-1042).
+     * manifest to find them.
      *
      * <p>Not {@code ProjectInfo.coord()}, which already carries this over the wire: the transcript is
      * opened on the path that reports a build, and making it depend on an engine round trip would put

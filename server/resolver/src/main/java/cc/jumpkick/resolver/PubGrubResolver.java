@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
@@ -269,8 +270,9 @@ public final class PubGrubResolver implements Resolver {
                 decisions = wide.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
             }
         } catch (UnsatisfiableException e) {
-            boolean ansi =
-                    System.console() != null && !"dumb".equals(System.getenv("TERM")) && System.getenv("CI") == null;
+            boolean ansi = System.console() != null
+                    && !"dumb".equals(System.getenv("TERM"))
+                    && !EnvValues.isCi(System::getenv);
             // Use the injected palette (from the CLI theme) when available; fall back to the
             // built-in DEFAULT which hard-codes the same values as JkDarkTheme.
             Diagnostics.Palette palette = this.palette != null

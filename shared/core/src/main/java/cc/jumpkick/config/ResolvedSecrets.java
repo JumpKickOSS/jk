@@ -9,8 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Credential values jk resolved for itself, so free-form text that leaves the process can mask
  * them.
  *
- * <p>{@link SecretRedactor} masks by <em>declaration</em>: a name a {@code.env} file spells is a
- * secret name. A repository credential is never spelled in a {@code.env} — it arrives from
+ * <p>{@link SecretRedactor} masks by <em>declaration</em>: a name a {@code .env} file spells is a
+ * secret name. A repository credential is never spelled in a {@code .env} — it arrives from
  * {@code JK_REPO_<ID>_TOKEN}, the {@code jk repo login} store, {@code ~/.m2/settings.xml} or the
  * forge-token bridge, and in CI the first of those is the normal shape. So the value that actually
  * authenticates is invisible to a declaration-based redactor, deliberately: the alternative is
@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * The engine is resident and serves many projects, so one project's token must never enter another
  * project's redactor. Values are filed under the workspace root {@link EnvLookup} already resolves
- * against, which puts a request's credentials and its {@code.env} secrets in one scope — that is
+ * against, which puts a request's credentials and its {@code .env} secrets in one scope — that is
  * what lets {@link #plus} merge them without either one widening the other. A module directory and
  * its workspace root resolve to the same key, so the directory an event carries and the directory
  * the request was entered at agree.

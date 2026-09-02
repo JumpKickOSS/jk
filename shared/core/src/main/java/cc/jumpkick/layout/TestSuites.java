@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
-import cc.jumpkick.config.RequestScope;
-import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,7 +28,7 @@ import java.util.stream.Stream;
  * <li>Traditional: {@code src/<name>/java} + {@code src/<name>/kotlin}
  * </ul>
  *
- * <p>A suite is "present" when at least one {@code.java}/{@code.kt}/{@code.groovy}/{@code.scala}
+ * <p>A suite is "present" when at least one {@code .java}/{@code .kt}/{@code .groovy}/{@code .scala}
  * file exists under its roots.
  */
 public final class TestSuites {
@@ -45,7 +43,7 @@ public final class TestSuites {
     public static final List<String> GATE = List.of(DEFAULT, INTEGRATION);
 
     /** Top-level names that are never treated as optional test suites in simple layout. */
-    private static final Set<String> SIMPLE_RESERVED = Set.of(
+    static final Set<String> SIMPLE_RESERVED = Set.of(
             "src",
             "test",
             "resources",
@@ -283,20 +281,7 @@ public final class TestSuites {
     public static List<Path> collectExt(Path root, String ext) throws IOException {
         // Once per (root, extension) per request — see CompileSupport for why the same roots are
         // asked repeatedly. TestSuites.hasSources alone calls this four times per root, and
-        // discover() is reached from every test-count estimate (JK-1043).
-        return RequestScope.current().get(new ExtKey(root.toAbsolutePath().normalize(), ext), key -> {
-            List<Path> result = new ArrayList<>();
-            try {
-                PathUtil.forEachRegularFile(key.root(), (file, attrs) -> {
-                    if (file.getFileName().toString().endsWith(key.ext())) result.add(file);
-                });
-            } catch (IOException unreadable) {
-                return List.<Path>of();
-            }
-            return List.copyOf(result);
-        });
+        // discover is reached from every test-count estimate.
+        return InputTrees.of(root).withExtension(ext);
     }
-
-    /** Memo key for a suite scan: one enumeration per directory per extension per request. */
-    private record ExtKey(Path root, String ext) {}
 }

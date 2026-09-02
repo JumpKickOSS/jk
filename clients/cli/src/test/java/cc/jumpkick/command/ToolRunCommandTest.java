@@ -550,7 +550,7 @@ class ToolRunCommandTest {
         Path classFile = hashDir.resolve("classes/Cached.class");
         // Backdate the class file a clear minute, so ANY recompile moves its mtime. The
         // `Thread.sleep(50)` this replaces was betting 50ms exceeds the filesystem's mtime
-        // granularity — a fact about the machine, not about the cache (JK-2446).
+        // granularity — a fact about the machine, not about the cache.
         long firstMtime = backdate(classFile);
 
         // Re-run without --force-recompile; classes should not be rewritten.

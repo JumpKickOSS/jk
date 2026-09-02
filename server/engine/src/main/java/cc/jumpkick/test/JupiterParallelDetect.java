@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Locale;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -113,7 +114,7 @@ public final class JupiterParallelDetect {
     }
 
     private static boolean nameLooksLikeJar(Path p) {
-        String n = p.getFileName() != null ? p.getFileName().toString().toLowerCase() : "";
+        String n = p.getFileName() != null ? p.getFileName().toString().toLowerCase(Locale.ROOT) : "";
         return n.endsWith(".jar") || n.endsWith(".zip");
     }
 }

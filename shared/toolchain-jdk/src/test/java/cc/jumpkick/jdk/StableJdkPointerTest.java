@@ -27,7 +27,7 @@ class StableJdkPointerTest {
 
     @Test
     void healing_re_aims_the_pointer_at_the_newest_survivor(@TempDir Path tmp) throws IOException {
-        // JK-2627. The pointer is a symlink; the install is the tree it aims at. Delete the tree and
+        // . The pointer is a symlink; the install is the tree it aims at. Delete the tree and
         // the link survives pointing at nothing, so an IDE holding the stable path has a broken SDK.
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path p3 = fakeJdk(jdks, "temurin-25.0.3", "25.0.3");
@@ -65,7 +65,7 @@ class StableJdkPointerTest {
     void healing_never_aims_the_pointer_outside_its_own_root(@TempDir Path tmp) throws IOException {
         // The probe chain reports JDKs from everywhere — IntelliJ's root, sdkman, Homebrew — so a
         // survivor of the right vendor and major may live somewhere jk does not manage. Aiming the
-        // pointer there is how a link under ~/.jdks came to point into ~/.sdkman (JK-2624).
+        // pointer there is how a link under ~/.jdks came to point into ~/.sdkman.
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path elsewhere = Files.createDirectories(tmp.resolve("somebody-elses-root"));
         Path ours = fakeJdk(jdks, "temurin-25.0.4", "25.0.4");
@@ -99,7 +99,7 @@ class StableJdkPointerTest {
 
     @Test
     void ensure_never_deletes_an_install_to_take_the_pointer_name(@TempDir Path tmp) throws IOException {
-        // JK-2627 tightens JK-2624: even a JDK jk owns is not deleted to free a name. Removing one
+        // tightens: even a JDK jk owns is not deleted to free a name. Removing one
         // is minutes of download and belongs to an explicit `jk jdk` verb.
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path ours = fakeJdk(jdks, "temurin-25", "25");
@@ -132,7 +132,7 @@ class StableJdkPointerTest {
 
     @Test
     void a_jdk_jk_does_not_own_is_never_deleted_to_free_the_pointer_name(@TempDir Path tmp) throws IOException {
-        // JK-2624. The pointer name is <vendor>-<major> and the jdks root is SHARED — it is
+        // . The pointer name is <vendor>-<major> and the jdks root is SHARED — it is
         // IntelliJ's `~/.jdks`, not a jk-private directory. So `graalvm-25` is both a name jk wants
         // and, on a real machine, very often a JDK the user or the IDE installed there first.
         // Claiming the name by deleting what is already there destroyed real GraalVM and Temurin

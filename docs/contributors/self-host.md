@@ -21,14 +21,14 @@ You need a working `jk` before pure-jk can build the monorepo.
 # Native (Graal). Windows thin-client path is in CONTRIBUTING.
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.jk/bin:$PATH"
 jk engine status
 ```
 
 The native client is preferred (self-heal, sub-50 ms). **Windows also supports the thin JVM
 client** (`:cli:installDist` → `jk.bat`): Smart App Control blocks unsigned `jk.exe`.
 `:engine:installLocal` uses native when `dist` already built one, otherwise the thin launcher.
-The thin client cannot self-heal a missing engine (JK-1070) — materialize from this checkout.
+The thin client cannot self-heal a missing engine — materialize from this checkout.
 
 Once a release is published this section shrinks to one line: install with
 `curl -fsSL https://jumpkick.build/install.sh | bash` and let the binary bootstrap its own engine.
@@ -145,7 +145,7 @@ Not started — keep dual-build green until this epic is scheduled:
 3. **Relocate Gradle** for oracle builds only (if still wanted).
 4. **Product tree Gradle-free** — delete `gradlew`, `buildSrc/`, module `build.gradle.kts`.
 
-Until then: pure-jk dogfood is required for product tickets that touch runtime; Gradle remains
+Until then: pure-jk dogfood is required for product work that touches runtime; Gradle remains
 valid for bootstrap and comparison.
 
 ## Install workers (no Gradle)
@@ -158,7 +158,7 @@ jk install
 ```
 
 Each worker's thin jar and POM land in
-`~/.local/share/jk/store/repos/jk-local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
+`~/.jk/store/repos/jk-local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
 same as Gradle `installLocal`). Launch rebuilds the runtime classpath from that POM
 and the jars already in the local repo.
 

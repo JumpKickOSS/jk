@@ -18,7 +18,7 @@ class ProjectIdentityTest {
     void path_tier_is_stable_for_same_checkout() throws Exception {
         // Sandbox OUTSIDE the repo: the build's java.io.tmpdir is build/tmp, inside the checkout,
         // so a plain @TempDir has the repo's .git as an ancestor and resolve() would pick the GIT
-        // tier instead of PATH (JK-2314).
+        // tier instead of PATH.
         Path dir = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-pid-test-");
         try {
             Files.writeString(dir.resolve("jk.toml"), """
@@ -76,11 +76,11 @@ class ProjectIdentityTest {
     }
 
     @Test
-    void coord_rename_preserves_identity_for_lockless_projects(@TempDir Path dir, @TempDir Path buildsDir)
+    void coord_rename_preserves_identity_for_lockless_projects(@TempDir Path dir, @TempDir Path stateDir)
             throws Exception {
         // Coord is display metadata, not identity material: renaming project
         // group/name must not split a lockless project into two dashboard projects.
-        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
         try {
             Files.writeString(dir.resolve("jk.toml"), """
                     group = "com.example"
@@ -97,27 +97,28 @@ class ProjectIdentityTest {
             assertThat(after.id()).isEqualTo(before.id());
             assertThat(after.coord()).isEqualTo("org.renamed:other");
         } finally {
-            System.clearProperty("jk.env.JK_BUILDS_DIR");
+            System.clearProperty("jk.env.JK_STATE_DIR");
         }
     }
 
     @Test
-    void recovers_recorded_id_before_hashing(@TempDir Path tmp, @TempDir Path buildsDir) throws Exception {
+    void recovers_recorded_id_before_hashing(@TempDir Path tmp, @TempDir Path stateDir) throws Exception {
         // A checkout whose lock is gone (or that is gone entirely — dead checkout in history
         // enrichment) must resolve to the id recorded in identity.toml, not a fresh hash that
         // matches no project home.
-        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
         try {
             Path checkout = tmp.resolve("workspace");
             String recorded = "aabbccddeeff00112233445566778899";
             ProjectIdentity identity = new ProjectIdentity(
                     recorded, "com.example:demo", checkout, ProjectIdentity.Source.PATH, null, null);
-            ProjectIdentity.IdentityFile.write(buildsDir.resolve("projects").resolve(recorded), identity);
+            ProjectIdentity.IdentityFile.write(
+                    stateDir.resolve("builds").resolve("projects").resolve(recorded), identity);
             // The checkout directory does not even exist — resolution still recovers the id.
             ProjectIdentity resolved = ProjectIdentity.resolve(checkout);
             assertThat(resolved.id()).isEqualTo(recorded);
         } finally {
-            System.clearProperty("jk.env.JK_BUILDS_DIR");
+            System.clearProperty("jk.env.JK_STATE_DIR");
         }
     }
 
@@ -138,7 +139,7 @@ class ProjectIdentityTest {
 
     /**
      * Identity is resolved by scanning, not parsing — the same route {@code coordOf} already took,
-     * so the whole type stays off the CLI's reachability graph (JK-2151). The observable
+     * so the whole type stays off the CLI's reachability graph. The observable
      * consequence: a manifest jk cannot parse still has a stable identity, so history and dashboard
      * routes survive a half-edited {@code jk.toml}.
      */

@@ -8,8 +8,8 @@ import java.util.concurrent.TimeUnit
  *
  * Gradle's up-to-date check sees the task's declared inputs and nothing else. A test that shells out to `node`, `git`,
  * `protoc` or `bundletool` therefore has a hole in it: the interpreter that actually decides the outcome is invisible,
- * so upgrading it replays a cached green produced by a *different* program. JK-2461 was the same shape with worker jars
- * and JK-2441 with source files; this is the runtime itself (JK-2465).
+ * so upgrading it replays a cached green produced by a *different* program. Same failure shape as worker jars and with
+ * source files; this is the runtime itself.
  *
  * Declaring the version string — not the binary's bytes — is deliberate. A version is stable across reinstalls of the
  * same release, so a `dnf reinstall` does not invalidate a 15-minute suite, while a real upgrade does. It also covers

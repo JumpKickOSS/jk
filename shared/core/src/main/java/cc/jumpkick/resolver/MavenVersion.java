@@ -19,7 +19,7 @@
 package cc.jumpkick.resolver;
 
 // Vendored from Apache Maven 3.9.16 maven-artifact ComparableVersion (Apache-2.0)
-// so :core / the native CLI do not link maven-artifact or plexus-utils (JK-2140).
+// so:core / the native CLI do not link maven-artifact or plexus-utils.
 
 import java.math.BigInteger;
 import java.util.ArrayDeque;

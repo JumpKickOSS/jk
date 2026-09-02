@@ -39,13 +39,7 @@ class CacheInventoryOpsTest {
         assertThat(Files.exists(child)).isFalse();
     }
 
-    /**
-     * The store root itself, not an empty directory where it was. {@code jk storage nuke} and
-     * {@code jk self nuke --data} both print this path under "Path to Delete"; emptying it is the
-     * over-promise JK-2455 removed for the cache and state roots and left here. Nothing guarded is
-     * under it: {@code <store>/lib} (installed tools) is wiped by this pass already, and the
-     * engine jar and credentials the nuke keeps live beside the store, under the data root.
-     */
+    /** The wipe removes the store root named in the confirmation. */
     @Test
     void wipe_store_removes_the_store_root_it_named(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));

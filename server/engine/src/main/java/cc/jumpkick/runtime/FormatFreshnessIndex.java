@@ -18,7 +18,7 @@ import java.util.Map;
  * has changed. Content-addressed worker stamps remain a second line of defense for files we do
  * send; this index is the cheap first filter (stat only, no reads).
  *
- * <p>Stored under {@code <cache>/format-freshness/<digest>.idx}, where the digest is
+ * <p>Stored under {@code <cache>/format/freshness/<digest>.idx}, where the digest is
  * {@link FormatKey#digest()} — the one owner of what a formatting run is keyed by. A config or
  * worker-jar identity change is a different file, so the previous index is simply unused.
  */

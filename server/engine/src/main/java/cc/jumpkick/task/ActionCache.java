@@ -80,7 +80,7 @@ public final class ActionCache {
      * independently, and {@code hasBlob} then re-stat'ed the path {@code resolveBlob} had just
      * stat'ed — six metadata calls per blob where two serve. On a 10,000-file restore that is tens of
      * thousands of stats before a byte moves, a third of them only to feed a dashboard byte counter
-     * (JK-1036).
+     *.
      *
      * <p>Empty when any blob is missing: a restore cannot proceed without all of them, so the caller
      * treats that exactly as the old per-sha presence loop did.
@@ -222,7 +222,7 @@ public final class ActionCache {
                     // the map and the output is never read at all, where the old direct hash read
                     // every one of them (6,733 class files in this checkout). putFile's own exists()
                     // then skips the copy for a blob already present, so a warm store costs one stat
-                    // per output (JK-1035).
+                    // per output.
                     String hex = FileHashMemo.contentHash(file);
                     cas.putFile(file, hex);
                     // Seed the memo with the digest we just established. Without this every
@@ -251,7 +251,7 @@ public final class ActionCache {
      * and asking costs a security-descriptor read plus an access check per output file.
      */
     private static boolean executableBit(Path file) {
-        // Deliberately Files.isExecutable and not PathUtil.isRunnable (JK-1030): the question here is
+        // Deliberately Files.isExecutable and not PathUtil.isRunnable: the question here is
         // "is there a bit worth recording for restore", not "can this host run it". isRunnable answers
         // true for a .exe on Windows, and recording that would promise a bit the restore cannot set —
         // File.setExecutable does nothing there. The !isWindows() guard already skips the 64x call on
@@ -410,7 +410,7 @@ public final class ActionCache {
         // FreshnessStamp compares classpath entries by mtime, so a full re-copy of an unchanged
         // classes tree invalidated every downstream stamp on every cache hit. The stamps this used to
         // read out and write back are simply *owned* now, so they survive without being rewritten
-        // (JK-1036).
+        // .
         Set<Path> owned = new HashSet<>();
         for (String rel : record.outputs().keySet()) {
             owned.add(outputDir.resolve(rel).normalize());
@@ -593,7 +593,7 @@ public final class ActionCache {
         if (Files.size(target) != Files.size(blob)) return false;
         // The memo, not a full re-read: restoreArtifacts seeds this very file via rememberContent,
         // so the check that exists to avoid churning mtime costs a map lookup rather than re-reading
-        // a fat jar on every warm build (JK-1036).
+        // a fat jar on every warm build.
         return sha.equals(FileHashMemo.contentHash(target));
     }
 
@@ -613,7 +613,7 @@ public final class ActionCache {
         Set<String> executables = new TreeSet<>();
         for (Path a : artifacts) {
             if (!Files.isRegularFile(a)) continue;
-            // Memo, and seed it — see store() (JK-1035).
+            // Memo, and seed it — see store.
             String hex = FileHashMemo.contentHash(a);
             cas.putFile(a, hex); // never link a mutable target/ artifact into the CAS
             FileHashMemo.rememberContent(a, hex);
@@ -649,7 +649,7 @@ public final class ActionCache {
     /**
      * Metering from sizes already in hand — a restore has resolved every blob before it copies, and
      * asking the filesystem again for a number it just read is a third of that path's stats
-     * (JK-1036).
+     *.
      */
     private static void meter(Map<String, Blob> blobs, Map<String, String> outputs) {
         if (outputs.isEmpty()) return;

@@ -424,7 +424,7 @@ public final class ImageBuilder {
         var layer = FileEntriesLayer.builder().setName("classes");
         AbsoluteUnixPath target = AbsoluteUnixPath.get("/app/classes");
         List<Path> files = new ArrayList<>();
-        // // Attributes from the walk instead of a stat per entry (JK-1041 via JK-1031's owner).
+        // // Attributes from the walk instead of a stat per entry (via's owner).
         PathUtil.forEachRegularFile(classesDir, (file, attrs) -> files.add(file));
         files.sort(Comparator.comparing(p -> classesDir.relativize(p).toString()));
         for (Path file : files) {

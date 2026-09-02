@@ -47,7 +47,7 @@ public final class PluginCommandVerb implements HostedVerb {
         try {
             PluginCommandReport report;
             try {
-                // Under the request's session — see ExecPlanVerb (JK-1040). A plugin command that
+                // Under the request's session — see ExecPlanVerb. A plugin command that
                 // forks a JVM must fork the one the caller selected, not the daemon's.
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 report = SessionContext.where(

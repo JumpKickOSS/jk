@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -50,7 +51,7 @@ public record CompileResult(boolean success, List<Diagnostic> diagnostics) {
         /** Human-friendly one-line form: {@code error: src/Foo.java:12: ...}. */
         public String render() {
             StringBuilder sb = new StringBuilder();
-            sb.append(severity.name().toLowerCase()).append(": ");
+            sb.append(severity.name().toLowerCase(Locale.ROOT)).append(": ");
             if (source != null) {
                 sb.append(source);
                 if (line > 0) {

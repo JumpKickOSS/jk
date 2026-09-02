@@ -38,11 +38,7 @@ class NativePreflightTest {
         assertThat(NativePreflight.graal(dir.toString())).isEqualTo(new NativePreflight.Graal.Ok(dir));
     }
 
-    /**
-     * The {@code lib/svm/bin} layout. Before JK-2484 this file carried its own launcher search that
-     * only knew {@code <home>/bin}, so a GraalVM whose launcher lives under {@code lib/svm/bin} — the
-     * Windows one, and older GraalVMs everywhere — preflighted as "not a GraalVM home".
-     */
+    /** Accepts the {@code lib/svm/bin} launcher layout used by Windows GraalVM and older GraalVMs. */
     @Test
     void graal_ok_for_the_svm_layout(@TempDir Path dir) throws Exception {
         Path svmBin = dir.resolve("lib").resolve("svm").resolve("bin");

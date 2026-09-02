@@ -396,7 +396,7 @@ public final class EffectivePomBuilder {
             // Quiesce before returning OR throwing: an expansion future this thread broke away
             // from (deadlock detected, bound elapsed, sibling threw) keeps running on the pool
             // and writes into the repo cache after the caller has moved on — test @TempDir
-            // cleanup raced exactly that (JK-2153). Workers on a real cycle fail fast via
+            // cleanup raced exactly that. Workers on a real cycle fail fast via
             // joinWouldDeadlock, so this drain is short; the bound is a backstop.
             long drainDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
             for (CompletableFuture<EffectivePom> f : futures.values()) {

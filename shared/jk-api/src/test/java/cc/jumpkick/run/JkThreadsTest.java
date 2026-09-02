@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-2212: the CPU pool floors at 8 carriers (never capped below the machine's cores), and the
+ *: the CPU pool floors at 8 carriers (never capped below the machine's cores), and the
  * IO pool runs every task on a virtual thread — blocking waits (process forks, artifact gates)
  * must be cheap.
  */

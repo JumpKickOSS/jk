@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
  * <p>A module that declares one installs into jk's own product layout, which the CLI owns; the
  * engine's forecast reasons about build outputs and the coordinate in {@code repos/jk-local} and
  * would answer "already installed" while that layout held a stale artifact, or none. The client
- * therefore asks about the destination itself (JK-1069).
+ * therefore asks about the destination itself.
  */
 class InstallProductLibTest {
 

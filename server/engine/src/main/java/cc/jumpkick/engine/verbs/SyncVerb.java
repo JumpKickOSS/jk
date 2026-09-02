@@ -8,8 +8,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.engine.protocol.SyncRequest;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -53,13 +52,13 @@ public final class SyncVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            boolean sources = Jsonl.bool(requestLine, "sources", false);
-            boolean refresh = Jsonl.bool(requestLine, "refresh", false);
-            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
+            SyncRequest body = SyncRequest.decode(requestLine);
+            boolean refresh = body.refresh();
+            String jdksDirStr = body.jdksDir();
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Session session =
                     host.resolveSession(requestLine, cancelToken, refresh).withJdksDir(jdksDir);
-            URI repoUrl = LockVerb.repoUrlOf(requestLine);
+            URI repoUrl = body.repoUrl() == null ? null : URI.create(body.repoUrl());
             return SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
@@ -67,7 +66,7 @@ public final class SyncVerb implements HostedVerb {
                 AtomicInteger fetched = new AtomicInteger();
                 AtomicInteger upToDate = new AtomicInteger();
                 BuildPlan plan = SyncPlans.syncBuildPlan(
-                        entryDir, cache, jdksDir, repoUrl, sources, fetched, upToDate, null, false);
+                        entryDir, cache, jdksDir, repoUrl, body.sources(), fetched, upToDate, null, false);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 for (Task p : plan.steps()) {
                     host.sendQuiet(

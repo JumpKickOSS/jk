@@ -8,7 +8,6 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.ReleaseVerifier;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -16,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 /**
- * Fetches the matching engine fat jar into {@code <data>/lib/jk-engine/} when spawn finds none
+ * Fetches the matching engine fat jar into {@code <home>/lib/jk-engine/} when spawn finds none
  * (built into {@link EngineClient}, no separate fetch command). Verifies {@code SHA256SUMS} and
  * materializes atomically so a torn download is never launchable.
  */
@@ -43,7 +42,7 @@ final class EngineJarFetcher {
      * Unverified/partial jars are never left launchable.
      */
     static Path fetch(URI releasesBase, String version) throws IOException {
-        return fetch(releasesBase, version, JkStores.cas(JkDirs.cache()), EngineInstall.current());
+        return fetch(releasesBase, version, JkStores.storeCas(), EngineInstall.current());
     }
 
     /** Root-injected variant — the testable seam. */

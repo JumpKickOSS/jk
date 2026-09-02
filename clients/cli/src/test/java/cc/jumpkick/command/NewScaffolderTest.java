@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.scaffold.NewInputs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -489,7 +490,7 @@ class NewScaffolderTest {
                 false,
                 true,
                 lang,
-                "traditional",
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 List.of(),
                 true,
@@ -516,7 +517,7 @@ class NewScaffolderTest {
                 false,
                 false,
                 lang,
-                null,
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 deps,
                 sample,
@@ -534,7 +535,7 @@ class NewScaffolderTest {
                 false,
                 false,
                 lang,
-                simple ? "simple" : null,
+                simple ? Layout.SIMPLE : Layout.TRADITIONAL,
                 Optional.empty(),
                 List.of(),
                 true,
@@ -562,7 +563,7 @@ class NewScaffolderTest {
                 assembly,
                 nativeImage,
                 lang,
-                simple ? "simple" : null,
+                simple ? Layout.SIMPLE : Layout.TRADITIONAL,
                 kotlinModule,
                 deps,
                 false,

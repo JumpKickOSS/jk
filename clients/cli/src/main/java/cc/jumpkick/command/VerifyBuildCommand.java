@@ -82,9 +82,9 @@ public final class VerifyBuildCommand implements CliCommand {
     /** All per-artifact comparisons, in module order. */
     private record Report(List<Comparison> comparisons) {}
 
-    private static final BuildPlanKey<VerifyPlan> PLAN = BuildPlanKey.of("verify-plan", VerifyPlan.class);
-    private static final BuildPlanKey<Path> SCRATCH = BuildPlanKey.of("scratch", Path.class);
-    private static final BuildPlanKey<Report> REPORT = BuildPlanKey.of("report", Report.class);
+    private static final BuildPlanKey<VerifyPlan> PLAN = BuildPlanKey.scalar("verify-plan", VerifyPlan.class);
+    private static final BuildPlanKey<Path> SCRATCH = BuildPlanKey.scalar("scratch", Path.class);
+    private static final BuildPlanKey<Report> REPORT = BuildPlanKey.scalar("report", Report.class);
 
     @Override
     public int run(Invocation in) throws IOException {
@@ -156,6 +156,7 @@ public final class VerifyBuildCommand implements CliCommand {
                 .build();
 
         BuildPlan plan = BuildPlan.builder("verify-build")
+                .stateKeys(PLAN, SCRATCH, REPORT)
                 .addTask(parseBuild)
                 .addTask(rebuild)
                 .addTask(compare)
@@ -349,7 +350,7 @@ public final class VerifyBuildCommand implements CliCommand {
     // ---- scratch checkout ---------------------------------------------------
 
     /**
-     * Copy the project tree into the scratch root, excluding {@code.git} and every module's {@code
+     * Copy the project tree into the scratch root, excluding {@code .git} and every module's {@code
      * target/} output tree (a directory named {@code target} whose parent holds a {@code jk.toml}).
      * Attributes (mtimes) are preserved so the copied {@code jk.toml}↔{@code jk-lock.toml} freshness
      * relationship survives; {@link #touchLockfiles} then bumps the locks regardless.

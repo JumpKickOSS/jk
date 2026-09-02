@@ -36,7 +36,7 @@ class DirtyPathsTest {
     void nested_workspace_root_gets_workspace_relative_paths(@TempDir Path repo) throws Exception {
         // The workspace lives one level below the git root (monorepo). Diff paths must come back
         // relative to the workspace root — not the repo root — and dirt outside the workspace
-        // (which no module can own) must not leak in (JK-2611).
+        // (which no module can own) must not leak in.
         git(repo, "init");
         git(repo, "config", "user.email", "t@t");
         git(repo, "config", "user.name", "t");

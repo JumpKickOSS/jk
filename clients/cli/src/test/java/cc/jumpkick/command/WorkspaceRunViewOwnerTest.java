@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
  * caller moves" true rather than true-today.
  *
  * <p>Measured against <b>139</b> files in {@code cc.jumpkick.command}, of which <b>3</b> construct a
- * {@code WorkspaceBuildListener} at all and <b>1</b> is the shared renderer. Before JK-2437 ten
+ * {@code WorkspaceBuildListener} at all and <b>1</b> is the shared renderer. Before ten
  * hand-written listener graphs across eight verbs rendered the same events four different ways; the
  * scan below asserts the surviving count file by file, so an eleventh fails here rather than
  * drifting for six months and taking a {@code [01 of 01]} denominator with it. Both arms self-fail

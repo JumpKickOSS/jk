@@ -3,7 +3,7 @@ description = "JumpKick's OCI image builder plugin"
 
 [dependencies]
 # jk-model owns ImageConfig — the only non-SPI first-party class this worker touches.
-# jk-core/jk-io were declared but never imported and cost two scheduling levels (JK-2193).
+# jk-core/jk-io were declared but never imported and cost two scheduling levels.
 jk-model.workspace = true
 jk-plugin-sdk.workspace = true
 jib-core = "latest"

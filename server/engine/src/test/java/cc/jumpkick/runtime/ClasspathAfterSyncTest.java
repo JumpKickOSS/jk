@@ -9,6 +9,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -17,6 +18,7 @@ import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +57,78 @@ class ClasspathAfterSyncTest {
         assertThat(cp).contains(f.libJar.toAbsolutePath().normalize());
         assertThat(new ClasspathResolver(store).classpathFor(f.lock, ClasspathResolver.COMPILE_MAIN, true))
                 .contains(f.libJar.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void tests_kind_sibling_without_test_output_fails_in_setup_not_compile_test(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        Path lib = Files.createDirectories(ws.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+                """);
+        Files.createDirectories(lib.resolve("src/com/example"));
+        Files.writeString(lib.resolve("src/com/example/Lib.java"), "package com.example; public final class Lib {}");
+        Path app = Files.createDirectories(ws.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+
+                [test-dependencies]
+                lib = { workspace = true, kind = "tests" }
+                """);
+
+        JkBuild project = JkBuildParser.parse(app.resolve("jk.toml"));
+        JkBuild libManifest = JkBuildParser.parse(lib.resolve("jk.toml"));
+        // lib's main jar exists but its test classes do not — the --skip-tests shape. The resolve
+        // writes the precise cause; the setup guard must surface it instead of letting
+        // compile-test fail with `cannot find symbol` at the wrong file.
+        Path libJar = BuildLayout.of(lib, libManifest).mainJar();
+        Files.createDirectories(libJar.getParent());
+        Files.writeString(libJar, "jar-bytes");
+
+        StashContext ctx = new StashContext();
+        ctx.put(BuildPlanner.LOCKFILE, emptyLock());
+        ctx.put(BuildPlanner.PROJECT, project);
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
+                app,
+                store,
+                app.resolve("jk.toml"),
+                app.resolve("jk-lock.toml"),
+                app,
+                1,
+                0,
+                null,
+                null,
+                false,
+                false,
+                false,
+                false,
+                Set.of(),
+                SessionContext.current());
+
+        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(ctx, in, new Cas(store)))
+                .hasMessageContaining("missing workspace siblings");
+        assertThat(ctx.errors)
+                .as("the written diagnostic reaches the failure report")
+                .anyMatch(e -> e.contains("test sibling not built")
+                        && e.contains("tests kind")
+                        && e.contains("expected test classes at"));
+    }
+
+    private static Lockfile emptyLock() {
+        return new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of());
     }
 
     private static Fixture fixture(Path tmp, Path store, boolean materializeLib) throws Exception {
@@ -116,6 +190,7 @@ class ClasspathAfterSyncTest {
 
     private static final class StashContext implements TaskContext {
         private final Map<BuildPlanKey<?>, Object> values = new HashMap<>();
+        final List<String> errors = new ArrayList<>();
 
         @Override
         public <T> void put(BuildPlanKey<T> key, T value) {
@@ -149,7 +224,9 @@ class ClasspathAfterSyncTest {
         public void warn(String code, String message) {}
 
         @Override
-        public void error(String code, String message) {}
+        public void error(String code, String message) {
+            errors.add(message);
+        }
 
         @Override
         public boolean cancelled() {

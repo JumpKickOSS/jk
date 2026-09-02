@@ -28,14 +28,14 @@ class ResultsCommandTest {
 
     @BeforeEach
     void isolateBuilds() {
-        prevBuilds = System.getProperty("jk.env.JK_BUILDS_DIR");
-        System.setProperty("jk.env.JK_BUILDS_DIR", tmp.resolve("builds").toString());
+        prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", tmp.toString());
     }
 
     @AfterEach
     void restoreBuilds() {
-        if (prevBuilds == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
-        else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuilds);
+        if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
     }
 
     @Test

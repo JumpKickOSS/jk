@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code jk tool run <file>.jar} — the jar target, which shares nothing with the source targets
  * beyond the verb: no compile, no dependency header, no cache directory. Split out of
- * {@code ToolRunCommandTest} when that file passed the 800-line cap (JK-2444); the jar tests and
+ * {@code ToolRunCommandTest} when that file passed the 800-line cap; the jar tests and
  * their two jar-building fixtures were the whole of the second subject, so the seam was already
  * there. No assertion changed in the move.
  */

@@ -9,10 +9,13 @@ work too.
 jk tool run com.puppycrawl.tools:checkstyle:14.1.0 \
   --main com.puppycrawl.tools.checkstyle.Main -- -c checkstyle.xml src/main/java
 
-# Or install once; the launcher lands on PATH under the artifact's short name.
+# Or install once; the launcher lands on PATH under the artifact's short name,
+# and the name then resolves in `jk tool run` / `jkx` too — reusing the recorded
+# coordinate, Main-Class and classpath, so --main is never repeated.
 jk tool install com.puppycrawl.tools:checkstyle:14.1.0 \
   --main com.puppycrawl.tools.checkstyle.Main
 checkstyle -c checkstyle.xml src/main/java
+jk tool run checkstyle -- -c checkstyle.xml src/main/java   # same thing
 
 jk tool list
 jk tool uninstall checkstyle
@@ -20,15 +23,19 @@ jk tool dir
 jk tool run script.java                                 # JBang-compatible headers
 ```
 
-Two sharp edges worth knowing before you copy the above:
+One sharp edge worth knowing before you copy the above:
 
 - **`--` is not optional.** `jk tool run` parses the leading flags itself, so
   `jk tool run <tool> -c foo.xml` exits 64 on `unrecognized option '-c'`. Everything after
   `--` goes to the tool untouched. `jkx` is the same binary and behaves identically.
-- **`jk tool run` does not resolve an installed tool by name.** Even after
-  `jk tool install`, `jk tool run checkstyle -- …` answers ``checkstyle` is not in the
-  library catalog` — pass the full coordinate, or use the launcher the install put on
-  `PATH`. Tracked at JK-2622.
+
+How a bare name resolves, in order: an **installed tool** (what `jk tool list` shows) wins,
+then the **library catalog**; a full `group:artifact[:version]` coordinate skips both. An
+installed name therefore shadows a catalog entry of the same name — the tool this machine
+installed is the least surprising answer, and the coordinate spelling is always available to
+force the catalog's. Asking for a version (`name@selector`), or passing `--with` / `--main`,
+is a request the install did not record, so those resolve fresh instead of using the
+installed pin.
 
 `jk install g:a:v` outside a project is the same jkx-style install (coordinate on PATH).
 Trust gates stay on the CLI — MCP `jk_install action=list` shows installed tools but does

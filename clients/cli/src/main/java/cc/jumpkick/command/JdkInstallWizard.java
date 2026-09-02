@@ -13,6 +13,7 @@ import cc.jumpkick.terminal.TerminalSession;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -233,7 +234,7 @@ final class JdkInstallWizard {
     static String pickVendorDefault(List<VendorOption> vendors) {
         // First Temurin-bearing option (case-insensitive); fall back to first.
         return vendors.stream()
-                .filter(v -> v.label().toLowerCase().contains("temurin"))
+                .filter(v -> v.label().toLowerCase(Locale.ROOT).contains("temurin"))
                 .findFirst()
                 .map(VendorOption::id)
                 .orElse(vendors.getFirst().id());
@@ -259,8 +260,8 @@ final class JdkInstallWizard {
     /** Temurin pinned first, others alphabetical by label — keeps the default at the visual top. */
     private static Comparator<VendorOption> vendorOrder() {
         return (a, b) -> {
-            boolean aT = a.label().toLowerCase().contains("temurin");
-            boolean bT = b.label().toLowerCase().contains("temurin");
+            boolean aT = a.label().toLowerCase(Locale.ROOT).contains("temurin");
+            boolean bT = b.label().toLowerCase(Locale.ROOT).contains("temurin");
             if (aT && !bT) return -1;
             if (bT && !aT) return 1;
             return a.label().compareTo(b.label());

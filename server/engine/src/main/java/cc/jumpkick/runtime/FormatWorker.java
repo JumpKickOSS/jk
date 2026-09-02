@@ -41,21 +41,21 @@ public final class FormatWorker {
     }
 
     /** Summary counts, populated by the format step (all present once the plan finishes successfully). */
-    public static final BuildPlanKey<Integer> CHANGED = BuildPlanKey.of("format-changed", Integer.class);
+    public static final BuildPlanKey<Integer> CHANGED = BuildPlanKey.scalar("format-changed", Integer.class);
 
-    public static final BuildPlanKey<Integer> CLEAN = BuildPlanKey.of("format-clean", Integer.class);
-    public static final BuildPlanKey<Integer> ERRORS = BuildPlanKey.of("format-errors", Integer.class);
-    public static final BuildPlanKey<Integer> TOTAL = BuildPlanKey.of("format-total", Integer.class);
+    public static final BuildPlanKey<Integer> CLEAN = BuildPlanKey.scalar("format-clean", Integer.class);
+    public static final BuildPlanKey<Integer> ERRORS = BuildPlanKey.scalar("format-errors", Integer.class);
+    public static final BuildPlanKey<Integer> TOTAL = BuildPlanKey.scalar("format-total", Integer.class);
 
     /**
      * The worker's exit code. On a plan that <em>succeeded</em> this is {@code 0} or {@code 1} and
      * nothing else ({@link #reconcile} fails the step on any other), so no caller can hand a user a
      * 139 from a SIGSEGV or a 137 from an OOM-kill.
      */
-    public static final BuildPlanKey<Integer> WORKER_EXIT = BuildPlanKey.of("format-worker-exit", Integer.class);
+    public static final BuildPlanKey<Integer> WORKER_EXIT = BuildPlanKey.scalar("format-worker-exit", Integer.class);
 
     /** Files already clean by the mtime/size index — not sent to the worker. */
-    static final BuildPlanKey<Integer> PRE_CLEAN = BuildPlanKey.of("format-preclean", Integer.class);
+    static final BuildPlanKey<Integer> PRE_CLEAN = BuildPlanKey.scalar("format-preclean", Integer.class);
 
     /**
      * Fork the formatter worker, tally its per-file stream, publish the run's counts — and refuse to

@@ -371,8 +371,8 @@ public final class ProtoReads {
         }
         if (affectedWip) extra += ",\"affected\":true";
         // Source/test counting walks every module's src trees — opt-in (jk status), never the
-        // default for the identity-only callers on hot paths (JK-2162). The dead `cache` field
-        // the verb never read is gone (JK-2168).
+        // default for the identity-only callers on hot paths. The dead `cache` field
+        // the verb never read is gone.
         if (counts) extra += ",\"counts\":true";
         return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
     }
@@ -382,7 +382,7 @@ public final class ProtoReads {
         return affectedTestsRequest(dir, selection, null, null);
     }
 
-    /** {@code modules} is the raw {@code -m} spec — it intersects the ranked cone (JK-2613). */
+    /** {@code modules} is the raw {@code -m} spec — it intersects the ranked cone. */
     public static String affectedTestsRequest(
             String dir, TestSelection selection, String affectedSince, String modules) {
         String extra = ProtoJobs.testSelectionFields(selection);

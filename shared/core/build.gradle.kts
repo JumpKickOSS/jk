@@ -26,7 +26,7 @@ dependencies {
     testFixturesApi(libs.junit.platform.engine)
 }
 
-// Built-in plugin manifests + scaffolds are engine-only (JK-2149). :core tests still
+// Built-in plugin manifests + scaffolds are engine-only. :core tests still
 // parse PluginTableRegistry, so bake the same tree onto the test classpath only.
 tasks.processTestResources {
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
@@ -51,12 +51,12 @@ tasks.named<Jar>("jar") {
     }
 }
 
-// SelfHostingTomlTest guards the workspace's own manifests: catalog pins (JK-1840) and the
-// manifests-sha256 re-lock stamp (JK-1863). Without these inputs an edit to jk.toml /
+// SelfHostingTomlTest guards the workspace's own manifests: catalog pins and the
+// manifests-sha256 re-lock stamp. Without these inputs an edit to jk.toml /
 // jk-libs.toml / jk-lock.toml leaves :core:test UP-TO-DATE and the guard silently never reruns
 // (same trap :web documents for fold.js).
 tasks.named<Test>("test") {
-    // MacPrefs makes CoreFoundation downcalls (JK-1970). Today this is only a JDK 25 warning, but
+    // MacPrefs makes CoreFoundation downcalls. Today this is only a JDK 25 warning, but
     // restricted methods become a hard error in a later release; :cli and :engine already pass it.
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     inputs.files(
@@ -74,7 +74,7 @@ tasks.named<Test>("test") {
 // JUnitPinParityTest and SelfHostingTomlTest read files that live OUTSIDE this module — every test
 // source's fixture pins, and the workspace lock — so Gradle cannot infer them from the task graph.
 // Undeclared, the task goes UP-TO-DATE while the very files it checks change underneath it, and the
-// guard reports a pass it never ran (JK-1018 is the same hole one level up). The cost is that
+// guard reports a pass it never ran (the tier report is the same hole one level up). The cost is that
 // :core:test re-runs when any test source in the tree changes, which is the honest price of a
 // tripwire that reads the tree.
 tasks.named<Test>("test") {

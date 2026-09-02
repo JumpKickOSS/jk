@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -69,9 +70,11 @@ final class BuildLogicGroovyHost {
             String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exit = p.waitFor();
             if (exit != 0) {
+                // The compiler dump is the message, verbatim — its first error line already names
+                // file and line. The one jk-authored prefix is registerScripts', not this host's.
                 String detail = log == null ? "" : log.strip();
                 throw new IllegalStateException(
-                        "[build] logic: groovy failed (exit " + exit + ")" + (detail.isEmpty() ? "" : ":\n" + detail));
+                        detail.isEmpty() ? "groovy exited " + exit + " with no output" : detail);
             }
         } finally {
             Files.deleteIfExists(wrapper);
@@ -104,20 +107,73 @@ final class BuildLogicGroovyHost {
         return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'";
     }
 
-    /** Maven paths under the tool cache; fetch missing jars from Maven Central. */
+    /** One child-classpath jar: Maven coordinate plus the sha256 jk pins for it. */
+    record PinnedJar(String group, String artifact, String version, String sha256) {
+        Coordinate coordinate() {
+            return Coordinate.of(group, artifact, version);
+        }
+
+        String fileName() {
+            return artifact + "-" + version + ".jar";
+        }
+    }
+
+    /**
+     * The seven jars with the digests jk pins for them. They become the classpath of a JVM that
+     * evaluates the user's script, so they are code: bytes that do not hash to a pin are never
+     * published and never trusted. Bump a digest with its version.
+     */
+    static final List<PinnedJar> PINNED_JARS = List.of(
+            new PinnedJar(
+                    "org.apache.groovy",
+                    "groovy",
+                    GROOVY_VER,
+                    "35d6e6a658ebf549c736c06fbaf370521a3a72e3a044f6a868b33a0844d40d6c"),
+            new PinnedJar(
+                    "org.apache.groovy",
+                    "groovy-ant",
+                    GROOVY_VER,
+                    "334fa7bafc99c3f9b4cea0d28a5e0cdafe69f61c0e8d0c09a8e2d8bd1b8b3f46"),
+            new PinnedJar(
+                    "org.apache.groovy",
+                    "groovy-xml",
+                    GROOVY_VER,
+                    "bad962021645d20a1c7c297d4d18f42f2d07599777381811dfda059d748f562d"),
+            new PinnedJar(
+                    "org.apache.ivy",
+                    "ivy",
+                    IVY_VER,
+                    "9502aa5aabf0b1484924a13ef4b5d24f121f7f91aab6768f11cc9d0906c0803b"),
+            new PinnedJar(
+                    "org.apache.ant",
+                    "ant",
+                    ANT_VER,
+                    "4cbbd9243de4c1042d61d9a15db4c43c90ff93b16d78b39481da1c956c8e9671"),
+            new PinnedJar(
+                    "org.apache.ant",
+                    "ant-launcher",
+                    ANT_VER,
+                    "f0909725a7a24e393888f3fbb558347abf506ce2f7ebc581ff26331b94d951a5"),
+            new PinnedJar(
+                    "ant",
+                    "ant-optional",
+                    ANT_OPTIONAL_VER,
+                    "206b6edca13aeafe4f10995589b7cefd7aff403a24cb34cf085893e2b3e44b19"));
+
+    /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from Central. */
     static Path[] ensureJars() throws IOException {
         Path cache = toolCache();
         Files.createDirectories(cache);
-        Http http = new Http();
-        return new Path[] {
-            fetch(http, cache, "org/apache/groovy/groovy/" + GROOVY_VER + "/groovy-" + GROOVY_VER + ".jar"),
-            fetch(http, cache, "org/apache/groovy/groovy-ant/" + GROOVY_VER + "/groovy-ant-" + GROOVY_VER + ".jar"),
-            fetch(http, cache, "org/apache/groovy/groovy-xml/" + GROOVY_VER + "/groovy-xml-" + GROOVY_VER + ".jar"),
-            fetch(http, cache, "org/apache/ivy/ivy/" + IVY_VER + "/ivy-" + IVY_VER + ".jar"),
-            fetch(http, cache, "org/apache/ant/ant/" + ANT_VER + "/ant-" + ANT_VER + ".jar"),
-            fetch(http, cache, "org/apache/ant/ant-launcher/" + ANT_VER + "/ant-launcher-" + ANT_VER + ".jar"),
-            fetch(http, cache, "ant/ant-optional/" + ANT_OPTIONAL_VER + "/ant-optional-" + ANT_OPTIONAL_VER + ".jar"),
-        };
+        Path[] jars = new Path[PINNED_JARS.size()];
+        for (int i = 0; i < jars.length; i++) {
+            PinnedJar jar = PINNED_JARS.get(i);
+            Path out = cache.resolve(jar.fileName());
+            if (!published(out, jar.sha256())) {
+                publish(fetchVerified(jar), out, jar.sha256());
+            }
+            jars[i] = out;
+        }
+        return jars;
     }
 
     /**
@@ -133,28 +189,55 @@ final class BuildLogicGroovyHost {
     }
 
     /**
-     * Through {@link Http}, not {@code URL.openStream}: a raw stream reached Central without the
-     * mirror, without the per-host cooldown, and without opening the rate-limit window, so five
-     * jar fetches could spend a 429 the rest of the build never learned about.
+     * True when {@code out} holds exactly the pinned bytes. Presence alone is not enough: the old
+     * {@code size > 0} test accepted a download truncated by a killed engine <em>forever</em>, and
+     * the only symptom was a bare {@code ClassNotFoundException} from the child JVM.
      */
-    private static Path fetch(Http http, Path cache, String mavenPath) throws IOException {
-        String fileName = mavenPath.substring(mavenPath.lastIndexOf('/') + 1);
-        Path out = cache.resolve(fileName);
-        if (Files.isRegularFile(out) && Files.size(out) > 0) return out;
-        URI uri = RepositorySpec.MAVEN_CENTRAL.url().resolve(mavenPath);
-        HttpResponse<InputStream> res;
+    static boolean published(Path out, String sha256) {
         try {
-            res = http.getStream(uri);
+            return Files.isRegularFile(out) && sha256.equalsIgnoreCase(Hashing.sha256Hex(out));
+        } catch (IOException unreadable) {
+            return false;
+        }
+    }
+
+    /**
+     * Through {@link MavenRepo} — the verified fetch jk already has: streamed to a temp in a CAS
+     * shard, hashed while written, deleted on failure, mirror-and-cooldown routed. Never a second
+     * hand-rolled downloader.
+     */
+    private static Path fetchVerified(PinnedJar jar) throws IOException {
+        MavenRepo central = new MavenRepo(
+                RepositorySpec.MAVEN_CENTRAL.name(),
+                RepositorySpec.MAVEN_CENTRAL.url(),
+                new Http(),
+                new Cas(JkDirs.store()));
+        try {
+            return central.fetchArtifact(jar.coordinate(), jar.sha256(), () -> false)
+                    .cachePath();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("interrupted fetching " + fileName, e);
+            throw new IOException("interrupted fetching " + jar.fileName(), e);
         }
-        if (res.statusCode() != 200) {
-            throw new IOException("GET " + uri + " returned HTTP " + res.statusCode());
+    }
+
+    /**
+     * Verify {@code source} against the pin, then publish atomically: temp beside the target, one
+     * rename. A partial file can never appear at {@code out}, and a mismatch names the jar and the
+     * directory so the user can act on it.
+     */
+    static void publish(Path source, Path out, String sha256) throws IOException {
+        String actual = Hashing.sha256Hex(source);
+        if (!sha256.equalsIgnoreCase(actual)) {
+            throw new IOException("sha256 mismatch for " + out.getFileName() + " under " + out.getParent()
+                    + " — expected " + sha256 + ", got " + actual);
         }
-        try (InputStream in = res.body()) {
-            Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
+        Path tmp = Files.createTempFile(out.getParent(), out.getFileName().toString() + ".", ".tmp");
+        try {
+            Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(tmp, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(tmp);
         }
-        return out;
     }
 }

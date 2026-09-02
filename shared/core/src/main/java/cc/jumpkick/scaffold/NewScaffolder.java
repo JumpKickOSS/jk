@@ -3,6 +3,7 @@ package cc.jumpkick.scaffold;
 
 import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -136,13 +137,16 @@ public final class NewScaffolder {
         Path g8 =
                 resources.resolve("templates").resolve("java").resolve(pluginId).resolve("hello.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
-        Files.writeString(g8.resolve(".jk-template.toml"), """
+        Files.writeString(
+                g8.resolve(".jk-template.toml"),
+                """
                 language = "java"
                 framework = "%s"
                 name = "hello"
                 description = "Minimal %s application"
-                layouts = ["traditional", "simple"]
-                """.formatted(pluginId, pluginId), StandardCharsets.UTF_8);
+                layouts = ["%s", "%s"]
+                """.formatted(pluginId, pluginId, Layout.TRADITIONAL.tomlValue(), Layout.SIMPLE.tomlValue()),
+                StandardCharsets.UTF_8);
         Files.writeString(g8.resolve("default.properties"), """
                 name=demo
                 organization=com.example
@@ -365,7 +369,7 @@ public final class NewScaffolder {
     }
 
     /**
-     * Seed a {@code.gitignore} covering jk's outputs. Don't clobber an existing file — the user (or
+     * Seed a {@code .gitignore} covering jk's outputs. Don't clobber an existing file — the user (or
      * their template) may have customised it. We only create one on first scaffold.
      */
     private static void writeGitignore(Path dir) throws IOException {

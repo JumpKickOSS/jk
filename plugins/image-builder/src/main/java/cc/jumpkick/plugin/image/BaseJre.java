@@ -267,7 +267,7 @@ final class BaseJre {
         List<Path> candidates;
         try (var walk = Files.walk(root)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            // the path for a fresh stat even for entries the name test discards.
             candidates = walk.filter(p -> p.getFileName().toString().equals("java"))
                     .filter(Files::isRegularFile)
                     .filter(p -> p.getParent() != null

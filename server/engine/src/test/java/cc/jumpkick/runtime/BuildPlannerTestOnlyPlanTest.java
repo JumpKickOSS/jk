@@ -206,7 +206,7 @@ class BuildPlannerTestOnlyPlanTest {
                 """);
         BuildPlanner.Inputs in = inputs(dir, false, false);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
-        // Tails keep the test branch in a full plan (JK-2211 terminal join).
+        // Tails keep the test branch in a full plan (terminal join).
         PlannerTails.appendDeclaredTails(b, in);
         var plan = b.build();
         var compileTest = plan.steps().stream()
@@ -270,7 +270,7 @@ class BuildPlannerTestOnlyPlanTest {
     }
 
     private Set<String> planNames(Path dir, boolean testOnly) {
-        // Full plans need the tails: since JK-2211 run-tests is a terminal-join leaf, not a
+        // Full plans need the tails: since run-tests is a terminal-join leaf, not a
         // packaging prerequisite, and a core-only build would prune the whole test branch.
         BuildPlanner.Inputs in = inputs(dir, testOnly, false);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);

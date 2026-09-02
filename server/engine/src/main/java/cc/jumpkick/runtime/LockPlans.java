@@ -52,13 +52,13 @@ public final class LockPlans {
     private LockPlans() {}
 
     /** Cross-step key: the lockfile as it accumulates through resolve → lock-plugins → write. */
-    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
+    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.scalar("lockfile", Lockfile.class);
 
     /**
      * Cross-step key: manifests digest captured at parse time — the write step stamps this instead
      * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock.
      */
-    public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.of("manifests-sha", String.class);
+    public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.scalar("manifests-sha", String.class);
 
     /**
      * Build the {@code jk lock} plan for one project directory: {@code parse-build} → {@code
@@ -241,6 +241,7 @@ public final class LockPlans {
                 .build();
 
         return BuildPlan.builder(shape.planName())
+                .stateKeys(LOCKFILE, MANIFESTS_SHA)
                 .addTask(parseBuild)
                 .addTask(resolve)
                 .addTask(lockPlugins)

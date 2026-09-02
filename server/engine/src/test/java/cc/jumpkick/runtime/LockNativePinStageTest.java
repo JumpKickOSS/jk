@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code jk lock} resolves {@code [native] metadata-repository} and pins the answer, so a native
  * build reads a version rather than deciding one.
  *
- * <p>Before JK-2476 there was nothing to resolve: the repository release was a constant in the
+ * <p>Before there was nothing to resolve: the repository release was a constant in the
  * engine, the lock said nothing about it, and {@code jk update} could not see it. Deps resolve from
  * a hand-written {@code file://} Maven repo, so this never touches the network.
  */

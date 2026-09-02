@@ -147,7 +147,7 @@ public final class JkBuildRenderer {
         // graal defaults to "graalvm" at parse time when [native] is declared and the key is
         // omitted — elide exactly that default so a round-trip stays minimal. "native" is a
         // DISTINCT legal spec (parseGraalSpec: "graalvm-25", "25", or "native"); eliding it
-        // silently re-parsed as "graalvm" and flipped the toolchain choice (JK-2098).
+        // silently re-parsed as "graalvm" and flipped the toolchain choice.
         if (nc.graal() != null && !nc.graal().equals("graalvm")) {
             sb.append("graal      = ").append(quote(nc.graal())).append('\n');
         }

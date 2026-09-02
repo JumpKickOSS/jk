@@ -10,7 +10,6 @@ import java.util.Objects;
  * is a <strong>requires</strong> graph (plus engine edges from {@code contributes*}), not fixed
  * lifecycle slots. The engine owns incrementality and skip-on-cache-hit.
  *
- * @see docs/features/build-plan.md
  */
 public final class TaskSpec {
 

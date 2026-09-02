@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * Writer/reader symmetry for ProjectInfo's JK-2136-era fields (JK-2171): decode a line
+ * Writer/reader symmetry for ProjectInfo's-era fields: decode a line
  * with every recently-added field populated, re-encode, and require a fixed point.
  */
 class ProjectInfoRoundTripTest {

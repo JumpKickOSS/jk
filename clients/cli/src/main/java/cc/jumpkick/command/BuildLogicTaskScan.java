@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.config.BuildLogicStems;
 import cc.jumpkick.config.BuildLogicToml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -8,7 +9,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -19,15 +19,6 @@ import java.util.stream.Stream;
  * ({@code before-compile.groovy} / {@code .kts}).
  */
 final class BuildLogicTaskScan {
-
-    /**
-     * Mirrors engine {@code BuildLogicScripts} stems (keep in sync). {@code after-build} and
-     * {@code gate} are invocation-root anchors; they are listed here because {@code jk tasks} must
-     * name every task the engine would run, and the scan cannot tell a root from a module without
-     * parsing the manifest — which is exactly what this offline path exists to avoid.
-     */
-    private static final List<String> SCRIPT_STEMS =
-            List.of("before-compile", "after-compile", "after-resources", "before-package", "after-build", "gate");
 
     private BuildLogicTaskScan() {}
 
@@ -60,11 +51,12 @@ final class BuildLogicTaskScan {
         return new ArrayList<>(names);
     }
 
+    /**
+     * {@link BuildLogicStems} is the engine's table too, so {@code jk tasks} can never advertise
+     * a set the engine disagrees with. Root anchors are included: the scan cannot tell a root
+     * from a module without parsing the manifest, which this offline path exists to avoid.
+     */
     private static Optional<String> stemName(String stem) {
-        String n = stem.trim().toLowerCase(Locale.ROOT).replace('_', '-');
-        for (String s : SCRIPT_STEMS) {
-            if (n.equals(s) || n.startsWith(s + "-")) return Optional.of(n);
-        }
-        return Optional.empty();
+        return BuildLogicStems.match(stem).map(base -> BuildLogicStems.normalize(stem));
     }
 }

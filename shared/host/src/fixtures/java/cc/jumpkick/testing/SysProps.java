@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testing;
 
-import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -66,20 +65,23 @@ public final class SysProps implements BeforeAllCallback, AfterAllCallback, Befo
         ctx.getStore(NS).put(CLASS_SNAPSHOT, snapshot());
         TempRoots roots = ctx.getRequiredTestClass().getAnnotation(TempRoots.class);
         if (roots == null) return;
-        Path root = Files.createTempDirectory("jk-temp-roots");
-        ctx.getStore(NS).put(TEMP_ROOTS, root);
-        int i = 0;
+        List<PropertyRoots.Redirect> redirects = new ArrayList<>();
         for (String property : roots.value()) {
-            System.setProperty(
-                    property, Files.createDirectories(root.resolve("r" + i++)).toString());
+            redirects.add(PropertyRoots.redirect(property, "jk-temp-roots"));
         }
+        ctx.getStore(NS).put(TEMP_ROOTS, redirects);
     }
 
     @Override
     public void afterAll(ExtensionContext ctx) {
+        // Roots first (they restore their own properties), then the whole-table snapshot.
+        @SuppressWarnings("unchecked")
+        List<PropertyRoots.Redirect> redirects =
+                (List<PropertyRoots.Redirect>) ctx.getStore(NS).get(TEMP_ROOTS);
+        if (redirects != null) {
+            for (PropertyRoots.Redirect r : redirects) PropertyRoots.restore(r);
+        }
         restore((Properties) ctx.getStore(NS).get(CLASS_SNAPSHOT));
-        Path root = (Path) ctx.getStore(NS).get(TEMP_ROOTS);
-        if (root != null) PathUtil.deleteRecursively(root);
     }
 
     @Override

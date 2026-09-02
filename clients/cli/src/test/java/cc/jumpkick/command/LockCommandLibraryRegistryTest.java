@@ -180,7 +180,7 @@ class LockCommandLibraryRegistryTest {
             System.setOut(originalOut);
         }
 
-        // On failure the lock's own error text is the diagnosis — surface it (JK-2179).
+        // On failure the lock's own error text is the diagnosis — surface it.
         assertThat(exit)
                 .as("offline lock output:\n%s", captured.toString(StandardCharsets.UTF_8))
                 .isEqualTo(0);

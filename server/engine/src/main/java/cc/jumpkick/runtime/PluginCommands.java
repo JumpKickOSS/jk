@@ -77,7 +77,7 @@ public final class PluginCommands {
             // [[contribute.command-dependency]] lane (an adb no step reads) — both best-effort:
             // `jk android licenses` must run BEFORE licenses gate provisioning, so an
             // unprovisionable tool is absent and only a command that needs it complains.
-            var cas = JkStores.cas(cache);
+            var cas = JkStores.storeCas();
             Map<String, String> sdkPins = PluginBuild.sdkPins(LockPaths.lockFile(dir));
             Map<String, Path> tools =
                     new LinkedHashMap<>(PluginBuild.fetchStepDependencies(project, dir, cas, sdkPins, true));

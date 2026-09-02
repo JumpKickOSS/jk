@@ -5,13 +5,11 @@ rem optional jk-min floor, else the latest published release verified against th
 rem SHA256SUMS. The lock pins inputs, not the operator.
 setlocal enabledelayedexpansion
 
-rem Bin dir resolution mirrors install.ps1 / JkDirs (JK_INSTALL_DIR > JK_BIN_DIR >
-rem JK_HOME\bin > %USERPROFILE%\.local\bin) - the wrapper must not invent its own layout.
-set "BIN_DIR="
-if not "%JK_INSTALL_DIR%"=="" set "BIN_DIR=%JK_INSTALL_DIR%"
-if "%BIN_DIR%"=="" if not "%JK_BIN_DIR%"=="" set "BIN_DIR=%JK_BIN_DIR%"
-if "%BIN_DIR%"=="" if not "%JK_HOME%"=="" set "BIN_DIR=%JK_HOME%\bin"
-if "%BIN_DIR%"=="" set "BIN_DIR=%USERPROFILE%\.local\bin"
+rem Bin dir resolution mirrors install.ps1 / JkDirs, which is now one answer rather than a
+rem cascade - the wrapper must not invent its own layout.
+set "JK_HOME_DIR=%JK_HOME%"
+if "%JK_HOME_DIR%"=="" set "JK_HOME_DIR=%USERPROFILE%\.jk"
+set "BIN_DIR=%JK_HOME_DIR%\bin"
 if "%JK_RELEASES_URL%"=="" set "JK_RELEASES_URL=https://jumpkick.build/releases"
 set "DIR=%~dp0"
 

@@ -24,7 +24,7 @@ class ExplainBuildEtaParityTest {
         // explain that priced 24 test classes as serial would seed a countdown the build beats by
         // the parallel factor. The claim that the two defaults ARE both 0 is not testable from
         // :engine — BuildCommand and ExplainCommand live in clients/cli — and the test that
-        // pretended otherwise wrote `int a = 0; int b = 0; assertThat(a).isEqualTo(b)` (JK-2410).
+        // pretended otherwise wrote `int a = 0; int b = 0; assertThat(a).isEqualTo(b)`.
         int auto = TestWorkers.resolve(0, 24, 8);
         int forcedOne = TestWorkers.resolve(1, 24, 8);
         assertThat(auto).isGreaterThan(forcedOne);

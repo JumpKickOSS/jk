@@ -11,20 +11,20 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.UnaryOperator;
 
 /**
- * The environment a build sees: {@code.env} files layered under the real environment.
+ * The environment a build sees: {@code .env} files layered under the real environment.
  *
  * <h2>Precedence</h2>
  *
  * Lowest wins to highest:
  *
  * <ol>
- * <li>{@code.env} at the workspace root
- * <li>{@code.env} in the module
+ * <li>{@code .env} at the workspace root
+ * <li>{@code .env} in the module
  * <li>the real environment (the caller's, pernot the engine's)
  * </ol>
  *
- * <p><b>The real environment beats {@code.env}</b>, which is what Node's dotenv and Docker Compose
- * both do: {@code.env} supplies defaults, so {@code FOO=x jk build} and a CI variable override the
+ * <p><b>The real environment beats {@code .env}</b>, which is what Node's dotenv and Docker Compose
+ * both do: {@code .env} supplies defaults, so {@code FOO=x jk build} and a CI variable override the
  * file without anyone editing it. The reverse would make CI overrides impossible to express.
  *
  * <h2>Search roots</h2>
@@ -36,7 +36,7 @@ import java.util.function.UnaryOperator;
  *
  * <h2>Secrets</h2>
  *
- * A {@code.env} is where tokens live, so {@link #fileNames} names the secrets and {@link
+ * A {@code .env} is where tokens live, so {@link #fileNames} names the secrets and {@link
  * SecretRedactor#from(EnvLookup)} masks their effective values in free-form text (JSONL, journal,
  * errors) and hashes them for cache keys. {@link #isFromFile} answers the narrower question of
  * <em>which layer won</em> — {@code jk env} displays that; redaction deliberately does not depend
@@ -53,7 +53,7 @@ public final class EnvLookup {
     }
 
     /**
-     * Resolve for {@code moduleDir}, layering the workspace root's {@code.env} then the module's
+     * Resolve for {@code moduleDir}, layering the workspace root's {@code .env} then the module's
      * under {@code realEnv}.
      *
      * @param realEnv the caller's environment — {@code Inputs.env} on the build path, never
@@ -96,13 +96,13 @@ public final class EnvLookup {
         return real != null ? real : fromFiles.get(name);
     }
 
-    /** This lookup as the function {@link JkBuildParser#parse(Path, UnaryOperator)} expects. */
+    /** This lookup as the function {@code JkBuildParser.parse} expects. */
     public UnaryOperator<String> asFunction() {
         return this::get;
     }
 
     /**
-     * True when {@code name}'s effective value came from a {@code.env} file rather than the real
+     * True when {@code name}'s effective value came from a {@code .env} file rather than the real
      * environment — i.e. which layer won. Not the secrecy predicate: see the class note.
      */
     public boolean isFromFile(String name) {
@@ -120,7 +120,7 @@ public final class EnvLookup {
      * <p>The {@code .env} parse behind {@link #readCached} was memoized; the walk that finds the
      * workspace root was not — and this class's own javadoc says the lookup resolves "for every
      * output line that leaves the engine". {@code WorkspaceLocator.findRoot} is an ancestor walk with
-     * a {@code jk.toml} scan per level, so redaction was paying it per line (JK-1033).
+     * a {@code jk.toml} scan per level, so redaction was paying it per line.
      *
      * <p>Keyed by module directory and never invalidated: a module does not change which workspace
      * encloses it while a build runs, and the answer is a path rather than a file's contents. A

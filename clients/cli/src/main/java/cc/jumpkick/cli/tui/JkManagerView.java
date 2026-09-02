@@ -318,7 +318,7 @@ final class JkManagerView {
     /**
      * Lift the cursor to the top of the live region and erase it. The cursor invariant — parked at
      * the start of the line below the region between paints — is enforced here rather than restated
-     * at each call site: JK-2092, JK-2106 and JK-2109 were each a bug in one copy of this sequence.
+     * at each call site: and were each a bug in one copy of this sequence.
      */
     private void liftRegion() {
         int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
@@ -351,7 +351,7 @@ final class JkManagerView {
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
         int budget = OutputWindow.displayBudget(m.height, chrome.size());
         // Uncommitted only: lines from an earlier open (dump or live appends) are already
-        // permanent scrollback right above — re-dumping them duplicates (JK-2092).
+        // permanent scrollback right above — re-dumping them duplicates.
         List<String> pane = m.outputWindow.uncommittedForDisplay(budget);
         liftRegion();
         for (String line : pane) emitLine(line);
@@ -419,7 +419,7 @@ final class JkManagerView {
         if (live.size() > maxRegion) {
             // Overflow drops TREE rows, never the separator or the header: a plain tail-slice
             // deleted the rule/blank first (violating the invariant above) and, one more over,
-            // the spinner header too (JK-2106). Keep separator rows + chrome head, then fill
+            // the spinner header too. Keep separator rows + chrome head, then fill
             // the rest with the newest chrome tail rows.
             int separatorRows = live.size() - chrome.size();
             List<String> trimmed = new ArrayList<>(maxRegion);

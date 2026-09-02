@@ -11,6 +11,7 @@ import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.SupportedJdk;
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -139,9 +140,9 @@ public final class NewWizard {
 
         // Placement only — scaffolds never write layout=; the tree on disk is the convention.
         var layoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("traditional", "Traditional", "(./src/main/java, ./src/test/java, etc.)")
-                .choice("simple", "Simple", "(./src, ./test/src, etc.)")
-                .defaultChoice("traditional")
+                .choice(Layout.TRADITIONAL.tomlValue(), "Traditional", "(./src/main/java, ./src/test/java, etc.)")
+                .choice(Layout.SIMPLE.tomlValue(), "Simple", "(./src, ./test/src, etc.)")
+                .defaultChoice(Layout.TRADITIONAL.tomlValue())
                 .build();
 
         // Curated defaults + host declared-dep frequency (≤10); free-form GAV via custom row.

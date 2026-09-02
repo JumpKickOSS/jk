@@ -14,35 +14,17 @@
 #                    machine's OS/arch (.xz).
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
-#   JK_INSTALL_DIR   Override the install directory (default: ~/.local/bin,
-#                    or $JK_BIN_DIR / $JK_HOME/bin / $XDG_BIN_HOME when set).
-#   JK_BIN_DIR       Same as JK_INSTALL_DIR (product layout env).
-#   JK_HOME          Optional single-tree umbrella; mirrors the XDG layout
-#                    ($JK_HOME/{bin,cache,config,data,state}). (tests/CI)
+#   JK_HOME          jk's home directory. Default $HOME/.jk; everything jk
+#                    owns lives under it, on every platform. The client is
+#                    installed to $JK_HOME/bin.
 #
 set -euo pipefail
 
-# PATH entrypoints live outside product data so wiping cache/state/data does not
-# uninstall the CLI. Prefer XDG bin / ~/.local/bin (uv-style).
-if [ -n "${JK_INSTALL_DIR:-}" ]; then
-  INSTALL_DIR="$JK_INSTALL_DIR"
-elif [ -n "${JK_BIN_DIR:-}" ]; then
-  INSTALL_DIR="$JK_BIN_DIR"
-elif [ -n "${JK_HOME:-}" ]; then
-  # Under the umbrella, bin is one of the five roots. `jk activate` writes
-  # $JK_HOME/bin/jk into the shell profile and `jk self update` replaces the binary
-  # there, so installing anywhere else leaves both pointing at nothing.
-  INSTALL_DIR="${JK_HOME}/bin"
-elif [ -n "${XDG_BIN_HOME:-}" ]; then
-  INSTALL_DIR="$XDG_BIN_HOME"
-elif [ -n "${XDG_DATA_HOME:-}" ]; then
-  # JkDirs.platformBinDir: without XDG_BIN_HOME, bin is the data home's SIBLING
-  # (~/.local/share -> ~/.local/bin). Skipping this step would install at
-  # ~/.local/bin while `jk activate` / `jk self update` operate on the sibling.
-  INSTALL_DIR="$(dirname "$XDG_DATA_HOME")/bin"
-else
-  INSTALL_DIR="${HOME}/.local/bin"
-fi
+# One home, one bin. `jk activate` writes $JK_HOME/bin/jk into the shell profile
+# and `jk self update` replaces the binary there, so this has to be the same
+# directory JkDirs.binDirectory() resolves — which it is, by having one answer.
+JK_HOME_DIR="${JK_HOME:-${HOME}/.jk}"
+INSTALL_DIR="${JK_HOME_DIR}/bin"
 # One immutable directory per version (jk-<os>-<arch>[.xz] + jk-engine-<version>.jar
 # + SHA256SUMS); `latest/VERSION` is the only mutable pointer. The version is
 # resolved ONCE and both artifacts come from the frozen directory, so a release
@@ -239,10 +221,13 @@ if ! ln -f "$JK_BIN" "$JKX_BIN" 2>/dev/null; then
   chmod +x "$JKX_BIN"
 fi
 
+# Clear only resident engines positively identified in the superseded platform default.
+run_jk self retire-old-engines >/dev/null 2>&1 \
+  || note "an engine from the superseded install location could not be stopped"
+
 # The engine ships as a single fat jar, jk-engine-<version>.jar (see
 # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
-# not a second native binary). The live copy is <data>/lib/jk-engine/
-# ($JK_HOME/data/lib/jk-engine/ under the umbrella) — materialized below for local dists;
+# not a second native binary). The live copy is <home>/lib/jk-engine/ — materialized below for local dists;
 # download installs self-fetch it on first engine spawn.
 if [ -n "$LOCAL_FILE" ]; then
   SRC_LIB="$(cd "$(dirname "$LOCAL_FILE")" && pwd)/lib"
@@ -285,15 +270,10 @@ run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or
 # Best-effort: never fail the install. Replaces existing cache entries
 # (shallow clone depth 1, conditional GET with ETag). Works for both
 # `curl|bash` and `bash install.sh build/dist/jk` (local) flows.
-# Resolve the store root exactly as JkDirs.store() does: JK_STORE_DIR wins, else
-# $JK_HOME/data/store, else XDG data/jk/store. Prefetch dests must match
-# JkDirs.templates() (<store>/templates) and JkDirs.libraryRegistry()
+# The store root, exactly as JkDirs.storeDir() resolves it. Prefetch dests must
+# match JkDirs.templates() (<store>/templates) and JkDirs.libraryRegistry()
 # (<store>/libs.global.toml) — do not write a second copy under cache/.
-_jk_data_root="${XDG_DATA_HOME:-${HOME}/.local/share}/jk"
-[ -n "${JK_HOME:-}" ] && _jk_data_root="${JK_HOME}/data"
-[ -n "${JK_DATA_DIR:-}" ] && _jk_data_root="${JK_DATA_DIR}"
-_jk_store_root="${_jk_data_root}/store"
-[ -n "${JK_STORE_DIR:-}" ] && _jk_store_root="${JK_STORE_DIR}"
+_jk_store_root="${JK_STORE_DIR:-${JK_HOME_DIR}/store}"
 
 if have git; then
   # jk-templates: shallow clone (replace if exists) – mirrors OfficialTemplatesFreshen dest
@@ -338,14 +318,14 @@ elif have wget; then
   wget -q "$_jk_jdks_url" -O "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
   unset _jk_jdks_url _jk_jdks_dest
 fi
-unset _jk_data_root _jk_store_root
+unset _jk_store_root
 
 # ---- warm the engine -------------------------------------------------------
 #
 # Pre-pay the engine's cold-start costs now so the first real build doesn't:
 # `jk engine start` installs the JDK that hosts the engine when none
 # qualifies, and on a download install triggers the client's own engine-jar
-# fetch (which writes under <data>/lib/jk-engine/). The engine serves immediately
+# fetch (which writes under <home>/lib/jk-engine/). The engine serves immediately
 # and manages its own AOT training sidecar off to the side
 # (docs/architecture.md), so ONE start is the whole warm-up. Best-effort by
 # design: a failed warm-up never fails the install. Skipped only for a local

@@ -11,9 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code deploy} reads the merged {@code AndroidManifest.xml}, and a merged manifest carries every
- * dependency AAR's manifest fragment — third-party content, the same as the resources beside it.
- * Before JK-2421 this was the weakest parser in the tree: secure-processing only, no DOCTYPE ban.
+ * {@code deploy} reads the merged {@code AndroidManifest.xml}, which carries every dependency AAR's
+ * manifest fragment. The parser bans DOCTYPE (XXE-safe).
  */
 class DeployCommandXxeTest {
 

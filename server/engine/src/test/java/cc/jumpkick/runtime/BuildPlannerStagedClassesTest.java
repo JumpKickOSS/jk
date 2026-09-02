@@ -181,9 +181,9 @@ class BuildPlannerStagedClassesTest {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public <T> Optional<T> get(BuildPlanKey<T> key) {
-            return Optional.ofNullable((T) values.get(key));
+            Object value = values.get(key);
+            return value == null ? Optional.empty() : Optional.of(key.cast(value));
         }
 
         @Override

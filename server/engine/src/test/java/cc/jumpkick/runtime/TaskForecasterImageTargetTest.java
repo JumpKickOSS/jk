@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2084: an image push/load/tarball write is a side-effect, never a cacheable output. A
+ *: an image push/load/tarball write is a side-effect, never a cacheable output. A
  * workspace member whose package steps are all clean must still forecast dirty under
  * {@code target=IMAGE} so the scheduler runs its image tail — otherwise a second consecutive
  * {@code jk image} reports success having pushed nothing.
@@ -74,7 +74,7 @@ class TaskForecasterImageTargetTest {
         Path cache = root.resolve("cache");
 
         SessionContext.where(Session.defaults(), () -> {
-            var cas = JkStores.cas(cache);
+            var cas = JkStores.storeCas();
             var ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
 
             // Baseline: clean under PACKAGE.

@@ -10,7 +10,7 @@
   --s1: #161d25;
   --s2: #1c2630;
   --s3: #232f3a;
-  /* Hover tips: 60% darker than --s2 so they lift off panels/canvas (JK-1726 chrome). */
+  /* Hover tips: 60% darker than --s2 so they lift off panels/canvas. */
   --tip-bg: #0b0f13;
   --bd: #2a3742;
   --bd2: #1e2830;
@@ -261,7 +261,7 @@ header {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* Secondary parenthetical matches .sk (dim mono label), not bright .sv (JK-1717). */
+/* Secondary parenthetical matches .sk (dim mono label), not bright .sv. */
 .ssec {
   font: 600 9px var(--mono);
   letter-spacing: 0.08em;
@@ -269,7 +269,7 @@ header {
   color: var(--dim);
 }
 
-/* Shared floating tooltip chrome (JK-1726) — soft Jk Dark panel like retention/sysbox/io.
+/* Shared floating tooltip chrome — soft Jk Dark panel like retention/sysbox/io.
  * Native HTML title= is OS chrome and CANNOT be styled; tip.js shows this layer instead. */
 .jk-tip {
   font: 11px/1.4 var(--mono);
@@ -576,7 +576,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
  * Deliberately colourless (mono + muted) — colour on a card means state, and a byte count is not a
  * state. Both numbers are right-aligned in a fixed column with tabular figures so the two rows'
  * digits (and their arrows) line up. Anchored under the duration, right-aligned to it.
- * Shares .jk-tip shell (JK-1726). */
+ * Shares .jk-tip shell. */
 .millis .io {
   position: absolute;
   top: calc(100% + 6px);
@@ -887,7 +887,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; }
 .dot.running { background: var(--run); }
 .dot.success { background: var(--ok); }
-/* Pure cache check (JK-1296) — same green family, slightly muted */
+/* Pure cache check — same green family, slightly muted */
 .dot.checked { background: rgba(var(--ok-rgb), 0.55); }
 .dot.failed { background: var(--err); }
 .dot.cancelled { background: var(--dim); }
@@ -1037,7 +1037,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .detail-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 
-/* Project-page dependency graph (JK-1542) — lazy panel under Dependencies. */
+/* Project-page dependency graph — lazy panel under Dependencies. */
 .dep-graph-panel { margin: 14px 0; grid-column: 1 / -1; }
 .dep-graph-body { min-height: 2.5rem; }
 .dep-graph-controls {
@@ -1286,7 +1286,7 @@ a.fail-path:hover { color: var(--bright, var(--path)); }
 }
 .fail-gutter {
   flex: none;
-  min-width: 4ch; /* sizes to the padded number; 4ch floor keeps short snippets aligned (JK-1913) */
+  min-width: 4ch; /* sizes to the padded number; 4ch floor keeps short snippets aligned */
   white-space: pre;
   text-align: right;
   color: var(--dim);
@@ -1786,7 +1786,7 @@ button.browse:hover::before {
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
 
-/* New project form (JK-1193). Primary/ghost/browse chrome lives with the shared interactive polish
+/* New project form. Primary/ghost/browse chrome lives with the shared interactive polish
  * rules above; this block is form layout + field surfaces + custom checkbox. */
 .modal.new-project-modal { width: min(520px, 94vw); }
 /* Stack above the new-project modal (base .modal-bg is z-index 60) when browsing a parent dir. */

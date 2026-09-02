@@ -19,7 +19,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link StatusSnapshot#toJson()} is the serializer for engine vitals (JK-2431).
+ * {@link StatusSnapshot#toJson} is the serializer for engine vitals.
  *
  * <p>Before this, {@code GET /api/status} and the dashboard's SSE {@code status} frame each built
  * the same nineteen-field object from the same accessors, nineteen lines apart in two files. They
@@ -126,7 +126,7 @@ class StatusSnapshotJsonTest {
      * keeps {@code LiveVitals.PresentStatus}, which reads thirteen accessors to build a change-gate
      * fingerprint and serializes nothing, out of the result.
      *
-     * <p>{@code HttpReadApi} and {@code LiveVitals} were both in this set before JK-2431 and must
+     * <p>{@code HttpReadApi} and {@code LiveVitals} were both in this set before and must
      * not come back. {@code McpVitals} is the one that remains; when it is routed through
      * {@code toJson()} this expectation goes to empty and the entry below is deleted.
      */
@@ -157,7 +157,7 @@ class StatusSnapshotJsonTest {
                 .as("engine production sources scanned under %s", main)
                 .hasSizeGreaterThan(200);
         assertThat(renderers)
-                .as("files rendering StatusSnapshot as JSON without StatusSnapshot.toJson() (JK-2431)")
+                .as("files rendering StatusSnapshot as JSON without StatusSnapshot.toJson()")
                 .containsExactly("cc/jumpkick/engine/http/mcp/McpVitals.java");
     }
 }

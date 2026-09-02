@@ -10,7 +10,6 @@ import cc.jumpkick.run.TaskStatus;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -25,6 +24,18 @@ public final class VerboseListener implements BuildPlanListener {
     private final PrintStream err;
     private final ConcurrentMap<String, String> labels = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, List<String>> outputBuf = new ConcurrentHashMap<>();
+
+    /**
+     * One monitor per step, held across the whole buffer transaction (flush-open-buffer, append,
+     * footer flush). The class defends against two threads racing one step; copying a
+     * synchronizedList outside its monitor and the header/flush check-then-act were exactly the
+     * races that defence missed. Bounded by the plan's step count; the listener dies with the run.
+     */
+    private final ConcurrentMap<String, Object> stepMonitors = new ConcurrentHashMap<>();
+
+    private Object monitorFor(String step) {
+        return stepMonitors.computeIfAbsent(step, s -> new Object());
+    }
 
     public VerboseListener(PrintStream out, PrintStream err) {
         this.out = out;
@@ -72,35 +83,37 @@ public final class VerboseListener implements BuildPlanListener {
      */
     @Override
     public void output(String step, String line) {
-        // A second header with the first block's footer never delivered (worker killed mid-block)
-        // must flush the open buffer first, not append into it — otherwise both blocks sit
-        // until stepFinish and paint as one malformed unit.
-        if (outputBuf.get(step) != null && TestFailureHighlight.isHeader(line)) {
-            flushOutput(step);
-        }
-        List<String> buf;
-        if (TestFailureHighlight.isHeader(line)) {
-            // computeIfAbsent, not get/put: two threads racing the same step must not discard
-            // each other's buffer.
-            buf = outputBuf.computeIfAbsent(step, s -> Collections.synchronizedList(new ArrayList<>()));
-        } else {
-            buf = outputBuf.get(step);
-        }
-        if (buf != null) {
-            buf.add(line);
-            if (line != null && TestFailureHighlight.FOOTER_SENTINEL.equals(line.strip())) {
+        synchronized (monitorFor(step)) {
+            // A second header with the first block's footer never delivered (worker killed
+            // mid-block) must flush the open buffer first, not append into it — otherwise both
+            // blocks sit until stepFinish and paint as one malformed unit.
+            if (outputBuf.get(step) != null && TestFailureHighlight.isHeader(line)) {
                 flushOutput(step);
             }
-            return;
+            List<String> buf;
+            if (TestFailureHighlight.isHeader(line)) {
+                buf = outputBuf.computeIfAbsent(step, s -> new ArrayList<>());
+            } else {
+                buf = outputBuf.get(step);
+            }
+            if (buf != null) {
+                buf.add(line);
+                if (line != null && TestFailureHighlight.FOOTER_SENTINEL.equals(line.strip())) {
+                    flushOutput(step);
+                }
+                return;
+            }
+            out.println(StackTraceHighlight.line(line));
         }
-        out.println(StackTraceHighlight.line(line));
     }
 
     private void flushOutput(String step) {
-        List<String> buf = outputBuf.remove(step);
-        if (buf == null || buf.isEmpty()) return;
-        for (String painted : TestFailureHighlight.paintLines(List.copyOf(buf))) {
-            out.println(painted);
+        synchronized (monitorFor(step)) {
+            List<String> buf = outputBuf.remove(step);
+            if (buf == null || buf.isEmpty()) return;
+            for (String painted : TestFailureHighlight.paintLines(List.copyOf(buf))) {
+                out.println(painted);
+            }
         }
     }
 

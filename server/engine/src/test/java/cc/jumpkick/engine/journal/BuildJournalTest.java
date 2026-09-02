@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.ProjectBuilds;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -161,7 +162,7 @@ class BuildJournalTest {
 
     /**
      * A row left {@code running} by an engine that died is closed out as a failure the user cannot
-     * act on, NOT as a cancellation. Until JK-2417 it was stamped {@code cancelled=true} with exit
+     * act on, NOT as a cancellation. Until it was stamped {@code cancelled=true} with exit
      * 130 — {@code 128 + SIGINT} — so `jk history` reported a crashed machine as "the user pressed
      * Ctrl-C". 70 is {@code Exit.SOFTWARE}, spelled here as the literal a reader of the record sees.
      */
@@ -395,6 +396,91 @@ class BuildJournalTest {
         for (int i = 0; i < raw.size(); i++) {
             assertThat(raw.get(i)).contains(full.get(i).id());
         }
+    }
+
+    @Test
+    void an_epoch_zero_dir_mtime_cannot_push_the_newest_run_out_of_a_limited_cut(@TempDir Path tmp) throws Exception {
+        // Newest-N selection cuts by dir mtime BEFORE the finishedAt sort. mtimeOf used to map a
+        // stat failure to 0 — the very end of a newest-first list — so the newest run vanished.
+        // Epoch-0 is the observable stand-in for a failed stat: the fix over-includes either way.
+        BuildJournal j = new BuildJournal(tmp);
+        for (int i = 0; i < 4; i++) {
+            j.append(record(1_700_000_000_000L + i * 1000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        }
+        // Find the run dir holding the newest record and give it a pathological mtime.
+        List<Path> dirs;
+        try (var walk = Files.walk(tmp)) {
+            dirs = walk.filter(p -> p.getFileName().toString().equals("record.json"))
+                    .filter(p -> {
+                        try {
+                            return Files.readString(p).contains(String.valueOf(1_700_000_003_000L));
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    })
+                    .map(Path::getParent)
+                    .toList();
+        }
+        assertThat(dirs).hasSize(1);
+        Files.setLastModifiedTime(dirs.getFirst(), FileTime.fromMillis(0));
+
+        // The cut is limit < N: with the pathological stamp mapped to 0 the newest run sorted to
+        // the END of the mtime order and fell outside the window. Over-inclusion keeps it in.
+        var top = j.list(2).getFirst();
+        assertThat(top.finishedAt()).isEqualTo(1_700_000_003_000L);
+        assertThat(j.rawRecords(2)).anyMatch(r -> r.contains(String.valueOf(1_700_000_003_000L)));
+    }
+
+    @Test
+    void complete_stamps_the_run_dir_at_least_as_new_as_finishedAt(@TempDir Path tmp) throws Exception {
+        // The newest-N cut assumes dir mtime tracks finishedAt; today that holds by the side
+        // effect of complete() renaming files into the dir. Pin it, so a future finalize-path
+        // change cannot silently un-stamp it.
+        BuildJournal j = new BuildJournal(tmp);
+        long before = System.currentTimeMillis();
+        j.append(record(before, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        List<Path> dirs;
+        try (var walk = Files.walk(tmp)) {
+            dirs = walk.filter(p -> p.getFileName().toString().equals("record.json"))
+                    .map(Path::getParent)
+                    .toList();
+        }
+        assertThat(dirs).hasSize(1);
+        assertThat(Files.getLastModifiedTime(dirs.getFirst()).toMillis())
+                .as("a finalized run dir is stamped no older than its record")
+                .isGreaterThanOrEqualTo(before - 5_000);
+    }
+
+    @Test
+    void raw_records_never_run_a_full_parse_and_a_filter_counts_toward_the_limit() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        for (int i = 0; i < 4; i++) {
+            j.append(record(1_700_000_000_000L + i * 1000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        }
+        // Corrupt one record's DEEP structure while keeping the top-level shape: a full
+        // Json.read rejects it, a lexical raw pass serves it. That the row still arrives is the
+        // proof the verbatim path builds no record graph.
+        List<Path> records;
+        try (var walk = Files.walk(dir)) {
+            records = walk.filter(p -> p.getFileName().toString().equals("record.json"))
+                    .sorted()
+                    .toList();
+        }
+        assertThat(records).hasSize(4);
+        Path victim = records.getFirst();
+        String json = Files.readString(victim);
+        Files.writeString(victim, json.replaceFirst("\\{", "{\"deep\":[{\"broken\":}],"));
+        assertThat(j.rawRecords(9)).hasSize(4);
+
+        // The lexical filter counts toward the limit — no N-times over-read to be left with
+        // enough survivors.
+        List<String> filtered = j.rawRecords(2, r -> !r.contains("\"broken\":"));
+        assertThat(filtered).hasSize(2);
+        assertThat(filtered).allSatisfy(r -> assertThat(r).doesNotContain("\"broken\":"));
+
+        // A torn write (no closing brace) is skipped, not streamed into a JSON array.
+        Files.writeString(victim, json.substring(0, json.length() / 2));
+        assertThat(j.rawRecords(9)).hasSize(3);
     }
 
     @Test

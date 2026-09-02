@@ -21,7 +21,7 @@ tasks.named<Test>("test") {
     // WebClientJsTest shells out to `node --test`, reading the SPA modules and the .mjs suites from
     // the SOURCE tree at runtime — Gradle can't see that, so editing fold.js would otherwise leave
     // :web:test UP-TO-DATE and the suites silently never rerun. Whole directories, not a hand-listed
-    // file set: a list goes stale the moment someone adds a module or a suite (JK-2461).
+    // file set: a list goes stale the moment someone adds a module or a suite.
     inputs.dir("src/main/resources/web")
             .withPropertyName("spaModules")
             .withPathSensitivity(PathSensitivity.RELATIVE)
@@ -38,7 +38,7 @@ tasks.named<Test>("test") {
             .withPropertyName("sseVocabularySources")
             .withPathSensitivity(PathSensitivity.RELATIVE)
     // Node is a hard requirement — WebClientJsTest fails the build when it is missing, rather than
-    // skipping into a green (JK-2441). Opting out has to be deliberate:
+    // skipping into a green. Opting out has to be deliberate:
     //   JK_WEB_JS_SKIP=1 ./gradlew :web:test
     // Read through the provider API so the value comes from the invoking environment rather than a
     // long-lived daemon's stale copy of it. CI never sets it.

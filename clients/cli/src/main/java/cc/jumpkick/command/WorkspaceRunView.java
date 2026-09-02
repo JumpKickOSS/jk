@@ -151,6 +151,11 @@ final class WorkspaceRunView {
             public void onPreflight(String stage, int done, int totalUnits, String label) {
                 // Labels only — aggregate % arrives via onWorkspaceProgress (engine tracker).
                 agg.preflight(stage, done, totalUnits, label);
+                // …and durably, because the label carries the dirty-module count: the one fact that
+                // says how much work this build decided to do. It used to reach the bar and nowhere
+                // else, so `jk explain` disagreeing with `jk build` about the size of a build left
+                // no trace either side of the run.
+                mirror(JsonlShape.preflight(stage, done, totalUnits, label));
             }
 
             @Override
@@ -180,6 +185,11 @@ final class WorkspaceRunView {
                 // `jk explain`), so preflight/lock elapsed is not double-counted and the countdown
                 // finishes near 0 when the estimate holds.
                 view.setRemainingWorkEstimate(millis);
+                // CliSessionTranscript.noteEta existed with no caller, so the seeded estimate was
+                // never written down: the claim "the countdown is the same figure as jk explain"
+                // was unfalsifiable from a finished run. It is the number this whole estimate path
+                // exists to produce — it belongs in the transcript.
+                if (session != null) session.noteEta(millis);
             }
 
             @Override
@@ -414,6 +424,15 @@ final class WorkspaceRunView {
 
     private BuildPlanListener withMirror(BuildPlanListener lis) {
         return session == null ? lis : CompositeBuildPlanListener.of(lis, new SessionMirrorListener(session));
+    }
+
+    /**
+     * Write one event to the transcript whatever the output mode. {@link #event} only emits under
+     * {@code --output json}; a fact worth keeping for a later reader has to go here or it exists
+     * only for as long as the terminal shows it.
+     */
+    private void mirror(String line) {
+        if (session != null) session.appendRaw(JsonlShape.withProgress(line, null), false);
     }
 
     private void event(String line) {

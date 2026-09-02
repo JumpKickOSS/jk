@@ -105,7 +105,7 @@ public final class BuildService {
         return BuildForecasting.forecastDirtyDirs(graph, cache, skipTests, entryDir);
     }
 
-    /** Read-only estimate: consults the preflight memo but never writes one (JK-2205). */
+    /** Read-only estimate: consults the preflight memo but never writes one. */
     public static Set<Path> forecastDirtyDirsReadOnly(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         return BuildForecasting.forecastDirtyDirsReadOnly(graph, cache, skipTests, entryDir);
@@ -406,7 +406,7 @@ public final class BuildService {
         return forecastDirtyDirs(graph.graph(), cache, skipTests, entryDir);
     }
 
-    /** Read-only estimate over a front-end-held graph: never writes the memo (JK-2205). */
+    /** Read-only estimate over a front-end-held graph: never writes the memo. */
     public static Set<Path> forecastDirtyDirsReadOnly(
             ResolvedGraph graph, Path cache, boolean skipTests, Path entryDir) {
         return forecastDirtyDirsReadOnly(graph.graph(), cache, skipTests, entryDir);

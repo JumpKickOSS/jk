@@ -51,8 +51,8 @@ class TestEnvTest {
         assertThat(env.get("JK_JDKS_DIR")).isEqualTo(sandbox.resolve("jdks").toString());
         assertThat(env.get("JK_M2_LOCAL"))
                 .isEqualTo(tmp.resolve("target/test-m2").toAbsolutePath().toString());
-        // Never the real product data root.
-        assertThat(env.get("JK_HOME")).doesNotContain(System.getProperty("user.home") + "/.local/share/jk");
+        // Never the real product home.
+        assertThat(env.get("JK_HOME")).doesNotContain(System.getProperty("user.home") + "/.jk/store");
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
     }

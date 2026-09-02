@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * cc.jumpkick.model.command.Invocation} via {@link #from(cc.jumpkick.model.command.Invocation)}.
  *
  * <p>Precedence for resolving each setting: explicit flag &gt; env var &gt; project {@code jk.toml}
- * {@code [config]} &gt; user-global {@code ~/.config/jk/config.toml} {@code [config]}. There is no {@code
+ * {@code [config]} &gt; user-global {@code ~/.jk/config.toml} {@code [config]}. There is no {@code
  * /etc/jk} system layer and jk never reads {@code ~/.config} — see {@link
  * cc.jumpkick.config.ConfigSources}.
  */
@@ -247,7 +247,7 @@ public final class GlobalOptions {
         // The environment spellings fold in here, where this process really is the caller's shell.
         // JdkResolution walks SWITCH then JK_ENV with nothing between them, so "switch, else env"
         // resolves to exactly what the two-tier walk resolves to — and it means the engine needs one
-        // field, not two, to see the caller's choice at all (JK-1021).
+        // field, not two, to see the caller's choice at all.
         SessionContext.install(SessionContext.current()
                 .withToolchainSpecs(
                         firstNonBlank(g.jdk, System.getenv("JK_JDK")),
@@ -314,7 +314,7 @@ public final class GlobalOptions {
 
     /**
      * The caller's {@code GRAALVM_HOME} as a path, or null. A home rather than a spec, so it travels
-     * as its own field (JK-1039).
+     * as its own field.
      */
     private static @Nullable Path graalHomeFromEnv() {
         String raw = System.getenv("GRAALVM_HOME");

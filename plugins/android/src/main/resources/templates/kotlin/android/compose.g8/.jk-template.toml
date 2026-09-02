@@ -1,0 +1,5 @@
+language = "kotlin"
+framework = "android"
+name = "compose"
+description = "Android Jetpack Compose app"
+layouts = ["traditional"]

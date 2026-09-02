@@ -15,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
  * Taking the maintenance lock must not be a write.
  *
  * <p>{@code jk cache nuke} removes the cache root and deliberately leaves the engine running —
- * JK-1773 built the local fallback so a cache purge would never boot or bounce one. The lock
+ * built the local fallback so a cache purge would never boot or bounce one. The lock
  * helper then created the root back, unconditionally, because the cross-process {@code
  * .prune.lock} needs a directory to live in. Any later pass through here put the nuked directory
  * back, including passes that are not about the cache at all: {@code jk repo refresh} and {@code

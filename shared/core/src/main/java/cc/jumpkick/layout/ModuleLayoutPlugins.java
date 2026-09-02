@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Plugin-contributed source roots. Engine-only — pulls {@code JkBuildParser} (JK-2151). */
+/** Plugin-contributed source roots. Engine-only — pulls {@code JkBuildParser}. */
 public final class ModuleLayoutPlugins {
 
     private ModuleLayoutPlugins() {}

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -34,7 +35,7 @@ public final class McpScaffold {
         }
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("templates", rows);
-        m.put("builtinLayouts", List.of("traditional", "simple"));
+        m.put("builtinLayouts", List.of(Layout.TRADITIONAL.tomlValue(), Layout.SIMPLE.tomlValue()));
         m.put("builtinLangs", List.of("java", "kotlin", "groovy"));
         return m;
     }

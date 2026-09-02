@@ -110,9 +110,8 @@ class NativePlansTest {
 
     @Test
     void failure_exit_code_maps_native_main_misconfig_to_usage() {
-        // JK-2099: the workspace path dropped the old NativeVerb's Exit.USAGE mapping and
-        // left failureExitCode dead — jk native --main no.Such.Class exited 1 instead of 64.
-        var plan = BuildPlan.builder("native").build();
+        var plan =
+                BuildPlan.builder("native").stateKeys(BuildPlanner.TEST_RESULT).build();
         var usage = new BuildPlanResult(
                 "native",
                 false,
@@ -130,7 +129,6 @@ class NativePlansTest {
 
     @Test
     void failure_exit_code_maps_image_no_main_to_usage() {
-        // JK-2100: workspace jk image lost the single path's no-main USAGE exit.
         var plan = BuildPlan.builder("image").build();
         var noMain = new BuildPlanResult(
                 "image",

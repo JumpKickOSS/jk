@@ -12,7 +12,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Flattened view of the machine-scoped {@code ~/.config/jk/config.toml} (plus env) as key /
+ * Flattened view of the machine-scoped {@code ~/.jk/config.toml} (plus env) as key /
  * default / effective triples for the dashboard Configuration panel.
  *
  * <p>Every known scalar key is listed so the UI can show a full effective document — not only the

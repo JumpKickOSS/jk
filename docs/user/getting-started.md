@@ -13,7 +13,7 @@ jk --help
 jk manual                 # playbook for humans and coding agents
 ```
 
-The installer puts `jk` and `jkx` on your PATH under `~/.local/bin` (Windows:
+The installer puts `jk` and `jkx` on your PATH under `~/.jk/bin` (Windows:
 `%USERPROFILE%\.local\bin`). JumpKick **requires JDK 25+ to run** and will install one if
 needed. Project *language level* is a separate knob (`java = 25` by default) — see
 [Concepts](concepts.md).

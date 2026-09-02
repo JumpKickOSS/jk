@@ -21,9 +21,9 @@ class AppInstallConfigTest {
     }
 
     @Test
-    void path_honors_jk_config_dir(@TempDir Path tmp) {
-        JkDirs dirs = JkDirs.of(Map.of("JK_CONFIG_DIR", tmp.resolve("cfg").toString())::get, tmp.toString());
-        assertThat(AppInstallConfig.path(dirs, "myapp")).isEqualTo(tmp.resolve("cfg/myapp/config.toml"));
+    void path_follows_jk_home(@TempDir Path tmp) {
+        JkDirs dirs = JkDirs.of(Map.of("JK_HOME", tmp.resolve("cfg").toString())::get, tmp.toString());
+        assertThat(AppInstallConfig.path(dirs, "myapp")).isEqualTo(tmp.resolve("cfg/config/myapp/config.toml"));
     }
 
     @Test

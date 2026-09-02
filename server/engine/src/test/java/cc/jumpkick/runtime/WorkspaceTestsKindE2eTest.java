@@ -176,7 +176,7 @@ class WorkspaceTestsKindE2eTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        // Core + tails, like jk build: post-JK-2211 run-tests (and its compile-test) are on
+        // Core + tails, like jk build: post- run-tests (and its compile-test) are on
         // the terminal-join branch, not the packaging path — a core-only plan prunes them.
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
         PlannerTails.appendDeclaredTails(b, in);

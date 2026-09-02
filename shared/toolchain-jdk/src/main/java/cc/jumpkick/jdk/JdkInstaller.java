@@ -58,7 +58,7 @@ public final class JdkInstaller {
      *
      * <p>Every entry was made by {@code createTempFile} / {@code createTempDirectory} in this
      * process, so the path in hand <em>is</em> the ownership evidence — there is no shared-root
-     * question of the kind {@code JkOwnership} exists for (JK-2624). Weakly typed as paths rather
+     * question of the kind {@code JkOwnership} exists for. Weakly typed as paths rather
      * than a richer handle because the only thing the cancel path does with them is unlink.
      */
     private static final Set<Path> IN_FLIGHT = ConcurrentHashMap.newKeySet();
@@ -152,7 +152,7 @@ public final class JdkInstaller {
         // Deliberately does NOT drain JdkGarbage. Installing is not collecting, and this method is
         // on the automatic provisioning path: the queue is a file that outlives the process, so a
         // row left by an earlier update fired here during an ordinary build and deleted the JDK the
-        // build was running on (JK-2627). Draining belongs to the explicit `jk jdk` verb that
+        // build was running on. Draining belongs to the explicit `jk jdk` verb that
         // queued the row, where the user has been asked.
         InstalledJdk already = alreadyInstalled(entry);
         if (already != null) return already;

@@ -3,6 +3,7 @@ package cc.jumpkick.scaffold;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,7 +49,7 @@ class NewScaffolderSampleTest {
                 false,
                 true,
                 NewInputs.Language.JAVA,
-                "traditional",
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 List.of(),
                 true,
@@ -79,7 +80,7 @@ class NewScaffolderSampleTest {
                 false,
                 false,
                 NewInputs.Language.JAVA,
-                null,
+                Layout.TRADITIONAL,
                 Optional.empty(),
                 deps,
                 true,

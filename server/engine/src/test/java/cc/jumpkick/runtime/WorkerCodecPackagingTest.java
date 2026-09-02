@@ -69,7 +69,7 @@ class WorkerCodecPackagingTest {
     void worker_pom_inherits_what_a_vendored_sibling_needed_from_outside(@TempDir Path tmp) throws Exception {
         // The jar carries the sibling's CLASSES; the POM has to carry the sibling's own
         // third-party deps in its place. Without this, jk-auditor shipped jk-core's LockfileReader
-        // with nothing declaring tomlj and died on the first lockfile it read (JK-1066).
+        // with nothing declaring tomlj and died on the first lockfile it read.
         Path root = tmp.resolve("ws");
         writeWorkspace(root);
         Path worker = root.resolve("plugins/worker");

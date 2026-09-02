@@ -53,7 +53,7 @@ dependencies {
 //   ./gradlew benchTest         — @Tag(bench): microbench, asserts no deltas. On demand.
 //
 // The filters below are GENERATED from `TestTiers` (buildSrc/src/main/kotlin/TestTiers.kt), which
-// is the single owner of the tag→task routing. Two half-tables here is what JK-2447 removed: `test`
+// is the single owner of the tag→task routing. Two half-tables here is what one sweep removed: `test`
 // excluded four tags and `integrationTest` re-included two, so `@Tag("bench")` was run by no task
 // at all. Guard G23 re-derives the partition from the same object, so the tiers and the guard
 // cannot drift.
@@ -69,7 +69,7 @@ fun tier(name: String): TestTier = TestTiers.all.first { it.task == name }
 // ---------------------------------------------------------------------------
 // Test tasks that exec a tool this build does not produce, and the tool each one runs.
 //
-// One table rather than a copy per module, for the reason JK-2465 was filed: the hole is generic
+// One table rather than a copy per module, for the reason the hole exists at all: it is generic
 // (any test that shells out to a binary jk does not build) and it was fixed once, here. Adding
 // `protoc` or `bundletool` is a line in this map, not a new pattern in a module script. The map is
 // keyed `<project path>:<task name>` because the answer is per *tier*, not per module — only
@@ -106,11 +106,10 @@ fun treeExceeds(root: File, capBytes: Long): Boolean {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Isolate tests from the developer's real product layout. JK_HOME is a single-tree
-    // umbrella that mirrors the XDG shape: it relocates the five roots to
-    // $JK_HOME/{bin,cache,config,data,state}, so the store is $JK_HOME/data/store and the
-    // engine jar $JK_HOME/data/lib/jk-engine/. Managed JDKs default to the shared IntelliJ
-    // root and are *not* relocated by JK_HOME — set JK_JDKS_DIR for hermetic JDK isolation.
+    // Isolate tests from the developer's real product layout. JK_HOME relocates the whole tree
+    // — $JK_HOME/{bin,cache,config,creds,lib,state,store} — so the store is $JK_HOME/store and the
+    // engine jar $JK_HOME/lib/jk-engine/. Managed JDKs default to the shared IntelliJ root and are
+    // *not* relocated by JK_HOME — set JK_JDKS_DIR for hermetic JDK isolation.
     val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
     environment("JK_HOME", testJkHome)
     environment("JK_JDKS_DIR", "$testJkHome/jdks")
@@ -123,7 +122,7 @@ tasks.withType<Test>().configureEach {
     val testM2 = layout.buildDirectory.dir("test-m2").get().asFile.absolutePath
     environment("JK_M2_LOCAL", testM2)
     // The warm home is the feature — two suites deliberately prime the store for the rest — but
-    // nothing but `clean` ever removed it, and the CAS plus data/store accumulate every fixture
+    // nothing but `clean` ever removed it, and the CAS plus the store accumulate every fixture
     // blob ever fetched: measured at 744 MB under clients/cli and 1,013 MB under server/engine
     // before this bound existed. So the home is wiped when it turns a week old or outgrows 1 GiB,
     // and every suite already tolerates the resulting cold start (a fresh checkout is one). This
@@ -170,7 +169,7 @@ tasks.withType<Test>().configureEach {
     doFirst { testTmp.get().asFile.mkdirs() }
     systemProperty("java.io.tmpdir", testTmp.get().asFile.absolutePath)
     // ServiceLoader-registered JUnit extensions are OFF unless a tier says otherwise, and every
-    // tier is now told rather than left to inherit (JK-2447). JUnit's own default is false, so
+    // tier is now told rather than left to inherit. JUnit's own default is false, so
     // this changes no behaviour today — what it changes is that a NEW tier cannot pick up a
     // different answer by accident. Two modules register an extension this switch controls:
     //   * `:cli` — `EngineTestExtension` (materialize the jar, stop the engine after every class).
@@ -181,11 +180,11 @@ tasks.withType<Test>().configureEach {
     //     them. It used to be a `junit-platform.properties` on the test classpath, which is a
     //     second mechanism for the same policy and invisible to anyone reading the build.
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
-    // JK-1017: opt-in class shuffle, so order-dependence is FOUND rather than waited for.
+    // Opt-in class shuffle, so order-dependence is FOUND rather than waited for.
     //
     // Off by default and deliberately not in any gate: a gate that fails on an unlucky seed is a
-    // gate people learn to re-run, which is the opposite of the trust JK-1018 exists to build. Use
-    // it when hunting a suspected order-dependent failure — JK-1019 is the standing example.
+    // gate people learn to re-run, which is the opposite of the trust the tier report exists to build. Use
+    // it when hunting a suspected order-dependent failure.
     //
     //   ./gradlew :cli:integrationTest -Pjk.test.shuffle           # random seed, printed
     //   ./gradlew :cli:integrationTest -Pjk.test.shuffle=12345     # replay that seed
@@ -202,7 +201,7 @@ tasks.withType<Test>().configureEach {
                     + "  (replay with -Pjk.test.shuffle=$seed)")
         }
     }
-    // The external runtime this tier execs is an input (JK-2465); see `externalTestRuntimes`.
+    // The external runtime this tier execs is an input; see `externalTestRuntimes`.
     val declared = externalTestRuntimes["${project.path}:$name"].orEmpty()
     if (declared.isNotEmpty()) {
         val probeCache = rootProject.layout.buildDirectory.dir("external-tool-probe").get().asFile
@@ -251,7 +250,7 @@ slowTier(
         Duration.ofMinutes(45),
         "Integration tests (@Tag integration). Part of checkAll, not of check.")
 
-// @Tag("slow") is off the gate as of JK-1023. It was 426s of integrationTest's 1419s — 30% of the
+// @Tag("slow") is off the gate. It was 426s of integrationTest's 1419s — 30% of the
 // merge bar for 28 tests, 15s each — and what it asserts (does an Android / Grails / Scala / KSP /
 // Protobuf project still build end to end) moves when a plugin or a toolchain does, not when the
 // change under review does. Nightly is where a suite like that belongs; the tag already meant this
@@ -264,14 +263,14 @@ slowTier(
 // @Tag("network") used to be excluded by `test` and re-included by nothing, so the only class
 // carrying it reached the gate through its second tag (`slow`) — which meant the documented
 // pre-merge bar hit Maven Central, and Sonatype's per-IP quota decided whether a PR was green
-// (JK-1277). Its own task, off the gate, is the honest answer: the tag runs, and it runs nightly.
+//. Its own task, off the gate, is the honest answer: the tag runs, and it runs nightly.
 slowTier(
         TestTiers.NETWORK,
         Duration.ofMinutes(30),
         "Tests that talk to a real remote (@Tag network). Nightly only — never in checkAll.")
 
 // @Tag("bench") is off the gate for a different reason: a microbench prints medians and asserts
-// nothing about deltas, so gating on it would gate on CI noise. Before JK-2447 that intent was
+// nothing about deltas, so gating on it would gate on CI noise. That intent was once
 // spelled as an exclusion in both tasks, which is indistinguishable from an accident and left
 // ForkedJavacAotBenchTest run by nothing. Now it has a task, and the reason is written down.
 slowTier(
@@ -288,7 +287,7 @@ tasks.register("checkAll") {
 }
 
 // ---------------------------------------------------------------------------
-// Guard G1 (JK-2393, re-measured and widened by JK-2457): one owner for a JDK's launcher path.
+// Guard G1: one owner for a JDK's launcher path.
 //
 // `cc.jumpkick.jdk.JdkFingerprint.java(javaHome)` / `.javac(javaHome)` / `.tool(javaHome, name)`
 // are the only sanctioned way to name a JDK's `bin/java` — they append `.exe` on Windows.
@@ -300,12 +299,12 @@ tasks.register("checkAll") {
 //     `resolve("bin").resolve("java")`:                                   0 files, 0 sites
 //   * the shapes it bans as of this commit:                              17 files, 22 sites
 //     of which `Path.of(<home>, "bin", "java")` — no `.exe`, shipped broken on Windows:  4
-//   * after JK-2457's sweep:                                              0 files, 0 sites
+//   * after the sweep:                                                    0 files, 0 sites
 //
 // Read the first two numbers together. G1 was green for two months while 22 hand-rolled sites and
 // four live Windows bugs sat in the tree, because its ban list described a spelling nobody used.
 // A green guard is evidence about the guard, not about the tree — so every guard states the count
-// it was measured against, and this one is proved to fail before it is believed (JK-2457 re-added
+// it was measured against, and this one is proved to fail before it is believed (a later pass re-added
 // a `Path.of(System.getProperty("java.home"), "bin", "java")` and watched `check` go red).
 //
 // The ban list is DERIVED, not re-typed: the launcher names come from the owner's own
@@ -370,7 +369,7 @@ val checkNoHandBuiltJavaBinary by tasks.registering {
         if (hits.isNotEmpty()) {
             throw GradleException(
                     "A hand-built <javaHome>/bin/java drops the Windows `.exe` and the fork is dead"
-                            + " there (JK-2393, JK-2457). ${hits.size} site(s):\n"
+                            + " there. ${hits.size} site(s):\n"
                             + hits.joinToString("\n")
                             + "\n  Call cc.jumpkick.jdk.JdkFingerprint.java(javaHome),"
                             + " .javac(javaHome), or .tool(javaHome, name) for any other JDK"
@@ -386,7 +385,7 @@ tasks.named("check") { dependsOn(checkNoHandBuiltJavaBinary) }
 tasks.named("jar") { dependsOn(checkNoHandBuiltJavaBinary) }
 
 // ---------------------------------------------------------------------------
-// Guard G10 (JK-2411): the size caps are a ratchet, not a suggestion.
+// Guard G10: the size caps are a ratchet, not a suggestion.
 //
 // `code-as-art.md`'s size table had no mechanical check, and unenforced caps regrow: `EngineServer`
 // finished its peel at 1,064 lines and was back over 1,200 eleven days later; the `JkManager` triad
@@ -407,7 +406,7 @@ tasks.named("jar") { dependsOn(checkNoHandBuiltJavaBinary) }
 //
 // The count is code lines (CodeLines.count): comments, blanks, and package/import lines do not
 // count. A trailing comment on a statement still counts that line. String contents count. Scope
-// includes test sources (JK-2444): `src/main/java`, `src/main/kotlin`, `src/test/java`,
+// includes test sources: `src/main/java`, `src/main/kotlin`, `src/test/java`,
 // `src/test/kotlin`, `src/fixtures/java`, and `src/{main,test}/**/*.{js,mjs}`.
 // ---------------------------------------------------------------------------
 val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 1200)
@@ -415,7 +414,7 @@ val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 
 val checkFileSizeCaps by tasks.registering {
     group = "verification"
     description = "Fail the build when a file grows past size-baseline.txt or over its hard cap"
-    // Test sources are capped too, and by the same numbers (JK-2444). The caps in the charter are
+    // Test sources are capped too, and by the same numbers. The caps in the charter are
     // per LANGUAGE, and `.java` is `.java` — but this task used to scan `src/main` only, so a rule
     // stated for an extension was enforced for a directory. What that hole cost was measurable: the
     // single largest file in the tree was `JkBuildParserTest` at 2,334 lines, 2.9x the hard cap for
@@ -442,7 +441,7 @@ val checkFileSizeCaps by tasks.registering {
     val baseline = rootProject.layout.projectDirectory.file("size-baseline.txt")
     inputs.file(baseline).withPropertyName("sizeBaseline")
     // The caps are a house rule before they are a task, and the rule is written down in
-    // code-as-art.md. Both are read here so the doc and the guard cannot drift (JK-2473).
+    // code-as-art.md. Both are read here so the doc and the guard cannot drift.
     val charter = rootProject.layout.projectDirectory.file("docs/contributors/code-as-art.md")
     inputs.file(charter).withPropertyName("charter")
     val treeRoot = rootProject.layout.projectDirectory.asFile
@@ -477,7 +476,7 @@ val checkFileSizeCaps by tasks.registering {
         }
         // Same contract for the charter's own Contents list: a heading added without its entry, or
         // an entry whose heading is gone, fails here. Navigation is a fact about the file, so it is
-        // derived and checked rather than maintained by hand (JK-2473).
+        // derived and checked rather than maintained by hand.
         val charterLines = charter.asFile.readLines()
         val slug = { t: String ->
             t.replace("`", "").lowercase().filter { it.isLetterOrDigit() || it == ' ' || it == '-' }
@@ -497,7 +496,7 @@ val checkFileSizeCaps by tasks.registering {
         }
         if (tocDrift.isNotEmpty()) {
             throw GradleException("docs/contributors/code-as-art.md's Contents list and its headings"
-                    + " disagree (JK-2473):\n" + tocDrift.joinToString("\n"))
+                    + " disagree:\n" + tocDrift.joinToString("\n"))
         }
 
         val drift = mutableListOf<String>()
@@ -513,7 +512,7 @@ val checkFileSizeCaps by tasks.registering {
         }
         if (drift.isNotEmpty()) {
             throw GradleException("The size caps in docs/contributors/code-as-art.md and"
-                    + " `fileSizeHardCaps` disagree (JK-2473). A cap the charter states and the"
+                    + " `fileSizeHardCaps` disagree. A cap the charter states and the"
                     + " build does not enforce is worse than no cap:\n" + drift.joinToString("\n"))
         }
 
@@ -567,7 +566,7 @@ val checkFileSizeCaps by tasks.registering {
 
         val problems = mutableListOf<String>()
         if (grew.isNotEmpty()) {
-            problems.add("A file in size-baseline.txt may only shrink (JK-2411). These grew:\n"
+            problems.add("A file in size-baseline.txt may only shrink. These grew:\n"
                     + grew.joinToString("\n"))
         }
         if (overCap.isNotEmpty()) {
@@ -597,9 +596,9 @@ tasks.named("check") { dependsOn(checkFileSizeCaps) }
 tasks.named("jar") { dependsOn(checkFileSizeCaps) }
 
 // ---------------------------------------------------------------------------
-// Guard G11 (JK-2412): a fully-qualified class name in the body of a file is a ratchet, not a rule.
+// Guard G11: a fully-qualified class name in the body of a file is a ratchet, not a rule.
 //
-// `code-as-art.md`'s House rules say "no FQCN except collisions", and until JK-2408 that rule was
+// `code-as-art.md`'s House rules say "no FQCN except collisions", and that rule was once
 // delegated to a no-op: `jk format`'s `optimize-imports` pass built its OpenRewrite parser with no
 // classpath, so it resolved nothing and shortened nothing. Twelve module audits each filed the same
 // finding. The tree carried 4,306 package-qualified references across 622 files.
@@ -613,7 +612,7 @@ tasks.named("jar") { dependsOn(checkFileSizeCaps) }
 //      is right to exist and these files simply cannot be shortened by the formatter.
 //   2. The recipe rewrites a `J.FieldAccess` only when it resolves to a top-level class, so a
 //      static member (`ValueLayout.JAVA_INT`) or an annotation (`@NullMarked`) is never shortened.
-//   3. Dependency jars are deliberately off the format classpath (JK-2408 measured 4.6x cost and a
+//   3. Dependency jars are deliberately off the format classpath (measured at 4.6x cost and a
 //      worker SIGSEGV for 1.4% more shortenings), so a third-party type cannot be resolved.
 //
 // The guard therefore counts EVERY package-qualified reference, not only the kinds the recipe can
@@ -642,7 +641,7 @@ val fqcnPattern = Regex("""(?<![\w.$])(?:[a-z][a-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]
  * length and line structure, so a name inside a `{@link}` or a JSONL fixture is not counted. A name
  * in prose is documentation; only code is in scope.
  *
- * The FQCN guard blanks literals: `cc.jumpkick.Foo` inside a fixture string is data. The JK-2409
+ * The FQCN guard blanks literals: `cc.jumpkick.Foo` inside a fixture string is data. The original
  * guards keep them, because the thing they are hunting for (`"##JKT:"`, `"true"`, `"%02x"`) *is* a
  * literal — they need the javadoc that merely mentions it gone, and nothing more.
  */
@@ -723,7 +722,7 @@ val checkNoFqcn by tasks.registering {
 
         val problems = mutableListOf<String>()
         if (unlisted.isNotEmpty()) {
-            problems.add("A fully-qualified class name in a method body is banned (JK-2412) —"
+            problems.add("A fully-qualified class name in a method body is banned —"
                     + " import the type. These files are not in fqcn-baseline.txt:\n"
                     + unlisted.joinToString("\n")
                     + "\n  `jk format` shortens type references for you. A static member, an"
@@ -731,7 +730,7 @@ val checkNoFqcn by tasks.registering {
                     + " A genuine collision goes under `## collisions` with the name it collides with.")
         }
         if (grew.isNotEmpty()) {
-            problems.add("A file in fqcn-baseline.txt may only shrink (JK-2412). These grew:\n"
+            problems.add("A file in fqcn-baseline.txt may only shrink. These grew:\n"
                     + grew.joinToString("\n"))
         }
         if (unexplained.isNotEmpty()) {
@@ -755,14 +754,14 @@ tasks.named("jar") { dependsOn(checkNoFqcn) }
 
 // ---------------------------------------------------------------------------
 // Guard plumbing shared by G3 / G5 / G6 / G7 / G9 / G12 / G13 / G15
-// (JK-2409, JK-2413, JK-2414, JK-2416, JK-2418).
+//.
 //
-// Two habits inherited from G1 (JK-2393), both load-bearing:
+// Two habits inherited from G1, both load-bearing:
 //   * match against code only — a banned literal named in javadoc is documentation, not a defect;
 //   * squash whitespace first, so `jk format` wrapping a call across two lines cannot evade a
 //     pattern written on one. A guard a re-flow can defeat stops working without anyone noticing.
 //
-// The squash stops at a literal's opening quote (JK-2414). Squashing *through* one invents tokens
+// The squash stops at a literal's opening quote. Squashing *through* one invents tokens
 // that were never written: `PlannerNative:168` labels a run `" native-image "`, and a squash that
 // runs inside the quotes hands every downstream guard the step name `"native-image"` — a sentence
 // reported as a defect. Java cannot wrap a string literal anyway, so there is nothing in there for
@@ -849,12 +848,12 @@ fun ratchetVerdict(
 }
 
 // ---------------------------------------------------------------------------
-// Guard G3 (JK-2409, banned by JK-2421): one XML parser, one hardening posture.
+// Guard G3: one XML parser, one hardening posture.
 //
 // Defect it prevents: a new `DocumentBuilderFactory` that forgets an XXE flag and then parses
 // third-party XML — an AAR's `res/values/*.xml` from any Maven artifact, a git dependency's
 // `pom.xml` inside the resident engine. Round 3 found seven production sites at five hardening
-// levels, two of them with no XXE flags at all; JK-2381 hardened those two and JK-2421 swept all
+// levels, two of them with no XXE flags at all; those two were hardened first, then a sweep took all
 // eight sites (seven production, one test) onto `cc.jumpkick.host.DomXml`.
 //
 // Three arms:
@@ -863,7 +862,7 @@ fun ratchetVerdict(
 //      `TransformerFactory` is deliberately absent: `ResourceMerger` uses it to *write* a DOM out,
 //      which is not a parse.
 //   2. `DocumentBuilderFactory` is banned everywhere but the owner. This was a ratchet over seven
-//      files in JK-2409, because the owner did not exist yet to point a ban at; JK-2421 created it,
+//      files at first, because the owner did not exist yet to point a ban at; a later pass created it,
 //      so the allowlist is one entry long and it is the owner's own path, not a concession.
 //   3. Inside the owner, the six flags are required by name. Across files that check is worthless —
 //      a scan cannot tell which factory instance a `setFeature` call configures, which is the whole
@@ -872,7 +871,7 @@ fun ratchetVerdict(
 //
 // The owner is in `shared/host`, not `server/io` as the ticket first said. `:android` sees only
 // `:plugin-sdk` and `:toolchain-jdk` sees only `:core` + `:client-io`, so neither can reach
-// `server/io`; `:host` is the JDK-only floor all 30 modules already link (JK-2407), and JAXP is JDK.
+// `server/io`; `:host` is the JDK-only floor all 30 modules already link, and JAXP is JDK.
 //
 // Scope is `src/main/java` *and* `src/test/java`. A test parsing XML has the same posture to get
 // wrong, and the one that did — `PomExporterTest`, checking a POM it had just written — is one call
@@ -922,13 +921,13 @@ val checkSingleXmlParserOwner by tasks.registering {
 
         val problems = mutableListOf<String>()
         if (banned.isNotEmpty()) {
-            problems.add("jk parses XML in one place, with one hardening posture (JK-2409)."
+            problems.add("jk parses XML in one place, with one hardening posture."
                     + " These name a JAXP parser that has no owner and no XXE flags at all:\n"
                     + banned.joinToString("\n"))
         }
         if (parsers.isNotEmpty()) {
             problems.add("A second DocumentBuilderFactory is a second XXE posture to get wrong, and"
-                    + " the seven that existed sat at four different hardening levels (JK-2421):\n"
+                    + " the seven that existed sat at four different hardening levels:\n"
                     + parsers.joinToString("\n")
                     + "\n  Parse through cc.jumpkick.host.DomXml — parse(byte[] | String | Path |"
                     + " InputStream) to read, newDocument() to build one. It hands out documents,"
@@ -941,7 +940,7 @@ val checkSingleXmlParserOwner by tasks.registering {
         val missing = required.filterNot { ownerCode.contains(it) }
         if (missing.isNotEmpty()) {
             problems.add("cc.jumpkick.host.DomXml is the only parser jk builds, so its flags are the"
-                    + " only XXE posture jk has (JK-2421). These are gone:\n"
+                    + " only XXE posture jk has. These are gone:\n"
                     + missing.joinToString("\n") { "  $it" }
                     + "\n  Restore them in DomXml.hardened, or change this list in the same commit"
                     + " and say in the message what jk now accepts from a hostile document.")
@@ -956,7 +955,7 @@ tasks.named("check") { dependsOn(checkSingleXmlParserOwner) }
 tasks.named("jar") { dependsOn(checkSingleXmlParserOwner) }
 
 // ---------------------------------------------------------------------------
-// Guard G5 (JK-2409): a fork protocol's line prefix has exactly two ends.
+// Guard G5: a fork protocol's line prefix has exactly two ends.
 //
 // Defect it prevents: a third copy of `##JKT:` that drifts from the other two, or a rename that
 // updates the writer and not the reader. Every `##JK<X>:` marker is one end of a parent/child
@@ -1005,7 +1004,7 @@ val checkWireProtocolPrefixPairs by tasks.registering {
         val wrong = sites.toSortedMap().filter { (_, at) -> at.size != 2 || at.distinct().size != 2 }
         if (wrong.isNotEmpty()) {
             throw GradleException("A ##JK*: protocol prefix names exactly two ends — one writes it,"
-                    + " one reads it (JK-2409). These do not:\n"
+                    + " one reads it. These do not:\n"
                     + wrong.entries.joinToString("\n") { (p, at) ->
                         "  $p: ${at.size} site(s)\n" + at.joinToString("\n") { "      $it" }
                     }
@@ -1019,7 +1018,7 @@ tasks.named("check") { dependsOn(checkWireProtocolPrefixPairs) }
 tasks.named("jar") { dependsOn(checkWireProtocolPrefixPairs) }
 
 // ---------------------------------------------------------------------------
-// Guard G7 (JK-2409, swept and widened by JK-2419): one truth set, and it lives in
+// Guard G7: one truth set, and it lives in
 // `EnvValues.parseBool`.
 //
 // Defect it prevents: `JK_FOO=yes` working in one reader and not the next. `EnvValues.parseBool`
@@ -1099,7 +1098,7 @@ val checkSingleTruthSet by tasks.registering {
         val problems = mutableListOf<String>()
         if (unlisted.isNotEmpty()) {
             problems.add("jk has one boolean truth set and it is EnvValues.parseBool — 1/true/yes/on"
-                    + " against 0/false/no/off, trimmed, case-insensitive (JK-2409). These compare"
+                    + " against 0/false/no/off, trimmed, case-insensitive. These compare"
                     + " by hand and are not on the ratchet:\n"
                     + unlisted.joinToString("\n")
                     + "\n  Call cc.jumpkick.config.EnvValues.parseBool(raw) (or .bool(env, name)"
@@ -1108,7 +1107,7 @@ val checkSingleTruthSet by tasks.registering {
                     + " comparison that is not a boolean at all is an exemption, and says so here.")
         }
         if (grew.isNotEmpty()) {
-            problems.add("A file on the truth-set ratchet may only shrink (JK-2409). These grew:\n"
+            problems.add("A file on the truth-set ratchet may only shrink. These grew:\n"
                     + grew.joinToString("\n"))
         }
         if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
@@ -1124,7 +1123,7 @@ tasks.named("check") { dependsOn(checkSingleTruthSet) }
 tasks.named("jar") { dependsOn(checkSingleTruthSet) }
 
 // ---------------------------------------------------------------------------
-// Guard G6 (JK-2416): one MessageDigest lookup in the tree, and it is `Hashing`'s.
+// Guard G6: one MessageDigest lookup in the tree, and it is `Hashing`'s.
 //
 // Defect it prevents: a second answer to "what does jk hash with". Fifteen production files called
 // `MessageDigest.getInstance` directly and each one re-decided the surrounding questions — three
@@ -1155,8 +1154,8 @@ tasks.named("jar") { dependsOn(checkSingleTruthSet) }
 // field *value* jk writes into a document, not an algorithm it looks up.
 //
 // A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
-// measured, not assumed — since JK-2407 `Hashing` lives in `:host`, which `:plugin-sdk` re-exports
-// with `api`, so all 15 plugin workers see it; JK-2416 added `:host` to `:jk-api`, the last module
+// measured, not assumed — `Hashing` lives in `:host`, which `:plugin-sdk` re-exports
+// with `api`, so all 15 plugin workers see it; `:host` was later added to `:jk-api`, the last module
 // that could not reach it.
 //
 // Scope is `src/main/java`. A test that recomputes an expected digest by hand is checking jk's
@@ -1203,7 +1202,7 @@ val checkOneDigestSurface by tasks.registering {
             throw GradleException("jk hashes in one place, cc.jumpkick.host.Hashing — a second digest"
                     + " site re-decides the buffer size, the exception policy and the hex spelling,"
                     + " and one of them silently substituted String.hashCode() for a cache key"
-                    + " (JK-2416):\n"
+                    + ":\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Hashing.sha256Hex(bytes | String | Path) or Hashing.newSha256() for jk's own"
                     + " hashing. Hashing.newDigest/fileHex/hashHex take an algorithm name only when a"
@@ -1217,7 +1216,7 @@ tasks.named("check") { dependsOn(checkOneDigestSurface) }
 tasks.named("jar") { dependsOn(checkOneDigestSurface) }
 
 // ---------------------------------------------------------------------------
-// Guard G9 (JK-2409, banned by JK-2416, widened by JK-2487): bytes become hex in one place,
+// Guard G9: bytes become hex in one place,
 // `Hashing.hex`.
 //
 // Defect it prevents: a second answer to "how does jk spell bytes". Two shapes, and the second one
@@ -1229,19 +1228,19 @@ tasks.named("jar") { dependsOn(checkOneDigestSurface) }
 //      `& 0xff` mask that its neighbour remembered. Both are one call to `Hashing.hex`.
 //   2. `java.util.HexFormat` ANYWHERE BUT THE OWNER. `HexFormat.of().formatHex(digest)` is not a
 //      loop, allocates no `Formatter`, and is a perfectly reasonable line of Java — which is
-//      exactly why it was written SIXTEEN times before JK-2416 swept it. It is still a second
+//      exactly why it was written SIXTEEN times before a sweep took it. It is still a second
 //      spelling of the owner's one answer, and the sweep left nothing stopping the seventeenth.
 //      `parseHex` is banned by the same arm: decode has no in-tree caller today, so there is no
 //      door to point at, and adding `Hashing.unhex(String)` is the change the next caller makes
 //      rather than dead API added on speculation.
 //
 // MEASURED COUNTS, so a future reader can tell a green result from a blind one (a green guard is
-// evidence about the guard, not about the tree). At JK-2487, against `src/main/java` tree-wide:
+// evidence about the guard, not about the tree). Last measured against `src/main/java` tree-wide:
 // arm 1 = 0 (`%02x`/`%02X`: 0 files; `Character.forDigit`: 1 file, `SigV4Signer`, exempt by shape);
 // arm 2 = 0 (`HexFormat` appears in exactly 1 production file, `Hashing.java`, the owner). Arm 2's
 // count was zero BY HISTORY, not by construction — that is the condition this ban converts.
 //
-// Arm 1 was the whole guard when it reported zero in JK-2409, and it covered under a third of the
+// Arm 1 was the whole guard when it first reported zero, and it covered under a third of the
 // problem: `HexFormat.of()` is invisible to a hex-loop regex. Widening the existing guard rather
 // than allocating a letter is deliberate — same rule, same owner, same error message; a second
 // guard would be a second thing to keep in sync.
@@ -1251,7 +1250,7 @@ tasks.named("jar") { dependsOn(checkOneDigestSurface) }
 // deliberately does not produce — it is a different function that happens to spell bytes in base
 // 16. The pattern therefore skips `Character.forDigit` wrapped in `Character.toUpperCase`, which is
 // the shape that says "uppercase on purpose" at the call site. An allowlist entry would have said
-// the same thing about one path, and stopped being true the moment the file moved (JK-2414's
+// the same thing about one path, and stopped being true the moment the file moved (the earlier
 // precedent).
 //
 // `%02X` stays banned even though it is also uppercase: the Formatter-per-byte allocation is a
@@ -1315,13 +1314,13 @@ val checkNoHandRolledHex by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("Bytes become hex in one place, cc.jumpkick.host.Hashing.hex"
-                    + " (JK-2409, JK-2416, JK-2487). These spell it themselves:\n"
+                    + ". These spell it themselves:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Call Hashing.hex(byte[]) — or sha256Hex, which does the digest too."
                     + " String.format(\"%02x\", b) allocates a Formatter per byte."
                     + "\n  HexFormat.of().formatHex(digest) looks fine and is not slow; it is banned"
                     + " because it is a SECOND ANSWER to \"how does jk spell bytes\", and sixteen"
-                    + " call sites had each answered it separately before JK-2416 swept them."
+                    + " call sites had each answered it separately before the sweep."
                     + " Hashing.hex is the door, and its lowercase-always contract is the point."
                     + "\n  Going the other way (HexFormat.of().parseHex) has no owner yet: add"
                     + " Hashing.unhex(String) next to hex(byte[]) and call that, rather than"
@@ -1337,7 +1336,7 @@ tasks.named("check") { dependsOn(checkNoHandRolledHex) }
 tasks.named("jar") { dependsOn(checkNoHandRolledHex) }
 
 // ---------------------------------------------------------------------------
-// Guard G12 (JK-2414): a step is named once, in `TaskNames`.
+// Guard G12: a step is named once, in `TaskNames`.
 //
 // Defect it prevents: the silent missing-dependency edge. A step name is a producer/consumer
 // contract — `Step.builder("compile-java")` on one side, `.requires("compile-java")` on the other —
@@ -1361,15 +1360,15 @@ tasks.named("jar") { dependsOn(checkNoHandRolledHex) }
 // other's constant, so both files are guard inputs and both are skipped; the literal is banned
 // everywhere else, in either meaning.
 //
-// This replaces JK-2414's shape exemption, which blanked "a bare literal sitting directly beside
+// This replaces an earlier shape exemption, which blanked "a bare literal sitting directly beside
 // its own `.cmd`/`.exe` sibling" before scanning. That exemption was sound but it was hiding
 // something: it blanked three sites in two files, and there were FOUR encodings of the launcher
 // path in the tree. The fourth, `TrainRunner`, spelled the name path-joined as `"bin/native-image"`
 // and so was never a candidate for the exemption or for this guard — it evaded G12 entirely while
-// the guard reported green. JK-2484 folded all four into one owner; with one owner there is one
+// the guard reported green. All four were folded into one owner; with one owner there is one
 // site, an owner skip covers it, and the shape exemption is gone rather than dormant.
 //
-// Measured at the fold (JK-2484): 0 violations. Before it, the same scan without the exemption saw
+// Measured at the fold: 0 violations. Before it, the same scan without the exemption saw
 // 3 (`NativePreflight:90`, `NativeImageDriver:320`, `:379`) — all filename spellings, none a step.
 //
 // A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
@@ -1427,7 +1426,7 @@ val checkNoBareTaskName by tasks.registering {
         if (hits.isNotEmpty()) {
             throw GradleException("A step name typed as a literal is a producer/consumer contract"
                     + " with no compiler behind it — a typo becomes a missing dependency edge, not"
-                    + " a build error (JK-2414). These name a step by hand:\n"
+                    + " a build error. These name a step by hand:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Reference cc.jumpkick.run.TaskNames instead; it is on every production"
                     + " module's classpath. A string that is NOT a step name — GraalVM's"
@@ -1442,7 +1441,7 @@ tasks.named("check") { dependsOn(checkNoBareTaskName) }
 tasks.named("jar") { dependsOn(checkNoBareTaskName) }
 
 // ---------------------------------------------------------------------------
-// Guard G13 (JK-2413): jk's own file names are spelled once, in `ManifestPaths`.
+// Guard G13: jk's own file names are spelled once, in `ManifestPaths`.
 //
 // Defect it prevents: the rename that half-lands. `jk.toml` had no owner at all — 214 production
 // sites typed it, four of them inside `shared/core/layout`, the package that should have owned it —
@@ -1505,7 +1504,7 @@ val checkNoBareManifestName by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("A file jk owns is named once, in cc.jumpkick.lock.ManifestPaths"
-                    + " (JK-2413). These re-type the name:\n"
+                    + ". These re-type the name:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Reference the constant. A file that is NOT jk's — a third-party tool's"
                     + " own config.toml, say — must not borrow it either: give that vocabulary its"
@@ -1518,11 +1517,11 @@ tasks.named("check") { dependsOn(checkNoBareManifestName) }
 tasks.named("jar") { dependsOn(checkNoBareManifestName) }
 
 // ---------------------------------------------------------------------------
-// Guard G2 (JK-2417): a hard process exit names its code, in `Exit`.
+// Guard G2: a hard process exit names its code, in `Exit`.
 //
 // Defect it prevents: an exit status that means several things at once. `System.exit(n)` and
 // `Runtime.getRuntime().halt(n)` are the only two calls whose integer a user's shell actually
-// sees, and until JK-2417 the integer `2` reached that shell meaning eight different things — a
+// sees, and the integer `2` once reached that shell meaning eight different things — a
 // malformed `jk.toml`, a wrong command line, a missing plugin spec, an unexpected `Throwable`, an
 // unreachable engine, a wedged AOT trainer, and, from `GlobalCancel`, that the user had pressed
 // Ctrl-C. `130` meant three. No script could branch on `$?`, and no user could tell a cancelled
@@ -1550,7 +1549,7 @@ tasks.named("jar") { dependsOn(checkNoBareManifestName) }
 // keeps holding for the next generated snippet nobody thought to allow.
 //
 // Reachability was measured, not assumed: the four modules with an exit site today are `:cli`,
-// `:engine`, `:plugin-sdk` and `:quarkus`, and since JK-2407 `Exit` lives in `:host`, which
+// `:engine`, `:plugin-sdk` and `:quarkus`, and `Exit` lives in `:host`, which
 // `:plugin-sdk` re-exports with `api` — so all 15 plugins can see it. `Exit`'s values are
 // `static final int` and inline at compile time, so even the `compileOnly` worker jars need
 // nothing extra on their runtime classpath.
@@ -1596,7 +1595,7 @@ val checkNoBareExitCode by tasks.registering {
         if (hits.isNotEmpty()) {
             throw GradleException("A hard process exit is the one integer a user's script sees, and a"
                     + " bare one is a meaning nobody wrote down — jk shipped an exit `2` that meant"
-                    + " eight things at once, including Ctrl-C (JK-2417). Name the code:\n"
+                    + " eight things at once, including Ctrl-C. Name the code:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  cc.jumpkick.model.command.Exit is in :host, which every module already"
                     + " reaches. If no existing constant fits, add one there with a javadoc line"
@@ -1609,7 +1608,7 @@ tasks.named("check") { dependsOn(checkNoBareExitCode) }
 tasks.named("jar") { dependsOn(checkNoBareExitCode) }
 
 // ---------------------------------------------------------------------------
-// Guard G8 (JK-2415): one archive instant, and one class that stamps an entry with it.
+// Guard G8: one archive instant, and one class that stamps an entry with it.
 //
 // Defect it prevents: an archive whose bytes are a function of the machine that built it. A ZIP
 // entry's timestamp is DOS time, and `ZipEntry.setTime` converts to it through the JVM's default
@@ -1679,7 +1678,7 @@ val checkSingleArchiveInstant by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("An archive entry is stamped in one place,"
-                    + " cc.jumpkick.host.DeterministicZip (JK-2415). These stamp their own:\n"
+                    + " cc.jumpkick.host.DeterministicZip. These stamp their own:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  setTime converts to DOS time through the default timezone, so an archive"
                     + " written with it is a function of the build host's \$TZ, and a second copy of"
@@ -1693,7 +1692,7 @@ tasks.named("check") { dependsOn(checkSingleArchiveInstant) }
 tasks.named("jar") { dependsOn(checkSingleArchiveInstant) }
 
 // ---------------------------------------------------------------------------
-// Guard G15 (JK-2418): a cache tier's directory is named once, in `CacheTree`.
+// Guard G15: a cache tier's directory is named once, in `CacheTree`.
 //
 // Defect it prevents: the rename that half-lands across a process boundary. A tier under the cache
 // root is written by one process and reclaimed, measured and wiped by others — `base-jre` by the
@@ -1772,7 +1771,7 @@ val checkNoBareTierName by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("A cache tier is named once, in cc.jumpkick.host.CacheTree"
-                    + " (JK-2418). These re-type the name:\n"
+                    + ". These re-type the name:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Use CacheTree.<TIER>.under(cacheRoot); it is on every production module's"
                     + " classpath. A directory that is NOT a cache tier — a module's own"
@@ -1786,7 +1785,7 @@ tasks.named("check") { dependsOn(checkNoBareTierName) }
 tasks.named("jar") { dependsOn(checkNoBareTierName) }
 
 // ---------------------------------------------------------------------------
-// Guard G20 (JK-2420): the host is read in one place, and paths join in one place.
+// Guard G20: the host is read in one place, and paths join in one place.
 //
 // Defect it prevents: a predicate that is nearly right. `isWindows` had an owner and fourteen
 // private copies, and the copies tested `os.name.contains("win")` where the owner tested
@@ -1803,7 +1802,7 @@ tasks.named("jar") { dependsOn(checkNoBareTierName) }
 //
 //   1. `os.name` — a PURE BAN outside `cc.jumpkick.host.Os`, with no allowlist. This arm is on the
 //      **property read**, not on the predicate derived from it, and that is the whole point.
-//      JK-2416's G9 reported zero while missing 16 of 19 hand-rolled hex sites, because it matched
+//      An earlier G9 reported zero while missing 16 of 19 hand-rolled hex sites, because it matched
 //      one derivation shape (`String.format("%02x")`) and could not see `HexFormat.of()`. The
 //      derivations here are worse: `contains("win")`, `startsWith("Windows")`, `contains("mac")
 //      || contains("darwin")`, and — in eight files — a `String os = ...` local read three
@@ -1923,7 +1922,7 @@ val checkSingleHostSurface by tasks.registering {
 
         val problems = mutableListOf<String>()
         if (unownedOsReads.isNotEmpty()) {
-            problems.add("The host is read in one place, cc.jumpkick.host.Os (JK-2420). These read"
+            problems.add("The host is read in one place, cc.jumpkick.host.Os. These read"
                     + " the property themselves:\n"
                     + unownedOsReads.sorted().joinToString("\n")
                     + "\n  Ask Os.isWindows() / isDarwin() / isLinux(), or Os.name() when you need"
@@ -1934,7 +1933,7 @@ val checkSingleHostSurface by tasks.registering {
         }
         if (unlisted.isNotEmpty()) {
             problems.add("The separator has two owners, one per vocabulary: cc.jumpkick.host.Classpaths"
-                    + " for -cp, cc.jumpkick.host.SearchPath for PATH (JK-2420). These name it"
+                    + " for -cp, cc.jumpkick.host.SearchPath for PATH. These name it"
                     + " themselves and are not on the ratchet:\n"
                     + unlisted.joinToString("\n")
                     + "\n  Call Classpaths.join(entries) / Classpaths.split(cp) for a classpath, or"
@@ -1942,7 +1941,7 @@ val checkSingleHostSurface by tasks.registering {
                     + " executable search path — the two disagree about blank entries on purpose.")
         }
         if (grew.isNotEmpty()) {
-            problems.add("A file on the path-separator ratchet may only shrink (JK-2420). These grew:\n"
+            problems.add("A file on the path-separator ratchet may only shrink. These grew:\n"
                     + grew.joinToString("\n"))
         }
         if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
@@ -1958,7 +1957,7 @@ tasks.named("check") { dependsOn(checkSingleHostSurface) }
 tasks.named("jar") { dependsOn(checkSingleHostSurface) }
 
 // ---------------------------------------------------------------------------
-// Guard G38 (JK-1021): a toolchain env var is read from the request, not from the daemon.
+// Guard G38: a toolchain env var is read from the request, not from the daemon.
 //
 // Defect it prevents: `JK_JDK=temurin-21 jk build` silently ignored. The engine is resident, so a
 // `System.getenv("JK_JDK")` inside it answers from whichever shell started the daemon — possibly
@@ -2042,7 +2041,7 @@ tasks.named("check") { dependsOn(checkToolchainEnvFromRequest) }
 tasks.named("jar") { dependsOn(checkToolchainEnvFromRequest) }
 
 // ---------------------------------------------------------------------------
-// Guard G43 (JK-1029): an archive's byte sink comes from DeterministicZip.
+// Guard G43: an archive's byte sink comes from DeterministicZip.
 //
 // Defect it prevents: a 512-byte write buffer on every jar jk produces. ZipOutputStream inherits
 // DeflaterOutputStream's 512-byte buffer, so a 9 MB jar became ~18,000 write(2) calls where 64 KB
@@ -2120,7 +2119,7 @@ tasks.named("check") { dependsOn(checkArchiveStreamOwner) }
 tasks.named("jar") { dependsOn(checkArchiveStreamOwner) }
 
 // ---------------------------------------------------------------------------
-// Guard G39 (JK-1030): cheapest rejection first in a walk's filter chain.
+// Guard G39: cheapest rejection first in a walk's filter chain.
 //
 // Defect it prevents: paying a stat for every entry a free string test was about to discard. The
 // walk already read each entry's attributes, and `Files::isRegularFile` re-resolves the path from
@@ -2133,7 +2132,7 @@ tasks.named("jar") { dependsOn(checkArchiveStreamOwner) }
 // JarPackager, AssemblyPackager, ClasspathFingerprint -- and obeyed by exactly one plugin of
 // fifteen. That is why it needs a guard and not a fifth comment.
 //
-// Measured against 24 violating sites when it landed; zero after JK-1030.
+// Measured against 24 violating sites when it landed; zero after the reorder pass.
 // ---------------------------------------------------------------------------
 val checkCheapestRejectionFirst by tasks.registering {
     group = "verification"
@@ -2181,7 +2180,7 @@ tasks.named("check") { dependsOn(checkCheapestRejectionFirst) }
 tasks.named("jar") { dependsOn(checkCheapestRejectionFirst) }
 
 // ---------------------------------------------------------------------------
-// Guard G40 (JK-1030): executability is asked through PathUtil.isRunnable.
+// Guard G40: executability is asked through PathUtil.isRunnable.
 //
 // Defect it prevents: the single most expensive filesystem predicate jk uses. Files.isExecutable
 // measures 33.4 us on Windows against 0.52 on Linux -- 64x -- because the JDK implements EXECUTE
@@ -2243,7 +2242,7 @@ tasks.named("check") { dependsOn(checkRunnableOwner) }
 tasks.named("jar") { dependsOn(checkRunnableOwner) }
 
 // ---------------------------------------------------------------------------
-// Guard G42 (JK-1032): a tree copy goes through PathUtil.copyTree.
+// Guard G42: a tree copy goes through PathUtil.copyTree.
 //
 // Mirrors G37, which did this for deletes, and for the same reason: twelve callers hand-rolled a
 // tree copy and all twelve shared the same three defects — createDirectories per *file* instead of
@@ -2318,14 +2317,14 @@ tasks.named("check") { dependsOn(checkTreeCopyOwner) }
 tasks.named("jar") { dependsOn(checkTreeCopyOwner) }
 
 // ---------------------------------------------------------------------------
-// Guard G45 (JK-1031): blind tree walks only shrink.
+// Guard G45: blind tree walks only shrink.
 //
 // The tree asked 1,194 metadata predicates (exists / isRegularFile / isDirectory) against 17
 // readAttributes -- seventy narrow questions for every time it asked once for the whole answer --
 // and had 5 attribute-carrying walks against 233 blind ones. On Windows a raw walk is *cheaper*
 // than on Linux, because FindNextFileW returns each entry's attributes with the entry; the cost is
 // discarding them and re-resolving the path to ask again, at 10.3 us against 1.0 on ext4.
-// JK-1002 named `walk(...).filter(Files::isRegularFile)`, fixed it in seven hot walkers, and it had
+// An earlier pass named `walk(...).filter(Files::isRegularFile)`, fixed it in seven hot walkers, and it had
 // regrown to 72 sites -- because the fix was a call-site edit and never became an owner.
 //
 // A ratchet, not a ban, and deliberately so. Two hundred and twenty sites remain and each needs its
@@ -2393,7 +2392,7 @@ tasks.named("check") { dependsOn(checkBlindWalkRatchet) }
 tasks.named("jar") { dependsOn(checkBlindWalkRatchet) }
 
 // ---------------------------------------------------------------------------
-// Guard G16 (JK-2419): Maven Central is addressed one way, and it is `RepositorySpec`'s.
+// Guard G16: Maven Central is addressed one way, and it is `RepositorySpec`'s.
 //
 // Defect it prevents: traffic to Central that the rate-limit machinery cannot see. `repo1.maven.org`
 // is a CNAME for `repo.maven.apache.org`, so it fetches the same bytes — but `CentralMirror` and
@@ -2523,7 +2522,7 @@ val checkSingleCentralAddress by tasks.registering {
             val details = nameDetails.filterKeys { it in offending }.values.flatten()
             problems.add("Maven Central is addressed once, through"
                     + " cc.jumpkick.model.RepositorySpec.MAVEN_CENTRAL, and a repository name is"
-                    + " spelled once, in RepositorySpec (JK-2419). These spell it themselves:\n"
+                    + " spelled once, in RepositorySpec. These spell it themselves:\n"
                     + (aliasHits + details).sorted().joinToString("\n")
                     + "\n  " + alias + " is a CNAME for the canonical host, so CentralMirror and"
                     + " HostCooldown match neither it nor the traffic sent to it — and reaching"
@@ -2535,7 +2534,7 @@ val checkSingleCentralAddress by tasks.registering {
                     + " with a reason.")
         }
         if (grew.isNotEmpty()) {
-            problems.add("A file on the repo-name ratchet may only shrink (JK-2419). These grew:\n"
+            problems.add("A file on the repo-name ratchet may only shrink. These grew:\n"
                     + grew.joinToString("\n"))
         }
         if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
@@ -2551,7 +2550,7 @@ tasks.named("check") { dependsOn(checkSingleCentralAddress) }
 tasks.named("jar") { dependsOn(checkSingleCentralAddress) }
 
 // ---------------------------------------------------------------------------
-// Guard G17 (JK-2419): a wire message type is named once, in `EngineProtocol`.
+// Guard G17: a wire message type is named once, in `EngineProtocol`.
 //
 // Defect it prevents: the silent unhandled message. A JSONL `"type"` discriminator is a
 // producer/consumer contract with no compiler behind it — the engine writes `task-finish`, the CLI
@@ -2630,7 +2629,7 @@ val checkNoBareWireType by tasks.registering {
         if (hits.isNotEmpty()) {
             throw GradleException("A wire message type typed as a literal is a producer/consumer"
                     + " contract with no compiler behind it — a typo becomes an event nobody"
-                    + " handles, not a build error (JK-2419). These name one by hand:\n"
+                    + " handles, not a build error. These name one by hand:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Reference cc.jumpkick.engine.protocol.EngineProtocol instead. A string"
                     + " that is NOT a socket-protocol type — a dashboard-only SSE frame, a CLI"
@@ -2644,7 +2643,7 @@ tasks.named("check") { dependsOn(checkNoBareWireType) }
 tasks.named("jar") { dependsOn(checkNoBareWireType) }
 
 // ---------------------------------------------------------------------------
-// Guard G18 (JK-2419): jk's build output directory is named once, in `BuildLayout.TARGET`.
+// Guard G18: jk's build output directory is named once, in `BuildLayout.TARGET`.
 //
 // Defect it prevents: a scanner and a builder disagreeing about where output lives. `target/` is
 // not only where jk writes — it is what nine separate "skip this directory" tests compare against
@@ -2717,7 +2716,7 @@ val checkNoBareTargetDir by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("jk's build output directory is named once, in"
-                    + " cc.jumpkick.layout.BuildLayout.TARGET (JK-2419). These re-type it:\n"
+                    + " cc.jumpkick.layout.BuildLayout.TARGET. These re-type it:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Reference the constant — or better, BuildLayout.moduleTargetDir(ws, mod),"
                     + " which also knows about the workspace central out tree. A `target` that is"
@@ -2731,7 +2730,7 @@ tasks.named("check") { dependsOn(checkNoBareTargetDir) }
 tasks.named("jar") { dependsOn(checkNoBareTargetDir) }
 
 // ---------------------------------------------------------------------------
-// The tree-local Maven repository (JK-2466).
+// The tree-local Maven repository.
 //
 // Every module that publishes gains one extra repository, `build/local-maven-repo` at the repo
 // root, shared by all of them. It is a real Maven layout on disk written by the real publication,
@@ -2743,7 +2742,7 @@ tasks.named("jar") { dependsOn(checkNoBareTargetDir) }
 val treeLocalRepoName = "treeLocal"
 
 // ---------------------------------------------------------------------------
-// Guard G19 (JK-2466): a published POM may not name a coordinate this build does not publish.
+// Guard G19: a published POM may not name a coordinate this build does not publish.
 //
 // Defect it prevents: the artifact that cannot be resolved at all. `cc.jumpkick:jk-plugin-sdk` —
 // the one library a third-party plugin author compiles against — shipped a POM whose only
@@ -2768,7 +2767,7 @@ val treeLocalRepoName = "treeLocal"
 // also ran `maven-publish`, and Gradle rendered their project dependencies on `:core` / `:io` /
 // `:toolchain` / `:dynamic-surface` as `jk:core:unspecified` and friends. Those publications were a
 // second POM producer for a GAV whose real POM is written by `writeWorkerPom`, and nothing read
-// them; JK-2497 deleted them rather than allowlisting their output forever, so the allowlist went
+// them; they were deleted rather than allowlisted forever, so the allowlist went
 // 9 → 0. Measured 2026-08-24: two publications in the tree (`cc.jumpkick:jk-host`,
 // `cc.jumpkick:jk-plugin-sdk`), two generated POMs scanned, zero exceptions. A module that
 // reintroduces `maven-publish` gets the same ban — give the target a group, a version and a
@@ -2824,7 +2823,7 @@ pluginManager.withPlugin("maven-publish") {
             val poms = generatedPoms.files.sorted()
             if (poms.isEmpty()) {
                 throw GradleException("$here applies maven-publish but generated no POM, so the"
-                        + " published-coordinate guard verified nothing (JK-2466). A guard a dead"
+                        + " published-coordinate guard verified nothing. A guard a dead"
                         + " call satisfies is worse than no guard: fix the wiring or drop the"
                         + " plugin.")
             }
@@ -2860,7 +2859,7 @@ pluginManager.withPlugin("maven-publish") {
             if (hits.isNotEmpty()) {
                 throw GradleException("A published POM that names a coordinate no repository can"
                         + " serve makes the artifact unresolvable before a consumer compiles a line"
-                        + " (JK-2466):\n"
+                        + ":\n"
                         + hits.sorted().joinToString("\n")
                         + "\n  Give the target module a group, a version and a publication, or stop"
                         + " depending on it from a published module. Pinning a groupId and a"
@@ -2878,7 +2877,7 @@ pluginManager.withPlugin("maven-publish") {
 }
 
 // ---------------------------------------------------------------------------
-// Guard G21 (JK-2422): JSON is escaped in one place and parsed in one place.
+// Guard G21: JSON is escaped in one place and parsed in one place.
 //
 // Defect it prevents: the codec that is nearly right. Five files assembled JSON with their own
 // escaper. Every copy handled `\ " \n \r \t` and stopped there or reimplemented the `\uXXXX`
@@ -2913,7 +2912,7 @@ pluginManager.withPlugin("maven-publish") {
 //
 // Verified against every escaper shape in the tree before landing, not just the one this started
 // from — the recorded lesson from G9, whose count was bounded by its pattern rather than by the
-// defect. At HEAD the two arms flagged exactly the six files JK-2422 deleted or rewrote
+// defect. At HEAD the two arms flagged exactly the six files the sweep deleted or rewrote
 // (`EnvCommand`, `HttpEvents`, `ChromeTimeline`, `DynamicSurfaceIo`, `ReachabilityMetadataEmitter`,
 // `surface/Json`) and none of the nine correct non-JSON escapers and unescapers beside them
 // (`MinimalToml`, `AotManifest`, `MicronautPlugin`'s `.properties`, `ShellPathExpr`'s two shell
@@ -2924,7 +2923,7 @@ pluginManager.withPlugin("maven-publish") {
 // Reachability was measured, not assumed: `:host` is an `api` dependency of both `:core` and
 // `:plugin-sdk`, so `Jsonl` and `MiniJson` are on every production module's classpath and inside
 // the native image. `shared/dynamic-surface` was the one module that could not see them, because
-// it declared no dependency at all; JK-2422 gave it `api(project(":host"))` and its two copies
+// it declared no dependency at all; it now has `api(project(":host"))` and its two copies
 // went with it.
 //
 // Scope is `src/main/java`. A test that spells an escape by hand is a golden pinning the on-disk
@@ -2977,7 +2976,7 @@ val checkOneJsonCodec by tasks.registering {
         val ownerEscapes = caseLabelChars(ownerCode)
         if (unicodeEscape == null || !ownerEscapes.containsAll(listOf("/", "u", "n"))) {
             throw GradleException("cc.jumpkick.jsonl.Jsonl no longer yields the escape alphabet the"
-                    + " one-JSON-codec guard reads from it (JK-2422): unicode fallback"
+                    + " one-JSON-codec guard reads from it: unicode fallback"
                     + " ${unicodeEscape ?: "MISSING"}, decoded escapes $ownerEscapes. Restore the"
                     + " codec's shape or retire this guard deliberately — do not re-type the"
                     + " alphabet here, which is the defect the guard exists to prevent.")
@@ -3005,7 +3004,7 @@ val checkOneJsonCodec by tasks.registering {
 
         val problems = mutableListOf<String>()
         if (writers.isNotEmpty()) {
-            problems.add("jk escapes a JSON string in one place, `Jsonl.quote` (JK-2422). These"
+            problems.add("jk escapes a JSON string in one place, `Jsonl.quote`. These"
                     + " assemble a JSON object with an escaper of their own:\n"
                     + writers.joinToString("\n")
                     + "\n  Call cc.jumpkick.jsonl.Jsonl.quote for one string, or hand the whole"
@@ -3016,7 +3015,7 @@ val checkOneJsonCodec by tasks.registering {
                     + " owner beside them.")
         }
         if (readers.isNotEmpty()) {
-            problems.add("jk parses JSON in one place, `MiniJson` (JK-2422). These decode JSON's"
+            problems.add("jk parses JSON in one place, `MiniJson`. These decode JSON's"
                     + " escape alphabet themselves:\n"
                     + readers.joinToString("\n")
                     + "\n  MiniJson.parse gives you Map/List/String/Double/Boolean, with a nesting"
@@ -3034,14 +3033,14 @@ tasks.named("check") { dependsOn(checkOneJsonCodec) }
 tasks.named("jar") { dependsOn(checkOneJsonCodec) }
 
 // ---------------------------------------------------------------------------
-// Guard G23 (JK-2447): every @Tag is run by exactly one test task.
+// Guard G23: every @Tag is run by exactly one test task.
 //
 // Defect it prevents: a test that is never executed by anything, and is invisible because no task
 // goes red. A `@Tag` is a routing decision, and before this the routing lived in two half-tables —
 // `test` excluded four tags, `integrationTest` re-included two of them. `@Tag("bench")` was
 // excluded from both, so `ForkedJavacAotBenchTest` was run by no task in the repository; and
 // `@Tag("network")` reached the merge gate only because the one class carrying it also carried
-// `slow`, which is how the documented pre-merge bar came to depend on Maven Central (JK-1277).
+// `slow`, which is how the documented pre-merge bar came to depend on Maven Central.
 // Either half-table looks deliberate on its own. Only together do they show a hole.
 //
 // WHAT THIS GUARD WAS MEASURED AGAINST — 2026-08-24, whole tree, `src/test/java`:
@@ -3119,7 +3118,7 @@ val checkNoOrphanTestTags by tasks.registering {
         val faults = TestTiers.partitionFaults()
         if (faults.isNotEmpty()) {
             problems.add("Every tag combination must be run by exactly one test task"
-                    + " (JK-2447). TestTiers does not partition its own vocabulary:\n"
+                    + ". TestTiers does not partition its own vocabulary:\n"
                     + faults.joinToString("\n")
                     + "\n  Adding a tag to TestTiers.slowTags takes it out of `test`; it needs a"
                     + " tier that includes it, or the exclusion is a hole. Two tiers running the"
@@ -3177,7 +3176,7 @@ val checkNoOrphanTestTags by tasks.registering {
         }
 
         if (orphans.isNotEmpty()) {
-            problems.add("Every @Tag must be run by exactly one test task (JK-2447). These are"
+            problems.add("Every @Tag must be run by exactly one test task. These are"
                     + " not:\n" + orphans.joinToString("\n")
                     + "\n  A tag excluded from `test` and included by no other tier is a test that"
                     + " never executes and never goes red. Give the tag a tier in"
@@ -3185,7 +3184,7 @@ val checkNoOrphanTestTags by tasks.registering {
         }
         if (unowned.isNotEmpty()) {
             problems.add("A @Tag that no tier owns runs in the fast tier by default, which is how"
-                    + " a typo becomes a slow `test` task (JK-2447). These tags are in neither"
+                    + " a typo becomes a slow `test` task. These tags are in neither"
                     + " TestTiers.vocabulary nor testTagFixtures:\n" + unowned.sorted().joinToString("\n")
                     + "\n  Spell it as one of " + TestTiers.vocabulary + ", give it a tier of its"
                     + " own, or — if it is a fixture for jk's own tag filtering rather than a"
@@ -3209,18 +3208,18 @@ val checkNoOrphanTestTags by tasks.registering {
     }
 }
 // `check` only, not `jar`: this guard reads test sources, and hanging it off `jar` would make a
-// production artifact's task graph depend on them. Since JK-2498 `checkAll` depends on every
+// production artifact's task graph depend on them. `checkAll` depends on every
 // module's `check`, so `check` alone reaches the gate.
 tasks.named("check") { dependsOn(checkNoOrphanTestTags) }
 
 // ---------------------------------------------------------------------------
-// Guard G35 (JK-2601): a test that reads a checkout file locates it from the checkout root.
+// Guard G35: a test that reads a checkout file locates it from the checkout root.
 //
 // Defect it prevents: a test resolving a source-tree path against the process working directory.
 // Gradle runs a test with CWD at the owning module; a workspace `jk build` runs it with CWD at
-// ~/.local/state/jk/engine. `CommandDependencyLaneTest` spelled the shipped android manifest as
+// ~/.jk/state/engine. `CommandDependencyLaneTest` spelled the shipped android manifest as
 // `Path.of(System.getProperty("user.dir"), "../../plugins/android/jk-plugin.toml")`, which under
-// jk resolved to ~/.local/state/plugins/android/jk-plugin.toml and went red — green under Gradle
+// jk resolved to ~/.jk/state/plugins/android/jk-plugin.toml and went red — green under Gradle
 // for months.
 //
 // The fix was one fixture, cc.jumpkick.testing.RepoRoot, because the walk it replaced had been
@@ -3280,7 +3279,7 @@ val checkTestPathsFromCheckoutRoot by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("A test that reads a file out of the source tree names it from the"
-                    + " checkout root, via cc.jumpkick.testing.RepoRoot (JK-2601). These resolve it"
+                    + " checkout root, via cc.jumpkick.testing.RepoRoot. These resolve it"
                     + " against the working directory instead, which differs between Gradle and a"
                     + " workspace `jk build`:\n"
                     + hits.sorted().joinToString("\n")
@@ -3295,7 +3294,7 @@ val checkTestPathsFromCheckoutRoot by tasks.registering {
 tasks.named("check") { dependsOn(checkTestPathsFromCheckoutRoot) }
 
 // ---------------------------------------------------------------------------
-// Guard G36 (JK-2601): a module's two manifests declare the same dependencies.
+// Guard G36: a module's two manifests declare the same dependencies.
 //
 // Defect it prevents: jk.toml and build.gradle.kts drifting. The repo builds itself both ways, so
 // a dependency declared only to Gradle compiles under `./gradlew check` and fails under `jk build`
@@ -3303,7 +3302,7 @@ tasks.named("check") { dependsOn(checkTestPathsFromCheckoutRoot) }
 // `testImplementation(project(":wire"))` and no manifest entry, so `jk test` could not compile
 // `WireTokenParityTest`; the four plugin modules and the five that consume `:host`'s test fixtures
 // each had a Gradle `testFixtures(...)` edge with no `fixtures = true` twin; and
-// `plugins/image-builder` still declared `:core` and `:io` to Gradle after JK-2193 removed them
+// `plugins/image-builder` still declared `:core` and `:io` to Gradle after they were removed
 // from jk.toml as unimported.
 //
 // Scope buckets are coarse on purpose — main-ish vs test-ish — because that is the distinction
@@ -3320,10 +3319,11 @@ val checkManifestDepParity by tasks.registering {
     val settings = rootProject.layout.projectDirectory.file("settings.gradle.kts")
     inputs.file(settings).withPropertyName("settings")
     // Every manifest, because the project-path -> artifact-name map is spread across all of them.
-    val allManifests = rootProject.layout.projectDirectory.asFileTree.matching {
-        include("*/*/jk.toml")
-    }
-    inputs.files(allManifests).withPropertyName("manifests")
+    // Named per module rather than matched out of a tree rooted at the repo: that root contains
+    // `:dist`'s output directory, and Gradle rejects the task for using `:dist`'s output without
+    // declaring a dependency — which made `./gradlew build dist` fail on every run after the first.
+    val allManifests = rootProject.subprojects.map { it.layout.projectDirectory.file("jk.toml") }
+    inputs.files(allManifests).optional().withPropertyName("manifests")
     inputs.file(ownScript).withPropertyName("buildScript").optional(true)
     val projectPath = path
     val treeRoot = rootProject.layout.projectDirectory.asFile
@@ -3449,7 +3449,7 @@ val checkManifestDepParity by tasks.registering {
 tasks.named("check") { dependsOn(checkManifestDepParity) }
 
 // ---------------------------------------------------------------------------
-// Guard G37 (JK-2603): recursive tree deletion has one owner, and it does not follow links.
+// Guard G37: recursive tree deletion has one owner, and it does not follow links.
 //
 // Defect it prevents: a delete that empties whatever a symbolic link points at. jk discovers
 // host-installed toolchains and links its registry entries to them — an sdkman or IntelliJ JDK is
@@ -3540,7 +3540,7 @@ val checkOneRecursiveDelete by tasks.registering {
         }
         if (hits.isNotEmpty()) {
             throw GradleException("Recursive tree deletion belongs to cc.jumpkick.host.PathUtil,"
-                    + " which removes a symbolic link instead of entering it (JK-2603). These do it"
+                    + " which removes a symbolic link instead of entering it. These do it"
                     + " themselves, so each one decides that question again:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  PathUtil is on every module's classpath — :host is the floor the CLI, the"
@@ -3557,7 +3557,7 @@ tasks.named("check") { dependsOn(checkOneRecursiveDelete) }
 tasks.named("jar") { dependsOn(checkOneRecursiveDelete) }
 
 // ---------------------------------------------------------------------------
-// Guard G46 (JK-2627): a JDK is removed only by an explicit `jk jdk` verb.
+// Guard G46: a JDK is removed only by an explicit `jk jdk` verb.
 //
 // Defect it prevents: an ordinary build deleting the JDK it is running on. This one is not
 // hypothetical and it is not cheap — it happened twice in one afternoon on a developer machine and
@@ -3578,7 +3578,7 @@ tasks.named("jar") { dependsOn(checkOneRecursiveDelete) }
 //           or an empty directory; a populated directory at that path is an install and belongs to
 //           somebody, possibly us, and either way not to a name-claiming routine.
 //
-// Ownership (`JkOwnership`, JK-2624/2625) is the other half and is deliberately NOT what this
+// Ownership (`JkOwnership`) is the other half and is deliberately NOT what this
 // guard checks: it answers "is this ours", which stopped jk deleting a neighbour's JDK but still
 // let it delete its own automatically. This arm is about the trigger, not the target.
 val jdkRemovalCallers = mapOf(
@@ -3661,7 +3661,89 @@ val checkJdkRemovalConfined by tasks.registering {
 tasks.named("check") { dependsOn(checkJdkRemovalConfined) }
 tasks.named("jar") { dependsOn(checkJdkRemovalConfined) }
 
-// JK-1017: serial execution when shuffling, applied after the modules have had their say.
+// ---------------------------------------------------------------------------
+// Guard G47: every case conversion passes Locale.ROOT.
+//
+// Defect it prevents: a parser that is wrong only in Türkiye. Under tr_TR/az, 'i' ⇄ 'I' do not
+// round-trip — "MAIN".toLowerCase() is "maın", "runtime".toUpperCase() is "RUNTİME" — so a
+// locale-less conversion on an identifier, enum, wire value, suffix or config key misparses for
+// an entire locale family. The tree had 270 Locale.ROOT sites and 35 that drifted, several of
+// them parsers (one silently rewrote an MCP client's `runtime` scope into `main`). Identifiers
+// are not user language; there is exactly one right argument.
+// ---------------------------------------------------------------------------
+
+val checkCaseConversionLocale by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a locale-less toLowerCase()/toUpperCase() in src/main"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val srcMain = layout.projectDirectory.dir("src/main/java").asFile
+    val stamp = layout.buildDirectory.file("guards/case-conversion-locale.ok")
+    outputs.file(stamp)
+    doLast {
+        if (srcMain.isDirectory && mainJava.files.isEmpty()) {
+            throw GradleException("G47 scanned zero files under an existing src/main/java —"
+                    + " the guard has silently lost its scope; fix the file tree.")
+        }
+        val bare = Regex("""\.to(?:Lower|Upper)Case\(\)""")
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            val n = countIn(guardText(f.readText()), bare)
+            if (n > 0) hits.add("  ${f.relativeTo(treeRoot).invariantSeparatorsPath}: $n")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("G47: a case conversion without Locale.ROOT misparses under"
+                    + " tr_TR/az ('i' ⇄ 'I' do not round-trip). Pass Locale.ROOT — identifiers"
+                    + " are not user language:\n" + hits.joinToString("\n"))
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
+tasks.named("check") { dependsOn(checkCaseConversionLocale) }
+tasks.named("jar") { dependsOn(checkCaseConversionLocale) }
+
+// ---------------------------------------------------------------------------
+// Guard G48: no glued Javadoc inline tag.
+//
+// Defect it prevents: `{@code.asc}` renders as the literal garbage `code.asc` (the tag name eats
+// the payload), and 83 of them had accumulated tree-wide. Worse, an unresolvable reference inside
+// a broken tag makes OpenRewrite treat the type as unattributed and decline to shorten it
+// anywhere in the file. The unresolvable-link arm needs the compiler and lives in `javadoc`;
+// this is the text-scannable arm — no allowlist.
+// ---------------------------------------------------------------------------
+
+val checkNoGluedInlineTag by tasks.registering {
+    group = "verification"
+    description = "Fail the build on {@code/link/value glued to its payload ({@code.asc})"
+    val allJava = fileTree(layout.projectDirectory.dir("src")) { include("**/*.java") }
+    inputs.files(allJava).withPropertyName("allJava")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/no-glued-inline-tag.ok")
+    outputs.file(stamp)
+    doLast {
+        // The payload class excludes letters so `link` cannot half-match `linkplain`; the glued
+        // family is punctuation ({@code.asc}, {@code:}, {@code,}), never a letter.
+        val glued = Regex("""\{@(?:code|value|linkplain|link)[^\s}a-zA-Z]""")
+        val hits = mutableListOf<String>()
+        allJava.files.sorted().forEach { f ->
+            val n = countIn(f.readText(), glued)
+            if (n > 0) hits.add("  ${f.relativeTo(treeRoot).invariantSeparatorsPath}: $n")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("G48: an inline Javadoc tag needs a space before its payload —"
+                    + " {@code .asc}, not {@code.asc} (glued tags render as garbage and can block"
+                    + " FQCN shortening for the whole file):\n" + hits.joinToString("\n"))
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
+tasks.named("check") { dependsOn(checkNoGluedInlineTag) }
+tasks.named("jar") { dependsOn(checkNoGluedInlineTag) }
+
+// Serial execution when shuffling, applied after the modules have had their say.
 //
 // The orderer decides order WITHIN a JVM; Gradle decides which classes go to which fork, and that
 // distribution is not seeded. With parallel forks the same seed does not reproduce a run, which

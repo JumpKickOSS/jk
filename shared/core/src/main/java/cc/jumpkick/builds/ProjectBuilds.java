@@ -22,7 +22,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 /**
- * Durable per-project build history under {@code ~/.local/state/jk/builds/projects/<key>/}.
+ * Durable per-project build history under {@code ~/.jk/state/builds/projects/<key>/}.
  *
  * <pre>
  *   host-metrics.toml
@@ -221,7 +221,7 @@ public final class ProjectBuilds {
         }
         if (next < 1) next = 1;
         // Durable, and the sharpest case for it: a lost increment lets a later run delete a completed
-        // run tree, which is the hazard the flock around this exists for (JK-1037).
+        // run tree, which is the hazard the flock around this exists for.
         AtomicWrites.replaceDurably(f, Long.toString(next) + "\n");
         return next;
     }
@@ -366,9 +366,15 @@ public final class ProjectBuilds {
 
     private static long mtimeOf(Path p) {
         try {
-            return Files.getLastModifiedTime(p).toMillis();
+            long t = Files.getLastModifiedTime(p).toMillis();
+            // An epoch-0 stamp is as unbelievable as a failed stat — over-include it too.
+            return t == 0 ? Long.MAX_VALUE : t;
         } catch (IOException e) {
-            return 0L;
+            // Over-include: newest-N selection cuts this list BEFORE sorting by finishedAt, so a
+            // transient stat failure mapped to 0 pushed a true-newest run outside the window and
+            // it silently vanished from history. MAX_VALUE keeps it in the cut; the real sort
+            // downstream puts it where it belongs.
+            return Long.MAX_VALUE;
         }
     }
 

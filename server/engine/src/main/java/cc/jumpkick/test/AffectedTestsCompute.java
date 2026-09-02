@@ -72,7 +72,7 @@ public final class AffectedTestsCompute {
                 build.isWorkspaceRoot() ? WorkspaceLoader.loadModules(root, build) : Map.of(root, build);
 
         // Pass 1 — classify every dirty module's changed types into one carrier, so pass 2 can
-        // rank *dependent* cone modules against them (abi-import across modules, JK-2606).
+        // rank *dependent* cone modules against them (abi-import across modules).
         record Unit(Path dir, JkBuild build, BuildLayout layout, boolean dirtyHere) {}
         List<Unit> units = new ArrayList<>();
         AffectedChanged carrier = new AffectedChanged();
@@ -88,7 +88,7 @@ public final class AffectedTestsCompute {
                 String coord = unit.project().group() + ":" + unit.project().name();
                 var row = List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"));
                 // No compile happens on this path: a dirty source newer than its compiled class
-                // means the bytecode is a lie — refuse rather than rank from it (JK-2612).
+                // means the bytecode is a lie — refuse rather than rank from it.
                 String stale = staleDirtyMain(root, modDir, dirty, layout.classesDir());
                 if (stale != null) {
                     return AffectedTests.refused(
@@ -120,7 +120,7 @@ public final class AffectedTestsCompute {
         // Pass 2 — rank each cone module: a dirty module scores its own changed types first, a
         // dependent scores the carrier's foreign types. Dependents keep a "dependent" module row.
         // -m intersects here, not in pass 1: an unselected dirty module still classifies, so the
-        // selected modules' importers rank against its changed types (JK-2613).
+        // selected modules' importers rank against its changed types.
         for (Unit u : units) {
             if (onlyModules != null
                     && !onlyModules.isEmpty()

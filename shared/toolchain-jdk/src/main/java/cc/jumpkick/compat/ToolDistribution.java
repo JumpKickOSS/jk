@@ -5,8 +5,8 @@ import java.net.URI;
 import java.util.Objects;
 
 /**
- * Metadata for a downloadable Maven or Gradle distribution. The {@link MavenResolver} / {@link
- * GradleResolver} produces these; the {@link ToolInstaller} consumes them.
+ * Metadata for a downloadable Maven or Gradle distribution. The {@code MavenResolver} / {@code
+ * GradleResolver} produces these; the {@code ToolInstaller} consumes them.
  *
  * <p>{@link #sha256} is optional: wrapper-properties-derived distributions may not carry one (Maven
  * Wrapper does, Gradle Wrapper sometimes does). The installer skips verification when null/blank.

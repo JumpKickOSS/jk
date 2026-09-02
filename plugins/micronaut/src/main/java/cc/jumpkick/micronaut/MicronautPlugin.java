@@ -176,7 +176,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
      * world.
      *
      * <p>Source translation ({@code logback.xml}, YAML) helps both, and helps native twice over
-     * by removing a by-name instantiation path nothing can otherwise see.
+     * by removing a by-name instantiation path nothing can otherwise.
      */
     static Map<String, String> defaultsFor(String runtime) {
         Map<String, String> props = new LinkedHashMap<>();
@@ -238,7 +238,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> s = Files.walk(dir)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            // the path for a fresh stat even for entries the name test discards.
             s.filter(p -> p.getFileName().toString().endsWith(".jar"))
                     .filter(Files::isRegularFile)
                     .forEach(out::add);

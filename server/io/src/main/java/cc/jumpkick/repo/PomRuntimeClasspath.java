@@ -291,7 +291,7 @@ public final class PomRuntimeClasspath {
     static Path unsandboxedProductStore() {
         Path path = JkDirs.of(
                         name -> {
-                            if ("JK_HOME".equals(name) || "JK_DATA_DIR".equals(name)) return null;
+                            if ("JK_HOME".equals(name)) return null;
                             return System.getenv(name);
                         },
                         System.getProperty("user.home"))

@@ -121,7 +121,7 @@ class ToolchainLockStampTest {
 
         // The machine has a GraalVM; no manifest asked for one. An ambient install is still not a
         // declaration — the [jdk] table records what built the lock, [graal] answers a question
-        // nobody put. This is the shape JK-1020 was filed against.
+        // nobody put. This is the shape was filed against.
         Lockfile stamped = apply(java, registry, ToolchainSpec.NONE, false);
         assertThat(stamped.graal()).isNull();
         assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));

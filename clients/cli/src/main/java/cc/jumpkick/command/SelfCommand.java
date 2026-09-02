@@ -7,6 +7,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.GlobalConfig;
@@ -42,7 +43,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * {@code jk self} — self-update: install under {@code <data>/lib/jk-engine/} (parking the previous
+ * {@code jk self} — self-update: install under {@code <home>/lib/jk-engine/} (parking the previous
  * jar as {@code .old}), flip PATH {@code jk} (parking {@code jk.old} / {@code jk.exe.old}), start
  * the new engine (graceful drain). {@code --now} stops the old engine first.
  */
@@ -60,12 +61,44 @@ public final class SelfCommand extends GroupCommand {
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(new UpdateSub(), new MaterializeSub(), new SetupTerminalSub(), new SelfNukeCommand());
+        return List.of(
+                new UpdateSub(),
+                new MaterializeSub(),
+                new RetireOldEnginesSub(),
+                new SetupTerminalSub(),
+                new SelfNukeCommand());
+    }
+
+    /** Hidden installer seam that removes only engines from the superseded platform default. */
+    static final class RetireOldEnginesSub implements CliCommand {
+
+        @Override
+        public String name() {
+            return "retire-old-engines";
+        }
+
+        @Override
+        public String description() {
+            return "Stop engines from the superseded platform-default home";
+        }
+
+        @Override
+        public boolean hidden() {
+            return true;
+        }
+
+        @Override
+        public int run(Invocation in) {
+            return EngineFleet.retireOldDefaultLayoutEngines().stream()
+                            .anyMatch(result -> result.outcome() == EngineFleet.Outcome.SURVIVED)
+                    ? Exit.FAILURE
+                    : Exit.SUCCESS;
+        }
     }
 
     /**
      * {@code jk self setup-terminal} — persist root-level {@code nerd-font} in {@code
-     * ~/.config/jk/config.toml}. Also invoked from install.sh.
+     * ~/.jk/config.toml}. Also invoked from install.sh.
      *
      * <p>Writing {@code auto} is the useful default: detection now runs cheaply on every launch, so
      * pinning a value is only for overriding it. {@code --explain} reports what detection currently
@@ -130,7 +163,7 @@ public final class SelfCommand extends GroupCommand {
 
     /**
      * {@code jk self materialize <client-bin> <engine-jar>} — hidden install-time seam: ingest a
-     * local dist's engine jar into the CAS and install under {@code <data>/lib/jk-engine/}.
+     * local dist's engine jar into the CAS and install under {@code <home>/lib/jk-engine/}.
      * install.sh calls this through the freshly-installed client. The client-bin argument is the
      * PATH binary already written by the installer (not copied into the product lib).
      */
@@ -143,7 +176,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Install the engine jar under <data>/lib/jk-engine from local artifacts";
+            return "Install the engine jar under <home>/lib/jk-engine from local artifacts";
         }
 
         @Override
@@ -166,8 +199,7 @@ public final class SelfCommand extends GroupCommand {
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();
-            EngineInstall.Materialized m =
-                    install.materializeFromFiles(Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar);
+            EngineInstall.Materialized m = install.materializeFromFiles(Jk.VERSION, JkStores.storeCas(), engineJar);
             EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), Jk.VERSION);
             install.gc();
             try {
@@ -221,7 +253,7 @@ public final class SelfCommand extends GroupCommand {
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();
-            Cas cas = JkStores.cas(JkDirs.cache());
+            Cas cas = JkStores.storeCas();
             String running = Jk.VERSION;
             if (target.equals(running) && install.resolve(target).isPresent()) {
                 CommandWedge.printOk("Self", target + " is already current");

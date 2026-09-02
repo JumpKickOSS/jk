@@ -206,8 +206,7 @@ public final class ManifestProject {
         if (m2 != null && m2.contains("workspace") && isWorkspaceInherit(root, "m2")) {
             if (m2.contains("integration") || m2.contains("install")) {
                 throw new JkBuildParseException(
-                        "[m2] workspace = true cannot be combined with explicit integration/install"
-                                + " — drop one (JK-2323)");
+                        "[m2] workspace = true cannot be combined with explicit integration/install" + " — drop one");
             }
             inherits.add(ProjectInherit.M2INTEGRATION);
             inherits.add(ProjectInherit.M2INSTALL);
@@ -224,8 +223,7 @@ public final class ManifestProject {
             boolean workspaceRoot,
             ProjectInherit inherit,
             java.util.EnumSet<ProjectInherit> inherits) {
-        // Guard the type: a top-level `m2 = "yes"` must surface as a clean parse error, not a raw
-        // tomlj type exception from getTable (JK-2323).
+        // Top-level `m2 = "yes"` must be a clean parse error, not a raw tomlj type exception.
         TomlTable m2 = root.isTable("m2") ? root.getTable("m2") : null;
         boolean present = m2 != null && m2.contains(key);
         if ((m2 != null && isWorkspaceInherit(m2, key)) || (!workspaceRoot && !present)) {

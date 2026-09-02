@@ -242,7 +242,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             // Cheapest rejection first: the name test is free, isRegularFile re-resolves the path for
             // a stat, and the sibling-directory probe is a second stat — so the name goes first and
             // the two stats only run for the handful of entries actually called quarkus-run.jar
-            // (JK-1030).
+            // .
             return walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
                     .filter(Files::isRegularFile)
                     .filter(p -> Files.isDirectory(p.getParent().resolve("lib")))
@@ -258,7 +258,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         if (Files.isRegularFile(staged)) return staged;
         try (Stream<Path> walk = Files.walk(root, 5)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            // the path for a fresh stat even for entries the name test discards.
             return walk.filter(p -> p.getFileName().toString().endsWith("-runner.jar"))
                     .filter(Files::isRegularFile)
                     .findFirst()

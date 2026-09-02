@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.minified;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.attribute.SignatureAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,6 +96,85 @@ class MinifiedJarAuditTest {
         assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
                 .hasMessageContaining("R8 removed 25 classes")
                 .hasMessageContaining("… and 5 more");
+    }
+
+    // ------------------------------------------------------------ generic signatures
+
+    private static final String BOX_SIG = "<T:Ljava/lang/Object;>Ljava/lang/Object;";
+
+    @Test
+    void an_erased_signature_is_reported_with_before_and_after(@TempDir Path dir) throws Exception {
+        Path input = classJar(dir.resolve("in.jar"), Map.of("com/acme/Box.class", classBytes("com.acme.Box", BOX_SIG)));
+        Path output = classJar(dir.resolve("out.jar"), Map.of("com/acme/Box.class", classBytes("com.acme.Box", null)));
+
+        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), output);
+        assertThat(audit.compared()).isEqualTo(1);
+        assertThat(audit.degraded()).hasSize(1);
+        var drift = audit.degraded().getFirst();
+        assertThat(drift.className()).isEqualTo("com.acme.Box");
+        assertThat(drift.before()).isEqualTo(BOX_SIG);
+        assertThat(drift.after()).isNull();
+
+        String warning = MinifiedJarPackager.signatureWarning(audit);
+        assertThat(warning).contains("1 of 1 classes");
+        assertThat(warning).contains("com.acme.Box");
+        assertThat(warning).contains(BOX_SIG);
+        assertThat(warning).contains("now none");
+        assertThat(warning).contains("-keepattributes Signature is not enough");
+        // 100% degraded is far past the threshold: the honest advice is a fat jar.
+        assertThat(warning).contains("assembly = true");
+    }
+
+    @Test
+    void a_preserved_signature_and_a_signatureless_class_report_nothing(@TempDir Path dir) throws Exception {
+        Map<String, byte[]> both = Map.of(
+                "com/acme/Box.class", classBytes("com.acme.Box", BOX_SIG),
+                "com/acme/Plain.class", classBytes("com.acme.Plain", null));
+        Path input = classJar(dir.resolve("in.jar"), both);
+        Path output = classJar(dir.resolve("out.jar"), both);
+
+        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), output);
+        assertThat(audit.compared()).isEqualTo(1);
+        assertThat(audit.degraded()).isEmpty();
+    }
+
+    @Test
+    void a_class_r8_removed_belongs_to_the_by_name_audit_not_this_one(@TempDir Path dir) throws Exception {
+        Path input = classJar(dir.resolve("in.jar"), Map.of("com/acme/Box.class", classBytes("com.acme.Box", BOX_SIG)));
+        Path output = classJar(dir.resolve("out.jar"), Map.of());
+
+        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), output);
+        assertThat(audit.compared()).isZero();
+        assertThat(audit.degraded()).isEmpty();
+    }
+
+    @Test
+    void a_small_share_suggests_keeping_the_referenced_types() {
+        List<MinifiedJarPackager.SignatureDrift> drifts =
+                List.of(new MinifiedJarPackager.SignatureDrift("com.acme.Box", BOX_SIG, null));
+        String warning = MinifiedJarPackager.signatureWarning(new MinifiedJarPackager.SignatureAudit(1000, drifts));
+        assertThat(warning).contains("[minified] keep");
+        assertThat(warning).doesNotContain("assembly = true");
+    }
+
+    private static byte[] classBytes(String fqcn, String signature) {
+        return ClassFile.of().build(ClassDesc.of(fqcn), cb -> {
+            cb.withSuperclass(ConstantDescs.CD_Object);
+            if (signature != null) {
+                cb.with(SignatureAttribute.of(cb.constantPool().utf8Entry(signature)));
+            }
+        });
+    }
+
+    private static Path classJar(Path path, Map<String, byte[]> entries) throws IOException {
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(path))) {
+            for (Map.Entry<String, byte[]> e : entries.entrySet()) {
+                jos.putNextEntry(new JarEntry(e.getKey()));
+                jos.write(e.getValue());
+                jos.closeEntry();
+            }
+        }
+        return path;
     }
 
     private static Path jar(Path path, Map<String, String> entries) throws IOException {

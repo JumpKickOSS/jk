@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Worker-jar location: system-property override → repos/jk-local/ → repos/central/ → clear error.
  *
- * <p>Tests use a temp cache root so the developer's real ~/.cache/jk is never touched. The
+ * <p>Tests use a temp cache root so the developer's real ~/.jk/cache is never touched. The
  * coordinate-based lookup resolves {@code cc.jumpkick:jk-kotlin-compiler:<version>} from the named
  * repo stores; the worker jar content is irrelevant to location, only its presence at the expected
  * m2 path (with .sha256 sidecar) matters.

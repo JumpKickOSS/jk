@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  * why it matters: re-copying bumps the file's mtime, {@code FreshnessStamp} compares classpath
  * entries by mtime, so restoring an unchanged tree invalidated every downstream stamp and forced a
  * full KSP round and Kotlin recompile on every single build. The same reasoning applies to class
- * files, which is what JK-1036 ported.
+ * files, which is what ported.
  *
  * <p>These assert the mtime, not the wall clock: the cost is real but the *correctness* consequence —
  * downstream staleness — is what the churn actually broke.

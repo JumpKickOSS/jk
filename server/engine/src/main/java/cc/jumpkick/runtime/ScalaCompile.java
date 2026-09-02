@@ -33,7 +33,7 @@ public final class ScalaCompile {
             version = ScalaResolver.DEFAULT_VERSION;
             // A declared non-exact selector (e.g. `scala = "3"`) with no resolved pin in the lock —
             // offline first-resolve, or a metadata fetch that failed — was silently compiling with
-            // the bundled default, possibly outside the requested range (JK-2319).
+            // the bundled default, possibly outside the requested range.
             var selector = project == null ? null : project.project().scala();
             if (selector != null) {
                 System.err.println("jk: warning: no resolved Scala version in the lock for selector `"

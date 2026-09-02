@@ -17,7 +17,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
-/** On-disk {@code target/incremental/main-abi.idx}: one {@code FQC\\tapiHex} line (schema JK-2616). */
+/** On-disk {@code target/incremental/main-abi.idx}: one {@code FQC\\tapiHex} line (schema). */
 public final class AbiIndex {
 
     public static final String FILE_NAME = "main-abi.idx";
@@ -35,7 +35,7 @@ public final class AbiIndex {
             lines.forEach(line -> {
                 if (line.isBlank()) return;
                 String[] p = line.split("\t", -1);
-                // Two fields since JK-2616; an old three-field row is dropped, which just means
+                // Two fields since; an old three-field row is dropped, which just means
                 // one full re-scan on the next compile.
                 if (p.length == 2) out.put(p[0], new ClassAbi.Fingerprint(p[1]));
             });
@@ -47,7 +47,7 @@ public final class AbiIndex {
      * The previous index advanced by one compile: only the classes of the sources that actually
      * recompiled are re-hashed (their class file gone → row dropped); every other row carries
      * forward. This is what keeps an incremental build from re-reading and re-hashing the whole
-     * {@code classes/main} tree per compile (JK-2610). Sources that resolve to no FQC (secondary
+     * {@code classes/main} tree per compile. Sources that resolve to no FQC (secondary
      * top-level classes, unknown roots) are ignored; a stale row for them is harmless — ranking
      * re-hashes the class file itself for "current", the index is only ever the "pre" baseline.
      */
@@ -114,7 +114,7 @@ public final class AbiIndex {
             if (dollar < 0) {
                 owners.put(fqc, Files.readAllBytes(p));
             } else if (isNamedNested(fqc.substring(dollar))) {
-                // Named nested classes classify with their owner (JK-2616); anonymous/local
+                // Named nested classes classify with their owner; anonymous/local
                 // ($1, $2$Local…) stay out — a body edit that adds one must stay BODY.
                 nested.computeIfAbsent(fqc.substring(0, dollar), k -> new TreeMap<>())
                         .put(fqc.substring(dollar + 1), Files.readAllBytes(p));

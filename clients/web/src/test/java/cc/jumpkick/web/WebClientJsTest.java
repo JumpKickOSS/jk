@@ -25,7 +25,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * The dashboard's headless JS suites — every {@code src/test/js/*.test.mjs} under {@code node
  * --test}, one suite per parameterized case. This is the only harness: the four per-module copies
  * it replaced each carried their own {@code nodeAvailable()} guard that turned a missing Node into
- * a silent green (JK-2441).
+ * a silent green.
  *
  * <p><b>Node is mandatory.</b> Absent Node the class fails loudly. The single escape hatch is
  * {@code JK_WEB_JS_SKIP=1}, which CI never sets — a skip has to be asked for by name.
@@ -128,7 +128,7 @@ class WebClientJsTest {
 
     /**
      * The history table's Tests column renders from the journal's nested {@code tests} object — the
-     * one wire spelling of a test count (JK-2424). The SPA cannot import Java, so it hand-types every
+     * one wire spelling of a test count. The SPA cannot import Java, so it hand-types every
      * field name; naming the retired flat spellings here is what stops one creeping back into a
      * template, where Vue resolves an unknown field to undefined and the column silently shows an
      * em dash forever.

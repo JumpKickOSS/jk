@@ -14,7 +14,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Per-repo credentials under {@code <data>/repo-credentials/} ({@code jk repo login}); owner-only
+ * Per-repo credentials under {@code <home>/creds/repo/} ({@code jk repo login}); owner-only
  * modes. Line format: scheme then fields ({@code bearer}/{@code basic}).
  */
 public final class RepoCredentialStore {
@@ -22,7 +22,7 @@ public final class RepoCredentialStore {
     private final Path dir;
 
     public RepoCredentialStore() {
-        this(JkDirs.data().resolve("repo-credentials"));
+        this(JkDirs.creds().resolve("repo"));
     }
 
     /** Visible for tests — point the store at a scratch directory. */

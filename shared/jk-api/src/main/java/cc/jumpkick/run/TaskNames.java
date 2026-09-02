@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import java.util.Set;
+
 /**
  * Canonical step-name constants (the {@code {phase}-{step}} step names (their place in the run hierarchy is {@code plan/phase/step}) used by {@link
- * Step#builder} producers and their {@code.requires(...)} consumers). Naming a step in one
+ * Task#builder} producers and their {@code .requires(...)} consumers). Naming a step in one
  * place kills the stringly-typed producer/consumer duplication where a typo would otherwise be a
  * silent missing-dependency edge rather than a compile error.
  */
@@ -88,6 +90,19 @@ public final class TaskNames {
     public static final String RESOLVE_JAR_DEPS = "resolve-jar-deps";
     public static final String RESOLVE_KOTLINC = "resolve-kotlinc";
     public static final String RUN_TESTS = "run-tests";
+
+    /**
+     * Packaging steps that require only {@link #PACKAGE_JAR} and therefore run <em>concurrently</em>
+     * with {@link #RUN_TESTS} rather than after it.
+     *
+     * <p>Produced by {@code PlannerTails}, which adds exactly these as plan leaves beside the test
+     * leaf. Listed here so cost/ETA models can price the overlap without restating the planner's
+     * branch conditions: a module's wall is its compile prefix plus the longer of its test branch
+     * and this tail, not the sum of its steps.
+     */
+    public static final Set<String> PACKAGING_TAILS =
+            Set.of(PACKAGE_ASSEMBLY, PACKAGE_MINIFIED, NATIVE_IMAGE, PACKAGE_SOURCES);
+
     public static final String SET_DEFAULT = "set-default";
     public static final String SYNC_CAS = "sync-cas";
     public static final String SYNC_MODULES = "sync-modules";

@@ -85,7 +85,7 @@ class PubGrubBudgetTest {
         // thrashing solve exhausts it and reports "budget exceeded", while a solve that fails
         // closed on the real conflict never approaches it. This used to read
         // `assertThat(ms).isLessThan(2_000L)`, which measured the machine — on a pure in-memory
-        // solve with no I/O to be slow at, that number only ever moved under load (JK-2446).
+        // solve with no I/O to be slow at, that number only ever moved under load.
         // @Timeout(5) above stays as the liveness net: if the solve hangs, the test still ends.
         PubGrubSolver solver = new PubGrubSolver(src, /* maxDecisions */ 16, /* timeoutMs */ 0);
         assertThatThrownBy(() -> solver.solve(

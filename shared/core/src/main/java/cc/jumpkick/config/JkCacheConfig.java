@@ -14,7 +14,7 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Machine-scoped {@code [cache]} policy from {@code ~/.config/jk/config.toml} (not project-overridable).
+ * Machine-scoped {@code [cache]} policy from {@code ~/.jk/config.toml} (not project-overridable).
  * Precedence: {@code JK_*} env &gt; user file &gt; defaults, ranked by {@link MachineConfig}.
  * Malformed values fall back to defaults.
  *
@@ -129,7 +129,7 @@ public record JkCacheConfig(
         Objects.requireNonNull(env, "env");
         TomlScan scan = scan(userConfig);
 
-        double logicalCache = isCi(env) ? CI_MAX_CACHE_SIZE_GB : DEFAULT_MAX_CACHE_SIZE_GB;
+        double logicalCache = EnvValues.isCi(env) ? CI_MAX_CACHE_SIZE_GB : DEFAULT_MAX_CACHE_SIZE_GB;
         DiskSpace cacheSpace = cacheDisk != null ? cacheDisk.get() : null;
         double defaultCache = clampDefaultGb(logicalCache, cacheSpace, () -> usedBytes(JkDirs.cache()));
         double defaultIncremental = Math.min(DEFAULT_INCREMENTAL_MAX_SIZE_GB, defaultCache * INCREMENTAL_DEFAULT_SHARE);
@@ -196,10 +196,6 @@ public record JkCacheConfig(
             // unreadable tree — treat as empty
         }
         return total[0];
-    }
-
-    static boolean isCi(Function<String, String> env) {
-        return EnvValues.bool(env, "CI").orElse(false);
     }
 
     /**

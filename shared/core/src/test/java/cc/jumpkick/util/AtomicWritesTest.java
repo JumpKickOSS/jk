@@ -25,9 +25,7 @@ class AtomicWritesTest {
 
     /**
      * Redirect {@link AtomicWrites#backOff} into the returned list for the rest of this test, and
-     * put it back afterwards. Counting the retries is the property the two tests below mean; the
-     * millisecond budget they used to assert (140 ms, the sum of the seven back-offs) was a proxy
-     * for it that a loaded machine could flip either way (JK-2446).
+     * put it back afterwards. The two tests below assert retry counts, not wall-clock budgets.
      */
     private List<Integer> countBackOffs() {
         List<Integer> seen = new ArrayList<>();
@@ -70,10 +68,7 @@ class AtomicWritesTest {
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void replace_leaves_an_existing_files_mode_alone(@TempDir Path dir) throws IOException {
-        // JK-2623. The staging file is created 0600 by the JDK, and the rename used to carry that
-        // onto the target — so a replace silently tightened files that were never secrets. The one
-        // that mattered is jk-lock.toml: a file whose whole purpose is to be committed and read by
-        // everybody, written owner-only.
+        // Replace preserves the existing file's POSIX mode; the staging file's 0600 must not stick.
         Path target = dir.resolve("jk-lock.toml");
         Files.writeString(target, "before");
         Files.setPosixFilePermissions(target, PosixFilePermissions.fromString("rw-r--r--"));
@@ -121,8 +116,7 @@ class AtomicWritesTest {
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void replaceDurably_follows_the_same_rule(@TempDir Path dir) throws IOException {
-        // The lockfile goes through replaceDurably, not replace, so the fsync path needs the mode
-        // handling too — it was the original report.
+        // The lockfile goes through replaceDurably; that path must preserve mode too.
         Path target = dir.resolve("jk-lock.toml");
         Files.writeString(target, "before");
         Files.setPosixFilePermissions(target, PosixFilePermissions.fromString("rw-r--r--"));
@@ -250,16 +244,12 @@ class AtomicWritesTest {
 
     /**
      * The temp sibling is cleaned up when the write fails, and does not outlive one that succeeds.
-     *
-     * <p>The cleanup used to sit in a {@code finally}, so every success paid an unlink of a path that
-     * could not exist — {@link AtomicWrites#moveInto} had already consumed it. One wasted metadata
-     * call across fifty call sites and once per CAS blob, ~11 µs each on NTFS (JK-1029). Moving it to
-     * the failure path is only safe if the failure path still cleans up.
+     * Cleanup runs on the failure path only — {@link AtomicWrites#moveInto} already consumed the temp
+     * on success.
      */
     @Test
     void a_failed_move_still_removes_the_temp(@TempDir Path dir) throws IOException {
-        // A non-empty directory cannot be replaced by a file move, so moveInto throws after the temp
-        // has been written — the window the finally used to cover.
+        // A non-empty directory cannot be replaced by a file move, so moveInto throws after the temp is written.
         Path target = dir.resolve("occupied");
         Files.createDirectory(target);
         Files.createFile(target.resolve("child"));
@@ -294,7 +284,7 @@ class AtomicWritesTest {
      * well-meaning change that made every write durable would cost far more than the durability it
      * bought. There is no portable way to observe an fsync from a test, so this pins the surface
      * instead: two distinct methods, and the cheap one does not delegate to the expensive one
-     * (JK-1037).
+     *.
      */
     @Test
     void the_durable_variant_is_separate_from_the_default(@TempDir Path dir) throws IOException {

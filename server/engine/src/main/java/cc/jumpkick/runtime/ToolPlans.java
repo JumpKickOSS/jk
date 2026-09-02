@@ -30,7 +30,7 @@ public final class ToolPlans {
     private ToolPlans() {}
 
     /** The resolved tool env, populated by the {@code resolve-coord} step. */
-    public static final BuildPlanKey<ToolEnv> TOOL_ENV = BuildPlanKey.of("tool-env", ToolEnv.class);
+    public static final BuildPlanKey<ToolEnv> TOOL_ENV = BuildPlanKey.scalar("tool-env", ToolEnv.class);
 
     /**
      * Build the single-step resolve plan for {@code spec}.
@@ -59,7 +59,7 @@ public final class ToolPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve " + coordLabel);
-                    Cas cas = JkStores.cas(cache);
+                    Cas cas = JkStores.storeCas();
                     URI url = repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url();
                     RepoGroup repos = RepoGroup.of(new MavenRepo(RepositorySpec.CENTRAL, url, new Http(), cas));
                     try {
@@ -71,6 +71,9 @@ public final class ToolPlans {
                     ctx.progress(1);
                 })
                 .build();
-        return BuildPlan.builder("tool-resolve").addTask(resolve).build();
+        return BuildPlan.builder("tool-resolve")
+                .stateKeys(TOOL_ENV)
+                .addTask(resolve)
+                .build();
     }
 }

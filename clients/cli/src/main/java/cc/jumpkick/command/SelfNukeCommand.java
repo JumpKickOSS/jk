@@ -27,34 +27,33 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
 
 /**
  * {@code jk self nuke} — wipe JumpKick product data while leaving the PATH install binaries,
- * managed JDKs, and the <strong>live engine jar</strong> intact.
+ * managed JDKs, credentials, and the <strong>live engine jar</strong> intact.
  *
- * <p>Targets (stackable; default {@code --all}):
+ * <p>One target per root, stackable; default {@code --all}:
  *
  * <ul>
- *   <li>{@code --cache} — same as {@code jk cache nuke}
- *   <li>{@code --data} (alias {@code --store}) — the product data root ({@code JK_DATA_DIR},
- *       default {@code ~/.local/share/jk}, {@code $JK_HOME/data} under the umbrella): the artifact
- *       store via {@code jk storage nuke}, plus every other child of that root
- *   <li>{@code --state} — engine sockets, AOT, builds, scratch tmp
- *   <li>{@code --config} — user config
+ *   <li>{@code --cache} — {@code <home>/cache}; same as {@code jk cache nuke}
+ *   <li>{@code --store} — {@code <home>/store} whole-tree, via {@code jk storage nuke}
+ *   <li>{@code --state} — {@code <home>/state}: engine sockets, AOT, builds, scratch tmp
+ *   <li>{@code --config} — {@code <home>/config.toml} and the per-app {@code <home>/config} tree
  *   <li>{@code --all} — every target above (default when none are named)
  * </ul>
  *
- * <p><strong>Never touches the bin directory</strong> ({@code ~/.local/bin} / {@code JK_BIN_DIR}),
- * and never removes forge/repo credentials — logging out is {@code jk repo logout}'s job. Those two
- * live <em>inside</em> the data root and survive {@code --data} anyway; see {@link Guards}.
+ * <p><strong>What survives is decided by the layout, not by a carve-out.</strong> {@code bin},
+ * {@code lib} and {@code creds} are roots of their own, so no target's delete reaches them:
+ * {@code --store} cannot log the user out because the tokens are not in the tree it deletes.
+ * {@link Guards} exists for the remaining way to aim a delete somewhere it does not belong — a
+ * {@code JK_STORE_DIR} / {@code JK_CACHE_DIR} / {@code JK_STATE_DIR} pointed at a protected tree.
  */
 public final class SelfNukeCommand implements CliCommand {
 
     /** Selectable nuke scopes. */
     enum Target {
         CACHE("Cache tier"),
-        DATA("Product data"),
+        STORE("Artifact store"),
         STATE("Engine sockets, AOT, builds"),
         CONFIG("User config");
 
@@ -72,7 +71,7 @@ public final class SelfNukeCommand implements CliCommand {
      *
      * <p>Delegated or not, every row prints under <strong>Path to Delete</strong> and every row's
      * path is <em>gone as a directory</em> when the command finishes. The two shared nukes each
-     * spent a release emptying their root instead of removing it (JK-2455 for the cache, JK-2500
+     * spent a release emptying their root instead of removing it (for the cache
      * for the store), which is the same table saying "delete" and meaning "empty".
      */
     record PurgeRow(Path path, String what, Target target, boolean delegated) {}
@@ -82,15 +81,10 @@ public final class SelfNukeCommand implements CliCommand {
      * <em>same</em> {@link JkDirs} the rows come from, so synthetic test environments guard
      * consistently.
      */
-    record Guards(Path bin, Path jdks, Path productLib, Path credentials, Path repoCredentials) {
+    record Guards(Path bin, Path jdks, Path productLib, Path creds) {
         static Guards of(JkDirs dirs) {
-            Path data = dirs.dataDir();
             return new Guards(
-                    abs(dirs.binDirectory()),
-                    abs(dirs.jdksDir()),
-                    abs(dirs.productLibDir()),
-                    abs(data.resolve("credentials")),
-                    abs(data.resolve("repo-credentials")));
+                    abs(dirs.binDirectory()), abs(dirs.jdksDir()), abs(dirs.productLibDir()), abs(dirs.credsDir()));
         }
     }
 
@@ -106,7 +100,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Nuke data/state (keeps live engine jar, PATH, JDKs)";
+        return "Nuke store/cache/state/config (keeps bin, lib, creds, JDKs)";
     }
 
     @Override
@@ -115,8 +109,7 @@ public final class SelfNukeCommand implements CliCommand {
                 Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
                 Opt.flag("Nuke every target (default when none named).", "--all"),
                 Opt.flag("Nuke the cache tier only (action outputs).", "--cache"),
-                Opt.flag("Nuke the product data root (artifact store, versions, ...).", "--data")
-                        .alias("--store"), // pre-widening name
+                Opt.flag("Nuke the artifact store (repos, tools, templates, completions).", "--store"),
                 Opt.flag("Nuke engine state, AOT caches, builds, and tmp.", "--state"),
                 Opt.flag("Nuke user config.", "--config"));
     }
@@ -125,7 +118,7 @@ public final class SelfNukeCommand implements CliCommand {
      * The two nukes that run engine-side. They sit behind a seam because the contract that matters
      * — a failure here must not stop the local deletes below it — cannot be provoked otherwise:
      * whether a real engine starts depends on the machine, so a test that corrupts an engine jar
-     * asserts nothing on a box that finds a working one anyway (JK-2015).
+     * asserts nothing on a box that finds a working one anyway.
      */
     interface Hosted {
         /** Never called on a dry run — even the preview would spawn a daemon. */
@@ -159,11 +152,9 @@ public final class SelfNukeCommand implements CliCommand {
         Set<Target> selected = selectedTargets(in);
         JkDirs dirs = JkDirs.current();
 
-        // Single-target cache: identical code path + UX as `jk cache nuke`. There is no such
-        // shortcut for --data — the store is only one child of the data root, so the plan table and
-        // this command's own confirm have to cover the rest. The shortcut still answers to the
-        // guards: a refused cache row means the plan is empty, and the shared nuke deletes whatever
-        // root it is handed.
+        // Single-target cache: identical code path + UX as `jk cache nuke`. The shortcut still
+        // answers to the guards — a refused cache row means the plan is empty, and the shared nuke
+        // deletes whatever root it is handed.
         if (selected.equals(EnumSet.of(Target.CACHE))) {
             if (plan(dirs, selected).isEmpty()) {
                 refuse("cache tier", dirs.cacheDir());
@@ -176,14 +167,14 @@ public final class SelfNukeCommand implements CliCommand {
         // Cache tier and artifact store are wiped by the shared nukes — drop them from path rows.
         List<PurgeRow> pathRows = rows.stream().filter(r -> !r.delegated()).toList();
         boolean wantCache = selected.contains(Target.CACHE);
-        boolean wantData = selected.contains(Target.DATA);
+        boolean wantStoreTarget = selected.contains(Target.STORE);
         // The delegated wipes delete whatever root the request names — the store engine-side, the
         // cache via the shared nuke — with no guard of their own. Each runs only when its row
         // cleared the addRow guards: a JK_STORE_DIR / JK_CACHE_DIR mis-pointed at a protected tree
-        // (the data root, $HOME) is refused here rather than handed over whole-tree.
-        boolean wantStore = wantData && hasDelegated(rows, Target.DATA);
+        // ($HOME, bin, lib, creds) is refused here rather than handed over whole-tree.
+        boolean wantStore = wantStoreTarget && hasDelegated(rows, Target.STORE);
         boolean wantCacheWipe = wantCache && hasDelegated(rows, Target.CACHE);
-        if (wantData && !wantStore) refuse("artifact store", dirs.storeDir());
+        if (wantStoreTarget && !wantStore) refuse("artifact store", dirs.storeDir());
         if (wantCache && !wantCacheWipe) refuse("cache tier", dirs.cacheDir());
         List<PurgeRow> existing = pathRows.stream()
                 .filter(r -> Files.exists(r.path(), LinkOption.NOFOLLOW_LINKS))
@@ -195,22 +186,22 @@ public final class SelfNukeCommand implements CliCommand {
             return Exit.SUCCESS;
         }
 
-        printPlan(existing, dirs, wantCacheWipe, wantStore, wantData);
+        printPlan(existing, dirs, wantCacheWipe, wantStore);
         if (!dryRun && !confirmPrompt()) {
             CommandWedge.printFail("Self", "Nuke aborted.");
             return 1;
         }
 
-        boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantData);
+        boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantStoreTarget);
         if (enginesStopped) stopFleet();
 
         int exit = Exit.SUCCESS;
         // What the delegated (engine-hosted) nukes could not do. They are attempted FIRST but must
-        // never end the command: the rows below — state, config, the data root's own children —
-        // are deleted by this process and need no engine at all. Letting an engine failure unwind
+        // never end the command: the rows below — state and config — are deleted by this process
+        // and need no engine at all. Letting an engine failure unwind
         // `run` meant a user who had just approved a table of five paths got an error about the
         // engine and five surviving paths, plus the files the spawn attempt had just written
-        // (JK-2015).
+        // .
         List<String> delegatedFailures = new ArrayList<>();
         // A dry run never previews the store: its walk runs engine-side, and even the preview
         // spawns a daemon — which writes engine logs, an AOT index and a JDK registry into the
@@ -303,14 +294,14 @@ public final class SelfNukeCommand implements CliCommand {
                     "Self",
                     "Nuked " + removed + " path" + (removed == 1 ? "" : "s") + "; " + delegatedFailures.size()
                             + " target" + (delegatedFailures.size() == 1 ? "" : "s") + " left in place.");
-        } else if (removed > 0 || wantCacheWipe || wantData) {
+        } else if (removed > 0 || wantCacheWipe || wantStoreTarget) {
             settleGap();
             CommandWedge.printOk(
                     "Self",
                     "Nuked selected JumpKick data. Kept: active engine "
                             + Jk.VERSION
-                            + ", PATH, JDKs, installed app jars"
-                            + (wantData ? ", credentials" : ", store")
+                            + ", PATH, JDKs, installed app jars, credentials"
+                            + (wantStoreTarget ? "" : ", store")
                             + ".");
         }
         return exit;
@@ -345,27 +336,27 @@ public final class SelfNukeCommand implements CliCommand {
     /** Parse stackable target flags; default {@code --all} when none named. */
     static Set<Target> selectedTargets(Invocation in) {
         boolean cache = in.isSet("cache");
-        boolean data = in.isSet("data"); // --store is a hidden alias on the same canonical key
+        boolean store = in.isSet("store");
         boolean state = in.isSet("state");
         boolean config = in.isSet("config");
-        boolean all = in.isSet("all") || !(cache || data || state || config);
+        boolean all = in.isSet("all") || !(cache || store || state || config);
         if (all) return EnumSet.allOf(Target.class);
         EnumSet<Target> set = EnumSet.noneOf(Target.class);
         if (cache) set.add(Target.CACHE);
-        if (data) set.add(Target.DATA);
+        if (store) set.add(Target.STORE);
         if (state) set.add(Target.STATE);
         if (config) set.add(Target.CONFIG);
         return set;
     }
 
     /**
-     * Build ordered purge rows for the selected targets. Never includes bin, JDKs, the product lib
-     * ({@code <data>/lib} — live engine and installed app jars), or the credential stores.
+     * Build ordered purge rows for the selected targets — one row per root, plus the two config
+     * paths. Never includes bin, JDKs, the product lib, or {@code creds}: those are roots of their
+     * own, so no target names them and {@link #addRow} refuses anything that would reach them.
      *
-     * <p>{@code <store>/lib} is <em>not</em> among them: the store row is delegated whole-tree to
-     * {@code jk storage nuke}, which deletes the store root outright, so everything beneath it —
-     * {@code repos}, {@code templates}, {@code tools}, {@code lib} — goes. That is intended (all of
-     * it is re-fetchable) and nothing writes to {@code <store>/lib} today anyway.
+     * <p>The store row is delegated whole-tree to {@code jk storage nuke}, which deletes the store
+     * root outright — {@code repos}, {@code templates}, {@code tools}, {@code completions} and all.
+     * That is intended: every byte under it is re-fetchable.
      */
     static List<PurgeRow> plan(JkDirs dirs, Set<Target> selected) {
         Guards guards = Guards.of(dirs);
@@ -374,76 +365,18 @@ public final class SelfNukeCommand implements CliCommand {
         if (selected.contains(Target.CACHE)) {
             addRow(byPath, abs(dirs.cacheDir()), "Cache tier", Target.CACHE, guards, true);
         }
-
-        if (selected.contains(Target.DATA)) {
-            planData(dirs, byPath, guards);
+        if (selected.contains(Target.STORE)) {
+            addRow(byPath, abs(dirs.storeDir()), Target.STORE.what, Target.STORE, guards, true);
         }
-
         if (selected.contains(Target.STATE)) {
+            // builds and tmp are inside state by construction, so the one row takes them with it.
             addRow(byPath, abs(dirs.stateDir()), Target.STATE.what, Target.STATE, guards);
-            Path state = abs(dirs.stateDir());
-            Path builds = abs(dirs.buildsDir());
-            Path tmp = abs(dirs.tmpDir());
-            if (builds != null && state != null && !isAncestor(state, builds) && !builds.equals(state)) {
-                addRow(byPath, builds, "Build history", Target.STATE, guards);
-            }
-            if (tmp != null && state != null && !isAncestor(state, tmp) && !tmp.equals(state)) {
-                addRow(byPath, tmp, "Scratch tmp", Target.STATE, guards);
-            }
         }
-
         if (selected.contains(Target.CONFIG)) {
-            planConfig(dirs, byPath, guards);
+            addRow(byPath, abs(dirs.userConfigFilePath()), Target.CONFIG.what, Target.CONFIG, guards);
+            addRow(byPath, abs(dirs.configDir()), "Per-app config", Target.CONFIG, guards);
         }
-
         return new ArrayList<>(byPath.values());
-    }
-
-    /**
-     * Data-root nuke: the artifact store plus every <em>other</em> child of {@code <data>}
-     * ({@code JK_DATA_DIR}; default {@code ~/.local/share/jk}, or {@code $JK_HOME/data}). The store
-     * is normally a child of that root, but is scheduled explicitly because {@code JK_STORE_DIR}
-     * can relocate it out of the data root. It is removed whole-tree — the root itself,
-     * {@code store/lib} included — by the engine-hosted {@code jk storage nuke} path, and its row
-     * clears the same {@link #addRow} guards as every other: a store root mis-pointed at a
-     * protected tree (the data root, {@code $HOME}) is refused here, and {@link #run} skips the
-     * delegated wipe for a row the guards refused.
-     *
-     * <p>The remaining children go through those guards too, so the live engine jar
-     * ({@code <data>/lib}) and the forge/repo credential stores survive.
-     */
-    private static void planData(JkDirs dirs, Map<Path, PurgeRow> byPath, Guards guards) {
-        Path store = abs(dirs.storeDir());
-        addRow(byPath, store, "Artifact store", Target.DATA, guards, true);
-        Path data = abs(dirs.dataDir());
-        if (data == null) return;
-        List<Path> children;
-        try (Stream<Path> stream = Files.list(data)) {
-            children = stream.map(SelfNukeCommand::abs).sorted().toList();
-        } catch (IOException e) {
-            return; // no data root, or unreadable — the store row above is the whole plan
-        }
-        for (Path child : children) {
-            if (child.equals(store)) continue;
-            addRow(byPath, child, Target.DATA.what, Target.DATA, guards);
-        }
-    }
-
-    /**
-     * Config nuke targets the config root ({@code ~/.config/jk}, {@code $JK_HOME/config}, or
-     * {@code JK_CONFIG_DIR}) — including per-app {@code <bin>/config.toml} trees. If that root
-     * somehow coincides with the data root, only the global {@code config.toml} file is scheduled
-     * so store/lib are not wiped.
-     */
-    private static void planConfig(JkDirs dirs, Map<Path, PurgeRow> byPath, Guards guards) {
-        Path configFile = abs(dirs.userConfigFilePath());
-        Path configDir = abs(dirs.configDir());
-        Path data = abs(dirs.dataDir());
-        boolean dirIsUmbrella = configDir == null || configDir.equals(data);
-        if (!dirIsUmbrella && addRow(byPath, configDir, Target.CONFIG.what, Target.CONFIG, guards)) {
-            return;
-        }
-        addRow(byPath, configFile, Target.CONFIG.what, Target.CONFIG, guards);
     }
 
     /** Absolute paths selected for deletion (for tests). */
@@ -459,9 +392,8 @@ public final class SelfNukeCommand implements CliCommand {
 
     /**
      * Schedule a row unless it would touch a guarded tree: equal to, inside, or an <em>ancestor</em>
-     * of bin, jdks, the product lib, or the forge/repo credential stores. Comparisons also run on
-     * real paths so a guarded dir reached through a symlink (e.g. {@code ~/.local/bin ->
-     * <data>/bin}) stays safe.
+     * of bin, jdks, the product lib, or creds. Comparisons also run on real paths, so a root a user
+     * has symlinked onto another volume — the reason {@code JK_STORE_DIR} exists — stays safe.
      *
      * @return whether the row was scheduled
      */
@@ -477,8 +409,7 @@ public final class SelfNukeCommand implements CliCommand {
         if (conflicts(norm, guards.bin())
                 || conflicts(norm, guards.jdks())
                 || conflicts(norm, guards.productLib())
-                || conflicts(norm, guards.credentials())
-                || conflicts(norm, guards.repoCredentials())) {
+                || conflicts(norm, guards.creds())) {
             return false;
         }
         byPath.putIfAbsent(norm, new PurgeRow(norm, what, target, delegated));
@@ -491,7 +422,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     private static void refuse(String what, Path root) {
         CliOutput.err("jk: refusing to nuke the " + what + " at " + root
-                + " — it overlaps a protected path (bin, JDKs, the live engine lib, or credentials)");
+                + " — it overlaps a protected root (bin, JDKs, the live engine lib, or creds)");
     }
 
     /** Failure-row reason: the message when there is one, else the exception itself. */
@@ -499,9 +430,8 @@ public final class SelfNukeCommand implements CliCommand {
         return e.getMessage() != null ? e.getMessage() : e.toString();
     }
 
-    /** {@code wantStore} — the store row cleared the guards; {@code wantData} — {@code --data} ran at all. */
-    private static void printPlan(
-            List<PurgeRow> rows, JkDirs dirs, boolean wantCache, boolean wantStore, boolean wantData) {
+    /** {@code wantStore} — the store row cleared the guards and will be wiped engine-side. */
+    private static void printPlan(List<PurgeRow> rows, JkDirs dirs, boolean wantCache, boolean wantStore) {
         List<String> headers = List.of("Path to Delete", "What");
         List<List<String>> tableRows = new ArrayList<>();
         for (PurgeRow r : rows) {
@@ -517,13 +447,10 @@ public final class SelfNukeCommand implements CliCommand {
         for (String line : Table.renderWarning("JumpKick Data Nuke", headers, tableRows)) {
             CliOutput.out(line);
         }
-        if (wantData) {
-            CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
-            // The guard is the product lib, not the engine directory inside it: installed app jars
-            // sit beside jk-engine and survive too, and naming only the engine left them unmentioned.
-            // Not "installed tools" — those would be <store>/lib, which the store wipe removes.
-            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed app jars)");
-        }
+        // Every root that is NOT a target, named every time — the survivors do not vary by
+        // selection now that each is a root rather than a child of one.
+        CliOutput.out("  Kept:  " + pathStyled(dirs.credsDir()) + "  (credentials; remove via jk repo logout)");
+        CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed app jars)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();

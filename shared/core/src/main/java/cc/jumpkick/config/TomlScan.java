@@ -38,9 +38,9 @@ public final class TomlScan {
      * <p>Memoized here rather than at each caller because there are twenty-eight of them and only one
      * had a memo. Seven ask the <em>same</em> file the <em>same</em> question ({@code
      * workspace.modules}); {@code JkM2Config.resolve} is reached on per-artifact paths, so a
-     * 500-artifact sync re-read {@code ~/.config/jk/config.toml} over a thousand times. Caching the
+     * 500-artifact sync re-read {@code ~/.jk/config.toml} over a thousand times. Caching the
      * lines rather than the scan result means every key-set shares one read — the scan itself is a
-     * line walk with an early exit, and never was the cost (JK-1033).
+     * line walk with an early exit, and never was the cost.
      *
      * <p>A file touched within {@link #SETTLE_MS} bypasses the memo entirely. Size+mtime cannot see a
      * same-length edit inside one coarse mtime tick, and a config file being edited is exactly the

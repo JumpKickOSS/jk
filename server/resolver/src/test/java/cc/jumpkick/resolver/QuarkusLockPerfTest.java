@@ -107,7 +107,7 @@ class QuarkusLockPerfTest {
      */
     static Path developerStore() {
         Function<String, String> env = k -> switch (k) {
-            case "JK_HOME", "JK_STORE_DIR", "JK_DATA_DIR", "JK_CACHE_DIR" -> null;
+            case "JK_HOME", "JK_STORE_DIR", "JK_CACHE_DIR" -> null;
             default -> System.getenv(k);
         };
         return JkDirs.of(env, System.getProperty("user.home")).storeDir();

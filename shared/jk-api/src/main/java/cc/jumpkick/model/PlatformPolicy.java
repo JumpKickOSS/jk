@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.util.Locale;
+
 /**
  * How platform BOM managed pins constrain PubGrub edges. Fills for GAs the BOM does
  * NOT manage are governed separately by {@link UnmappedPolicy}.
@@ -18,7 +20,7 @@ public enum PlatformPolicy {
     /** Parse {@code enforced} / {@code floor} (case-insensitive). Default enforced. */
     public static PlatformPolicy parse(String raw) {
         if (raw == null || raw.isBlank()) return ENFORCED;
-        return switch (raw.trim().toLowerCase()) {
+        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
             case "enforced", "exact", "hard" -> ENFORCED;
             case "floor", "soft", "lift" -> FLOOR;
             default ->
@@ -27,6 +29,6 @@ public enum PlatformPolicy {
     }
 
     public String wireName() {
-        return name().toLowerCase();
+        return name().toLowerCase(Locale.ROOT);
     }
 }

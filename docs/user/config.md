@@ -1,10 +1,10 @@
 # Config, chrome, and environment
 
-Global CLI prefs live in **`[config]`** of `~/.config/jk/config.toml` and/or project
+Global CLI prefs live in **`[config]`** of `~/.jk/config.toml` and/or project
 `jk.toml`. Precedence for most knobs: **flag > env > project > machine**.
 
 ```toml
-# ~/.config/jk/config.toml or project jk.toml
+# ~/.jk/config.toml or project jk.toml
 [config]
 color = "auto"          # auto | always | never
 offline = false
@@ -70,6 +70,7 @@ Contributor TUI rules: [TUI](../contributors/tui.md).
 ```toml
 [engine]
 jobs = 0
+# vfs-max-mb = 32     # per-job input-tree retain; 0 = off. Does not follow CI=1.
 # auto-warmup = false
 
 [http]

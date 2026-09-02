@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 /** Shared filesystem helpers. */
@@ -78,11 +79,11 @@ public final class PathUtil {
      * answer — and had <b>5</b> attribute-carrying walks against <b>233</b> blind ones. On Windows a
      * raw walk is actually <em>cheaper</em> than on Linux, because {@code FindNextFileW} returns each
      * entry's attributes with the entry; what costs is throwing them away and re-resolving the path
-     * to ask again, at 10.3&nbsp;µs a time against 1.0 on ext4 (JK-1031).
+     * to ask again, at 10.3&nbsp;µs a time against 1.0 on ext4.
      *
      * <p>{@code walkFileTree} hands {@code visitFile} those attributes for free. So a caller that
      * needs size, mtime, or regular-file-ness gets them without a syscall, and
-     * {@code walk(…).filter(Files::isRegularFile)} — which JK-1002 named, fixed in seven hot walkers,
+     * {@code walk(…).filter(Files::isRegularFile)} — which named, fixed in seven hot walkers,
      * and which had regrown to 72 sites — stops being the obvious spelling.
      *
      * <p>Symlinks are not followed. {@code walkFileTree}'s default is no-follow, so a link arrives as a
@@ -105,6 +106,7 @@ public final class PathUtil {
     public static void forEachRegularFile(Path root, Predicate<Path> skipDirectory, FileVisit visit)
             throws IOException {
         if (!Files.isDirectory(root)) return;
+        WALKS.incrementAndGet();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -135,6 +137,112 @@ public final class PathUtil {
     }
 
     /**
+     * Directories and regular files under {@code root}, attributes the walk already read, links as
+     * non-regular leaves. {@code accept} returning {@code false} terminates. Missing root is a no-op.
+     *
+     * <p>For freshness that needs directory mtimes (a deletion bumps the parent and nothing else).
+     * {@link #forEachRegularFile} never visits directories.
+     */
+    public static void forEachEntry(Path root, Predicate<Path> skipDirectory, EntryVisit visit) throws IOException {
+        if (!Files.isDirectory(root)) return;
+        WALKS.incrementAndGet();
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (!dir.equals(root) && skipDirectory.test(dir)) return FileVisitResult.SKIP_SUBTREE;
+                return visit.accept(dir, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                return visit.accept(file, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /**
+     * Direct children of {@code dir} with listing attributes. Missing dir is a no-op. Does not
+     * recurse. Symlinks are not followed — a link to a directory arrives as a non-directory child.
+     */
+    public static void forEachChild(Path dir, EntryVisit visit) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        WALKS.incrementAndGet();
+        Files.walkFileTree(dir, Set.of(), 1, new SimpleFileVisitor<>() {
+            // Only the root reaches preVisitDirectory at maxDepth 1 — depth-1 directories
+            // arrive via visitFile carrying their attributes — so the default CONTINUE is right.
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                return visit.accept(file, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /**
+     * True if any regular file matching {@code filePred} exists under {@code root}. Terminates on
+     * the first hit. Missing root is false. Symlinks are not followed.
+     */
+    public static boolean anyRegularFile(Path root, Predicate<Path> skipDirectory, Predicate<Path> filePred)
+            throws IOException {
+        if (!Files.isDirectory(root)) return false;
+        WALKS.incrementAndGet();
+        boolean[] hit = {false};
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return !dir.equals(root) && skipDirectory.test(dir)
+                        ? FileVisitResult.SKIP_SUBTREE
+                        : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (attrs.isRegularFile() && filePred.test(file)) {
+                    hit[0] = true;
+                    return FileVisitResult.TERMINATE;
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return hit[0];
+    }
+
+    /**
+     * What {@link #forEachEntry} and {@link #forEachChild} hand each path. Return {@code false} to
+     * stop the walk.
+     */
+    @FunctionalInterface
+    public interface EntryVisit {
+        boolean accept(Path path, BasicFileAttributes attrs) throws IOException;
+    }
+
+    /** Walks started by {@link #forEachRegularFile}, {@link #forEachEntry}, {@link #forEachChild}, {@link #anyRegularFile}. */
+    public static long walks() {
+        return WALKS.get();
+    }
+
+    /** Reset {@link #walks()} so a test can assert one covering walk. */
+    public static void resetWalks() {
+        WALKS.set(0);
+    }
+
+    private static final AtomicLong WALKS = new AtomicLong();
+
+    /**
      * {@code path}'s attributes, or empty when it does not exist or cannot be read.
      *
      * <p>Replaces the {@code exists}-then-{@code isRegularFile}-then-{@code size}-then-mtime chains:
@@ -159,7 +267,7 @@ public final class PathUtil {
      * The most sophisticated of them used {@code walkFileTree} and correctly created directories in
      * {@code preVisitDirectory} — and then still called {@code createDirectories(dest.getParent())}
      * per file, which its own {@code preVisitDirectory} had already guaranteed. When the best
-     * hand-rolled copy in a tree still has the bug, the argument for one owner is finished (JK-1032).
+     * hand-rolled copy in a tree still has the bug, the argument for one owner is finished.
      *
      * <p><strong>A byte-identical target is left alone</strong>, and that is a correctness property
      * before it is a saving. {@code Files.copy} is the most expensive operation jk measures — 305.2 µs
@@ -255,7 +363,7 @@ public final class PathUtil {
      * security-descriptor read plus an {@code AccessCheck}. Windows has no executable bit; what
      * decides whether a file runs is its extension, so the access check answers an expensive
      * question nobody asked. Thirteen call sites paid it, two of them per entry of a directory
-     * listing (JK-1030).
+     * listing.
      *
      * <p>So: on Windows, a regular file whose extension is in {@code PATHEXT} (defaulted when the
      * variable is unset or empty, which it is inside a stripped service environment). Elsewhere the

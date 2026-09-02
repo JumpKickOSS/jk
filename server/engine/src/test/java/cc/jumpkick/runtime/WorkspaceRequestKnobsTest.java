@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.test.TestWorkers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -54,8 +56,18 @@ class WorkspaceRequestKnobsTest {
         }
     }
 
+    /**
+     * {@code requestKnobs} / {@code moduleInputs} are a pass-through: whatever workers the request
+     * carries is what the module plan gets, including {@code 0}. Resolution of {@code 0 = auto}
+     * happens once per build in {@code buildWorkspace}, where the graph width is known — not here.
+     *
+     * <p>This test used to assert that both paths turned {@code 0} into {@code 1}, and so pinned a
+     * defect rather than a contract: {@code 1} does not read as "auto" downstream, it reads as an
+     * explicit request for a single JVM ({@link TestWorkers#resolve}), so a module with no
+     * {@code [test] workers} pin ran its whole suite serially no matter how much machine was idle.
+     */
     @Test
-    void zero_workers_plans_as_one_on_both_paths() throws Exception {
+    void the_worker_request_is_passed_through_verbatim_including_auto() throws Exception {
         Path mod = Files.createDirectories(tmp.resolve("app"));
         Set<Path> dirs = Set.of(mod);
         WorkspaceRequest req =
@@ -65,7 +77,64 @@ class WorkspaceRequestKnobsTest {
                 .apply(TaskForecaster.inputsFor(mod, req.cache(), 1, null, null, false, false, Set.of(), false));
         BuildPlanner.Inputs packaged = WorkspaceExecute.moduleInputs(mod, req, dirs, false);
 
-        assertThat(decorated.workerCount()).isEqualTo(1);
-        assertThat(packaged.workerCount()).isEqualTo(1);
+        assertThat(decorated.workerCount()).isZero();
+        assertThat(packaged.workerCount()).isZero();
+
+        // An explicit -w1 is also carried verbatim, and still means serial downstream.
+        WorkspaceRequest serial =
+                new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 1, null, false, false, 0, null, true, true);
+        assertThat(WorkspaceExecute.moduleInputs(mod, serial, dirs, false).workerCount())
+                .isEqualTo(1);
+        assertThat(TestWorkers.resolve(1, 40, 12)).isEqualTo(1);
+    }
+
+    /**
+     * Auto is a <em>share</em> of the machine, not "as many as this module could use", because jk
+     * takes its parallelism from modules first and the two layers draw on one machine.
+     *
+     * <p>Measured on the 30-module dogfood build: giving every module {@code min(jobs, classCount)}
+     * — each module sharding as if it were alone — moved the wall from 73 s to 103 s, and the
+     * whole-build curve is monotone in {@code -w} (73 s at {@code -w1}, 77 s at {@code -w2}, 81 s at
+     * {@code -w4}). Dividing by width reproduces the fast end for a wide build while still letting a
+     * single dirty module shard, which is the case within-module sharding was built for and where it
+     * was measured to pay (5.8 s → 2.4 s at {@code -w4}).
+     */
+    @Test
+    void auto_workers_are_the_machine_divided_by_how_wide_the_build_can_get() {
+        WorkspaceRequest auto =
+                new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true);
+
+        // Wide dogfood-shaped graph on 24 threads: modules already fill the machine.
+        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 13, 24)).isEqualTo(1);
+        // One module selected: nothing else is running, so shard as wide as the machine.
+        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 1, 24)).isEqualTo(24);
+        // In between.
+        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 4, 24)).isEqualTo(6);
+        // Degenerate inputs must not produce 0 workers or divide by zero.
+        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 0, 0)).isEqualTo(1);
+        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 99, 24)).isEqualTo(1);
+
+        // An explicit -w N is never rewritten, at any width.
+        WorkspaceRequest pinned =
+                new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 8, null, false, false, 0, null, true, true);
+        assertThat(WorkspaceExecute.resolveAutoWorkers(pinned, 13, 24)).isEqualTo(8);
+        assertThat(WorkspaceExecute.resolveAutoWorkers(pinned, 1, 24)).isEqualTo(8);
+    }
+
+    /**
+     * The memory plan multiplies the resolved per-module workers by the graph width, so the share
+     * has to keep that product near the core count rather than blowing past it — that product is
+     * what sizes per-JVM heaps and the {@code PluginSlots} permit count.
+     */
+    @Test
+    void the_resolved_share_keeps_the_memory_plan_within_the_core_count() {
+        WorkspaceRequest auto =
+                new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true);
+        for (int width : new int[] {1, 2, 4, 8, 13, 24, 30}) {
+            int w = WorkspaceExecute.resolveAutoWorkers(auto, width, 24);
+            assertThat(HeapPlan.requestedJvms(width, w, true, 24))
+                    .as("width %d x %d workers must stay within the cap", width, w)
+                    .isLessThanOrEqualTo(24);
+        }
     }
 }

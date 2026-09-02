@@ -11,7 +11,7 @@ dependencies {
     implementation(project(":io"))
     // The tree's shared test primitives (`cc.jumpkick.testing`): `LoopbackHttp` — the loopback
     // route-table server eight suites here each carried a copy of — and `SysProps`, which closes
-    // this module's `jk.m2.local` leak. A :host source set that never reaches main (JK-2443).
+    // this module's `jk.m2.local` leak. A :host source set that never reaches main.
     testImplementation(testFixtures(project(":host")))
 }
 
@@ -23,7 +23,7 @@ dependencies {
 // This used to be `junit.jupiter.extensions.autodetection.enabled=true` in a
 // `src/test/resources/junit-platform.properties`, i.e. a second mechanism for a policy the rest of
 // the tree states as a Gradle system property, invisible to anyone reading a build file and
-// silently outranked by one (JK-2447). One mechanism now; the conventions plugin sets the default
+// silently outranked by one. One mechanism now; the conventions plugin sets the default
 // to false and this is the one module that overrides it.
 tasks.withType<Test>().configureEach {
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")

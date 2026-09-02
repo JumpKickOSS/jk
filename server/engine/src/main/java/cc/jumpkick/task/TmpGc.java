@@ -36,7 +36,7 @@ public final class TmpGc {
 
         List<Path> doomed = new ArrayList<>();
         long total = 0;
-        // Attributes from the walk: mtime and size were two extra stats per file (JK-1031).
+        // Attributes from the walk: mtime and size were two extra stats per file.
         long[] bytes = {0};
         PathUtil.forEachRegularFile(tmpDir, (file, attrs) -> {
             if (attrs.lastModifiedTime().toMillis() < cutoff) {

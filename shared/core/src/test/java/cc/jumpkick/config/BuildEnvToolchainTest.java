@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Why this is a test and not a comment: the engine is a daemon, so a {@code System.getenv} on a
  * build path answers from whichever shell started it — days earlier, with a different {@code JK_JDK}.
  * The consequence was not a missing override but a build whose JDK depended on how the daemon had
- * been launched, so {@code jk engine stop} changed what got compiled (JK-1021).
+ * been launched, so {@code jk engine stop} changed what got compiled.
  *
  * <p>The other half of that fix — that swapping the resolved JDK actually moves the action key, so
  * forwarding these names opens no cache hole — is {@code ActionKeyTest}'s, which already asserts two
@@ -111,7 +111,7 @@ class BuildEnvToolchainTest {
     void the_request_carries_graal_home_as_a_typed_field() {
         // GRAALVM_HOME is a home path, not a spec, so it cannot ride the graal selection — it needs
         // its own field, and it needs one for the same reason: a getenv inside a resident engine
-        // answers from the shell that started the daemon (JK-1039).
+        // answers from the shell that started the daemon.
         Path home = Path.of("/opt/graal-25");
         Session session = Session.defaults().withToolchainSpecs("temurin-21", "graal-25", home);
 

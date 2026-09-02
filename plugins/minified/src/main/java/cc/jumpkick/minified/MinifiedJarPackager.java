@@ -11,16 +11,22 @@ import cc.jumpkick.surface.DynamicSurfaceIo;
 import cc.jumpkick.surface.KeepRuleEmitter;
 import cc.jumpkick.surface.TrainLayout;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.attribute.SignatureAttribute;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.Attributes;
@@ -206,6 +212,13 @@ final class MinifiedJarPackager {
             }
 
             auditByNameIndexes(program, shrunk);
+            SignatureAudit signatures = auditGenericSignatures(program, shrunk);
+            if (!signatures.degraded().isEmpty()) {
+                // A warning, never a failure (and deliberately outside strict-warnings): plenty of
+                // applications do no runtime generic matching, and unlike the by-name audit the
+                // jar carries no evidence the signatures are needed.
+                io.label(signatureWarning(signatures));
+            }
             writeOutputJar(shrunk, io.artifactPath(), mainClass);
             io.label("shrunk " + mb(before) + " → " + mb(Files.size(io.artifactPath())));
         } finally {
@@ -254,6 +267,114 @@ final class MinifiedJarPackager {
         throw new IllegalStateException(message.toString());
     }
 
+    /** One class's generic-signature drift: what the inputs carried, what the output kept. */
+    record SignatureDrift(String className, String before, String after) {}
+
+    /** {@code compared} = classes present in both inputs and output that carried a signature. */
+    record SignatureAudit(int compared, List<SignatureDrift> degraded) {}
+
+    /**
+     * Warn when R8 erased or raw-ified class-level generic {@code Signature} attributes.
+     *
+     * <p>{@code -keepattributes Signature} is passed, and is not enough: in {@code --classfile}
+     * full mode a class keeps its signature only when it is explicitly kept along with the types
+     * the signature references. A framework that resolves beans by runtime generic matching then
+     * fails at startup with {@code No bean of type [Foo<Bar>]} and no hint that packaging caused
+     * it. Measured on a Micronaut jar: 1,799 of 5,550 shared classes (32%) lost theirs.
+     *
+     * <p>The removal class of damage is {@link #auditByNameIndexes}'s and fails the build; this
+     * is the rewriting class, and it stays a warning — nothing in the jar proves the signatures
+     * are needed.
+     */
+    // Package-private for MinifiedJarAuditTest.
+    static SignatureAudit auditGenericSignatures(List<Path> program, Path shrunk) throws IOException {
+        Map<String, String> before = classSignatures(program);
+        Map<String, String> after = classSignatures(List.of(shrunk));
+        int compared = 0;
+        List<SignatureDrift> degraded = new ArrayList<>();
+        for (Map.Entry<String, String> e : before.entrySet()) {
+            if (e.getValue() == null || !after.containsKey(e.getKey())) continue;
+            compared++;
+            String kept = after.get(e.getKey());
+            if (!e.getValue().equals(kept)) {
+                degraded.add(new SignatureDrift(e.getKey(), e.getValue(), kept));
+            }
+        }
+        degraded.sort(Comparator.comparing(SignatureDrift::className));
+        return new SignatureAudit(compared, List.copyOf(degraded));
+    }
+
+    /** Past this share, keep rules cannot help and the honest advice is a fat jar. */
+    private static final int ASSEMBLY_ADVICE_PERCENT = 5;
+
+    // Package-private for MinifiedJarAuditTest.
+    static String signatureWarning(SignatureAudit audit) {
+        int n = audit.degraded().size();
+        StringBuilder sb = new StringBuilder();
+        sb.append(n)
+                .append(" of ")
+                .append(audit.compared())
+                .append(" classes lost or raw-ified their generic Signature (e.g. ");
+        for (int i = 0; i < Math.min(3, n); i++) {
+            SignatureDrift d = audit.degraded().get(i);
+            if (i > 0) sb.append("; ");
+            sb.append(d.className())
+                    .append(" was `")
+                    .append(d.before())
+                    .append("`, now ")
+                    .append(d.after() == null ? "none" : "`" + d.after() + "`");
+        }
+        sb.append("). -keepattributes Signature is not enough in classfile full mode — a class"
+                + " keeps its signature only when it and the types the signature references are"
+                + " explicitly kept. Anything resolving types by runtime generic matching will"
+                + " fail at startup. ");
+        if (n * 100L >= (long) audit.compared() * ASSEMBLY_ADVICE_PERCENT) {
+            sb.append("At this scale keep rules cannot restore them: this application is not a"
+                    + " minify candidate — use [application] assembly = true.");
+        } else {
+            sb.append("Keep the referenced types with [minified] keep to restore them.");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Class-level {@code Signature} per class ({@code null} when the class carries none). First
+     * occurrence wins, matching the classpath's shadowing rule. Malformed class files have
+     * nothing to compare and are skipped.
+     */
+    private static Map<String, String> classSignatures(Collection<Path> jars) throws IOException {
+        Map<String, String> out = new HashMap<>();
+        for (Path jar : jars) {
+            if (!Files.isRegularFile(jar)) continue;
+            try (JarFile jf = new JarFile(jar.toFile())) {
+                Enumeration<JarEntry> entries = jf.entries();
+                while (entries.hasMoreElements()) {
+                    JarEntry entry = entries.nextElement();
+                    String name = entry.getName();
+                    if (entry.isDirectory() || !name.endsWith(".class") || name.endsWith("module-info.class")) {
+                        continue;
+                    }
+                    String fqcn =
+                            name.substring(0, name.length() - ".class".length()).replace('/', '.');
+                    if (out.containsKey(fqcn)) continue;
+                    try (InputStream in = jf.getInputStream(entry)) {
+                        String signature = null;
+                        for (var attr : ClassFile.of().parse(in.readAllBytes()).attributes()) {
+                            if (attr instanceof SignatureAttribute sig) {
+                                signature = sig.signature().stringValue();
+                                break;
+                            }
+                        }
+                        out.put(fqcn, signature);
+                    } catch (RuntimeException malformed) {
+                        // not a parseable class file — nothing to compare
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     /**
      * Keep every top-level class compiled for this module. Inner classes are covered by their
      * outer keep when present; anonymous/local types stay reachable from kept members.
@@ -267,7 +388,7 @@ final class MinifiedJarPackager {
         int kept = 0;
         try (Stream<Path> walk = Files.walk(classesDir)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards (JK-1030).
+            // the path for a fresh stat even for entries the name test discards.
             List<Path> classes = walk.filter(p -> p.getFileName().toString().endsWith(".class"))
                     .filter(p -> !p.getFileName().toString().equals("module-info.class"))
                     .filter(Files::isRegularFile)

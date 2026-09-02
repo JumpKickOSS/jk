@@ -86,8 +86,8 @@ class PluginInstallLocalTest {
 
     private static void assertInstalled(Path cache, Path worker) {
         Path dest = cache.resolve("repos/jk-local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
-        Path storeDest = JkStores.storeRootFor(cache)
-                .resolve("repos/jk-local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
+        Path storeDest =
+                JkStores.store().resolve("repos/jk-local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
         Path jar = Files.isRegularFile(dest) ? dest : storeDest;
         assertThat(jar).isRegularFile();
         Path pom = jar.resolveSibling("jk-test-runner-0.12.0.pom");

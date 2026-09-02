@@ -19,7 +19,7 @@ public final class CompilePlans {
         return compileBuildPlan(dir, cache, profileName, verbose, null);
     }
 
-    /** As above with request-level Inputs decoration (JK-2102). {@code null} = none. */
+    /** As above with request-level Inputs decoration. {@code null} = none. */
     public static BuildPlan compileBuildPlan(
             Path dir, Path cache, String profileName, boolean verbose, UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path buildFile = dir.resolve(ManifestPaths.MANIFEST);

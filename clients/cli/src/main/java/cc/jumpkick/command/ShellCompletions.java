@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Writes shell completion scripts under {@code <data>/completions/&lt;shell&gt;/}. Top-level
+ * Writes shell completion scripts under {@code <store>/completions/&lt;shell&gt;/}. Top-level
  * command names come from {@link CommandDispatch#commands()}.
  */
 public final class ShellCompletions {
@@ -23,7 +23,7 @@ public final class ShellCompletions {
 
     /** Write completions for all supported shells; returns the completions root. */
     public static Path writeAll() throws IOException {
-        Path root = JkDirs.data().resolve("completions");
+        Path root = JkDirs.store().resolve("completions");
         writeBash(root.resolve("bash"));
         writeZsh(root.resolve("zsh"));
         writeFish(root.resolve("fish"));

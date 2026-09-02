@@ -107,7 +107,7 @@ class CachePlansTempSweepTest {
     /** The tier split is the contract: a plain prune must not reach into the artifact store. */
     @Test
     void plain_prune_leaves_store_temps_to_repo_prune(@TempDir Path root) throws Exception {
-        Path storeTemp = JkStores.resolve(root, "sha256").resolve("ab/.put-jk1531");
+        Path storeTemp = JkStores.resolve("sha256").resolve("ab/.put-jk1531");
         seed(storeTemp, "partial");
         try {
             CachePlans.pruneBuildPlan(root, false, false).run();

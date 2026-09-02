@@ -55,7 +55,7 @@ class GitBackendFetchTest {
         // Backdate the checkout a clear minute, so ANY rewrite by the second fetch moves the mtime.
         // The `Thread.sleep(20)` this replaces was betting that 20ms exceeds the filesystem's mtime
         // granularity — true on ext4, not on every filesystem, and not a statement of intent
-        // either way (JK-2446).
+        // either way.
         long firstMtime = System.currentTimeMillis() - 60_000L;
         Files.setLastModifiedTime(first.checkoutPath(), FileTime.fromMillis(firstMtime));
         GitFetcher.Fetched second = backend.fetch(source, false);

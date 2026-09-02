@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2088: native forecast eligibility must come from the resolved terminal set (what
+ *: native forecast eligibility must come from the resolved terminal set (what
  * assemblePlan will actually build), not from re-derived {@code [native]} tables. A fallback
  * (table-less unique-main) module was invisible to the forecast; an unselected cone prereq WITH
  * a table was priced perpetually dirty even though its plan gets {@code allowNative=false}.
@@ -69,7 +69,7 @@ class TaskForecasterNativeTargetTest {
         assertThat(graph.hasErrors()).isFalse();
         Path cache = root.resolve("cache");
         return SessionContext.where(Session.defaults(), () -> {
-            var cas = JkStores.cas(cache);
+            var cas = JkStores.storeCas();
             var ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
             return TaskForecaster.of(graph, cas, ac, cache, false, WorkspaceTarget.NATIVE, terminalDirs);
         });

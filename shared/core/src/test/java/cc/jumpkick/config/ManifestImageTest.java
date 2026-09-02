@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code [image]} is read by the manifest owner. Every case here goes through
  * {@link JkBuildParser#imageConfig(Path)} rather than a private {@code [image]} parser, so the
  * owner's document policy — the syntax-error message and {@link Interpolation}'s whitelist — decides
- * what these cases see.
+ * what these cases.
  */
 class ManifestImageTest {
 

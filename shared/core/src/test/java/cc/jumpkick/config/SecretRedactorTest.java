@@ -11,9 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A name a {@code.env} declares is a secret name, and its effective value is secret whichever
+ * A name a {@code .env} declares is a secret name, and its effective value is secret whichever
  * layer supplied it. The redactor masks those values in free-form text and hashes them for cache
- * keys. Names no {@code.env} mentions are left alone — nothing can enumerate the host
+ * keys. Names no {@code .env} mentions are left alone — nothing can enumerate the host
  * environment, and guessing by name is the heuristic this class exists to avoid.
  */
 class SecretRedactorTest {
@@ -139,7 +139,7 @@ class SecretRedactorTest {
     }
 
     /**
-     * A shadowed name is still a secret name. {@code.env} supplies the default and CI exports the
+     * A shadowed name is still a secret name. {@code .env} supplies the default and CI exports the
      * real one, so the value that actually reaches the wire is the environment's — and under the
      * old {@code isFromFile} rule that was the one value never masked. The degenerate case is
      * worse: the same literal token in both places went unmasked purely because the shell also

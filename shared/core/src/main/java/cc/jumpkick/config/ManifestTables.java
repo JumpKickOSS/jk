@@ -446,7 +446,7 @@ public final class ManifestTables {
      * clean and do nothing: the project built a thin jar, and {@code jk install}'s artifact ladder
      * — native, then minified, then fat, then thin — then honestly installed a thin-jar launcher
      * because no fat jar existed. Nothing in that chain is wrong except the key nobody read
-     * (JK-1073). {@code minified} did stop the build, but by accident, reporting a type problem
+     *. {@code minified} did stop the build, but by accident, reporting a type problem
      * for what is a wrong-table problem.
      *
      * <p>Scalars only. {@code [native]}, {@code [config]} and plugin tables like {@code [assembly]}

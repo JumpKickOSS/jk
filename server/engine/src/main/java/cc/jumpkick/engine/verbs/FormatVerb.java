@@ -8,10 +8,9 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.FormatRequest;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -69,17 +68,18 @@ public final class FormatVerb implements HostedVerb {
         // table, then the built-in defaults — one verb, one result across entry points.
         FormatStyles.Resolved styles = FormatStyles.resolve(null, null, null, null, null, null, entry.format());
         return ProtoSession.withTrigger(
-                ProtoJobs.formatRequest(
-                        spec.dir(),
-                        JkDirs.cache().toString(),
-                        false,
-                        styles.java(),
-                        styles.kotlin(),
-                        styles.optimizeImports(),
-                        styles.importOrder(),
-                        styles.removeUnusedImports(),
-                        false,
-                        false),
+                new FormatRequest(
+                                spec.dir(),
+                                JkDirs.cache().toString(),
+                                false,
+                                styles.java(),
+                                styles.kotlin(),
+                                styles.optimizeImports(),
+                                styles.importOrder(),
+                                styles.removeUnusedImports(),
+                                false,
+                                false)
+                        .encode(),
                 "web");
     }
 
@@ -87,23 +87,18 @@ public final class FormatVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                boolean check = Jsonl.bool(requestLine, "check", false);
-                String javaStyle = Jsonl.str(requestLine, "javaStyle");
-                String kotlinStyle = Jsonl.str(requestLine, "kotlinStyle");
-                boolean optimizeImports = Jsonl.bool(requestLine, "optimizeImports", true);
-                boolean importOrder = Jsonl.bool(requestLine, "importOrder", true);
-                boolean removeUnusedImports = Jsonl.bool(requestLine, "removeUnusedImports", true);
+                FormatRequest body = FormatRequest.decode(requestLine);
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = FormatPlans.formatBuildPlan(
                         session.workingDir(),
                         session.cacheDir(),
-                        check,
-                        javaStyle,
-                        kotlinStyle,
-                        optimizeImports,
-                        importOrder,
-                        removeUnusedImports,
+                        body.check(),
+                        body.javaStyle(),
+                        body.kotlinStyle(),
+                        body.optimizeImports(),
+                        body.importOrder(),
+                        body.removeUnusedImports(),
                         (path, status, message, index, total) -> host.sendQuiet(
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
                 // `result.success()` is the run's verdict on every surface — this event, the journal

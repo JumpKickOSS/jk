@@ -54,7 +54,7 @@ public final class PluginDescriptorOps {
             return false;
         }
         boolean wrote = false;
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
         for (Lockfile.PluginEntry entry : lockfile.plugins()) {
             String sha = entry.sha256Hex();
             Path target = PluginDescriptorStore.fileFor(moduleDir, sha);
@@ -95,9 +95,9 @@ public final class PluginDescriptorOps {
         if (decl.isPathPin()) {
             // Path pins have no Maven coordinate or POM; the sha-verified blob is the whole
             // classpath (WorkerLaunchClasspath recognizes blob paths as self-contained).
-            return entry.map(e -> JkStores.cas(cache).pathFor(e.sha256Hex())).filter(Files::isRegularFile);
+            return entry.map(e -> JkStores.storeCas().pathFor(e.sha256Hex())).filter(Files::isRegularFile);
         }
-        return entry.flatMap(e -> pinnedLayoutJar(JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex()));
+        return entry.flatMap(e -> pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), e.sha256Hex()));
     }
 
     /**

@@ -32,7 +32,7 @@ class ScalaToolResolverTest {
 
     @Test
     void partial_lib_dir_without_completion_marker_is_a_miss(@TempDir Path dir) throws IOException {
-        // JK-2290: a resolve that copied some jars then died leaves jars but no closure.shas — it
+        // : a resolve that copied some jars then died leaves jars but no closure.shas — it
         // must NOT be trusted, or scalac launches against an incomplete closure.
         Path libDir = Files.createDirectories(dir.resolve("lib"));
         Path cacheFile = dir.resolve("closure.shas");

@@ -103,9 +103,8 @@ public final class PlannerKsp {
     }
 
     /** The provided-classpath contribution (platform jars), re-read for the test step. */
-    @SuppressWarnings("unchecked")
     static List<Path> contributedProvidedFor(TaskContext ctx) {
-        return (List<Path>) ctx.get(PROVIDED_CP).orElse(List.of());
+        return ctx.get(PROVIDED_CP).orElse(List.of());
     }
 
     /** Generated-source dirs the KSP round writes (checked by the compile-step unions). */
@@ -190,8 +189,7 @@ public final class PlannerKsp {
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
                 .execute(ctx -> {
-                    @SuppressWarnings("unchecked")
-                    List<Path> processorCp = (List<Path>) ctx.require(PROCESSOR_CP);
+                    List<Path> processorCp = ctx.require(PROCESSOR_CP);
                     var split = KspProcessors.split(processorCp);
                     ctx.put(JAVAC_PROCESSOR_CP, split.javac());
                     if (split.ksp().isEmpty()) {
@@ -201,8 +199,7 @@ public final class PlannerKsp {
                     }
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path outBase = kspOutBase(layout);
-                    @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> classpath = ctx.require(CLASSPATH);
                     List<Path> ktSources = kotlinSources(ctx);
                     List<Path> javaSources = javaSources(ctx);
 

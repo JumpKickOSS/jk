@@ -446,7 +446,7 @@ class EffectivePomBuilderTest {
      * parallel) it reported <em>"Expecting actual throwable to be an instance of
      * ExecutionException but was TimeoutException"</em>. That message names neither cause: the walk
      * had not finished for want of CPU, and the assertion could not tell that from cycle detection
-     * being broken. Correct in intent, unsound in mechanism (JK-2446).
+     * being broken. Correct in intent, unsound in mechanism.
      *
      * <p>So the deadline here is a <em>liveness</em> check and says so when it fires; the
      * correctness claim — that the failure is a {@code PomParseException} naming a cycle — is

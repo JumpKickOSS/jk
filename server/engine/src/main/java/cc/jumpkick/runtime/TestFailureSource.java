@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -243,7 +244,7 @@ public final class TestFailureSource {
 
     private static boolean isSourceFile(String name) {
         if (name == null) return false;
-        String n = name.toLowerCase();
+        String n = name.toLowerCase(Locale.ROOT);
         return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".kts") || n.endsWith(".groovy");
     }
 
@@ -385,7 +386,7 @@ public final class TestFailureSource {
 
     private static String languageOf(String fileName) {
         if (fileName == null) return "java";
-        String n = fileName.toLowerCase();
+        String n = fileName.toLowerCase(Locale.ROOT);
         if (n.endsWith(".kt") || n.endsWith(".kts")) return "kotlin";
         if (n.endsWith(".groovy")) return "groovy";
         return "java";

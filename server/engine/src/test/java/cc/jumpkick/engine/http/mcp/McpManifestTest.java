@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.http.EngineHttpJobs;
@@ -9,12 +10,14 @@ import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -131,5 +134,25 @@ class McpManifestTest {
         assertThat(after).contains("java = 25");
         assertThat(after).doesNotContain("java = 17");
         assertThat(JkBuildParser.parse(after).project().javaRelease()).isEqualTo(25);
+    }
+
+    @Test
+    void scope_parse_survives_a_turkish_default_locale_and_never_defaults_an_unknown() {
+        // Under tr, 'i' ⇄ 'I' do not round-trip ("MAIN".toLowerCase() is "maın"), and this is the
+        // agent-facing surface: swallowing an unknown scope into MAIN silently rewrote a runtime
+        // request into a main dependency.
+        Locale prev = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr"));
+            assertThat(McpManifest.parseScope("MAIN")).isEqualTo(Scope.MAIN);
+            assertThat(McpManifest.parseScope("runtime")).isEqualTo(Scope.RUNTIME);
+            assertThat(McpManifest.parseScope("test-dev")).isEqualTo(Scope.TEST_DEV);
+            assertThatThrownBy(() -> McpManifest.parseScope("runtimes"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("runtimes")
+                    .hasMessageContaining("runtime");
+        } finally {
+            Locale.setDefault(prev);
+        }
     }
 }

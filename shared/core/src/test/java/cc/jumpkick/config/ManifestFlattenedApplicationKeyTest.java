@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>It used to be silent for {@code assembly}: the manifest parsed, the fat jar was never built,
  * and {@code jk install}'s ladder — native, minified, fat, thin — then installed a thin-jar
  * launcher because no fat jar existed. Every step honest, the whole outcome wrong, and nothing
- * printed (JK-1073). {@code minified} did stop the build, but reported a type problem for what is
+ * printed. {@code minified} did stop the build, but reported a type problem for what is
  * a wrong-table problem.
  */
 class ManifestFlattenedApplicationKeyTest {

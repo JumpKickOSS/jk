@@ -4,6 +4,7 @@ package cc.jumpkick.scaffold;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.model.Layout;
 import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +18,7 @@ import org.junit.jupiter.api.Test;
  * {@code jk new --plugin} writes a hardcoded jk-plugin-sdk version; this tripwire holds it against
  * the one owner of that version, the {@code version} line {@code :plugin-sdk} publishes under. A
  * Gradle script cannot read a Java constant, so the renderer's copy cannot be deleted — but it can
- * be checked, and this is the check. (JK-2430 deleted the third copy, {@code
+ * be checked, and this is the check. (deleted the third copy, {@code
  * PluginSdkVersion.VERSION}: no production code read it.)
  */
 class PluginSdkScaffoldVersionTest {
@@ -46,7 +47,7 @@ class PluginSdkScaffoldVersionTest {
                 false,
                 true,
                 NewInputs.Language.JAVA,
-                "simple",
+                Layout.SIMPLE,
                 Optional.empty(),
                 List.of(),
                 false,

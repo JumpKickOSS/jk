@@ -47,16 +47,19 @@ class WorkerCompileDriverTest {
     }
 
     /**
-     * Groovy's joint-compilation pass is the other half of the asymmetry: stubs and Java source
-     * roots are groovyc inputs with no Kotlin counterpart (Kotlin's Java interop rides an
-     * {@code extraArgs} flag the engine builds, not a spec field).
+     * Groovy's joint-compilation pass is the other half of the asymmetry: stubs are a groovyc
+     * input with no Kotlin counterpart, and the roots' Java neighborhood rides the SOURCE lines
+     * themselves ({@code GroovycInputs}) — the worker compiles the listed set verbatim and never
+     * walks a tree, so the set the action key hashed is the set that compiles.
      */
     @Test
     void groovyc_carries_the_joint_compilation_inputs_kotlin_has_no_field_for(@TempDir Path dir) throws IOException {
         Path stubs = dir.resolve("stubs");
         Path javaRoot = Files.createDirectories(dir.resolve("src/main/java"));
+        Path neighbor = source(javaRoot, "Dep.java", "class Dep {}");
+        Path groovy = source(dir, "Main.groovy", "println 'hi'");
         Path spec = GroovycSpec.write(GroovycRequest.builder()
-                .sources(List.of(source(dir, "Main.groovy", "println 'hi'")))
+                .sources(List.of(groovy))
                 .javaSourceRoots(List.of(javaRoot))
                 .outputDir(dir.resolve("classes"))
                 .stubsOut(stubs)
@@ -66,8 +69,10 @@ class WorkerCompileDriverTest {
         try {
             PluginSpec read = PluginSpec.read(spec);
             assertThat(read.extra("stubsOut")).contains(stubs.toAbsolutePath().normalize());
-            assertThat(read.config().stringList("javaSourceRoots"))
-                    .containsExactly(javaRoot.toAbsolutePath().toString());
+            assertThat(read.sources())
+                    .containsExactly(
+                            groovy.toAbsolutePath().normalize(),
+                            neighbor.toAbsolutePath().normalize());
         } finally {
             Files.deleteIfExists(spec);
         }

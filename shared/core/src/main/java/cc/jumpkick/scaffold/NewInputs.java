@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
+import cc.jumpkick.model.Layout;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -19,7 +20,7 @@ public record NewInputs(
         boolean nativeImage,
         boolean plugin,
         Language lang,
-        String layout,
+        Layout layout,
         Optional<String> kotlinModuleName,
         List<String> deps,
         boolean sample,
@@ -32,6 +33,7 @@ public record NewInputs(
         Objects.requireNonNull(jdkIdentifier, "jdkIdentifier");
         Objects.requireNonNull(main, "main");
         Objects.requireNonNull(lang, "lang");
+        Objects.requireNonNull(layout, "layout");
         Objects.requireNonNull(kotlinModuleName, "kotlinModuleName");
         Objects.requireNonNull(directory, "directory");
         deps = List.copyOf(deps);
@@ -49,7 +51,7 @@ public record NewInputs(
             boolean assembly,
             boolean nativeImage,
             Language lang,
-            String layout,
+            Layout layout,
             Optional<String> kotlinModuleName,
             List<String> deps,
             boolean sample,
@@ -84,7 +86,7 @@ public record NewInputs(
             boolean assembly,
             boolean nativeImage,
             Language lang,
-            String layout,
+            Layout layout,
             Optional<String> kotlinModuleName,
             List<String> deps,
             boolean sample,
@@ -133,9 +135,9 @@ public record NewInputs(
         }
     }
 
-    /** True when the chosen layout is "simple" (Mill-like {@code ./src} + {@code ./test/src}). */
+    /** True when the chosen layout is simple (Mill-like {@code ./src} + {@code ./test/src}). */
     public boolean isSimpleLayout() {
-        return "simple".equalsIgnoreCase(layout);
+        return layout == Layout.SIMPLE;
     }
 
     public boolean isRunnable() {

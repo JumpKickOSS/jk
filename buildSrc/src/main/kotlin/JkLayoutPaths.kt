@@ -3,64 +3,33 @@
 import java.io.File
 
 /**
- * Gradle-side mirrors of [cc.jumpkick.util.JkDirs] platform defaults (buildSrc cannot depend on :core). Keep in sync
- * when layout resolution changes.
- *
- * Resolution order for the roots: role env → JK_HOME umbrella → XDG / Known Folders. Everything else derives from a
- * root, identically in every mode — JK_HOME mirrors the XDG shape rather than flattening it.
+ * Gradle-side mirror of [cc.jumpkick.util.JkDirs] (buildSrc cannot depend on :core). Keep in sync when layout
+ * resolution changes — which is now cheap, because there is one shape: everything jk owns lives under `$HOME/.jk`,
+ * relocated wholesale by `JK_HOME`, with per-root overrides only for the large roots.
  */
 object JkLayoutPaths {
 
-    /** Always {@code <data>/store} — {@code $JK_HOME/data/store} under the umbrella. */
+    /** The one root: `$JK_HOME`, else `$HOME/.jk`. */
+    fun homeRoot(): File {
+        nonBlank(System.getenv("JK_HOME"))?.let {
+            return File(it)
+        }
+        return File(userHome(), ".jk")
+    }
+
+    /** Fetched artifacts: `<home>/store`, or `JK_STORE_DIR`. */
     fun storeRoot(): File {
         nonBlank(System.getenv("JK_STORE_DIR"))?.let {
             return File(it)
         }
-        return dataRoot().resolve("store")
+        return homeRoot().resolve("store")
     }
 
-    /** The live engine jar / installed app jars: {@code <data>/lib}. */
-    fun productLibRoot(): File = dataRoot().resolve("lib")
+    /** The live engine jar / installed app jars: `<home>/lib`. */
+    fun productLibRoot(): File = homeRoot().resolve("lib")
 
-    fun dataRoot(): File {
-        nonBlank(System.getenv("JK_DATA_DIR"))?.let {
-            return File(it)
-        }
-        nonBlank(System.getenv("JK_HOME"))?.let {
-            return File(it).resolve("data")
-        }
-        if (isWindows()) {
-            val local = nonBlank(System.getenv("LOCALAPPDATA")) ?: File(userHome(), "AppData/Local").path
-            return File(local, "jk/data")
-        }
-        val xdg = nonBlank(System.getenv("XDG_DATA_HOME"))
-        if (xdg != null) return File(xdg, "jk")
-        return File(userHome(), ".local/share/jk")
-    }
-
-    fun binDir(): File {
-        nonBlank(System.getenv("JK_BIN_DIR"))?.let {
-            return File(it)
-        }
-        nonBlank(System.getenv("JK_INSTALL_DIR"))?.let {
-            return File(it)
-        }
-        nonBlank(System.getenv("JK_HOME"))?.let {
-            return File(it).resolve("bin")
-        }
-        if (isWindows()) {
-            return File(userHome(), ".local/bin")
-        }
-        nonBlank(System.getenv("XDG_BIN_HOME"))?.let {
-            return File(it)
-        }
-        nonBlank(System.getenv("XDG_DATA_HOME"))?.let { xdg ->
-            File(xdg).parentFile?.let {
-                return File(it, "bin")
-            }
-        }
-        return File(userHome(), ".local/bin")
-    }
+    /** PATH launchers: `<home>/bin`. */
+    fun binDir(): File = homeRoot().resolve("bin")
 
     /**
      * Client for dogfood tasks (`installLocal` materialize). Native image from `./gradlew dist` first when present; the

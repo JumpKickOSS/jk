@@ -87,7 +87,7 @@ public final class ProgressBar {
      *
      * <p>The width is a parameter rather than a constant because the line the bar sits on has a
      * budget: a caller whose trailing text it does not control — a JDK vendor string, a Maven
-     * coordinate — needs a narrower bar so the two together still fit one row (JK-2602).
+     * coordinate — needs a narrower bar so the two together still fit one row.
      */
     public String render(long numerator, long denominator, int width) {
         int w = width <= 0 ? SEGMENTS : width;

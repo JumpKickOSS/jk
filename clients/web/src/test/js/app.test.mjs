@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Headless tests for the root app component's route logic (JK-1986). The harness copies the
+// Headless tests for the root app component's route logic. The harness copies the
 // web modules into a type:module temp dir (JK_APP_DIR) and imports app.js's exported
 // appOptions; browser mount is guarded behind `typeof document`.
 import { test } from 'node:test';
@@ -28,7 +28,7 @@ function vm(over = {}) {
   return v;
 }
 
-test('same-project navigation does not refetch project meta (JK-1945)', () => {
+test('same-project navigation does not refetch project meta', () => {
   globalThis.location.hash = '#project/abc123/files/src/Main.java';
   const v = vm({ selectedProjectId: 'abc123', projectMeta: { dir: '/x' }, view: 'project' });
   let calls = 0;
@@ -56,7 +56,7 @@ test('project switch and missing meta both refetch', () => {
   assert.equal(calls2, 1, 'never-loaded meta is fetched even without a switch');
 });
 
-test('rapid file clicks during a slow meta fetch fire exactly one request (JK-2064)', async () => {
+test('rapid file clicks during a slow meta fetch fire exactly one request', async () => {
   const flush = () => new Promise((r) => setImmediate(r));
   globalThis.location.hash = '#project/abc123/files/src/A.java';
   const v = vm({ selectedProjectId: null, projectMeta: null, projectHistory: [{}] });
@@ -97,7 +97,7 @@ test('rapid file clicks during a slow meta fetch fire exactly one request (JK-20
   assert.equal(attempts, 2, 'failure re-arms the guard');
 });
 
-test('a stale project-meta response never overwrites the current project (JK-1995)', async () => {
+test('a stale project-meta response never overwrites the current project', async () => {
   const v = vm({ selectedProjectId: 'slowA', projectMeta: null, projectHistory: [{}] });
   let resolveSlow;
   v.fetchProjectMeta = () =>
@@ -122,7 +122,7 @@ test('a stale project-meta response never overwrites the current project (JK-199
   assert.equal(w.selectedProjectDir, '/same');
 });
 
-test('manifest saves and build finishes refresh the open project header (JK-2065)', async () => {
+test('manifest saves and build finishes refresh the open project header', async () => {
   const flush = () => new Promise((r) => setImmediate(r));
   const v = vm({
     view: 'project',
@@ -193,11 +193,11 @@ test('cancelled cards hide success and failure details', () => {
   assert.deepEqual(v.failedModules(card), []);
 });
 
-// --- JK-2424: the dashboard renders test counts from the journal's nested `tests` object ---
+// --- the dashboard renders test counts from the journal's nested `tests` object ---
 
 /**
  * A real journal record, verbatim from a jk self-host run:
- *   ~/.local/state/jk/builds/projects/a66f86e5.../runs/1/record.json
+ *   ~/.jk/state/builds/projects/a66f86e5.../runs/1/record.json
  * Every top-level field is byte-for-byte what the engine wrote; only the `modules` array is
  * truncated to its first entry (62 KB otherwise), and nothing under test reads past it.
  * `GET /api/history` streams these bodies to the SPA verbatim, so this IS the wire shape.
@@ -332,7 +332,7 @@ const REAL_RECORD = {
     }
   };
 
-test('projectDetail renders the tests column from the nested tests object (JK-2424)', () => {
+test('projectDetail renders the tests column from the nested tests object', () => {
   const v = vm({ selectedProjectId: REAL_RECORD.projectId, projectHistory: [REAL_RECORD] });
   const detail = appOptions.computed.projectDetail.call(v);
 
@@ -344,7 +344,7 @@ test('projectDetail renders the tests column from the nested tests object (JK-24
   assert.equal(detail.rows[0].tests.total, 4323);
 });
 
-test('a record with no test phase renders no test counts rather than zeros (JK-2424)', () => {
+test('a record with no test phase renders no test counts rather than zeros', () => {
   // 217 of the 218 records on this host wrote `"tests": null` — no test step ran. The column has
   // to show an em dash, not "0 / 0", so the row must carry null and not a zeroed object.
   const noTests = { ...REAL_RECORD, tests: null };
@@ -353,7 +353,7 @@ test('a record with no test phase renders no test counts rather than zeros (JK-2
   assert.equal(appOptions.computed.projectDetail.call(v).rows[0].tests, null);
 });
 
-test('the SPA reads no retired flat test-count spelling (JK-2424)', async () => {
+test('the SPA reads no retired flat test-count spelling', async () => {
   // Every module, not just app.js: the reader can move between files and the ban has to follow it.
   const fs = await import('node:fs/promises');
   const dir = process.env.JK_APP_DIR;

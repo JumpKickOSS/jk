@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Closure over jk's JSON field vocabulary: <strong>no decoder reads a key no encoder writes</strong>
- * (JK-2431).
+ *.
  *
  * <p>This is the assertion that justifies the record shape over the alternative the house rule
  * rejects. A {@code WireKeys} constant table moves every literal into one file and still permits
@@ -44,9 +44,9 @@ import org.junit.jupiter.api.Test;
  *       string-literal balancing so a nested call in receiver position is not a blind spot. A key
  *       passed as a <em>constant</em> ({@code ProtoJobs.JDKS_DIR}) is deliberately invisible — it is
  *       owned by definition, and its writer spells it from the same constant.
- *   <li>Writes: a {@code \"key\":} JSON-object literal inside a Java string, or a {@code
- *       .put("key", …)} on one of the map/JsonOut builders. 34 of the tree's keys are written only
- *       through the second form, so dropping it would manufacture 34 false orphans.
+ *   <li>Writes: a {@code \"key\":} JSON-object literal inside a Java string, a {@code
+ *       .put("key", …)} on one of the map/JsonOut builders, or a typed field call on {@link
+ *       RequestJson}.
  * </ul>
  *
  * <p>Measured when written: 1,244 production sources, 1,017 literal-key reads, 443 distinct read
@@ -134,7 +134,7 @@ class WireKeyClosureTest {
         });
 
         assertThat(orphans)
-                .as("these JSON keys are read and nothing in the tree writes them (JK-2431). Either the "
+                .as("these JSON keys are read and nothing in the tree writes them. Either the "
                         + "encoder dropped the field, or the reader spells it differently from the writer. "
                         + "A wire message is a record with encode() and decode(String) in one file so that "
                         + "this cannot happen; a key read from somewhere else needs the same closure by hand.")
@@ -164,6 +164,10 @@ class WireKeyClosureTest {
 
     private static final Pattern MAP_PUT = Pattern.compile("\\.put\\(\\s*\"([^\"]+)\"\\s*,");
 
+    private static final Pattern REQUEST_FIELD = Pattern.compile(
+            "(?:\\.|\\b)(?:bool|number|string|array|map|optionalTrue|optionalString|optionalNonBlankString|optionalArray|optionalMap)"
+                    + "\\(\\s*\"([^\"]+)\"\\s*,");
+
     /** Every key read as a string literal — the second argument of a {@code Jsonl} reader call. */
     private static Set<String> readKeys(String body) {
         Set<String> keys = new LinkedHashSet<>();
@@ -183,6 +187,8 @@ class WireKeyClosureTest {
         while (literal.find()) keys.add(literal.group(1));
         Matcher put = MAP_PUT.matcher(body);
         while (put.find()) keys.add(put.group(1));
+        Matcher requestField = REQUEST_FIELD.matcher(body);
+        while (requestField.find()) keys.add(requestField.group(1));
         return keys;
     }
 

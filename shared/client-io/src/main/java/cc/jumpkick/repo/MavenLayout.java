@@ -19,7 +19,7 @@ public final class MavenLayout {
      * Resolve {@code relativePath} under {@code root}, refusing any result that escapes it —
      * absolute segments, {@code ..} traversal, or a leading {@code /}. GAV coordinates and repo
      * names come from a (possibly hostile) cloned project's lockfile and flow into real store and
-     * {@code ~/.m2} writes, so every write sink must resolve through this guard (JK-2291).
+     * {@code ~/.m2} writes, so every write sink must resolve through this guard.
      */
     public static Path safeResolve(Path root, String relativePath) {
         Path base = root.normalize();

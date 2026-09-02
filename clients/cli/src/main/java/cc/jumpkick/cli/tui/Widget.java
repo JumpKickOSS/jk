@@ -5,8 +5,9 @@ import cc.jumpkick.cli.CliOutput;
 import java.util.List;
 
 /**
- * A snapshot TUI fragment: render to lines, then print. Live (animating) widgets implement
- * {@link LiveWidget}.
+ * A snapshot TUI fragment: render to lines, then print. A widget that animates in place is not a
+ * subtype of this — it composes one: {@link LiveLine} owns the region and takes an already-rendered
+ * row per frame.
  */
 public interface Widget {
 

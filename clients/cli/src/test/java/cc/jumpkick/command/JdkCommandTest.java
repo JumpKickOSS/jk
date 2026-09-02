@@ -393,7 +393,7 @@ class JdkCommandTest {
     void update_shell_appends_path_export_to_bashrc(@TempDir Path tempDir) throws IOException {
         Path rc = tempDir.resolve(".bashrc");
         Files.writeString(rc, "# user content\n");
-        Path bin = tempDir.resolve(".local/bin");
+        Path bin = tempDir.resolve(".jk/bin");
 
         int exit = run(
                 "jdk", "update-shell", "--shell", "bash", "--home", tempDir.toString(), "--bin-dir", bin.toString());
@@ -415,7 +415,7 @@ class JdkCommandTest {
                 "--home",
                 tempDir.toString(),
                 "--bin-dir",
-                tempDir.resolve(".local/bin").toString());
+                tempDir.resolve(".jk/bin").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(tempDir.resolve(".zshenv")).exists();
         assertThat(tempDir.resolve(".zshrc")).doesNotExist();
@@ -423,7 +423,7 @@ class JdkCommandTest {
 
     @Test
     void update_shell_uses_fish_add_path_for_fish(@TempDir Path tempDir) throws IOException {
-        Path bin = tempDir.resolve(".local/bin");
+        Path bin = tempDir.resolve(".jk/bin");
         int exit = run(
                 "jdk", "update-shell", "--shell", "fish", "--home", tempDir.toString(), "--bin-dir", bin.toString());
         assertThat(exit).isEqualTo(0);
@@ -434,7 +434,7 @@ class JdkCommandTest {
 
     @Test
     void update_shell_is_idempotent(@TempDir Path tempDir) throws IOException {
-        Path bin = tempDir.resolve(".local/bin");
+        Path bin = tempDir.resolve(".jk/bin");
         int first = run(
                 "jdk", "update-shell", "--shell", "bash", "--home", tempDir.toString(), "--bin-dir", bin.toString());
         assertThat(first).isEqualTo(0);

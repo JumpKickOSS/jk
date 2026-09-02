@@ -44,18 +44,8 @@ class WorkspaceClasspathTest {
     /** lib ←(export)— app ←(main)— top */
     /**
      * A member listed in {@code [workspace] modules} with no {@code jk.toml} is fatal for a module
-     * that has workspace dependencies — and it was already fatal before the sibling index changed.
-     *
-     * <p>Pinned while doing JK-1046, because the risk I set out to protect against turned out not to
-     * exist. The worry was that building the index from {@code WorkspaceLoader.loadModules} — which
-     * throws on a missing member — would break a tolerance that {@code resolve}'s own
-     * {@code if (!Files.exists(manifest)) continue} appeared to provide. It provides nothing here:
-     * {@code JkBuildParser.parse} on the <em>consumer</em> already runs {@code applyWorkspace}, which
-     * calls {@code loadModules} and rethrows for any module carrying workspace deps. The caller never
-     * reaches {@code resolve} with a broken workspace.
-     *
-     * <p>So the substitution cannot change this, and this test is here to say so if anyone widens the
-     * tolerance later and expects the classpath to follow.
+     * that has workspace dependencies. {@code JkBuildParser.parse} on the consumer runs
+     * {@code applyWorkspace} → {@code loadModules} and fails before classpath resolve.
      */
     @Test
     void a_member_with_no_manifest_is_fatal_for_a_module_with_workspace_deps(@TempDir Path root) throws Exception {
@@ -76,12 +66,8 @@ class WorkspaceClasspathTest {
     }
 
     /**
-     * The transitive closure is unaffected by platform contributions.
-     *
-     * <p>Also pinned for JK-1046: the sibling index used to come from a full {@code parse} (which
-     * re-applies platform contributions) and now comes from {@code loadModules} (which does not). The
-     * BFS only follows dependencies that resolve to a workspace sibling, and contributions add
-     * external coordinates, so it should not care — this asserts that rather than assuming it.
+     * The transitive sibling closure is unaffected by platform contributions.
+     * Contributions add external coordinates; the BFS only follows workspace siblings.
      */
     @Test
     void the_sibling_closure_is_transitive_through_a_kotlin_module(@TempDir Path root) throws Exception {

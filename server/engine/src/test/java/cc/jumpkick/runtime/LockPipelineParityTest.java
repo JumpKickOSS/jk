@@ -133,7 +133,6 @@ class LockPipelineParityTest {
                         f.lockFile,
                         f.cache,
                         f.repo,
-                        "test",
                         List.of(),
                         true,
                         ResolveObserver.NOOP,

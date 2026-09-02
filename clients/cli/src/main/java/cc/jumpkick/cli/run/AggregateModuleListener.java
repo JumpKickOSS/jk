@@ -97,7 +97,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // settled as a bulk dump and would re-print the whole Graal log after a successful
         // native-image). Non-animating with a buffer: buffer ONLY — writeAbove prints
         // immediately in that mode, and the module-finish block prints the buffer again, so
-        // doing both showed every line twice (JK-2090).
+        // doing both showed every line twice.
         String painted = StackTraceHighlight.line(line);
         if (outBuffer != null && !cm.animating()) {
             synchronized (outBuffer) {
@@ -140,13 +140,13 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // buffered path, where the module's block prints contiguously at finish. On the live
         // (animating) path, prints from parallel modules interleave in the merged stream, and a
         // headerless body from module A can land directly under module B's output, reading as
-        // B's continuation (JK-2110) — always repeat the pill there.
+        // B's continuation — always repeat the pill there.
         boolean grouped = outBuffer != null && !cm.animating();
         boolean showHeader = !grouped || compilerHeaders.show(step, code, module);
         String report = ConsoleSpec.renderError(step, code, message, module, showHeader);
         if (report != null && !report.isEmpty()) {
             // Same buffer-XOR-print rule as output(): the settled block is the single printing
-            // path when not animating (JK-2090).
+            // path when not animating.
             if (outBuffer != null && !cm.animating()) {
                 synchronized (outBuffer) {
                     outBuffer.add(report);

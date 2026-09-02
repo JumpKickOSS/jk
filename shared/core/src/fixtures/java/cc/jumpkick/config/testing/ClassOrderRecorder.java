@@ -17,8 +17,8 @@ import org.junit.platform.launcher.TestPlan;
  *
  * <p>An order-dependent failure is only investigable if the order is known, and neither Gradle nor
  * jk records it: workers pull classes off a shared queue, so the assignment is decided by whichever
- * worker asks first and is gone the moment the run ends. That is why JK-1003's flake could only be
- * described statistically and JK-1007's writer was never identified.
+ * worker asks first and is gone the moment the run ends. That is why's flake could only be
+ * described statistically and's writer was never identified.
  *
  * <p>One file per test JVM under {@code build/reports/class-order/}, appended. Gradle runs several
  * test plans per JVM, each in its own classloader with a fresh listener, so writing the file whole

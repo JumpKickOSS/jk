@@ -10,11 +10,10 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.protocol.CompileRequest;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -83,7 +82,8 @@ public final class CompileVerb implements HostedVerb {
             }
         }
         return ProtoSession.withTrigger(
-                ProtoJobs.compileRequest(spec.dir(), JkDirs.cache().toString(), null, false, false, false, moduleDirs),
+                new CompileRequest(spec.dir(), JkDirs.cache().toString(), null, false, false, false, moduleDirs)
+                        .encode(),
                 "web");
     }
 
@@ -91,13 +91,12 @@ public final class CompileVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                String profile = Jsonl.str(requestLine, "profile");
-                boolean verbose = Jsonl.bool(requestLine, "verbose", false);
+                CompileRequest body = CompileRequest.decode(requestLine);
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 Path entryDir = session.workingDir();
                 // Workspace (root or member): the one-orchestrator COMPILE path — compile-only
                 // terminal on the selection, prereqs packaged first via the shared cascade
-                // (JK-2103). The client mirrors this condition and expects workspace events.
+                // . The client mirrors this condition and expects workspace events.
                 var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
                     JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
@@ -106,7 +105,7 @@ public final class CompileVerb implements HostedVerb {
                         List<String> raw = new ArrayList<>();
                         String affected = null;
                         boolean wip = false;
-                        for (String d : Jsonl.strArray(requestLine, "moduleDirs")) {
+                        for (String d : body.moduleDirs()) {
                             if (d == null || d.isBlank()) continue;
                             if ("affected-wip".equals(d)) wip = true;
                             else if (d.startsWith("affected:")) affected = d.substring("affected:".length());
@@ -143,9 +142,9 @@ public final class CompileVerb implements HostedVerb {
                                         session.cacheDir(),
                                         session.jdksDir(),
                                         0,
-                                        profile,
+                                        body.profile(),
                                         true,
-                                        verbose,
+                                        body.verbose(),
                                         0,
                                         null,
                                         true,
@@ -169,7 +168,7 @@ public final class CompileVerb implements HostedVerb {
                 BuildPlan plan = SessionContext.where(
                         session,
                         () -> CompilePlans.compileBuildPlan(
-                                session.workingDir(), session.cacheDir(), profile, verbose));
+                                session.workingDir(), session.cacheDir(), body.profile(), body.verbose()));
                 return host.streamSinglePlan(
                         plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (Exception e) {

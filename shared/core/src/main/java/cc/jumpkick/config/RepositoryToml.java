@@ -20,7 +20,7 @@ import org.tomlj.TomlTable;
  *
  * <p>Two files declare repositories with the same vocabulary and two different temperaments: a
  * project {@code jk.toml} must fail loudly on a table that lies, while {@code
- * ~/.config/jk/config.toml} must never fail a build over a machine-local preference. Those are two
+ * ~/.jk/config.toml} must never fail a build over a machine-local preference. Those are two
  * <em>policies</em>, {@link VarPolicy} and {@link OnBad} — not two readers. They used to be two
  * readers, and the pair had drifted into three different {@code ${ENV}} rules.
  */

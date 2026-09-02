@@ -44,7 +44,7 @@ final class TestTmpDir {
      * Worker {@code workerId}'s temp root: its own subdirectory of the module's when the pool is
      * split, the module's itself when it is not.
      *
-     * <p>Mill-class isolation (JK-2183), but a subdirectory rather than a fresh directory under the
+     * <p>Mill-class isolation, but a subdirectory rather than a fresh directory under the
      * host temp dir. The point of pointing the temp root into {@code target/} is that nothing a
      * suite writes escapes the build output — where {@code jk clean} can reach it, and where no
      * other checkout shares it — and splitting the pool is not a reason to leave. Isolation is

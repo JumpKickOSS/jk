@@ -2,7 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 /**
- * A plugin capability: participate in the {@link Phase#TEST} phase — wire test-time inputs a
+ * A plugin capability: participate in the {@code TEST} phase — wire test-time inputs a
  * framework reads off the classpath. The engine invokes {@link #test} at {@code describe} time to
  * record the plugin's pre-TEST step(s); the declared {@link TaskSpec.Body} runs later with resolved
  * inputs. Implemented alongside {@link cc.jumpkick.plugin.Plugin}.

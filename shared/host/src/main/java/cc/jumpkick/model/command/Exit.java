@@ -13,7 +13,7 @@ package cc.jumpkick.model.command;
  * {@code Runtime.getRuntime().halt(<literal>)} are banned by guard G2, because those two calls are
  * the only ones whose integer a user's script actually sees.
  *
- * <p>Every value means exactly one thing. Before JK-2417 the integer {@code 2} meant eight: a bad
+ * <p>Every value means exactly one thing. Before the integer {@code 2} meant eight: a bad
  * {@code jk.toml}, a wrong command line, a missing spec file, an unexpected {@code Throwable}, an
  * engine that could not be reached, a watchdog timeout — and, from {@code GlobalCancel}, that the
  * user had pressed Ctrl-C. No script could branch on it. Usage errors were already {@code 64} at 84

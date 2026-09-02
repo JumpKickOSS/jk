@@ -35,12 +35,15 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
-  `~/.config/jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`.
-  **Three budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
+  `~/.jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`.
+  **Four budgets:** (1) engine heap = thin coordinator (measured ~36 MiB peak on a
   200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency via
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
-  cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap — JK-1084),
-  still RAM-clamped by `PluginSlots`. Do not grow the non-CI engine default toward multi-GiB
+  cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap),
+  still RAM-clamped by `PluginSlots`; (4) **per-job input-tree retain**
+  (`[engine] vfs-max-mb` / `JK_ENGINE_VFS_MAX_MB`, default 32 MiB per job, live sum
+  capped at 75% of engine heap; further jobs stream). Does **not** follow `CI=1`; extra
+  heap is concurrency headroom, extra VFS is a huge-tree knob. See [vfs.md](vfs.md). Do not grow the non-CI engine default toward multi-GiB
   “just in case”; set `max-heap-mb` or run under CI for a higher default.
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
@@ -53,7 +56,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   event stream.
 - **JDK inventory** — managed installs live in the IntelliJ shared root (`~/.jdks`); JumpKick's
   record of them (`jk-jdks.toml`, fingerprints, Java/Graal defaults) lives under the platform
-  **state** dir (`$JK_STATE_DIR`, default `~/.local/state/jk`). No `default-jdk` / `current-jdk`
+  **state** dir (`$JK_STATE_DIR`, default `~/.jk/state`). No `default-jdk` / `current-jdk`
   symlinks under data, and no access log — jk never evicts a JDK, so there is nothing to rank.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
   identity hash because two invocations can share a state dir while disagreeing about where downloads
@@ -61,8 +64,8 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   engines: `jk engine status` lists every resident engine this user owns (including other
   `JK_HOME`s and draining/ghost pids). `jk engine stop --all` stops **this home only** so a
   nested test suite cannot kill the host engine. `--pid` stops one explicitly.
-- **Versioning** — one live engine under `<data>/lib/jk-engine/` (`~/.local/share/jk/lib/jk-engine/`,
-  or `$JK_HOME/data/lib/jk-engine/`), with the live pointer in `jk-engine.toml` beside the jars, paired with
+- **Versioning** — one live engine under `~/.jk/lib/jk-engine/`, with the live pointer in
+  `jk-engine.toml` beside the jars, paired with
   the PATH `jk`. One engine is hosted at a time, so there is no per-version directory tree. An upgrade
   writes the new jar **beside** the previous one (`jk-engine-<version>.jar`, or
   `jk-engine-<version>.<epochMillis>.jar` when that name is occupied) and points `jk-engine.toml` at it
@@ -75,15 +78,15 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   engine to satisfy a lock. The lock pins inputs (artifacts, checksums, BOMs), not the operator;
   `generated-by` is provenance only. Same lock ⇒ same resolved graph across jk versions until
   `jk update`; tool behavior may still change pre-1.0 (a newer jk may rebuild).
-- **Liveness** — a listening socket alone is not proof the engine is healthy (ticket-1043):
+- **Liveness** — a listening socket alone is not proof the engine is healthy:
 
 | Layer | What proves health | Bound |
 |---|---|---|
 | **Probe** (`ping` / `hello` / `status`) | One request/reply | ~2s client watchdog |
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
-| **Job heartbeat** (ticket-1051) | Engine emits `heartbeat` while async wire jobs run; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
-| **Job wall deadline** (ticket-1051 / JK-1067) | Cancel token + worker shutdown + interrupt runner; connection join bounded | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
-| **User cancel / EOF** (JK-1096 / JK-1252) | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
+| **Job heartbeat** | Engine emits `heartbeat` while async wire jobs run; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
+| **Job wall deadline** | Cancel token + worker shutdown + interrupt runner; connection join bounded | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
+| **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 
@@ -91,7 +94,7 @@ If a stream goes idle, the client fails closed with a clear error (tune with `JK
 recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the
 idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap.
 
-**Worker cancel contract (JK-1096):**
+**Worker cancel contract:**
 
 1. **All** registered workers for the request get `Process.destroy()` first (tight loop — one
    shared signal phase, not staggered).
@@ -123,8 +126,8 @@ version+mtime `ETag` (`"jk-<version>-<stamp>"`) — unchanged jar → `304`.
 | Source | Key |
 |---|---|
 | Env | `JK_HTTP_WEB_ROOT` (absolute path preferred) |
-| Config | `~/.config/jk/config.toml` → `[http] web-root` |
-| Default | `~/.local/state/jk/web` (under the platform state dir) |
+| Config | `~/.jk/config.toml` → `[http] web-root` |
+| Default | `~/.jk/state/web` (under the platform state dir) |
 
 Point at the worktree for UI iteration:
 
@@ -135,12 +138,12 @@ jk engine start
 # edit style.css / index.html / *.webp → hard-refresh the browser
 ```
 
-Relative `web-root` values resolve against the data root (`~/.local/share/jk`, or `$JK_HOME/data`).
+Relative `web-root` values resolve against the jk home root (`~/.jk`, or `$JK_HOME`).
 Only files present under the root are overridden; anything missing still falls through to the jar.
 
 ### HTTP server knobs
 
-`~/.config/jk/config.toml`; env wins over the file (`env > file > default`):
+`~/.jk/config.toml`; env wins over the file (`env > file > default`):
 
 | Config key | Env | Default | Meaning |
 |---|---|---|---|
@@ -218,7 +221,7 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
   **With** a platform BOM and default policy **enforced**, BOM-map GAs use the BOM pin
   exactly; opt-in **`[resolve] platform = "floor"`** / `jk update --platform=floor` treats
   BOM-map pins as lower bounds only. GAs the BOM does not manage keep highest-wins mediation
-  by default; **`[resolve] unmapped = "strict"`** makes their fills exact (JK-1241). Explicit
+  by default; **`[resolve] unmapped = "strict"`** makes their fills exact. Explicit
   Maven ranges stay open.
 - **Lockfile:** one root `jk-lock.toml`; builds never re-resolve.
 - **BOMs:** enforced platform by default; incomplete BOM families (e.g. maven-resolver
@@ -252,8 +255,8 @@ and exclusions stay GA-scoped.
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `<data>/store/` — `~/.local/share/jk/store/` or `$JK_HOME/data/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
-| **Cache** | `~/.cache/jk/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
+| **Artifact store** | `~/.jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
+| **Cache** | `~/.jk/cache/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
 A digest-matching file in the Maven local repo is used in place; a mismatch is left untouched
@@ -307,7 +310,7 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 ## Extension surface
 
 - **Today:** CLI + engine HTTP dashboard; IDE project file generation (`jk ide` / export).
-- **IDE engine client (ticket-1014):** Java facade `cc.jumpkick.cli.ide.IdeEngineClient` for IDE
+- **IDE engine client:** Java facade `cc.jumpkick.cli.ide.IdeEngineClient` for IDE
   hosts and agents. Sequence: open project → `connect()` → `projectInfo()` →
   `sync(ProgressListener)` → `ideModel()` / optional `build(BuildListener)`. Reuses frozen wire
   verbs (project-info, sync, build, ide-model); does not load the engine into the IDE JVM. File
@@ -323,9 +326,9 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 6. `ideModel()` — absolute classpath jars + source/classes roots for the open workspace.
 7. Optional `build(listener)` — module/step events for a Build tool window.
 8. Keep `jk ide` / export for writing `.idea` / `.vscode` files when desired.
-9. **BSP (ticket-1028):** `jk bsp install` writes `.bsp/jk.json`; `jk bsp serve` speaks a minimal
+9. **BSP:** `jk bsp install` writes `.bsp/jk.json`; `jk bsp serve` speaks a minimal
    BSP 2.x JSON-RPC on stdio and delegates to `IdeEngineClient` (initialize, buildTargets, sources,
-   dependencyModules, compile). No engine jars on the IDE classpath. Marketplace plugins (1017)
+   dependencyModules, compile). No engine jars on the IDE classpath. Marketplace plugins
    can sit on BSP or call the facade directly.
 
 ### BSP ↔ engine wire (MVP)
@@ -338,11 +341,11 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 | `buildTarget/dependencyModules` | `ideModel` lib jars (absolute URIs) |
 | `buildTarget/compile` | `IdeEngineClient.build` |
 
-- **VS Code (ticket-1017):** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.  
-- **IntelliJ (JK-1054 / JK-1551):** `clients/intellij/` — install-from-disk zip. **Sync project**
+- **VS Code:** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.
+- **IntelliJ:** `clients/intellij/` — install-from-disk zip. **Sync project**
   uses `jk ide --print-model` (structured model) + `jk ide --idea` (shared generator apply) +
   `jk bsp install` (dual-path with JetBrains BSP). Open-project activity offers/auto Sync when
-  `jk.toml` is present. No engine jars on the plugin classpath. BSP (JK-1552): run, cancel,
+  `jk.toml` is present. No engine jars on the plugin classpath. BSP: run, cancel,
   outputPaths, sources jars, publishDiagnostics.
 
 ### Request phases vs build stages
@@ -352,7 +355,7 @@ Two fixed taxonomies (do not collapse them):
 | Layer | Type | Scope |
 |-------|------|--------|
 | **Request** | `InvocationPhase` | Whole engine call: `initialize → resolve → plan → toolchain → build → finalize` |
-| **Module plan** | `BuildStage` | Inside a module `BuildPlan` (usually during `InvocationPhase.BUILD`): `resolve → generate → compile → test → package → native → image → other` |
+| **Module plan** | `BuildStage` | Inside a module `BuildPlan` (usually during `InvocationPhase.BUILD`): `resolve → generate → compile → test → package → train → native → image → publish → other` |
 
 - **Task DAG** (`TaskNames` + `requires`) is the scheduler; stages are product buckets for UI fold, ETA, and future pre/post hooks — not a second scheduler.
 - In-plan stage **`resolve`** (parse / lock classpath / ensure JDK) ≠ request phase **`RESOLVE`** (lock/graph for the command).
@@ -387,6 +390,7 @@ Pre-1.0 alpha. **Self-host phase 2:** root workspace covers library/client modul
 workers (`plugins/test-runner`, `plugins/java-compiler`); `jk lock` + `jk build --skip-tests`
 dogfoods after a Gradle `dist`/`installLocal` bootstrap. The native client is the preferred
 shipped client; Windows also supports the thin JVM client (`jk.bat`) because Smart App Control
-blocks unsigned `jk.exe` (JK-2037; signing is JK-2059). Once a release is published the bootstrap is
-`curl -fsSL https://jumpkick.build/install.sh | bash` (JK-1070). Full `dist`, remaining plugins, and nested engine integration tests remain
-Gradle-heavy. Breaking changes remain acceptable until 1.0.
+blocks unsigned `jk.exe` (native signing is still open). Once a release is published the
+bootstrap is `curl -fsSL https://jumpkick.build/install.sh | bash`. Full `dist`, remaining
+plugins, and nested engine integration tests remain Gradle-heavy. Breaking changes remain
+acceptable until 1.0.

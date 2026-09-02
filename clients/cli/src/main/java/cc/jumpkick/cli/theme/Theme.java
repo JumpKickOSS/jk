@@ -230,7 +230,7 @@ public interface Theme {
     /**
      * The {@code tip:} suggestion accent in error blocks, as a raw SGR parameter body (no {@code
      * ESC[} / {@code m}). This is a legacy 16-color accent (bright green) that does not round-trip
-     * byte-identically through {@link Style#toAnsi()}, so it is sourced as a literal body
+     * byte-identically through {@code Style#toAnsi()}, so it is sourced as a literal body
      * here — keeping the color choice in the theme layer, not in the renderer.
      */
     String tip();

@@ -13,6 +13,6 @@ dependencies {
     implementation(project(":plugin-sdk"))
     // BootJarPackager — bundled into this fat jar below so the worker runs standalone.
     implementation(project(":spring-boot"))
-    // `FakeBuildIo` — the shared engine-side fake for a packager/step body (JK-2443).
+    // `FakeBuildIo` — the shared engine-side fake for a packager/step body.
     testImplementation(testFixtures(project(":plugin-sdk")))
 }

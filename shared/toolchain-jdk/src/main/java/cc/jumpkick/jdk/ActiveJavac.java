@@ -44,7 +44,7 @@ public final class ActiveJavac {
             Path candidate = Path.of(dir).resolve(exe);
             if (!Files.isRegularFile(candidate)) continue;
             // PathUtil.isRunnable already answers this per platform: an access check off Windows,
-            // an extension test on it, instead of the 64x security-descriptor read (JK-1030).
+            // an extension test on it, instead of the 64x security-descriptor read.
             if (!PathUtil.isRunnable(candidate)) continue;
             try {
                 Path real = candidate.toRealPath(); // follow symlinks (SDKMAN et al.)

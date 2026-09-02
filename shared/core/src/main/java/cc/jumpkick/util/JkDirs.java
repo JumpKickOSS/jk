@@ -4,65 +4,48 @@ package cc.jumpkick.util;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
- * Resolves JumpKick's on-disk layout.
+ * Resolves JumpKick's on-disk layout. Everything jk owns lives under one home directory,
+ * {@code $HOME/.jk}, on every platform.
  *
- * <p>There are exactly five <strong>roots</strong> — bin, cache, config, data, state. Every other
- * directory hangs off one of them, and does so <em>identically</em> in every mode: {@code
- * <data>/store}, {@code <data>/lib}, {@code <state>/builds}, and so on.
+ * <pre>
+ * $HOME/.jk/
+ *   config.toml   global user config
+ *   bin/          PATH launchers: jk, jkx, tool shims
+ *   cache/        action cache, CAS, hash memos, per-project scratch
+ *   config/       per-app config, &lt;bin&gt;/config.toml
+ *   creds/        forge tokens (creds/forge) and per-repo credentials (creds/repo)
+ *   lib/          live engine jar, installed fat/minified app jars
+ *   state/        engine sockets, AOT, builds, JDK inventory, tmp
+ *   store/        repos, tools, templates, completions, jdks.json, libs.global.toml
+ * </pre>
  *
- * <p><strong>Resolution order</strong> (per role):
+ * <p>All root overrides must be absolute; relative values are rejected rather than resolved
+ * against the caller's working directory. {@code JK_HOME} moves the whole tree. Three roots also take an individual override —
+ * {@code JK_STORE_DIR}, {@code JK_CACHE_DIR}, {@code JK_STATE_DIR} — because they are the large
+ * ones and putting them on another filesystem is a legitimate ask; each wins over {@code JK_HOME}.
+ * Managed JDKs are the one thing deliberately outside the home tree: they share IntelliJ's root so
+ * the IDE and jk see the same runtimes ({@link #jdksDir()}, {@code JK_JDKS_DIR}).
  *
- * <ol>
- *   <li>Role-specific env ({@code JK_CACHE_DIR}, {@code JK_STORE_DIR}, …) wins.
- *   <li>Else if {@code JK_HOME} is set → single-tree umbrella {@code $JK_HOME/<root>}
- *       (hermetic tests / CI cold roots).
- *   <li>Else → platform defaults (XDG on Linux/macOS; Windows Known Folders).
- * </ol>
- *
- * <table>
- *   <caption>The five roots</caption>
- *   <tr><th>Root</th><th>Linux / macOS</th><th>Windows</th><th>{@code JK_HOME}</th></tr>
- *   <tr><td>bin</td><td>{@code $XDG_BIN_HOME} → {@code $XDG_DATA_HOME/../bin} →
- *       {@code ~/.local/bin}</td><td>{@code %USERPROFILE%\.local\bin}</td>
- *       <td>{@code $JK_HOME/bin}</td></tr>
- *   <tr><td>cache</td><td>{@code $XDG_CACHE_HOME/jk} → {@code ~/.cache/jk}</td>
- *       <td>{@code %LOCALAPPDATA%\jk\cache}</td><td>{@code $JK_HOME/cache}</td></tr>
- *   <tr><td>config</td><td>{@code $XDG_CONFIG_HOME/jk} → {@code ~/.config/jk}</td>
- *       <td>{@code %APPDATA%\jk}</td><td>{@code $JK_HOME/config}</td></tr>
- *   <tr><td>data</td><td>{@code $XDG_DATA_HOME/jk} → {@code ~/.local/share/jk}</td>
- *       <td>{@code %LOCALAPPDATA%\jk\data}</td><td>{@code $JK_HOME/data}</td></tr>
- *   <tr><td>state</td><td>{@code $XDG_STATE_HOME/jk} → {@code ~/.local/state/jk}</td>
- *       <td>{@code %LOCALAPPDATA%\jk\state}</td><td>{@code $JK_HOME/state}</td></tr>
- * </table>
- *
- * <table>
- *   <caption>Everything else, derived from a root in every mode</caption>
- *   <tr><th>Role</th><th>Resolves to</th></tr>
- *   <tr><td>store</td><td>{@code <data>/store} ({@link #storeDir()})</td></tr>
- *   <tr><td>product lib (engine jar)</td><td>{@code <data>/lib} ({@link #productLibDir()})</td></tr>
- *   <tr><td>library registry</td><td>{@code <store>/libs.global.toml} ({@link #libraryRegistryFile()})</td></tr>
- *   <tr><td>templates</td><td>{@code <store>/templates} ({@link #templatesDir()})</td></tr>
- *   <tr><td>credentials</td><td>{@code <data>/credentials}, {@code <data>/repo-credentials}</td></tr>
- *   <tr><td>global config file</td><td>{@code <config>/config.toml} ({@link #userConfigFilePath()})</td></tr>
- *   <tr><td>per-app config</td><td>{@code <config>/<bin>/config.toml}</td></tr>
- *   <tr><td>build history</td><td>{@code <state>/builds} ({@link #buildsDir()})</td></tr>
- *   <tr><td>scratch</td><td>{@code <state>/tmp} ({@link #tmpDir()})</td></tr>
- * </table>
- *
- * <p>So {@code JK_HOME=/opt/jk} yields {@code /opt/jk/data/store}, {@code /opt/jk/data/lib},
- * {@code /opt/jk/state/builds} — the XDG shape, centralized. The only escape hatch is a
- * role-specific {@code JK_*_DIR}, which wins outright.
- *
- * <p>{@code JK_HOME} does <strong>not</strong> relocate the default JDK write root; set
- * {@code JK_JDKS_DIR} for hermetic JDK isolation.
+ * <p>The roots are also the <strong>deletion units</strong>. {@code jk self nuke --store} cannot
+ * remove a credential because {@code creds} is a sibling of {@code store} rather than a child, and
+ * {@code jk clean} cannot remove build history because {@code builds} lives under {@code state}.
+ * Where a directory sits is the guard; nothing has to remember to exclude it.
  */
 public final class JkDirs {
+
+    /** Invalid ambient root override supplied before command dispatch. */
+    public static final class InvalidOverrideException extends IllegalArgumentException {
+        public InvalidOverrideException(String message) {
+            super(message);
+        }
+    }
+
+    /** The home directory name under {@code $HOME}. */
+    public static final String HOME_DIR = ".jk";
 
     /** Downloaded library registry basename under {@link #storeDir()}. */
     public static final String LIBRARY_REGISTRY_FILE = "libs.global.toml";
@@ -109,9 +92,16 @@ public final class JkDirs {
         return new JkDirs(env, userHome, Os.name());
     }
 
-    /** Test seam: synthetic environment + OS name (linux / mac / windows path shapes). */
+    /**
+     * Test seam: synthetic environment + OS name. The layout is identical on every OS; the name
+     * only reaches {@link #jdksDir()}.
+     */
     public static JkDirs of(Function<String, String> env, String userHome, String osName) {
         return new JkDirs(env, userHome, osName);
+    }
+
+    public static Path home() {
+        return current().homeDir();
     }
 
     public static Path userConfigFile() {
@@ -150,8 +140,9 @@ public final class JkDirs {
         return current().buildsDir();
     }
 
-    public static Path data() {
-        return current().dataDir();
+    /** Forge tokens and per-repo credentials: {@link #credsDir()}. */
+    public static Path creds() {
+        return current().credsDir();
     }
 
     public static Path binDir() {
@@ -162,10 +153,7 @@ public final class JkDirs {
         return current().tmpDir();
     }
 
-    /**
-     * Product library for the live engine jar and installed fat/minified app jars:
-     * {@code <data>/lib}.
-     */
+    /** Product library for the live engine jar and installed fat/minified app jars. */
     public static Path productLib() {
         return current().productLibDir();
     }
@@ -175,52 +163,63 @@ public final class JkDirs {
     }
 
     /**
-     * User config file: {@link #configDir()}{@code /config.toml} — under {@code JK_HOME} that is
-     * {@code $JK_HOME/config/config.toml}. Override via {@code JK_CONFIG_FILE}.
+     * The one root: {@code $JK_HOME} when set, else {@code $HOME/.jk}. Every other directory here
+     * hangs off it, so relocating this relocates the product.
      */
+    public Path homeDir() {
+        String override = nonBlank(env.apply("JK_HOME"));
+        if (override != null) return absoluteOverride("JK_HOME", override);
+        return Path.of(userHome).resolve(HOME_DIR);
+    }
+
+    /** User config file: {@code <home>/config.toml}. */
     public Path userConfigFilePath() {
-        String override = nonBlank(env.apply("JK_CONFIG_FILE"));
-        if (override != null) return Path.of(override);
-        return configDir().resolve(ManifestPaths.CONFIG);
+        return homeDir().resolve(ManifestPaths.CONFIG);
     }
 
     /**
-     * Config root: global {@code config.toml} and per-app {@code <bin>/config.toml}. Override via
-     * {@code JK_CONFIG_DIR}. Under {@code JK_HOME}: {@code $JK_HOME/config}. Otherwise the platform
-     * config dir ({@code ~/.config/jk}, {@code %APPDATA%\\jk}, …).
+     * Per-app config root: {@code <home>/config}, holding one {@code <bin>/config.toml} per
+     * installed app. The global {@code config.toml} is not in here — it sits at the home root
+     * ({@link #userConfigFilePath()}), so this directory has exactly one kind of child.
      */
     public Path configDir() {
-        String override = nonBlank(env.apply("JK_CONFIG_DIR"));
-        if (override != null) return Path.of(override);
-        if (jkHomeOrNull() != null) return Path.of(jkHomeOrNull()).resolve("config");
-        return platformConfigDir();
+        return homeDir().resolve("config");
     }
 
+    /**
+     * Forge tokens ({@code creds/forge}) and per-repo credentials ({@code creds/repo}).
+     *
+     * <p>A root rather than a corner of {@link #storeDir()}, because roots are what nukes delete.
+     * Everything in the store is re-fetchable; a token is not, and {@code jk repo logout} is the
+     * only thing that should ever remove one. As a sibling it is out of reach of every nuke target
+     * by construction. Permissions are {@link OwnerOnlyFiles}' business, wherever the files live.
+     */
+    public Path credsDir() {
+        return homeDir().resolve("creds");
+    }
+
+    /** Rebuildable action-cache tier. Override with {@code JK_CACHE_DIR}. */
     public Path cacheDir() {
-        return resolve("JK_CACHE_DIR", "cache", this::platformCacheDir);
+        return root("JK_CACHE_DIR", "cache");
     }
 
     /**
      * Downloaded artifacts: Maven-layout jars under {@code repos/} with {@code .jk} memos, plugin
      * short classpaths under {@code lib/&lt;id&gt;/}, {@code maven-metadata.xml} copies, git clones,
      * the JDK catalog ({@code jdks.json}), the library registry ({@link #libraryRegistryFile()}),
-     * and cloned Giter8 catalogs ({@link #templatesDir()}). Engine/client install blobs may still
-     * sit under {@code sha256/}. Always {@code <data>/store}
-     * — {@code $JK_HOME/data/store} under the umbrella; override via {@code JK_STORE_DIR}.
+     * shell completions, and cloned Giter8 catalogs ({@link #templatesDir()}). Override with
+     * {@code JK_STORE_DIR}.
      *
-     * <h2>Why this is not under {@code cache/}</h2>
+     * <h4>Why this is not under {@code cache/}</h4>
      *
      * Both are caches in the sense that both can be re-created, but they differ in what re-creating
      * them costs and who it affects. Rebuilding action cache costs local CPU. Rebuilding store means
-     * re-downloading from Maven Central — and Sonatype enforces a sticky per-IP quota. Platform
-     * cache cleaners may wipe XDG/Local cache dirs; store lives under <em>data</em> for that reason.
+     * re-downloading from Maven Central — and Sonatype enforces a sticky per-IP quota.
      *
      * <p>{@code JK_CACHE_DIR} isolates the action cache for tests without forcing a cold CAS.
      */
     public Path storeDir() {
-        String override = nonBlank(env.apply("JK_STORE_DIR"));
-        if (override != null) return Path.of(override);
-        return dataDir().resolve("store");
+        return root("JK_STORE_DIR", "store");
     }
 
     /**
@@ -255,172 +254,76 @@ public final class JkDirs {
         return storeDir().resolve(TOOLS_DIR);
     }
 
+    /** Engine sockets, AOT caches, build history, JDK inventory, scratch. Override with
+     * {@code JK_STATE_DIR}. */
     public Path stateDir() {
-        return resolve("JK_STATE_DIR", "state", this::platformStateDir);
+        return root("JK_STATE_DIR", "state");
     }
 
     /**
      * Machine-scoped build state that must survive {@code jk clean}: host calibration and the
-     * persisted build-history journal. Always {@code <state>/builds}; override via
-     * {@code JK_BUILDS_DIR}.
+     * persisted build-history journal. Always {@code <state>/builds}.
      */
     public Path buildsDir() {
-        String override = nonBlank(env.apply("JK_BUILDS_DIR"));
-        if (override != null) return Path.of(override);
         return stateDir().resolve("builds");
     }
 
     /**
      * Scratch space for transient, regenerable artifacts (e.g. {@code jk import} reports). Always
-     * {@code <state>/tmp} — {@code $JK_HOME/state/tmp} under the umbrella; override via
-     * {@code JK_TMP_DIR}.
+     * {@code <state>/tmp}.
      */
     public Path tmpDir() {
-        String override = nonBlank(env.apply("JK_TMP_DIR"));
-        if (override != null) return Path.of(override);
         return stateDir().resolve("tmp");
     }
 
-    public Path dataDir() {
-        return resolve("JK_DATA_DIR", "data", this::platformDataDir);
-    }
-
     /**
-     * Where {@code jk} / {@code jkx} and {@code jk tool install} launchers live on PATH.
-     * Platform default is the user executable directory ({@code ~/.local/bin} hierarchy).
-     * Override via {@code JK_BIN_DIR}.
+     * Where {@code jk} / {@code jkx} and {@code jk tool install} launchers live: {@code <home>/bin},
+     * which shell activation puts on {@code PATH}. jk owns this directory outright, so a name in it
+     * is jk's to replace.
      */
     public Path binDirectory() {
-        return resolve("JK_BIN_DIR", "bin", this::platformBinDir);
+        return homeDir().resolve("bin");
     }
 
     /**
-     * Live engine and installed fat/minified app jars: {@code <data>/lib} ({@code jk-engine/<jar>}
-     * / {@code <bin>/…}) — {@code $JK_HOME/data/lib} under the umbrella. jk hosts exactly one
-     * engine, so this is a single live tree with no per-version subdirectories.
+     * Live engine and installed fat/minified app jars: {@code <home>/lib} ({@code jk-engine/<jar>}
+     * / {@code <bin>/…}). jk hosts exactly one engine, so this is a single live tree with no
+     * per-version subdirectories.
      */
     public Path productLibDir() {
-        return dataDir().resolve("lib");
+        return homeDir().resolve("lib");
     }
 
     /**
      * Where {@code jk jdk install} extracts JDK tarballs. Default is the <strong>IntelliJ shared
      * root</strong> (Linux/Windows {@code ~/.jdks}, macOS {@code ~/Library/Java/JavaVirtualMachines}),
-     * not under product data — so IDE and JumpKick share managed runtimes.
-     *
-     * <p>Override via {@code JK_JDKS_DIR}. {@code JK_HOME} does <strong>not</strong> relocate this
-     * default; hermetic tests must set {@code JK_JDKS_DIR}.
+     * not under the jk home — so IDE and JumpKick share managed runtimes. This is the only path here
+     * that differs by platform, and the only one {@code JK_HOME} does not move; hermetic tests must
+     * set {@code JK_JDKS_DIR}.
      */
     public Path jdksDir() {
         String override = nonBlank(env.apply("JK_JDKS_DIR"));
-        if (override != null) return Path.of(override);
-        return platformJdksDir();
+        if (override != null) return absoluteOverride("JK_JDKS_DIR", override);
+        Path home = Path.of(userHome);
+        if (Os.isDarwin(osName)) {
+            return home.resolve("Library").resolve("Java").resolve("JavaVirtualMachines");
+        }
+        return home.resolve(".jdks");
     }
 
-    // ---- resolution helpers -------------------------------------------------
-
-    /**
-     * One of the five roots: role env, else {@code $JK_HOME/<root>}, else the platform default.
-     * Derived directories must NOT call this — they hang off a root so the umbrella mirrors XDG.
-     */
-    private Path resolve(String jkEnv, String root, Supplier<Path> platformDefault) {
+    /** A root with its own override: the {@code JK_*_DIR} when set, else {@code <home>/<name>}. */
+    private Path root(String jkEnv, String name) {
         String override = nonBlank(env.apply(jkEnv));
-        if (override != null) return Path.of(override);
-        String jkHome = jkHomeOrNull();
-        if (jkHome != null) return Path.of(jkHome).resolve(root);
-        return platformDefault.get();
+        if (override != null) return absoluteOverride(jkEnv, override);
+        return homeDir().resolve(name);
     }
 
-    private String jkHomeOrNull() {
-        return nonBlank(env.apply("JK_HOME"));
-    }
-
-    private Path userHomePath() {
-        return Path.of(userHome);
-    }
-
-    private boolean isWindows() {
-        String lower = osName.toLowerCase(Locale.ROOT);
-        return lower.contains("win");
-    }
-
-    private boolean isMac() {
-        String lower = osName.toLowerCase(Locale.ROOT);
-        return lower.contains("mac") || lower.contains("darwin");
-    }
-
-    private Path platformDataDir() {
-        if (isWindows()) {
-            return localAppData().resolve("jk").resolve("data");
+    private static Path absoluteOverride(String name, String value) {
+        Path path = Path.of(value);
+        if (!path.isAbsolute()) {
+            throw new InvalidOverrideException(name + " must be an absolute path: " + value);
         }
-        return xdgDir("XDG_DATA_HOME", ".local/share").resolve("jk");
-    }
-
-    private Path platformCacheDir() {
-        if (isWindows()) {
-            return localAppData().resolve("jk").resolve("cache");
-        }
-        return xdgDir("XDG_CACHE_HOME", ".cache").resolve("jk");
-    }
-
-    private Path platformStateDir() {
-        if (isWindows()) {
-            return localAppData().resolve("jk").resolve("state");
-        }
-        return xdgDir("XDG_STATE_HOME", ".local/state").resolve("jk");
-    }
-
-    private Path platformConfigDir() {
-        if (isWindows()) {
-            return roamingAppData().resolve("jk");
-        }
-        return xdgDir("XDG_CONFIG_HOME", ".config").resolve("jk");
-    }
-
-    private Path platformBinDir() {
-        if (isWindows()) {
-            return userHomePath().resolve(".local").resolve("bin");
-        }
-        String binHome = nonBlank(env.apply("XDG_BIN_HOME"));
-        if (binHome != null) return Path.of(binHome);
-        String dataHome = nonBlank(env.apply("XDG_DATA_HOME"));
-        if (dataHome != null) {
-            Path parent = Path.of(dataHome).getParent();
-            if (parent != null) return parent.resolve("bin");
-        }
-        return userHomePath().resolve(".local").resolve("bin");
-    }
-
-    /**
-     * IntelliJ-compatible managed JDK root (same as {@code IntellijProbe.defaultRoot}).
-     */
-    private Path platformJdksDir() {
-        if (isMac()) {
-            return userHomePath().resolve("Library").resolve("Java").resolve("JavaVirtualMachines");
-        }
-        return userHomePath().resolve(".jdks");
-    }
-
-    private Path xdgDir(String xdgEnv, String homeRelativeDefault) {
-        String xdg = nonBlank(env.apply(xdgEnv));
-        if (xdg != null) return Path.of(xdg);
-        Path home = userHomePath();
-        for (String part : homeRelativeDefault.split("/")) {
-            home = home.resolve(part);
-        }
-        return home;
-    }
-
-    private Path localAppData() {
-        String local = nonBlank(env.apply("LOCALAPPDATA"));
-        if (local != null) return Path.of(local);
-        return userHomePath().resolve("AppData").resolve("Local");
-    }
-
-    private Path roamingAppData() {
-        String roaming = nonBlank(env.apply("APPDATA"));
-        if (roaming != null) return Path.of(roaming);
-        return userHomePath().resolve("AppData").resolve("Roaming");
+        return path.normalize();
     }
 
     private static String nonBlank(String value) {

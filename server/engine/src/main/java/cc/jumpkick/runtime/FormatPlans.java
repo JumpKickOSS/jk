@@ -74,24 +74,24 @@ public final class FormatPlans {
             boolean importOrder,
             boolean removeUnusedImports,
             FormatWorker.FileObserver observer) {
-        BuildPlanKey<List> javaFilesKey = BuildPlanKey.of("format-java-files", List.class);
-        BuildPlanKey<List> kotlinFilesKey = BuildPlanKey.of("format-kotlin-files", List.class);
-        BuildPlanKey<List> groovyFilesKey = BuildPlanKey.of("format-groovy-files", List.class);
-        BuildPlanKey<List> scalaFilesKey = BuildPlanKey.of("format-scala-files", List.class);
-        BuildPlanKey<List> javaJarsKey = BuildPlanKey.of("format-java-jars", List.class);
-        BuildPlanKey<List> removeUnusedJarsKey = BuildPlanKey.of("format-remove-unused-jars", List.class);
-        BuildPlanKey<List> kotlinJarsKey = BuildPlanKey.of("format-kotlin-jars", List.class);
-        BuildPlanKey<List> scalaJarsKey = BuildPlanKey.of("format-scala-jars", List.class);
+        BuildPlanKey<List<Path>> javaFilesKey = BuildPlanKey.list("format-java-files", Path.class);
+        BuildPlanKey<List<Path>> kotlinFilesKey = BuildPlanKey.list("format-kotlin-files", Path.class);
+        BuildPlanKey<List<Path>> groovyFilesKey = BuildPlanKey.list("format-groovy-files", Path.class);
+        BuildPlanKey<List<Path>> scalaFilesKey = BuildPlanKey.list("format-scala-files", Path.class);
+        BuildPlanKey<List<Path>> javaJarsKey = BuildPlanKey.list("format-java-jars", Path.class);
+        BuildPlanKey<List<Path>> removeUnusedJarsKey = BuildPlanKey.list("format-remove-unused-jars", Path.class);
+        BuildPlanKey<List<Path>> kotlinJarsKey = BuildPlanKey.list("format-kotlin-jars", Path.class);
+        BuildPlanKey<List<Path>> scalaJarsKey = BuildPlanKey.list("format-scala-jars", Path.class);
 
-        BuildPlanKey<List> allJavaFilesKey = BuildPlanKey.of("format-all-java-files", List.class);
-        BuildPlanKey<List> allKotlinFilesKey = BuildPlanKey.of("format-all-kotlin-files", List.class);
-        BuildPlanKey<List> allGroovyFilesKey = BuildPlanKey.of("format-all-groovy-files", List.class);
-        BuildPlanKey<List> allScalaFilesKey = BuildPlanKey.of("format-all-scala-files", List.class);
+        BuildPlanKey<List<Path>> allJavaFilesKey = BuildPlanKey.list("format-all-java-files", Path.class);
+        BuildPlanKey<List<Path>> allKotlinFilesKey = BuildPlanKey.list("format-all-kotlin-files", Path.class);
+        BuildPlanKey<List<Path>> allGroovyFilesKey = BuildPlanKey.list("format-all-groovy-files", Path.class);
+        BuildPlanKey<List<Path>> allScalaFilesKey = BuildPlanKey.list("format-all-scala-files", Path.class);
 
-        BuildPlanKey<FormatFreshnessIndex> indexKey = BuildPlanKey.of("format-index", FormatFreshnessIndex.class);
+        BuildPlanKey<FormatFreshnessIndex> indexKey = BuildPlanKey.scalar("format-index", FormatFreshnessIndex.class);
         // FormatKey.digest() — computed once in collect, and the name of BOTH format stores: this
         // index here, and the worker's per-file stamps (it rides the spec as `configKey`).
-        BuildPlanKey<String> configKeyKey = BuildPlanKey.of("format-config-key", String.class);
+        BuildPlanKey<String> configKeyKey = BuildPlanKey.scalar("format-config-key", String.class);
 
         Task collect = Task.builder(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
@@ -139,14 +139,10 @@ public final class FormatPlans {
                 .requires(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
-                    @SuppressWarnings("unchecked")
-                    List<Path> javaFiles = (List<Path>) ctx.require(javaFilesKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> kotlinFiles = (List<Path>) ctx.require(kotlinFilesKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> groovyFiles = (List<Path>) ctx.require(groovyFilesKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> scalaFiles = (List<Path>) ctx.require(scalaFilesKey);
+                    List<Path> javaFiles = ctx.require(javaFilesKey);
+                    List<Path> kotlinFiles = ctx.require(kotlinFilesKey);
+                    List<Path> groovyFiles = ctx.require(groovyFilesKey);
+                    List<Path> scalaFiles = ctx.require(scalaFilesKey);
                     if (javaFiles.isEmpty() && kotlinFiles.isEmpty() && groovyFiles.isEmpty() && scalaFiles.isEmpty()) {
                         ctx.put(javaJarsKey, List.of());
                         ctx.put(removeUnusedJarsKey, List.of());
@@ -156,7 +152,7 @@ public final class FormatPlans {
                         return;
                     }
                     ctx.label("resolve formatter jars");
-                    var resolver = ToolResolver.mavenCentral(new Http(), JkStores.cas(cache));
+                    var resolver = ToolResolver.mavenCentral(new Http(), JkStores.storeCas());
                     try {
                         if (javaFiles.isEmpty()) {
                             ctx.put(javaJarsKey, List.of());
@@ -219,14 +215,10 @@ public final class FormatPlans {
                 .requires(TaskNames.RESOLVE_FORMATTERS)
                 .ticks(0) // grown to the real file count once collected
                 .execute(ctx -> {
-                    @SuppressWarnings("unchecked")
-                    List<Path> javaFiles = (List<Path>) ctx.require(javaFilesKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> kotlinFiles = (List<Path>) ctx.require(kotlinFilesKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> groovyFiles = (List<Path>) ctx.require(groovyFilesKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> scalaFiles = (List<Path>) ctx.require(scalaFilesKey);
+                    List<Path> javaFiles = ctx.require(javaFilesKey);
+                    List<Path> kotlinFiles = ctx.require(kotlinFilesKey);
+                    List<Path> groovyFiles = ctx.require(groovyFilesKey);
+                    List<Path> scalaFiles = ctx.require(scalaFilesKey);
                     int preClean = ctx.get(FormatWorker.PRE_CLEAN).orElse(0);
                     FormatFreshnessIndex freshness = ctx.get(indexKey).orElse(null);
                     int dirty = javaFiles.size() + kotlinFiles.size() + groovyFiles.size() + scalaFiles.size();
@@ -246,27 +238,17 @@ public final class FormatPlans {
                     ctx.updateTicks(total);
                     if (preClean > 0) ctx.progress(preClean);
                     ctx.label(check ? "check formatting" : "format sources");
-                    @SuppressWarnings("unchecked")
-                    List<Path> javaJars = (List<Path>) ctx.require(javaJarsKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> removeUnusedJars = (List<Path>) ctx.require(removeUnusedJarsKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> kotlinJars = (List<Path>) ctx.require(kotlinJarsKey);
-                    @SuppressWarnings("unchecked")
-                    List<Path> scalaJars = (List<Path>) ctx.require(scalaJarsKey);
+                    List<Path> javaJars = ctx.require(javaJarsKey);
+                    List<Path> removeUnusedJars = ctx.require(removeUnusedJarsKey);
+                    List<Path> kotlinJars = ctx.require(kotlinJarsKey);
+                    List<Path> scalaJars = ctx.require(scalaJarsKey);
 
-                    Path workerJar = PluginJar.FORMATTER.locate(JkStores.cas(cache));
+                    Path workerJar = PluginJar.FORMATTER.locate(JkStores.storeCas());
                     String configKey = ctx.get(configKeyKey).orElse("");
-                    @SuppressWarnings("unchecked")
-                    List<Path> allJava = (List<Path>) ctx.get(allJavaFilesKey).orElse(javaFiles);
-                    @SuppressWarnings("unchecked")
-                    List<Path> allKotlin =
-                            (List<Path>) ctx.get(allKotlinFilesKey).orElse(kotlinFiles);
-                    @SuppressWarnings("unchecked")
-                    List<Path> allGroovy =
-                            (List<Path>) ctx.get(allGroovyFilesKey).orElse(groovyFiles);
-                    @SuppressWarnings("unchecked")
-                    List<Path> allScala = (List<Path>) ctx.get(allScalaFilesKey).orElse(scalaFiles);
+                    List<Path> allJava = ctx.get(allJavaFilesKey).orElse(javaFiles);
+                    List<Path> allKotlin = ctx.get(allKotlinFilesKey).orElse(kotlinFiles);
+                    List<Path> allGroovy = ctx.get(allGroovyFilesKey).orElse(groovyFiles);
+                    List<Path> allScala = ctx.get(allScalaFilesKey).orElse(scalaFiles);
                     List<Path> indexFiles = new ArrayList<>(allJava);
                     indexFiles.addAll(allKotlin);
                     indexFiles.addAll(allGroovy);
@@ -333,6 +315,27 @@ public final class FormatPlans {
                 .build();
 
         return BuildPlan.builder("format")
+                .stateKeys(
+                        javaFilesKey,
+                        kotlinFilesKey,
+                        groovyFilesKey,
+                        scalaFilesKey,
+                        javaJarsKey,
+                        removeUnusedJarsKey,
+                        kotlinJarsKey,
+                        scalaJarsKey,
+                        allJavaFilesKey,
+                        allKotlinFilesKey,
+                        allGroovyFilesKey,
+                        allScalaFilesKey,
+                        indexKey,
+                        configKeyKey,
+                        FormatWorker.PRE_CLEAN,
+                        FormatWorker.TOTAL,
+                        FormatWorker.CHANGED,
+                        FormatWorker.CLEAN,
+                        FormatWorker.ERRORS,
+                        FormatWorker.WORKER_EXIT)
                 .addTask(collect)
                 .addTask(resolve)
                 .addTask(format)
@@ -611,7 +614,7 @@ public final class FormatPlans {
                             GOOGLE_VERSION,
                             SCALAFMT_VERSION,
                             indexFiles,
-                            PluginJar.FORMATTER.locate(JkStores.cas(cache)))
+                            PluginJar.FORMATTER.locate(JkStores.storeCas()))
                     .digest();
         } catch (Exception e) {
             return null;

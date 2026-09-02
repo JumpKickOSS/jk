@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link CliOutput#handOffTerminal} is the one place a CLI command gives this terminal to a child
- * (JK-2432): restore the terminal out of jk's own mode, then start the child on inherited stdio.
+ *: restore the terminal out of jk's own mode, then start the child on inherited stdio.
  *
  * <p>Ten sites spelled that pair themselves and three of them — {@code jk gradle}, {@code jk mvn},
  * {@code jk self update}'s engine takeover — did only the second half. G27
@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The restore half has no observable effect in a test JVM — {@code Terminals.restoreForChild()}
  * is a documented no-op when no native session was ever opened, and there is no seam to inject one
- * (JK-2539 owns that gap). So this pins the half that *is* observable, and says plainly that it is
+ * (owns that gap). So this pins the half that *is* observable, and says plainly that it is
  * a half.
  */
 class TerminalHandoffTest {

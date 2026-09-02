@@ -119,7 +119,7 @@ class ActionKeyTest {
         // It is in the preimage so that the day the pin moves, every artifact decoded under the old
         // charset stops being a cache hit. A source- and classpath-free request keeps the preimage
         // free of temp-dir paths, so the thing being hashed can be spelled out in full — which also
-        // pins the `jdk:` token JK-2460 added, and the fact that a JDK-less request spells `none`
+        // pins the `jdk:` token added, and the fact that a JDK-less request spells `none`
         // rather than dropping the line (a dropped line is a preimage two requests can share).
         CompileRequest request = CompileRequest.builder()
                 .outputDir(tempDir.resolve("out"))
@@ -222,7 +222,7 @@ class ActionKeyTest {
 
     @Test
     void javac_jdk_home_is_part_of_action_key(@TempDir Path tempDir) throws IOException {
-        // The same defect forKotlinc had (JK-2391), one lane over: jk.toml moves `jdk = 17` to
+        // The same defect forKotlinc had, one lane over: jk.toml moves `jdk = 17` to
         // `jdk = 21` and leaves `java = 17` alone, so --release does not move. ForkedJavac launches
         // javac out of this very home, so the compiler AND the platform classes change under a key
         // that never did — the build restores 17-compiled bytecode and calls it up to date.

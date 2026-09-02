@@ -36,8 +36,7 @@ class DoctorCommandTest {
 
     @Test
     void output_json_actually_prunes_not_just_reports(@TempDir Path tempDir) throws Exception {
-        // The JSON path used to only count broken links; the mutating unlink ran on the human path
-        // only, so `jk doctor --output json` reported "pruned" without touching the filesystem.
+        // JSON and human paths both prune broken links on disk, not only report counts.
         Path mavenSlug = tempDir.resolve("maven");
         Files.createDirectories(mavenSlug);
         Path link = mavenSlug.resolve("3.9.9");
@@ -62,14 +61,8 @@ class DoctorCommandTest {
 
     /**
      * {@code --verify-linked} on a symlinked tool home: fingerprint the target, store it, read it
-     * back next run, and say so when it moves.
-     *
-     * <p>Every assertion here was missing before JK-2467, and the flag was broken in two ways at
-     * once. {@code JdkFingerprint.compute} handed the symlinked root to {@code visitFile}, so the
-     * digest was SHA-256 of an empty manifest for every tool on every run; and nothing in the tree
-     * ever read the {@code .fingerprint} marker back, so even a correct digest verified nothing.
-     * Hence the two halves: the recorded digest is the target's (and is not the empty one), and the
-     * second run compares against it.
+     * back next run, and report drift when it moves. The recorded digest is the target's (not
+     * {@link JdkFingerprint#EMPTY_TREE}).
      */
     @Test
     void verify_linked_records_the_target_digest_then_reports_drift(@TempDir Path tempDir) throws Exception {
@@ -96,9 +89,8 @@ class DoctorCommandTest {
     }
 
     /**
-     * A link to a tree with no files is called out, not printed as if it were a fingerprint. This
-     * is the one input that legitimately produces {@code e3b0c442…}, and it is exactly the value the
-     * broken flag produced for everything — so it does not get to look like a success.
+     * A link to a tree with no files is called out, not printed as a fingerprint.
+     * An empty target produces {@link JdkFingerprint#EMPTY_TREE} and must not look like success.
      */
     @Test
     void verify_linked_refuses_to_pass_off_an_empty_target_as_a_fingerprint(@TempDir Path tempDir) throws Exception {

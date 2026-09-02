@@ -40,6 +40,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -215,7 +216,7 @@ public final class Publisher implements Plugin, PublishExtension {
         // Upload.
         try {
             RepoCredential cred =
-                    switch (c.string("repoAuthType").toLowerCase()) {
+                    switch (c.string("repoAuthType").toLowerCase(Locale.ROOT)) {
                         case "basic" ->
                             new RepoCredential.Basic(
                                     ctx.secret("repoUser").orElse(""),

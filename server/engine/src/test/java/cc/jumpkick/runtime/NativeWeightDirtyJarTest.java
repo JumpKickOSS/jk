@@ -51,7 +51,7 @@ class NativeWeightDirtyJarTest {
         Files.writeString(jar, "old-jar");
         Files.writeString(nativeBin, "old-native");
         // "Native binary newer than the jar" is the fixture's whole point, so state it instead of
-        // sleeping 20ms and trusting the filesystem's mtime granularity to notice (JK-2446).
+        // sleeping 20ms and trusting the filesystem's mtime granularity to notice.
         stampOlder(jar, nativeBin);
         // No classes stamp / stamp older than source → mainJarWillChange
         assertThat(EffortWeights.mainJarWillChange(dir)).isTrue();

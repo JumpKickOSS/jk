@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Derived facts that are true for the length of one request and meaningless after it.
  *
- * <p>Everything in JK-1027 that wanted a cache wanted <em>this</em> one, and each time the blocking
+ * <p>Everything in that wanted a cache wanted <em>this</em> one, and each time the blocking
  * question was the same: when is it allowed to answer? A resolved workspace and a source listing are
  * stable while a build runs and stale the moment a {@code jk watch} iteration starts, so a
  * process-lifetime memo needs an invalidation story and a per-call memo is no memo at all.
@@ -66,6 +66,16 @@ public final class RequestScope {
         IoLedger ledger = ambientLedger();
         if (ledger == null) return UNSCOPED;
         return SCOPES.computeIfAbsent(ledger, l -> new RequestScope());
+    }
+
+    /**
+     * True when an ambient request exists, so {@link #current()} returns a scope that actually
+     * caches. Callers whose side effects must be balanced by a per-request teardown (a charge that
+     * a close releases) must not perform them when this is false — the unscoped scope has no
+     * teardown.
+     */
+    public static boolean hasRequest() {
+        return ambientLedger() != null;
     }
 
     /** {@code compute}'s value for {@code key}, computed once per request. */

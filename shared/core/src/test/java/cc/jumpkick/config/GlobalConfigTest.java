@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Root-level {@code nerd-font} reading from ~/.config/jk/config.toml, leniently, plus the
+ * Root-level {@code nerd-font} reading from ~/.jk/config.toml, leniently, plus the
  * {@code [repositories]} layer this file shares with the project manifest.
  */
 class GlobalConfigTest {

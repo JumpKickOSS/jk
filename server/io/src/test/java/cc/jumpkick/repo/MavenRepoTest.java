@@ -88,7 +88,7 @@ class MavenRepoTest {
 
     @Test
     void stale_mirror_copy_against_a_changed_pin_is_evicted_and_refetched(@TempDir Path tempDir) throws Exception {
-        // JK-2305: an internal repo republished the same GAV and the lock was re-pinned. The warm
+        // : an internal repo republished the same GAV and the lock was re-pinned. The warm
         // store copy (old bytes) must not dead-end sync — pass the pin so it is evicted and re-fetched.
         Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
         String relPath = MavenLayout.artifactPath(coord);

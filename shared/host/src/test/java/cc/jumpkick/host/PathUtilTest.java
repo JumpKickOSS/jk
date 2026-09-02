@@ -53,10 +53,7 @@ class PathUtilTest {
 
     @Test
     void deleteRecursivelyOrThrow_clears_the_dos_read_only_bit_and_deletes(@TempDir Path tmp) throws Exception {
-        // git marks every pack file read-only, and Windows refuses to delete a read-only file —
-        // so any tree holding a clone (the store's templates catalog) was undeletable and
-        // `jk self nuke --data` died on the first .idx. On POSIX the bit does not gate deletion,
-        // so this passes trivially there; the retry is what it pins on Windows.
+        // Windows requires clearing the read-only bit before deleting a git pack file.
         Path repo = Files.createDirectories(tmp.resolve("clone/.git/objects/pack"));
         Path pack = Files.writeString(repo.resolve("pack-abc.idx"), "idx");
         var dos = Files.getFileAttributeView(pack, DosFileAttributeView.class);

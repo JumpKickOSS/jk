@@ -80,6 +80,9 @@ limits — [Packaging](packaging.md#minified-jar-r8).
 
 First-party Android plugin for app/library modules. This is **not** AGP parity. Use `jk`
 for the JumpKick-supported Android path; keep `jk gradle` when you still need full AGP.
+Start from the `android/compose` template (`jk new my-app -t android/compose`) — a minimal
+Compose app with a JVM unit test and the `jk run` deploy path; see
+[Templates](templates.md).
 
 ## Protobuf
 

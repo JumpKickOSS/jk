@@ -485,6 +485,7 @@ public final class EffortWeights {
         if (stepCounts == null) stepCounts = Map.of();
         int weight = 0;
         int testWeight = 0;
+        int tailWeight = 0;
         String mod = dir == null ? "" : BuildMetrics.slashKey(dir.toString());
         int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
@@ -520,8 +521,10 @@ public final class EffortWeights {
             }
             weight += w;
             if (TaskNames.RUN_TESTS.equals(step)) testWeight += w;
+            // Requires only package-jar, so it overlaps the suite rather than following it.
+            if (TaskNames.PACKAGING_TAILS.contains(step)) tailWeight += w;
         }
-        return new ModuleCost(dir, prereqs, weight, testWeight);
+        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
     }
 
     /** Class walls from this process buffer or harvested project metrics (no class-file scan). */
@@ -670,7 +673,7 @@ public final class EffortWeights {
      * "parse-build execute reuses the result instead of walking the same directories again" — and
      * {@code predict} was called thirteen lines above their declaration, so it could not capture them
      * and walked every source tree a second time. Moving the declarations up and threading them here
-     * is the whole fix (JK-1031).
+     * is the whole fix.
      */
     public record SourceRefs(
             AtomicReference<List<Path>> java, AtomicReference<List<Path>> kotlin, AtomicReference<List<Path>> groovy) {
@@ -867,7 +870,7 @@ public final class EffortWeights {
 
     /**
      * {@code ensure-jdk}: 70 only when a JDK download will actually happen — the same condition
-     * {@link JdkEnsure} uses ({@code resolve} finds no usable JDK across the whole order, including
+     * {@link cc.jumpkick.jdk.JdkEnsure} uses ({@code resolve} finds no usable JDK across the whole order, including
      * the current/PATH tiers, and a spec <em>would install</em>). {@code resolve} is offline; the
      * download it predicts is the network cost. Anything resolvable on disk → 1.
      */
@@ -877,7 +880,7 @@ public final class EffortWeights {
             Path lf = LockPaths.lockFile(dir);
             Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
-            // The request's environment, not the daemon's — see JK-1021.
+            // The request's environment, not the daemon's.
             var env = BuildEnv.forModule(dir);
             var req = new JdkResolution.Request(
                     dir,
@@ -1096,7 +1099,33 @@ public final class EffortWeights {
      * One module's cost for the schedule estimate: its weight, its serialized test weight, and its
      * prereqs.
      */
-    public record ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight) {}
+    /**
+     * One module's priced work. {@code testWeight} is the {@code run-tests} slice and
+     * {@code tailWeight} the packaging tail ({@link TaskNames#PACKAGING_TAILS}) that runs beside it;
+     * {@code WorkSchedule} prices the module as {@code prefix + max(test, tail)}.
+     */
+    public record ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight) {
+        /** No known tail — prices exactly as it did before tails were modelled. */
+        public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight) {
+            this(dir, prereqs, weight, testWeight, 0);
+        }
+
+        /**
+         * Same module, different total. The tail and the test slice ride along, which is the whole
+         * reason this exists: re-wrapping through the four-argument constructor silently zeroes
+         * {@code tailWeight}, and a zero tail prices the module as the SUM of its steps — the
+         * serialization {@code BuildPlan} no longer has. That is not a visible failure, it is a
+         * quietly larger estimate, so the copy is a method rather than a habit.
+         */
+        public ModuleCost withWeight(int newWeight) {
+            return new ModuleCost(dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight);
+        }
+
+        /** The scheduler's DTO, carrying all three numbers. The only sanctioned conversion. */
+        public ModuleWorkCost toWorkCost() {
+            return new ModuleWorkCost(dir, prereqs, weight, testWeight, tailWeight);
+        }
+    }
 
     /**
      * The {@link ModuleCost} of a prepared module plan: its total estimated bar weight, plus the
@@ -1121,6 +1150,7 @@ public final class EffortWeights {
     public static ModuleCost costOf(Path dir, Set<Path> prereqs, BuildPlan plan, Set<String> cachedSteps) {
         int weight = 0;
         int testWeight = 0;
+        int tailWeight = 0;
         for (Task step : plan.steps()) {
             int stepWeight;
             if (cachedSteps.contains(step.name())) {
@@ -1134,8 +1164,9 @@ public final class EffortWeights {
             }
             weight += stepWeight;
             if (step.name().equals(TaskNames.RUN_TESTS)) testWeight += stepWeight;
+            if (TaskNames.PACKAGING_TAILS.contains(step.name())) tailWeight += stepWeight;
         }
-        return new ModuleCost(dir, prereqs, weight, testWeight);
+        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
     }
 
     /**
@@ -1196,7 +1227,12 @@ public final class EffortWeights {
         List<ModuleCost> inMs = new ArrayList<>(mods.size());
         for (ModuleCost m : mods) {
             double r = msPerWeightForModule.applyAsDouble(m.dir());
-            inMs.add(new ModuleCost(m.dir(), m.prereqs(), scaleToMs(m.weight(), r), scaleToMs(m.testWeight(), r)));
+            inMs.add(new ModuleCost(
+                    m.dir(),
+                    m.prereqs(),
+                    scaleToMs(m.weight(), r),
+                    scaleToMs(m.testWeight(), r),
+                    scaleToMs(m.tailWeight(), r)));
         }
         return scheduleMillis(inMs, concurrency, serial, parallelTests, 1L);
     }
@@ -1213,7 +1249,7 @@ public final class EffortWeights {
         List<ModuleWorkCost> out = new ArrayList<>(mods.size());
         for (ModuleCost m : mods) {
             if (m == null || m.dir() == null) continue;
-            out.add(new ModuleWorkCost(m.dir(), m.prereqs(), m.weight(), m.testWeight()));
+            out.add(m.toWorkCost());
         }
         return out;
     }

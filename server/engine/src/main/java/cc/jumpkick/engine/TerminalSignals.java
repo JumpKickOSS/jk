@@ -6,7 +6,7 @@ import java.lang.reflect.Proxy;
 /**
  * Best-effort ignore of terminal-generated signals for the engine process. The engine must not die
  * when the spawning client's process group receives Ctrl-C; build cancel is a wire concern
- * ({@code BUILD_CANCEL}), never SIGINT. SIGTERM stays lethal so {@code kill <pid>} works.
+ * ({@code CANCEL_REQUEST}), never SIGINT. SIGTERM stays lethal so {@code kill <pid>} works.
  *
  * <p>Uses {@code sun.misc.Signal} when present (HotSpot). Failures are ignored — {@link
  * PosixDetach} already reduces exposure by moving into a new session.

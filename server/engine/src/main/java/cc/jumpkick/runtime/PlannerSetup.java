@@ -18,9 +18,9 @@ import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.jdk.JdkProgressLabel;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
@@ -87,7 +87,7 @@ public final class PlannerSetup {
                     try {
                         // Same override the plan was built from (jk assemble --fat/--minified).
                         // Plan construction and step bodies must read one effective config, or a
-                        // task gets scheduled against a config its body cannot see.
+                        // task gets scheduled against a config its body cannot.
                         project = VariantApply.apply(
                                         applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session()),
                                         in.dir(),
@@ -128,7 +128,6 @@ public final class PlannerSetup {
                                 in.lockFile(),
                                 in.cache(),
                                 null,
-                                BuildIdentity.cacheKeyVersion(),
                                 List.of(),
                                 true,
                                 ResolveObserver.NOOP,
@@ -154,6 +153,7 @@ public final class PlannerSetup {
                                     profile == null ? List.of() : profile.javacArgs()));
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
+                    InputTrees.coverModule(in.dir());
                     List<Path> javaMainSrcs = javaMainSrcRef.get();
                     if (javaMainSrcs == null) {
                         javaMainSrcs = CompileSupport.collectJavaSources(javaMainSrcDir);
@@ -167,7 +167,7 @@ public final class PlannerSetup {
                     // join the source set here — the tick suppliers' pre-walk never saw them.
                     // Each union is derived by PlannerCompile, not here: `jk explain` has to
                     // reproduce these lists exactly to gate and key the compile steps, and a
-                    // second copy of the fold is a drift the parity guard cannot see (JK-2479).
+                    // second copy of the fold is a drift the parity guard cannot.
                     javaMainSrcs = PlannerCompile.javaAndScalaSources(project, in.dir(), compact, javaMainSrcs);
                     javaMainSrcRef.set(javaMainSrcs);
                     kotlinMainSrcs = kotlinMainSrcs == null
@@ -276,11 +276,7 @@ public final class PlannerSetup {
 
         WorkspaceClasspath.Result mainSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN));
-        if (!mainSiblings.missingSiblingJars().isEmpty()) {
-            for (String missing : mainSiblings.missingSiblingJars())
-                ctx.error("workspace", "sibling not built — " + missing);
-            throw new RuntimeException("missing workspace siblings");
-        }
+        requireSiblingsBuilt(ctx, mainSiblings, "sibling not built — ");
         // Lockfile + sibling jars + siblings' transitive lockfile deps — the
         // exact classpath `jk explain` re-derives, so the action keys match.
         List<Path> mainCp = PlannerSupport.mainCompileClasspath(lock, resolver, mainSiblings, true);
@@ -301,12 +297,7 @@ public final class PlannerSetup {
                 WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
         // A declared processor that cannot be found generates nothing, and a build
         // that silently skips code generation is worse than one that fails.
-        // Mirror the main-classpath missing-sibling guard above.
-        if (!processorSiblings.missingSiblingJars().isEmpty()) {
-            for (String missing : processorSiblings.missingSiblingJars())
-                ctx.error("workspace", "processor sibling not built — " + missing);
-            throw new RuntimeException("missing workspace siblings");
-        }
+        requireSiblingsBuilt(ctx, processorSiblings, "processor sibling not built — ");
         List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, processorSiblings);
         if (!unresolvedProcessors.isEmpty()) {
             for (String unresolved : unresolvedProcessors)
@@ -321,6 +312,9 @@ public final class PlannerSetup {
 
         WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
                 in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        // Without this guard the written diagnostic (a tests kind whose test classes are not on
+        // disk) was dropped and the user got compile-test's `cannot find symbol` instead.
+        requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ");
         List<Path> compileTestCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true));
         compileTestCp.addAll(testSiblings.jars());
         List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true));
@@ -345,6 +339,20 @@ public final class PlannerSetup {
         ctx.put(PROVIDED_CP, contributedProvided);
         ctx.put(COMPILE_TEST_CP, compileTestCp);
         ctx.put(TEST_RUNTIME_CP, testRuntimeCp);
+    }
+
+    /**
+     * The one shape of the missing-sibling guard, for all three classpath resolves. The resolve
+     * writes the accurate cause into {@code missingSiblingJars}; failing here attributes it to
+     * setup, where the sibling is named — not to the compile that would otherwise surface a
+     * {@code cannot find symbol} pointing at the wrong file.
+     */
+    private static void requireSiblingsBuilt(TaskContext ctx, WorkspaceClasspath.Result siblings, String prefix) {
+        if (siblings.missingSiblingJars().isEmpty()) return;
+        for (String missing : siblings.missingSiblingJars()) {
+            ctx.error("workspace", prefix + missing);
+        }
+        throw new RuntimeException("missing workspace siblings");
     }
 
     static Task ensureJdkStep(BuildPlanner.Ctx cx) {

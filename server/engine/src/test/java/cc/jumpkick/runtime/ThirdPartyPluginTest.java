@@ -132,7 +132,7 @@ class ThirdPartyPluginTest {
         // JkStores.cas ignores the temp cache path and uses the ambient product store (same
         // root PluginDescriptorOps.ensureMaterialized reads). Fetch into that store, then put the
         // jar into the CAS blob pool — matching SyncPlans.syncPlugins.
-        Cas cas = JkStores.cas(cache);
+        Cas cas = JkStores.storeCas();
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
         Coordinate jarCoord = Coordinate.of(GROUP, ARTIFACT, VERSION);
         var fetched = repos.tryFetchArtifact(jarCoord).orElseThrow();
@@ -189,7 +189,7 @@ class ThirdPartyPluginTest {
     }
 
     /**
-     * Pin-is-law for the plugin sync path (JK-2341): the pinned fetch overload never serves a
+     * Pin-is-law for the plugin sync path: the pinned fetch overload never serves a
      * warm hit that disagrees with the pin, and when the remote itself serves different bytes the
      * returned digest exposes the mismatch — the caller-side compare in SyncPlans.syncPlugins is
      * what keeps those bytes out of the CAS.
@@ -220,7 +220,7 @@ class ThirdPartyPluginTest {
                 fixture = "%s"
                 """.formatted(repo.toUri()));
         JkBuild build = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        Cas cas = JkStores.cas(tmp.resolve("cache"));
+        Cas cas = JkStores.storeCas();
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
         Coordinate coord = Coordinate.of(GROUP, ARTIFACT, version);
 

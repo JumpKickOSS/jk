@@ -405,7 +405,7 @@ class BuildLogicSupportTest {
     }
 
     /**
-     * A check produces nothing, and "these inputs are clean" is its whole result. Before JK-1059 an
+     * A check produces nothing, and "these inputs are clean" is its whole result. Before an
      * empty outDir meant no record at all, so such a script re-ran on every build forever — and the
      * only way to get caching was to fabricate an output nobody reads.
      */
@@ -603,6 +603,62 @@ class BuildLogicSupportTest {
         assertEquals(1, Files.readString(ran).length());
         assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));
         assertEquals(1, Files.readString(ran).length(), "unchanged tree caches the gate verdict");
+    }
+
+    @Test
+    void a_groovy_syntax_error_gets_one_prefix_and_the_dump_verbatim() {
+        // What the fork host throws for a syntax error: the compiler dump, verbatim (its second
+        // line names file and line — that is groovyc's own shape, not jk's).
+        String dump = "org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:\n"
+                + ".jk/before-compile.groovy: 2: Unexpected input: '(' @ line 2, column 1.\n"
+                + "1 error";
+        IllegalStateException wrapped =
+                BuildLogicSupport.scriptFailure(Path.of(".jk/before-compile.groovy"), new IllegalStateException(dump));
+
+        assertEquals("[build] logic script before-compile.groovy failed:\n" + dump, wrapped.getMessage());
+        RuntimeException rendered = BuildLogicSupport.taskFailure("before-compile", wrapped);
+        assertEquals(wrapped.getMessage(), rendered.getMessage(), "the task layer adds no second prefix");
+        assertEquals(1, countOccurrences(rendered.getMessage(), "[build] logic"));
+    }
+
+    @Test
+    void a_kts_compile_error_leads_with_its_own_file_and_line() {
+        // The .kts host hands back the compiler output bare; the one prefix names the file, and
+        // the very next line is the script's own file:line (made it trustworthy).
+        String dump = "before-compile.kts:5: Unresolved reference 'thisSymbolDoesNotExist'.";
+        IllegalStateException wrapped =
+                BuildLogicSupport.scriptFailure(Path.of(".jk/before-compile.kts"), new IllegalStateException(dump));
+
+        String[] lines = wrapped.getMessage().split("\n", 2);
+        assertEquals("[build] logic script before-compile.kts failed:", lines[0]);
+        assertEquals(dump, lines[1], "compiler output verbatim, location first in the body");
+        assertEquals(
+                wrapped.getMessage(),
+                BuildLogicSupport.taskFailure("before-compile", wrapped).getMessage());
+    }
+
+    @Test
+    void a_host_lifecycle_failure_keeps_its_own_single_prefix() {
+        IllegalStateException died =
+                new IllegalStateException("[build] logic: the .kts host died running gate.kts (exit 137)");
+        IllegalStateException wrapped = BuildLogicSupport.scriptFailure(Path.of(".jk/gate.kts"), died);
+        assertEquals(died.getMessage(), wrapped.getMessage());
+        assertEquals(
+                1,
+                countOccurrences(BuildLogicSupport.taskFailure("gate", wrapped).getMessage(), "[build] logic"));
+    }
+
+    @Test
+    void a_non_logic_failure_still_names_the_task() {
+        RuntimeException rendered =
+                BuildLogicSupport.taskFailure("before-compile", new IllegalStateException("disk full"));
+        assertEquals("[build] logic task before-compile failed: disk full", rendered.getMessage());
+    }
+
+    private static int countOccurrences(String text, String needle) {
+        int n = 0;
+        for (int i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + needle.length())) n++;
+        return n;
     }
 
     private static Path scaffold(Path dir) throws Exception {

@@ -24,7 +24,7 @@ public final class JdkToolUninstaller {
     /** How long any one tool command is allowed to run before we abandon it. */
     private static final long TIMEOUT_SECONDS = 30;
 
-    /** Outcome label used by the caller for the "✓ … via <tool>" line. */
+    /** Outcome label used by the caller for the {@code "✓ … via <tool>"} line. */
     public enum Outcome {
         HANDLED_BY_TOOL,
         FALL_THROUGH

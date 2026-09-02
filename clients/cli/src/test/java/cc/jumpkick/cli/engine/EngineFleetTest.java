@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -74,7 +77,7 @@ class EngineFleetTest {
             // LIVENESS, not performance. waitForExit's own grace is 8s and the kill lands at 300ms,
             // so this only fails if the wait ignored the exit and sat out the whole deadline. It is
             // deliberately half the grace rather than a tight number — a budget close to the real
-            // cost would be a fact about this machine, which is the JK-2446 defect shape.
+            // cost would be a fact about this machine, which is the defect shape.
             assertThat(elapsedMs)
                     .as("returned when the process exited, not after sitting out the 8s grace")
                     .isLessThan(4_000);
@@ -110,12 +113,10 @@ class EngineFleetTest {
 
     @Test
     void a_resident_engine_is_recognized_without_this_jk_home_on_the_command_line() {
-        String production =
-                "/home/u/.jdks/temurin-25/bin/java -cp /home/u/.local/share/jk/lib/jk-engine/jk-engine-0.12.0.jar"
-                        + " cc.jumpkick.engine.EngineMain";
-        String testHome =
-                "/home/u/.jdks/temurin-25/bin/java -cp /tmp/test-jk-home/data/lib/jk-engine/jk-engine-0.12.0.jar"
-                        + " cc.jumpkick.engine.EngineMain";
+        String production = "/home/u/.jdks/temurin-25/bin/java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar"
+                + " cc.jumpkick.engine.EngineMain";
+        String testHome = "/home/u/.jdks/temurin-25/bin/java -cp /tmp/test-jk-home/lib/jk-engine/jk-engine-0.12.0.jar"
+                + " cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.isResidentEngine(production)).isTrue();
         assertThat(EngineFleet.isResidentEngine(testHome)).isTrue();
         assertThat(EngineFleet.isResidentEngine(production + " --aot-training")).isFalse();
@@ -127,28 +128,84 @@ class EngineFleetTest {
 
     @Test
     void stop_scope_is_this_home_not_a_foreign_jk_home() {
-        // Under JK_HOME=/tmp/test-jk-home the engine jar lives at <JK_HOME>/data/lib/jk-engine/.
-        Path data = Path.of("/tmp/test-jk-home/data");
+        // Under JK_HOME=/tmp/test-jk-home the engine jar lives at <JK_HOME>/lib/jk-engine/.
+        Path home = Path.of("/tmp/test-jk-home");
         Path state = Path.of("/tmp/test-jk-home/state");
-        String local =
-                "java -cp /tmp/test-jk-home/data/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain";
-        String production = "java -cp /home/u/.local/share/jk/lib/jk-engine/jk-engine-0.12.0.jar"
-                + " -Djk.aot.train.output=/home/u/.local/state/jk/aot/engine.aot"
+        String local = "java -cp /tmp/test-jk-home/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain";
+        String production = "java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar"
+                + " -Djk.aot.train.output=/home/u/.jk/state/aot/engine.aot"
                 + " cc.jumpkick.engine.EngineMain";
-        assertThat(EngineFleet.belongsToThisHome(local, data, state)).isTrue();
-        assertThat(EngineFleet.belongsToThisHome(production, data, state)).isFalse();
+        assertThat(EngineFleet.belongsToThisHome(local, home, state)).isTrue();
+        assertThat(EngineFleet.belongsToThisHome(production, home, state)).isFalse();
+    }
+
+    /** The engine jar path identifies its owning home root. */
+    @Test
+    void home_root_is_parsed_from_the_engine_jar_on_the_command_line() {
+        assertThat(EngineFleet.homeFromCommandLine("java -cp /tmp/test-jk-home/lib/jk-engine/"
+                        + "jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain"))
+                .isEqualTo(Path.of("/tmp/test-jk-home"));
+        assertThat(EngineFleet.homeFromCommandLine("java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar"))
+                .isEqualTo(Path.of("/home/u/.jk"));
+        assertThat(EngineFleet.homeFromCommandLine(
+                        "java -cp \"C:\\Users\\Bryan Sant\\AppData\\Local\\jk\\data\\lib\\jk-engine\\engine.jar\""
+                                + " cc.jumpkick.engine.EngineMain"))
+                .isEqualTo(Path.of("C:/Users/Bryan Sant/AppData/Local/jk/data"));
+        assertThat(EngineFleet.homeFromCommandLine("java -jar other.jar")).isNull();
     }
 
     @Test
-    void data_root_is_parsed_from_the_engine_jar_on_the_command_line() {
-        assertThat(EngineFleet.dataDirFromCommandLine("java -cp /tmp/test-jk-home/data/lib/jk-engine/"
-                        + "jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain"))
-                .isEqualTo(Path.of("/tmp/test-jk-home/data"));
-        // XDG: the data root is the jk dir itself, not a sibling of state.
-        assertThat(EngineFleet.dataDirFromCommandLine(
-                        "java -cp /home/u/.local/share/jk/lib/jk-engine/jk-engine-0.12.0.jar"))
-                .isEqualTo(Path.of("/home/u/.local/share/jk"));
-        assertThat(EngineFleet.dataDirFromCommandLine("java -jar other.jar")).isNull();
+    void retired_platform_defaults_are_exact_layouts() {
+        Path unixHome = Path.of("/home/user");
+        var unix = RetiredEngineLayouts.platformDefault(name -> null, unixHome, false);
+        assertThat(unix.engineHome())
+                .isEqualTo(unixHome.resolve(".local").resolve("share").resolve("jk"));
+        assertThat(unix.stateDir())
+                .isEqualTo(unixHome.resolve(".local").resolve("state").resolve("jk"));
+
+        Path windowsHome = Path.of("C:/Users/user");
+        var windows = RetiredEngineLayouts.platformDefault(Map.of("LOCALAPPDATA", "D:/Local")::get, windowsHome, true);
+        assertThat(windows.engineHome()).isEqualTo(Path.of("D:/Local/jk/data"));
+        assertThat(windows.stateDir()).isEqualTo(Path.of("D:/Local/jk/state"));
+    }
+
+    @Test
+    void retirement_kills_only_a_resident_engine_in_the_exact_retired_home(@TempDir Path tmp) throws Exception {
+        var retired = new RetiredEngineLayouts.Layout(tmp.resolve("retired"), tmp.resolve("state"));
+        Path jar = retired.engineHome().resolve("lib/jk-engine/jk-engine-test.jar");
+        Process oldEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
+        try {
+            var member = new EngineFleet.Member(null, null, null, oldEngine.pid(), false);
+
+            var results = EngineFleet.retireOldDefaultLayoutEngines(List.of(member), tmp.resolve("current"), retired);
+
+            assertThat(results)
+                    .singleElement()
+                    .extracting(EngineFleet.StopResult::outcome)
+                    .isEqualTo(EngineFleet.Outcome.KILLED);
+            assertThat(oldEngine.waitFor(2, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            oldEngine.destroyForcibly();
+            oldEngine.waitFor();
+        }
+    }
+
+    @Test
+    void retirement_preserves_an_explicit_current_home_engine(@TempDir Path tmp) throws Exception {
+        Path explicitHome = tmp.resolve("explicit");
+        var retired = new RetiredEngineLayouts.Layout(tmp.resolve("retired"), tmp.resolve("state"));
+        Path jar = explicitHome.resolve("lib/jk-engine/jk-engine-test.jar");
+        Process currentEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
+        try {
+            var member = new EngineFleet.Member(null, null, null, currentEngine.pid(), false);
+
+            assertThat(EngineFleet.retireOldDefaultLayoutEngines(List.of(member), explicitHome, retired))
+                    .isEmpty();
+            assertThat(currentEngine.isAlive()).isTrue();
+        } finally {
+            currentEngine.destroyForcibly();
+            currentEngine.waitFor();
+        }
     }
 
     @Test

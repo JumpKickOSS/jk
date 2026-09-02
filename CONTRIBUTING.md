@@ -23,15 +23,9 @@ git config --global core.eol lf
 
 ## Toolchain
 
-Bootstrap pins (`.sdkmanrc`):
-
-```
-java=25.0.4-graal
-gradle=9.6.1
-```
-
-With SDKMAN: `sdk env install && sdk env`. Otherwise Gradle can provision a JDK via the
-foojay resolver on first use.
+Build with **JDK 25+**. Native `dist` needs a GraalVM-capable JDK (GraalVM CE is fine).
+Gradle comes from the wrapper (`gradle/wrapper/`). SDKMAN is optional; otherwise Gradle can
+provision a JDK via the foojay resolver on first use.
 
 ## Build-family commands
 
@@ -62,14 +56,14 @@ sdk install java 25-graalce && sdk use java 25-graalce
 ```
 
 **Windows also supports the thin JVM client** (`:cli:installDist` → `jk.bat`). Smart App Control
-blocks unsigned `jk.exe` (JK-2037); Authenticode for released natives is JK-2059. Contributors
+blocks unsigned `jk.exe`. Contributors
 who want unsigned `gradlew dist` / Graal SVM helpers can turn SAC off — it is optional, not
-required. The thin client cannot self-heal a missing engine (JK-1070); materialize from this
+required. The thin client cannot self-heal a missing engine; materialize from this
 checkout (`./gradlew installLocal` or `jk self materialize`).
 
 Once a release is published, the common install is
 `curl -fsSL https://jumpkick.build/install.sh | bash` (Windows: `irm …/install.ps1 | iex`).
-Signed `jk.exe` is the user-facing Windows path after JK-2059; `jk.bat` remains supported.
+Signed `jk.exe` is the user-facing Windows path once releases are published; `jk.bat` remains supported.
 
 ### Black-box examples (sibling repo)
 
@@ -94,7 +88,7 @@ format job — `jk format --check` is the local gate (required before every comm
 How we write Java (size budgets, Typed Envelope, JSpecify, fluent Lombok, pre-1.0 breakage):
 **[docs/contributors/code-as-art.md](docs/contributors/code-as-art.md)**. Comments and Javadoc state the current type only
 (no ticket ids, no historical essays) — **[AGENTS.md](AGENTS.md#comments-and-javadoc)**.
-Campaign epic JK-1923 preempts other work until it closes.
+Code as Art / Typed Envelope (see [docs/contributors/code-as-art.md](docs/contributors/code-as-art.md)) preempts other work until it closes.
 
 ### Self-host (phase 2+) — workspace modules + thin workers with jk
 
@@ -116,10 +110,10 @@ no `[application]` table). Side-load with `jk install`.
 Native (Unix, or Windows with SAC off / a signed `jk.exe`):
 
 ```bash
-# 1) Produce a local JumpKick + side-load worker jars into ~/.cache/jk
+# 1) Produce a local JumpKick + side-load worker jars into ~/.jk/store
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.local/bin:$PATH"   # install.sh default
+export PATH="$HOME/.jk/bin:$PATH"   # install.sh default
 
 # 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock
@@ -133,11 +127,11 @@ Windows thin client (SAC-safe, no Graal):
 ```powershell
 .\gradlew :cli:installDist installLocal
 .\install.cmd clients\cli\build\install\jk\bin\jk.bat
-# PATH: %USERPROFILE%\.local\bin  (jk.bat; leftover jk.exe is parked)
+# PATH: %USERPROFILE%\.jk\bin  (jk.bat; leftover jk.exe is parked)
 ```
 
 The client never embeds the engine. Spawning uses
-`~/.local/share/jk/lib/jk-engine/` (or `$JK_HOME/data/lib/jk-engine/`) or `JK_ENGINE_EXE`.
+`~/.jk/lib/jk-engine/` (or `$JK_HOME/lib/jk-engine/`) or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|
@@ -180,7 +174,7 @@ siblings** (today: `test-runner`, `java-compiler`), the test JVM gets
 `plugins/<name>/target/`. Other workers still resolve from `installLocal` / CAS.
 
 CLI integration tests (`:cli:integrationTest`) spawn a real engine from `:engine:shadowJar`
-(materialized into the test `JK_HOME`) — no in-process dual path (ticket-1020). `:cli:test` is
+(materialized into the test `JK_HOME`) — no in-process dual path. `:cli:test` is
 the pure unit tier (TUI/args/jsonl) with no shadowJar or worker-jar dependency.
 
 **Suite timing (order of magnitude, warm laptop):** default `./gradlew test` (unit tier) ≈
@@ -196,7 +190,7 @@ for dogfood; keep `./gradlew :cli:integrationTest` for the CLI integration suite
 
 Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).
 
-### Showcase monorepo smoke (ticket-1038)
+### Showcase monorepo smoke
 
 Multi-module sample under
 [`docs/user/examples/workspace-showcase/`](docs/user/examples/workspace-showcase/):

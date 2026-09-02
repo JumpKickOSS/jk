@@ -282,7 +282,7 @@ public final class NativeCommand implements CliCommand {
                 hasNativeTable = scan.hasSection("native") && !explicitlyDisabled;
             }
             // enabled = false keeps the table but opts the module out of native builds — it must
-            // not re-enter through the unique-main fallback (JK-2089).
+            // not re-enter through the unique-main fallback.
             if (explicitlyDisabled) continue;
             var main = NativePreflight.resolveMain(moduleDir, mainOverride);
             if (main instanceof NativePreflight.Main.None) continue;

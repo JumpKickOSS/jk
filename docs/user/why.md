@@ -237,8 +237,8 @@ The observe step has to match: `target/jk-results.md` (and MCP `jk_results`) mus
 disclose **what ran, what did not, how to replay, what to run next.** A green unit
 run that silently skipped integration is how wiring bugs escape.
 
-Commands, layout, and MCP `rung` are specified in KanArtist (`projects/jk/docs/test-rungs.md`,
-JK-2046+). Day-to-day flags while that lands: [Test](test.md). Default `jk test` is
+Commands, layout, and MCP `rung` are specified in KanArtist (`projects/jk/docs/test-rungs.md`).
+Day-to-day flags while that lands: [Test](test.md). Default `jk test` is
 already the unit suite — that half of the bet is real.
 
 ---
@@ -267,7 +267,7 @@ aims at all four.
 ## Making the north star true
 
 Pitch order is not build order. Engineering priority should maximize **agent loop latency
-and success rate** (see KanArtist epic **JK-2000** and children).
+and success rate**.
 
 **Private metric that matters:**
 
@@ -280,7 +280,7 @@ not save it.
 Honesty today: the skeleton is real (`jk manual`, results, MCP, TOML edits, lockfile,
 cache, **directory suites** so `jk test` is already the unit rung). The named `--gate`
 bar, gate-script stem, results Selection block, and MCP `rung` are the remaining
-execute-step work (KanArtist JK-2046+). The north star becomes *true* when failure
+execute-step work (tracked in KanArtist). The north star becomes *true* when failure
 coverage, recipe reliability, **cheap default tests**, and measured turns-to-green beat
 the incumbents — not when the README says so.
 

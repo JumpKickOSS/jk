@@ -12,7 +12,7 @@ import java.nio.file.Path;
  *
  * <p>Stateless renderer. Run paths accumulate per-module slices on the request's
  * {@code BuildAccumulator} (one per invocation, taken at request-finish), so a new run always
- * replaces the file instead of merging into a previous run's report (JK-2607).
+ * replaces the file instead of merging into a previous run's report.
  */
 public final class JkTestsAffectedMarkdown {
 

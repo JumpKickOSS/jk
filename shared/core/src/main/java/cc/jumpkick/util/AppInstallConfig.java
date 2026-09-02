@@ -15,10 +15,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Per-app install metadata under the config root: {@code <config>/<bin>/config.toml}.
- *
- * <p>Linux default {@code ~/.config/jk/<bin>/config.toml}; under {@code JK_HOME}:
- * {@code $JK_HOME/config/<bin>/config.toml}. Override the config root with {@code JK_CONFIG_DIR}.
+ * Per-app install metadata under the config root: {@code <home>/config/<bin>/config.toml}
+ * ({@code ~/.jk/config/<bin>/config.toml}). The global {@code config.toml} is not in here — it
+ * sits at the home root.
  *
  * <p>Values are string TOML keys. Writers merge into any existing file (new keys overwrite). Used by
  * {@code jk install} (template and/or {@code jk-config.*} properties). The live engine pointer is

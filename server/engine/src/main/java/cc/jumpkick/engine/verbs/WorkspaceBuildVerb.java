@@ -12,9 +12,9 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.protocol.BuildRequest;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
@@ -89,36 +89,41 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind());
         return Jsonl.append(
                 ProtoSession.withTrigger(
-                        ProtoJobs.buildRequest(
-                                entryDir.toString(),
-                                JkDirs.cache().toString(),
-                                JkDirs.jdks().toString(),
-                                0,
-                                null,
-                                skipTests,
-                                false,
-                                0,
-                                // Parallel module tests: same default as the CLI (JK-2213).
-                                true,
-                                false,
-                                false,
-                                true,
-                                false,
-                                testOnly,
-                                dirty == null
-                                        ? null
-                                        : dirty.stream()
-                                                .map(Path::toString)
-                                                .sorted()
-                                                .toList(),
-                                JobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites())),
+                        new BuildRequest(
+                                        entryDir.toString(),
+                                        JkDirs.cache().toString(),
+                                        JkDirs.jdks().toString(),
+                                        0,
+                                        null,
+                                        skipTests,
+                                        false,
+                                        0,
+                                        // Parallel module tests: same default as the CLI.
+                                        true,
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        testOnly,
+                                        dirty == null
+                                                ? null
+                                                : dirty.stream()
+                                                        .map(Path::toString)
+                                                        .sorted()
+                                                        .toList(),
+                                        JobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites()),
+                                        List.of(),
+                                        false,
+                                        null,
+                                        Map.of())
+                                .encode(),
                         "web"),
                 spec.affected() ? "\"affected\":true" : "");
     }
 
     /**
      * Non-positive wire concurrency resolves to the same effective jobs the CLI sends, so every
-     * client takes the streaming scheduler — never the batch-per-level path (JK-2213).
+     * client takes the streaming scheduler — never the batch-per-level path.
      */
     static int effectiveModuleConcurrency(int wire) {
         if (wire > 0) return wire;
@@ -128,44 +133,44 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     /** A workspace test job journals as kind {@code test} on every surface, not {@code build}. */
     @Override
     public JobRequest toJobRequest(String requestLine) {
-        boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
+        boolean testOnly = BuildRequest.decode(requestLine).testOnly();
         return new JobRequest(JobKind.workspace(testOnly ? "test" : "build"), threadPrefix(), this::run);
     }
 
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String entryDirStr = Jsonl.str(requestLine, "dir");
-            String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
-            int workers = Jsonl.intValue(requestLine, "workers", 0);
-            String profile = Jsonl.str(requestLine, "profile");
-            boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            // One behavior for every client (JK-2213): absent/zero module concurrency resolves
+            BuildRequest body = BuildRequest.decode(requestLine);
+            String entryDirStr = body.dir();
+            String cacheStr = body.cache();
+            String jdksDirStr = body.jdksDir();
+            int workers = body.workers();
+            String profile = body.profile();
+            boolean skipTests = body.skipTests();
+            boolean verbose = body.verbose();
+            // One behavior for every client: absent/zero module concurrency resolves
             // to the same effective jobs the CLI sends (streaming scheduler — never the
             // batch-per-level path), and cross-module tests default parallel. Explicit wire
             // values (any client, any age) still win.
-            int maxModuleConcurrency =
-                    effectiveModuleConcurrency(Jsonl.intValue(requestLine, "maxModuleConcurrency", 0));
-            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", true);
-            boolean offline = Jsonl.bool(requestLine, "offline", false);
-            boolean force = Jsonl.bool(requestLine, "force", false);
+            int maxModuleConcurrency = effectiveModuleConcurrency(body.maxModuleConcurrency());
+            boolean parallelTests = body.parallelTests();
+            boolean offline = body.offline();
+            boolean force = body.force();
             boolean rerun = Jsonl.bool(requestLine, "rebuild", false);
-            boolean freshenLock = Jsonl.bool(requestLine, "freshenLock", false);
-            boolean ephemeralActions = Jsonl.bool(requestLine, "ephemeralActions", false);
-            boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
+            boolean freshenLock = body.freshenLock();
+            boolean ephemeralActions = body.ephemeralActions();
+            boolean testOnly = body.testOnly();
             // Absent = fail-fast. The client resolves --continue / [engine] continue / CI and
             // sends the answer; the engine does not re-derive it from its own environment, which
             // is the daemon's and not the caller's.
-            boolean keepGoing = Jsonl.bool(requestLine, "keepGoing", false);
-            List<String> dirtyHintDirs = ProtoJobs.dirtyHintOf(requestLine);
+            boolean keepGoing = body.keepGoing();
+            List<String> dirtyHintDirs = body.dirtyHint();
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
 
-            List<String> moduleTokens = Jsonl.strArray(requestLine, "modules");
+            List<String> moduleTokens = body.modules();
             Set<Path> dirty = dirtyHintDirs == null
                     ? null
                     : dirtyHintDirs.stream().map(Path::of).collect(Collectors.toUnmodifiableSet());
@@ -200,10 +205,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
-            String workspaceTarget = Jsonl.str(requestLine, "workspaceTarget");
+            String workspaceTarget = body.workspaceTarget();
             if ("install".equals(workspaceTarget)) {
                 Map<Path, Path> graalByDir = new LinkedHashMap<>();
-                Map<String, String> homes = Jsonl.strMap(requestLine, "graalHomes");
+                Map<String, String> homes = body.graalHomes();
                 if (homes != null) {
                     homes.forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
                 }
@@ -223,7 +228,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withCacheDir(cache)
                     .withJdksDir(jdksDir)
                     .withParallelTests(parallelTests)
-                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine))
+                    .withTestSelection(body.selection())
                     .withAffected(Jsonl.bool(requestLine, "affected", false))
                     .withCancel(cancelToken)
                     .withJvm(ProtoSession.jvmTuning(requestLine))
@@ -234,7 +239,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     // the daemon's own environment instead of the caller's.
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                     // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                    // empty and a resident engine ignores both --jdk and JK_JDK (JK-1021).
+                    // empty and a resident engine ignores both --jdk and JK_JDK.
                     .withToolchainSpecs(
                             ProtoSession.jdkSpecOf(requestLine),
                             ProtoSession.graalSpecOf(requestLine),

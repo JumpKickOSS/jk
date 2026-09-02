@@ -52,7 +52,7 @@ class XzTest {
 
     @Test
     void main_flag_requires_two_paths() {
-        // 64 is Exit.USAGE, spelled as the literal a shell would see. JK-2417 moved this off 2,
+        // 64 is Exit.USAGE, spelled as the literal a shell would see; moved this off 2,
         // which now means only "bad config".
         assertThat(EngineMain.runInflateXz(new String[] {"--inflate-xz"})).isEqualTo(64);
     }

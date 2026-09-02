@@ -31,7 +31,7 @@ one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries. Tre
 | `workspace/buildTargets`, sources, dependency modules | yes |
 | Dependency **sources** jars | yes (classifier `sources` when present) |
 | `buildTarget/outputPaths` | yes (main + test classes dirs) |
-| `buildTarget/compile` | yes; `publishDiagnostics` on parseable `path:line:` |
+| `buildTarget/compile` | yes; `publishDiagnostics` with file/line/column for javac, kotlinc and groovyc blocks (errors severity 1, warnings 2; anything unparseable lands at project root) |
 | `buildTarget/test` | yes; optional suite/tag `data` |
 | `buildTarget/run` | yes when main class known |
 | `build/cancel` | yes |

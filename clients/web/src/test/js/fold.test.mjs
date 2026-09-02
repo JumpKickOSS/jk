@@ -123,7 +123,7 @@ test('cancelled wins over derived outcomes', () => {
   assert.equal(outcomeOf(cards[0]), 'cancelled');
 });
 
-test('didWork false marks module checked; summary says checked not built (JK-1296)', () => {
+test('didWork false marks module checked; summary says checked not built', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
@@ -156,7 +156,7 @@ test('events for unknown request ids and unknown types are ignored', () => {
   assert.equal(cards.length, 0);
 });
 
-test('workspace-progress sets request-level aggregate percent (JK-1120)', () => {
+test('workspace-progress sets request-level aggregate percent', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
@@ -168,7 +168,7 @@ test('workspace-progress sets request-level aggregate percent (JK-1120)', () => 
   assert.equal(cards[0].progressDen, 200);
 });
 
-test('rehydrate seeds the countdown from current remaining, not original R0 (JK-1820)', () => {
+test('rehydrate seeds the countdown from current remaining, not original R0', () => {
   const cards = [];
   foldEvent(cards, start(7, '/w'));
   // Late join: the rehydrated snapshot carries the run's original R0 AND current remaining.
@@ -285,7 +285,7 @@ test('a step-start without a phase stores an empty phase', () => {
   assert.equal(cards[0].modules[0].steps[0].phase, ''); // default, never undefined
 });
 
-test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK-1519)', async () => {
+test('finished live cards reconcile by (dir, buildNumber) despite clock skew', async () => {
   const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
@@ -299,7 +299,7 @@ test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK
   assert.equal(cards[0].historyId, 'r6');
 });
 
-test('a stale running stub does not flip a finished live card back to running (JK-1519)', async () => {
+test('a stale running stub does not flip a finished live card back to running', async () => {
   const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
@@ -398,7 +398,7 @@ test('one name per journal field: the retired spellings are not read back', () =
 });
 
 test('history seeding keeps a FAILED-step module failed inside a cancelled record', async () => {
-  // JK-2094: module A fails compile (FAIL step journaled), the rest of the workspace is
+  // module A fails compile (FAIL step journaled), the rest of the workspace is
   // cancelled → rec.cancelled=true. Live painted A failed; the reload seed graying A out to
   // 'cancelled' desynced the two and dropped A from the failure details. FAIL steps win, same
   // precedence as outcomeOf.
@@ -422,7 +422,7 @@ test('history seeding keeps a FAILED-step module failed inside a cancelled recor
 });
 
 test('workspace history replay applies the per-kind diagnostic ceilings', async () => {
-  // JK-1947: the single-project path was bounded (JK-1881) but the workspace path streamed a
+  // the single-project path was bounded but the workspace path streamed a
   // pathological record's diagnostics into the card unbounded.
   const { seedFromHistory, MAX_TEST_FAILURE_DIAGNOSTICS, MAX_DIAGNOSTICS } = await spa('fold.js');
   const diagnostics = [];
@@ -502,7 +502,7 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
   assert.equal(core.diagnostics.length, startLen + 15); // test-failure has its own, higher cap
 });
 
-test('test-failure diagnostics are bounded by their own ceiling (JK-1881)', async () => {
+test('test-failure diagnostics are bounded by their own ceiling', async () => {
   const { MAX_TEST_FAILURE_DIAGNOSTICS } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
@@ -728,7 +728,7 @@ test('run-snapshot applies phases + progress in one frame (no phase-replay backl
   assert.equal(cards[0].residualRemainingMs, 25_000);
 });
 
-test('pre-execute eta re-seed replaces a provisional R0; execute freezes it (JK-1854)', () => {
+test('pre-execute eta re-seed replaces a provisional R0; execute freezes it', () => {
   const cards = [];
   foldEvent(cards, { type: 'request-start', data: { jid: 41, kind: 'build', dir: '/w' }, at: 1000 });
   // Coarse lock+prior figure during lock contention.
@@ -748,7 +748,7 @@ test('pre-execute eta re-seed replaces a provisional R0; execute freezes it (JK-
   assert.equal(cards[0].r0Ms, 30_000);
 });
 
-test('run-snapshot carries finished/didWork/historyId and the SPA stops guessing (JK-1846)', () => {
+test('run-snapshot carries finished/didWork/historyId and the SPA stops guessing', () => {
   const cards = [];
   foldEvent(cards, {
     type: 'run-snapshot',
@@ -780,7 +780,7 @@ test('run-snapshot carries finished/didWork/historyId and the SPA stops guessing
   assert.equal(byDir['/w/cli'].state, 'running');
 });
 
-test('serverNow re-anchors engine startedAt to the client epoch under skew (JK-1839)', () => {
+test('serverNow re-anchors engine startedAt to the client epoch under skew', () => {
   const cards = [];
   // Engine clock runs 30s AHEAD of the browser: engine says the run started 10s ago.
   const clientReceipt = 100_000;
@@ -816,7 +816,7 @@ test('serverNow re-anchors engine startedAt to the client epoch under skew (JK-1
   assert.equal(card.startedAtClient, clientReceipt - 10_000);
 });
 
-test('stale run-snapshot never resurrects a finished card (JK-1837)', () => {
+test('stale run-snapshot never resurrects a finished card', () => {
   const cards = [];
   foldEvent(cards, { type: 'request-start', data: { jid: 9, kind: 'build', dir: '/w' }, at: 1000 });
   foldEvent(cards, {
@@ -842,7 +842,7 @@ test('stale run-snapshot never resurrects a finished card (JK-1837)', () => {
   assert.equal(cards[0].millis, 4200);
 });
 
-test('seedFromHistory finishes a running card when the record says the run is over (JK-1837)', () => {
+test('seedFromHistory finishes a running card when the record says the run is over', () => {
   const cards = [];
   foldEvent(cards, {
     type: 'request-start',
@@ -874,7 +874,7 @@ test('seedFromHistory finishes a running card when the record says the run is ov
   assert.equal(steps.find((s) => s.name === 'run-tests').state, 'success');
 });
 
-test('reconnect run-snapshot preserves live diagnostics, failed state, and checked modules (JK-1834)', () => {
+test('reconnect run-snapshot preserves live diagnostics, failed state, and checked modules', () => {
   const cards = [];
   foldEvent(cards, { type: 'request-start', data: { jid: 7, kind: 'build', dir: '/w' }, at: 1000 });
   // Live stream reports a checked module, then a module-level failure with diagnostics.
@@ -1041,7 +1041,7 @@ test('eta is captured and cleared on finish', () => {
   assert.equal(cards[0].etaMillis, null); // countdown stops on finish
 });
 
-test('etaTotalMillis anchors remaining work at the emission time, not request-start (JK-1517)', async () => {
+test('etaTotalMillis anchors remaining work at the emission time, not request-start', async () => {
   const { etaTotalMillis } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w'), at: 1000 });
@@ -1096,7 +1096,7 @@ test('phaseChainOf keeps Resolve only when a resolve step failed', () => {
   assert.deepEqual(failed.map((p) => p.label), ['Resolve', 'Compile']);
   assert.equal(failed[0].state, 'failed');
 
-  // JK-2112: a RUNNING resolve is the only live indicator during cold-cache resolution —
+  // a RUNNING resolve is the only live indicator during cold-cache resolution —
   // it must stay visible; likewise a cancelled one explains where the run stopped.
   const running = phaseChainOf({
     steps: [{ name: 'resolve-deps', phase: 'resolve', state: 'running' }],
@@ -1294,7 +1294,7 @@ test('detailSegments paints ensure-jdk download and install labels', () => {
 });
 
 test('detailSegments paints the bar-less unknown-size download label', () => {
-  // Feed rows without archiveSize emit "downloading Temurin 25" alone (JK-1951).
+  // Feed rows without archiveSize emit "downloading Temurin 25" alone.
   const bare = detailSegments('downloading Temurin 25');
   assert.ok(bare.some((s) => s.cls === 'det-mid' && s.text === 'downloading'));
   assert.ok(bare.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
@@ -1692,7 +1692,7 @@ test('isCompilerDiag matches javac kotlinc groovyc', () => {
 });
 
 test('parseCompilerBlock parses real groovyc output (space + column trailer)', () => {
-  // JK-2113: groovyc's "path: 5: message @ line 5, column 1." never matched, so groovyc blobs
+  // groovyc's "path: 5: message @ line 5, column 1." never matched, so groovyc blobs
   // always fell back to an unstructured "Compile failure" blob.
   const units = parseCompilerBlock(
     '/w/src/main/groovy/Foo.groovy: 5: unexpected token: } @ line 5, column 1.', 'error');
@@ -1719,7 +1719,7 @@ test('parseCompilerBlock extracts error kv, caret column, and snippet line', () 
 });
 
 test('multi-unit blob keeps each unit under its own file despite a diag-level file', () => {
-  // JK-2115: file was not gated on i===0 like line/col, so unit 2 rendered as
+  // file was not gated on i===0 like line/col, so unit 2 rendered as
   // "<first file>:<unit2 line>" — wrong locus, deep link, and context-window fetch.
   const d = {
     code: 'javac',

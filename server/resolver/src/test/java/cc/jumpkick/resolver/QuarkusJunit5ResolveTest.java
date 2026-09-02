@@ -75,7 +75,7 @@ class QuarkusJunit5ResolveTest {
         assertThat(sol).isNotEmpty();
         // LIVENESS, and a restatement of the solver's own budget: it was constructed with
         // timeoutMs=15_000, so exceeding that throws rather than returning late. Kept as a belt to
-        // catch a single step overrunning; it is not a performance budget (JK-2446).
+        // catch a single step overrunning; it is not a performance budget.
         assertThat(ms)
                 .as("LIVENESS: solved inside the solver's own 15s timeout")
                 .isLessThan(15_000L);

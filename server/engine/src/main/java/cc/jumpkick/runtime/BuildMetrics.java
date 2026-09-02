@@ -29,14 +29,14 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
- * Best-effort machine build history (global/project/task tiers) at {@code ~/.local/state/jk/builds/metrics.json}.
+ * Best-effort machine build history (global/project/task tiers) at {@code ~/.jk/state/builds/metrics.json}.
  * Outcome buckets stay separate so estimators only learn from {@link Entry#ok}; {@link #record} is
  * locked atomic replace.
  */
 public final class BuildMetrics {
 
     /** The current on-disk schema version. */
-    public static final int SCHEMA = 1;
+    public static final int SCHEMA = 2;
 
     /** In-memory key separator; never appears in a sane path or step name. */
     private static final char SEP = '\n';
@@ -278,19 +278,10 @@ public final class BuildMetrics {
             } else if (key.startsWith("module.") && key.contains(".task.") && key.endsWith(".wall-ms")) {
                 // module.<dir>.task.<name>.wall-ms
                 putModuleTask(steps, key, "task", ok, now, hostOnly);
-            } else if (key.startsWith("module.") && key.contains(".step.") && key.endsWith(".wall-ms")) {
-                // legacy module.<dir>.step.<name>.wall-ms
-                putModuleTask(steps, key, "step", ok, now, /*hostOnly*/ true);
             } else if (key.startsWith("task.") && key.endsWith(".wall-ms") && !key.contains("module.")) {
                 String task = key.substring("task.".length(), key.length() - ".wall-ms".length());
                 String sk = "" + SEP + task;
                 if (!hostOnly || !steps.containsKey(sk)) {
-                    steps.put(sk, new Entry(null, "", null, task, ok, Stats.EMPTY, Stats.EMPTY, now));
-                }
-            } else if (key.startsWith("step.") && key.endsWith(".wall-ms") && !key.contains("module.")) {
-                String task = key.substring("step.".length(), key.length() - ".wall-ms".length());
-                String sk = "" + SEP + task;
-                if (!steps.containsKey(sk)) {
                     steps.put(sk, new Entry(null, "", null, task, ok, Stats.EMPTY, Stats.EMPTY, now));
                 }
             }
@@ -609,13 +600,17 @@ public final class BuildMetrics {
         Map<String, Entry> ph = new LinkedHashMap<>();
         try {
             if (Files.isRegularFile(file) && MiniJson.parse(Files.readString(file)) instanceof Map<?, ?> root) {
+                // The step->task rename changed the shape under schema 1, so a version check is
+                // the whole migration: an old store decodes to empty and the priors re-learn in
+                // one run — cheaper than dual reads living forever.
+                if (!(root.get("schema") instanceof Number v) || v.longValue() < SCHEMA) {
+                    return new BuildMetrics(inv, ph);
+                }
                 for (Object row : list(root.get("invocations"))) {
                     Entry e = readEntry(row, true);
                     if (e != null) inv.put(e.kind() + SEP + e.dir(), e);
                 }
-                Object taskRows = root.get("tasks");
-                if (taskRows == null) taskRows = root.get("steps"); // pre-rename store files
-                for (Object row : list(taskRows)) {
+                for (Object row : list(root.get("tasks"))) {
                     Entry e = readEntry(row, false);
                     if (e != null) ph.put(e.dir() + SEP + e.step(), e);
                 }
@@ -631,7 +626,6 @@ public final class BuildMetrics {
         String kind = str(o.get("kind"));
         String rawDir = str(o.get("dir"));
         String step = str(o.get("task"));
-        if (step == null) step = str(o.get("step"));
         if (rawDir == null || (invocation ? kind == null : step == null)) return null;
         String dir = slashKey(rawDir);
         return new Entry(
@@ -713,7 +707,7 @@ public final class BuildMetrics {
     }
 
     private static OptionalLong tomlLong(Path userConfig, String key) {
-        // The [metrics] table of the user-global ~/.config/jk/config.toml; missing/malformed → empty.
+        // The [metrics] table of the user-global ~/.jk/config.toml; missing/malformed → empty.
         Optional<Long> v = TomlValues.parse(userConfig)
                 .map(toml -> toml.getTable("metrics"))
                 .flatMap(t -> TomlValues.optLong(t, key));
