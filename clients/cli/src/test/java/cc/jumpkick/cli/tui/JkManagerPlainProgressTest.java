@@ -24,8 +24,9 @@ class JkManagerPlainProgressTest {
         var cm = JkManager.plan(stream(buf), "Build", true);
         cm.setWindowTitle("JumpKick - Building cc.jumpkick:jk:0.12.0...");
         String set = buf.toString(StandardCharsets.UTF_8);
-        // OSC 0: fill-circle glyph + base, terminated with ST (ESC \), not BEL.
-        String expected = "\033]0;" + Spinner.fillGlyph(0) + " JumpKick - Building cc.jumpkick:jk:0.12.0...\033\\";
+        // OSC 0: half-circle glyph + base, terminated with ST (ESC \), not BEL.
+        String expected = "\033]0;" + JkManager.WINDOW_TITLE_GLYPH_A
+                + " JumpKick - Building cc.jumpkick:jk:0.12.0...\033\\";
         assertThat(set).contains(expected);
         buf.reset();
         cm.finishBuildPlanSuccess("ok", List.of());
@@ -274,25 +275,40 @@ class JkManagerPlainProgressTest {
     }
 
     @Test
-    void window_title_updates_only_when_fill_glyph_changes() {
+    void window_title_swaps_its_half_circle_on_its_own_cadence() {
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);
         cm.setWindowTitle("JumpKick - Building g:a:v...");
+        // One tick before the measurement so the paint path is loaded: the swap window below is
+        // wall-clock, and a fresh JVM class-loading the whole renderer could spend it.
+        cm.tick();
         buf.reset();
-        // setWindowTitle left frame=0 with ○ emitted. FILL_HOLD ticks use frames 0..HOLD-1
-        // (same glyph) then leave frame=HOLD; none of those rewrite the title.
-        for (int i = 0; i < Spinner.FILL_HOLD; i++) {
+        // Pin both axes of the title's own state — last glyph and swap anchor — so neither the
+        // glyph identity nor the window depends on how long getting here took.
+        cm.windowTitleLastGlyph = JkManager.WINDOW_TITLE_GLYPH_A;
+        cm.windowTitleLastSwapMs = System.currentTimeMillis();
+
+        // Animator frames are not the title's clock. A whole fill cycle of them — which used to
+        // rewrite the title on every phase advance — leaves it alone inside one swap window.
+        for (int i = 0; i < Spinner.FILL_FRAMES; i++) {
             cm.tick();
         }
         assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
-        // This tick paints with frame=HOLD (next phase) → one OSC update.
+
+        // Age the anchor past the interval: the next tick swaps to the other half-circle, once.
+        cm.windowTitleLastSwapMs -= JkManager.WINDOW_TITLE_SWAP_MS + 1;
         cm.tick();
-        String out = buf.toString(StandardCharsets.UTF_8);
-        String nextGlyph = Spinner.fillGlyph(Spinner.FILL_HOLD);
-        assertThat(nextGlyph).isNotEqualTo(Spinner.fillGlyph(0));
-        assertThat(out).contains("\033]0;" + nextGlyph + " JumpKick - Building g:a:v...\033\\");
-        // Only one OSC 0 in this window (the phase advance).
-        assertThat(out.split("\033]0;", -1).length - 1).isEqualTo(1);
+        String swapped = buf.toString(StandardCharsets.UTF_8);
+        assertThat(swapped)
+                .contains("\033]0;" + JkManager.WINDOW_TITLE_GLYPH_B + " JumpKick - Building g:a:v...\033\\");
+        assertThat(swapped.split("\033]0;", -1).length - 1).isEqualTo(1);
+
+        // The two glyphs alternate rather than latching on the second one.
+        buf.reset();
+        cm.windowTitleLastSwapMs -= JkManager.WINDOW_TITLE_SWAP_MS + 1;
+        cm.tick();
+        assertThat(buf.toString(StandardCharsets.UTF_8))
+                .contains("\033]0;" + JkManager.WINDOW_TITLE_GLYPH_A + " JumpKick - Building g:a:v...\033\\");
         cm.finishBuildPlanSuccess("ok", List.of());
     }
 
