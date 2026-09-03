@@ -778,6 +778,24 @@ public final class PluginBuild {
             var pinned = PluginDescriptorOps.pinnedLayoutJar(
                     JkStores.storeCas(), e.coordinate(), e.version(), e.sha256Hex());
             if (pinned.isPresent()) return pinned.get();
+            // A jar this jk can already point at — a `-D<worker>.plugin.jar` override, or a repo
+            // store — honors the pin when its bytes ARE the pinned bytes. That is the pin
+            // deciding, not the fall-through this method exists to prevent: `locateStored` never
+            // reaches the network, and the sha still has to match, so the lock chooses which bytes
+            // run and only where to read them is relaxed.
+            //
+            // Without it a self-hosted test JVM can never honor a pin for a plugin the same build
+            // just produced: its sandbox JK_HOME has no store to probe, `[build] test-plugin-jars`
+            // hands it the sibling jar as a -D override, and the pinned bytes are exactly that
+            // jar's — pinned from a build output that, by construction, no store has yet.
+            Path offered = PluginJar.byArtifactId(workerArtifact)
+                    .map(jar -> jar.locateStored(JkStores.storeCas()))
+                    .orElse(null);
+            if (offered != null
+                    && Files.isRegularFile(offered)
+                    && e.sha256Hex().equalsIgnoreCase(Hashing.sha256Hex(offered))) {
+                return offered;
+            }
             String fetchFailure = null;
             try {
                 PluginJar.fetchOfficial(

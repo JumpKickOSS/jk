@@ -48,6 +48,27 @@ args = [
   "--initialize-at-run-time=cc.jumpkick.terminal.windows.WindowsUtf8",
 ]
 
+[build]
+# Each entry is a hard build-order edge AND a -D<worker>.plugin.jar handed to the test JVM, so an
+# integration class that builds a fixture runs the workers THIS build produced rather than
+# whatever a store happens to hold. Gradle's integrationTest does the same thing by hand
+# (`systemProperty("jk.<x>.plugin.jar", ...)` plus a worker-repo copy into the sandbox store);
+# this is that list, declared once, on the jk side.
+#
+# Without it the sandbox JK_HOME has no store and no override, so a fixture whose lock pins a
+# freshly built first-party plugin cannot resolve it at all — green under Gradle, red under jk,
+# and only for the one test that declares a `[spring-boot]` table.
+#
+# Keep this to workers the CLI's own test JVM actually locates: an unused name is a build-order
+# edge and a stamp input for nothing, and re-runs this suite on an unrelated plugin edit.
+test-plugin-jars = [
+  "test-runner",
+  "java-compiler",
+  "kotlin-compiler",
+  "groovy-compiler",
+  "spring-boot",
+]
+
 [test]
 # One file out of the IntelliJ plugin's package, single-sourced from the plugin's own tree: the
 # wire parser needs no platform SDK (java.util + regex + org.jetbrains.annotations), while its
