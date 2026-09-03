@@ -216,7 +216,7 @@ public final class EngineStatusCommand implements CliCommand {
      * One detail row under the header chip:
      *
      * <pre>
-     *  Version..: 0.12.0
+     *  Version..: 0.13.0
      *  Live Jobs: 0
      * </pre>
      *

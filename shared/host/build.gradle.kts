@@ -180,7 +180,7 @@ val checkTestFixturesStayOutOfProduction = registerGuard("checkTestFixturesStayO
 // here too. The SDK's version line stays independent: `jk-plugin-sdk:0.1.0` simply pins the floor
 // it compiles against. Cost accepted: :host's version is public API from now on.
 group = "cc.jumpkick"
-version = "0.12.0"
+version = "0.13.0"
 
 publishing {
     publications {

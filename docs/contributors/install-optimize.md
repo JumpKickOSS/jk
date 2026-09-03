@@ -53,8 +53,8 @@ resolved per run). List caches with `jk engine aot`.
 All JEP 514 caches live under the **shared** `state/aot/` directory (not next to
 `lib/jk-engine/`). File names carry the product version:
 
-- `engine-0.12.0-<key>.aot`
-- `java-compiler-0.12.0-<key>.aot` / `kotlinc-0.12.0-<key>.aot`
+- `engine-0.13.0-<key>.aot`
+- `java-compiler-0.13.0-<key>.aot` / `kotlinc-0.13.0-<key>.aot`
 
 Policy when a generation becomes primary (endpoint claim / `jk self materialize` — not every
 ensure of an already-live same-version engine), and again when install GC removes
