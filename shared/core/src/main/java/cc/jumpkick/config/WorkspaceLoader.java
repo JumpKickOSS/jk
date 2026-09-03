@@ -3,6 +3,8 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.Profiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,6 +76,30 @@ public final class WorkspaceLoader {
         } catch (IllegalArgumentException e) {
             throw new JkBuildParseException("module `" + module.project().name() + "`: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * {@code module} carrying the workspace root's profiles, its own winning by name.
+     *
+     * <p>A profile is a workspace fact — {@code docs/user/test.md} says the root's
+     * {@code [profiles.<name>]} tag lists "are read once and apply to every member" — but the
+     * table itself was only ever read off the manifest being built. The tag half already behaved:
+     * the CLI rehomes to the root before it scans them. The other half did not, so naming a
+     * profile the root alone declares failed the build on the first member that did not:
+     * {@code jk test --profile integration} died with "no profile named `integration`" against a
+     * root whose {@code jk.toml} defines it, and the documented pre-merge command could not run.
+     *
+     * <p>Not a {@code key.workspace = true} inherit: those are opt-in per field because they say
+     * what a module IS. A profile names an invocation, so the workspace answers for it, and a
+     * member that declares its own keeps it — the merge is by name, not wholesale replacement.
+     */
+    public static JkBuild inheritProfiles(JkBuild module, JkBuild root) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(root, "root");
+        if (root.profiles().byName().isEmpty()) return module;
+        Map<String, Profile> merged = new LinkedHashMap<>(root.profiles().byName());
+        merged.putAll(module.profiles().byName());
+        return module.withProfiles(new Profiles(merged));
     }
 
     /** @deprecated use {@link #inheritFromRoot} */

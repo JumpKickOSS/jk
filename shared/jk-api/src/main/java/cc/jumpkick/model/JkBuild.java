@@ -328,6 +328,33 @@ public record JkBuild(
     }
 
     /**
+     * Same build with a replacement {@link Profiles} table — how a workspace member ends up
+     * carrying the root's profiles (see {@code WorkspaceResolve}).
+     */
+    public JkBuild withProfiles(Profiles profiles) {
+        Objects.requireNonNull(profiles, "profiles");
+        if (profiles.equals(this.profiles)) return this;
+        Builder b = builder(project)
+                .dependencies(dependencies)
+                .repositories(repositories)
+                .profiles(profiles)
+                .features(features)
+                .workspace(workspace)
+                .manifest(manifest)
+                .plugins(plugins)
+                .application(application.orElse(null))
+                .nativeConfig(nativeConfig.orElse(null))
+                .build(build)
+                .format(format)
+                .variants(variants)
+                .install(install);
+        for (PluginConfig config : pluginConfigs.values()) {
+            b.pluginConfig(config);
+        }
+        return b.build();
+    }
+
+    /**
      * Same build with a replacement {@link Project} (e.g. after resolving {@code version.workspace =
      * true} from the workspace root).
      */

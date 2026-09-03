@@ -358,6 +358,65 @@ class JkBuildParserWorkspaceTest {
         assertThat(tags.excludeTags()).containsExactly("slow", "bench");
     }
 
+    /**
+     * `jk test --profile integration` is the documented pre-merge command, and it died on the
+     * first member that did not declare the profile itself — against a root whose jk.toml does.
+     * The tag half of the rule was already right (the CLI rehomes to the root before scanning
+     * profile tags); the table a member carries was not.
+     */
+    @Test
+    void a_member_carries_the_workspace_roots_profiles(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "root"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib"]
+
+                [profiles.integration]
+                include-tags = ["integration"]
+                """);
+        Path lib = Files.createDirectories(dir.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                name = "lib"
+                """);
+
+        var member = JkBuildParser.parse(lib.resolve("jk.toml"));
+        assertThat(member.profiles().byName().keySet()).contains("integration");
+        assertThat(member.profiles().resolve("integration").includeTags()).containsExactly("integration");
+    }
+
+    /** A member's own profile wins by name — the root is a base, not an override. */
+    @Test
+    void a_members_own_profile_beats_the_roots(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "root"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib"]
+
+                [profiles.integration]
+                include-tags = ["integration"]
+
+                [profiles.slow]
+                include-tags = ["slow"]
+                """);
+        Path lib = Files.createDirectories(dir.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                name = "lib"
+
+                [profiles.integration]
+                include-tags = ["member-only"]
+                """);
+
+        var member = JkBuildParser.parse(lib.resolve("jk.toml"));
+        assertThat(member.profiles().resolve("integration").includeTags()).containsExactly("member-only");
+        assertThat(member.profiles().contains("slow")).as("the root's others still arrive").isTrue();
+    }
+
     @Test
     void parse_test_tags_is_empty_when_the_manifest_is_absent(@TempDir Path dir) {
         assertThat(JkBuildParser.parseTestTags(dir.resolve("jk.toml"))).isEqualTo(JkBuildParser.TestTomlTags.EMPTY);
