@@ -95,7 +95,7 @@ class CoalescingBuildPlanListenerTest {
             }
 
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
                 events.add("finish:" + step);
             }
         };
@@ -106,7 +106,7 @@ class CoalescingBuildPlanListenerTest {
             c.output("run-tests", "  at FooTest.bar(FooTest.java:42)");
             c.output("compile", "warning: deprecated");
             assertThat(events).isEmpty();
-            c.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(10));
+            c.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(10), Duration.ZERO);
             assertThat(events)
                     .containsExactly(
                             "o:run-tests:FooTest.bar FAILED",

@@ -16,14 +16,17 @@ import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.HistoryDeleteRequest;
+import cc.jumpkick.wire.protocol.HistoryListRequest;
+import cc.jumpkick.wire.protocol.HistoryShowRequest;
 import cc.jumpkick.wire.protocol.IdeWireModel;
+import cc.jumpkick.wire.protocol.MetricsRequest;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import cc.jumpkick.wire.protocol.NewProjectAck;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.WhyReport;
 import cc.jumpkick.wire.runtime.BuildForecast;
 import cc.jumpkick.wire.runtime.ExplainPlan;
@@ -95,7 +98,13 @@ public final class EngineClient {
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
             String mcpUrl,
             /** Last-job VFS object from {@code status-ack}, or {@code null} when none yet. */
-            String vfsJson) {
+            String vfsJson,
+            int cores,
+            long totalMemoryBytes,
+            long availableMemoryBytes,
+            double systemCpuLoad,
+            double systemLoadAverage,
+            String engineEpoch) {
         public Status(
                 String version,
                 long pid,
@@ -126,6 +135,12 @@ public final class EngineClient {
                     httpUrl,
                     httpError,
                     mcpUrl,
+                    null,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
                     null);
         }
     }
@@ -204,7 +219,13 @@ public final class EngineClient {
                     httpUrl,
                     Jsonl.str(ack, "httpError"),
                     mcpUrl,
-                    Jsonl.nested(ack, "vfs")));
+                    Jsonl.nested(ack, "vfs"),
+                    Jsonl.intValue(ack, "cores", -1),
+                    Jsonl.longValue(ack, "totalMemoryBytes", -1),
+                    Jsonl.longValue(ack, "availableMemoryBytes", -1),
+                    Jsonl.doubleValue(ack, "systemCpuLoad", -1),
+                    Jsonl.doubleValue(ack, "systemLoadAverage", -1),
+                    Jsonl.str(ack, "engineEpoch")));
         } catch (IOException e) {
             return Optional.empty();
         }
@@ -375,17 +396,17 @@ public final class EngineClient {
 
     /** Newest-first {@code history-entry} lines (flat JSONL), spawning the engine if none is running. */
     public static List<String> historyList(EnginePaths.Paths paths, int limit) throws IOException {
-        return streamHistory(paths, ProtoSession.historyListRequest(limit));
+        return streamHistory(paths, new HistoryListRequest(limit).encode());
     }
 
     /** One entry's detail: a {@code history-record} header line plus module/step/diag lines. */
     public static List<String> historyShow(EnginePaths.Paths paths, String id) throws IOException {
-        return streamHistory(paths, ProtoSession.historyShowRequest(id));
+        return streamHistory(paths, new HistoryShowRequest(id).encode());
     }
 
     /** Delete one entry; {@code true} if it existed. */
     public static boolean historyDelete(EnginePaths.Paths paths, String id) throws IOException {
-        for (String line : streamHistory(paths, ProtoSession.historyDeleteRequest(id))) {
+        for (String line : streamHistory(paths, new HistoryDeleteRequest(id).encode())) {
             if (EngineProtocol.HISTORY_DELETED.equals(EngineProtocol.typeOf(line))) {
                 return Jsonl.bool(line, "deleted", false);
             }
@@ -521,7 +542,7 @@ public final class EngineClient {
      * plus the global tiers; {@code null} dir asks for every row. Spawns the engine if needed.
      */
     public static List<String> metrics(EnginePaths.Paths paths, String dir) throws IOException {
-        return streamHistory(paths, ProtoSession.metricsRequest(dir));
+        return streamHistory(paths, new MetricsRequest(dir).encode());
     }
 
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */

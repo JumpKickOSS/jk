@@ -83,7 +83,7 @@ differs; field **names** match.
 | Concept | `type` (typical) |
 |---------|------------------|
 | Request / session start | `buildplan-start` / `workspace-start` |
-| Task start / finish | `task-start` / `task-finish` |
+| Task start / finish | `task-start` / `task-finish` — finish carries `duration_ms` (wall, queue wait included) and `wait_ms` (time blocked on a shared worker; `duration_ms - wait_ms` is the step's own work) |
 | Progress ticks | `progress`, `tick-update` |
 | Whole-job % | `workspace-progress` |
 | Label | `label` |

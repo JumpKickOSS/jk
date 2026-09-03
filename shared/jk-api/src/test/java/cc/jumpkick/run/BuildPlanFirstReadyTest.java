@@ -204,6 +204,56 @@ class BuildPlanFirstReadyTest {
     }
 
     /**
+     * The SYNC arm of the same promise: a step that fails inline on the plan thread must flip the
+     * flag before the plan blocks on the next async terminal, or the in-flight sibling runs out its
+     * whole wall first.
+     */
+    @Test
+    void a_failing_sync_step_cancels_an_in_flight_sibling_without_waiting_for_it() {
+        AtomicBoolean sawCancelled = new AtomicBoolean();
+        var plan = BuildPlan.builder("sync-failing")
+                .addTask(Task.builder("package-jar")
+                        .kind(TaskKind.CPU)
+                        .execute(ctx -> {})
+                        .build())
+                .addTask(Task.builder("native-image")
+                        .kind(TaskKind.IO)
+                        .requires("package-jar")
+                        .execute(ctx -> {
+                            for (int i = 0; i < 400; i++) {
+                                if (ctx.cancelled()) {
+                                    sawCancelled.set(true);
+                                    throw new RuntimeException("cancelled");
+                                }
+                                Thread.sleep(25);
+                            }
+                        })
+                        .build())
+                // An OTHER-stage join (unknown name), so it may follow package-jar: a stage-ordered
+                // name like write-stamp could not, and SYNC steps are joins and stamps by design.
+                .addTask(Task.builder("finalize-join")
+                        .kind(TaskKind.SYNC)
+                        .requires("package-jar")
+                        .execute(ctx -> {
+                            Thread.sleep(150);
+                            throw new IllegalStateException("stamp dir vanished");
+                        })
+                        .build())
+                .build();
+
+        Instant t0 = Instant.now();
+        BuildPlanResult r = plan.run();
+        Duration wall = Duration.between(t0, Instant.now());
+
+        assertThat(r.success()).isFalse();
+        assertThat(sawCancelled)
+                .as("the in-flight sibling must observe the cancel")
+                .isTrue();
+        assertThat(wall).as("no waiting out the 10 s tail").isLessThan(Duration.ofSeconds(8));
+        assertThat(statusOf(r, "finalize-join")).isEqualTo(TaskStatus.FAIL);
+    }
+
+    /**
      * Admission order is longest-weighted-chain first with declaration order as the tiebreak, so
      * two runs of one plan submit in the same order. Before the tiebreak existed, {@code topoSort}
      * seeded its ready set from a {@code HashMap} and independent steps could be submitted in

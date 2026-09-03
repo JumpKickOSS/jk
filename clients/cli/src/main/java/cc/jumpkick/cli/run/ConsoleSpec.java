@@ -2,11 +2,13 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
-// Theme used for ANSI styling of took / errors
 import cc.jumpkick.run.BuildPlanResult;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Console presentation for a simple-task command: spinner label plus success/failure tails from
@@ -87,6 +89,26 @@ public record ConsoleSpec(
     /** Like {@link #renderError(String, String, String, String)} with an explicit header. */
     public static String renderError(String step, String code, String message, String module, boolean showHeader) {
         return DiagnosticReport.renderError(step, code, message, module, showHeader);
+    }
+
+    /**
+     * Identity of one diagnostic across its two wire forms: the live error line and the plan-finish
+     * summary carry the same step, code and message, and nothing else they share is stable (the
+     * summary knows no module). A listener that rendered the live form records this key and skips
+     * the summary form, so one error prints once on one surface.
+     */
+    public static String diagnosticKey(String step, String code, @Nullable String message) {
+        return step + "\u0000" + code + "\u0000" + (message == null ? "" : message);
+    }
+
+    /** {@code errors} minus the ones whose {@link #diagnosticKey} is in {@code streamed}. */
+    public static List<BuildPlanResult.Diagnostic> withoutStreamed(
+            Iterable<BuildPlanResult.Diagnostic> errors, Set<String> streamed) {
+        List<BuildPlanResult.Diagnostic> out = new ArrayList<>();
+        for (BuildPlanResult.Diagnostic d : errors) {
+            if (!streamed.contains(diagnosticKey(d.step(), d.code(), d.message()))) out.add(d);
+        }
+        return out;
     }
 
     /**

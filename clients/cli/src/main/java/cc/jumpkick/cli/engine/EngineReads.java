@@ -6,20 +6,34 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
+import cc.jumpkick.wire.protocol.CacheInventoryRequest;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
+import cc.jumpkick.wire.protocol.CatalogReadRequest;
+import cc.jumpkick.wire.protocol.DenyCheckRequest;
 import cc.jumpkick.wire.protocol.DenyReport;
+import cc.jumpkick.wire.protocol.EditRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ExecPlan;
+import cc.jumpkick.wire.protocol.ExecPlanRequest;
+import cc.jumpkick.wire.protocol.ForecastRequest;
+import cc.jumpkick.wire.protocol.FreshenCatalogRequest;
+import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.IdeModelRequest;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
+import cc.jumpkick.wire.protocol.ModuleGraphRequest;
 import cc.jumpkick.wire.protocol.NewProjectAck;
+import cc.jumpkick.wire.protocol.NewProjectRequest;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
+import cc.jumpkick.wire.protocol.PluginCommandRequest;
 import cc.jumpkick.wire.protocol.ProjectInfo;
-import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.protocol.ProjectInfoRequest;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.TreeRequest;
 import cc.jumpkick.wire.protocol.WhyReport;
+import cc.jumpkick.wire.protocol.WhyRequest;
 import cc.jumpkick.wire.runtime.BuildForecast;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -76,7 +90,7 @@ final class EngineReads {
     static boolean edit(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
         boolean changed = request(
                 paths,
-                ProtoReads.editRequest(file.toString(), op, args),
+                new EditRequest(file.toString(), op, args).encode(),
                 EngineProtocol.EDIT_ACK,
                 "edit request",
                 line -> {
@@ -92,7 +106,7 @@ final class EngineReads {
     static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
         return request(
                 paths,
-                ProtoReads.editRequest(file.toString(), op, args),
+                new EditRequest(file.toString(), op, args).encode(),
                 EngineProtocol.EDIT_ACK,
                 "edit request",
                 line -> {
@@ -108,7 +122,7 @@ final class EngineReads {
             EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
         return request(
                 paths,
-                ProtoReads.moduleGraphRequest(dir.toString(), format, modules, affectedSince),
+                new ModuleGraphRequest(dir.toString(), format, modules, affectedSince).encode(),
                 EngineProtocol.MODULE_GRAPH_ACK,
                 "module-graph request",
                 ModuleGraphAck::decode);
@@ -125,13 +139,14 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                ProtoReads.cacheInventoryRequest(
-                        query,
-                        cache == null ? "" : cache.toString(),
-                        store == null ? "" : store.toString(),
-                        terms,
-                        coords,
-                        dryRun),
+                new CacheInventoryRequest(
+                                query,
+                                cache == null ? "" : cache.toString(),
+                                store == null ? "" : store.toString(),
+                                terms,
+                                coords,
+                                dryRun)
+                        .encode(),
                 EngineProtocol.CACHE_INVENTORY_ACK,
                 "cache-inventory request",
                 CacheInventoryAck::decode);
@@ -149,14 +164,15 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                ProtoReads.catalogReadRequest(
-                        dir == null ? "" : dir.toString(),
-                        cache == null ? "" : cache.toString(),
-                        query,
-                        terms,
-                        offline,
-                        includeCached,
-                        bundledOnly),
+                new CatalogReadRequest(
+                                dir == null ? "" : dir.toString(),
+                                cache == null ? "" : cache.toString(),
+                                query,
+                                terms,
+                                offline,
+                                includeCached,
+                                bundledOnly)
+                        .encode(),
                 EngineProtocol.CATALOG_READ_ACK,
                 "catalog-read request",
                 CatalogReadAck::decode);
@@ -180,7 +196,7 @@ final class EngineReads {
         try {
             request(
                     paths,
-                    ProtoReads.freshenCatalogRequest(catalog, offline, url, cacheFile, force),
+                    new FreshenCatalogRequest(catalog, offline, url, cacheFile, force).encode(),
                     EngineProtocol.FRESHEN_CATALOG_ACK,
                     catalog + " freshen request",
                     line -> Jsonl.bool(line, "ok", false));
@@ -193,7 +209,7 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                ProtoReads.freshenCatalogRequest(catalog, false, url, cacheFile, true),
+                new FreshenCatalogRequest(catalog, false, url, cacheFile, true).encode(),
                 EngineProtocol.FRESHEN_CATALOG_ACK,
                 catalog + " freshen request",
                 line -> {
@@ -211,7 +227,7 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                ProtoReads.treeRequest(dir.toString(), maxDepth, flatten, stack, scopes),
+                new TreeRequest(dir.toString(), maxDepth, flatten, stack, scopes).encode(),
                 EngineProtocol.TREE_ACK,
                 "tree request",
                 line -> {
@@ -225,7 +241,7 @@ final class EngineReads {
     static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
         return request(
                 paths,
-                ProtoReads.whyRequest(dir.toString(), query),
+                new WhyRequest(dir.toString(), query).encode(),
                 EngineProtocol.WHY_ACK,
                 "why request",
                 WhyReport::decode);
@@ -235,8 +251,8 @@ final class EngineReads {
     static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
         return request(
                 paths,
-                ProtoReads.ideModelRequest(
-                        dir.toString(), cache.toString(), jdksDir == null ? null : jdksDir.toString()),
+                new IdeModelRequest(dir.toString(), cache.toString(), jdksDir == null ? null : jdksDir.toString())
+                        .encode(),
                 EngineProtocol.IDE_MODEL_ACK,
                 "ide-model request",
                 IdeWireModel::decode);
@@ -245,26 +261,27 @@ final class EngineReads {
     static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
         return request(
                 paths,
-                ProtoReads.newProjectRequest(
-                        req.name(),
-                        req.parentDir(),
-                        req.group(),
-                        req.lang(),
-                        req.layout(),
-                        req.template(),
-                        req.executable(),
-                        req.jdk(),
-                        req.javaRelease(),
-                        req.assembly(),
-                        req.nativeImage(),
-                        req.plugin(),
-                        req.kotlinModule(),
-                        req.deps(),
-                        req.sample(),
-                        req.standalone(),
-                        req.templateParams(),
-                        req.relaxParent(),
-                        req.targetDir()),
+                new NewProjectRequest(
+                                req.name(),
+                                req.parentDir(),
+                                req.group(),
+                                req.lang(),
+                                req.layout(),
+                                req.template(),
+                                req.executable(),
+                                req.jdk(),
+                                req.javaRelease(),
+                                req.assembly(),
+                                req.nativeImage(),
+                                req.plugin(),
+                                req.kotlinModule(),
+                                req.deps(),
+                                req.sample(),
+                                req.standalone(),
+                                req.templateParams(),
+                                req.relaxParent(),
+                                req.targetDir())
+                        .encode(),
                 EngineProtocol.NEW_PROJECT_ACK,
                 "new-project request",
                 NewProjectAck::decode);
@@ -275,7 +292,7 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                ProtoReads.generateRequest(dir.toString(), kind, params),
+                new GenerateRequest(dir.toString(), kind, params).encode(),
                 EngineProtocol.GENERATE_ACK,
                 "generate request",
                 GeneratedFiles::decode);
@@ -288,7 +305,7 @@ final class EngineReads {
                 paths,
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                ProtoReads.pluginCommandRequest(dir.toString(), cache.toString(), command, args),
+                                new PluginCommandRequest(dir.toString(), cache.toString(), command, args).encode(),
                                 SessionContext.current().variant(),
                                 SessionContext.current().clientEnv(),
                                 SessionContext.current().jvm(),
@@ -308,7 +325,7 @@ final class EngineReads {
     static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
         return request(
                 paths,
-                ProtoReads.denyCheckRequest(dir.toString()),
+                new DenyCheckRequest(dir.toString()).encode(),
                 EngineProtocol.DENY_CHECK_ACK,
                 "deny check",
                 DenyReport::decode);
@@ -339,8 +356,8 @@ final class EngineReads {
                 // state rather than the caller's.
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                ProtoReads.projectInfoRequest(
-                                        dir.toString(), modules, affectedSince, affectedWip, counts),
+                                new ProjectInfoRequest(dir.toString(), modules, affectedSince, affectedWip, counts)
+                                        .encode(),
                                 SessionContext.current().variant(),
                                 SessionContext.current().clientEnv(),
                                 SessionContext.current().jvm(),
@@ -370,14 +387,15 @@ final class EngineReads {
                 paths,
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                ProtoReads.execPlanRequest(
-                                        dir.toString(),
-                                        cache.toString(),
-                                        kind,
-                                        mainOverride,
-                                        binName,
-                                        binDir == null ? null : binDir.toString(),
-                                        libDir == null ? null : libDir.toString()),
+                                new ExecPlanRequest(
+                                                dir.toString(),
+                                                cache.toString(),
+                                                kind,
+                                                mainOverride,
+                                                binName,
+                                                binDir == null ? null : binDir.toString(),
+                                                libDir == null ? null : libDir.toString())
+                                        .encode(),
                                 SessionContext.current().variant(),
                                 SessionContext.current().clientEnv(),
                                 SessionContext.current().jvm(),
@@ -404,13 +422,14 @@ final class EngineReads {
         Session session = SessionContext.current();
         return request(
                 paths,
-                ProtoReads.forecastRequest(
-                        entryDir.toString(),
-                        cache.toString(),
-                        skipTests,
-                        session.offline(),
-                        session.force(),
-                        session.config().rebuildOr(false)),
+                new ForecastRequest(
+                                entryDir.toString(),
+                                cache.toString(),
+                                skipTests,
+                                session.offline(),
+                                session.force(),
+                                session.config().rebuildOr(false))
+                        .encode(),
                 EngineProtocol.FORECAST_ACK,
                 "forecast request",
                 line -> {

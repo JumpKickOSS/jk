@@ -71,18 +71,6 @@ public final class TestEnv {
     private TestEnv() {}
 
     /**
-     * The child environment for {@code project}'s test JVMs: the caller's machine env ({@link
-     * BuildEnv#MACHINE}), then the sandbox defaults, then the module's {@code [test] env}, with
-     * {@code ${target}} / {@code ${module}} / {@code ${VAR}} expanded.
-     *
-     * <p>Machine env overlays the daemon's inherited {@code PATH} with the shell that ran {@code
-     * jk} — without it a suite that execs {@code node} searches whichever shell started the
-     * engine, possibly days ago and without nvm. It is not hashed into the action key; a module
-     * that needs the value keyed declares the name in {@code [test] env}.
-     *
-     * <p>A module that sets {@code JK_HOME} itself wins — the sandbox is a default, not an override.
-     */
-    /**
      * The sandbox local-m2 root: one per <em>workspace</em>, not one per module.
      *
      * <p>Unlike the product home beside it, a local m2 is a content-addressed artifact cache with
@@ -114,6 +102,18 @@ public final class TestEnv {
         return moduleTarget.resolve("test-m2").toAbsolutePath();
     }
 
+    /**
+     * The child environment for {@code project}'s test JVMs: the caller's machine env ({@link
+     * BuildEnv#MACHINE}), then the sandbox defaults, then the module's {@code [test] env}, with
+     * {@code ${target}} / {@code ${module}} / {@code ${VAR}} expanded.
+     *
+     * <p>Machine env overlays the daemon's inherited {@code PATH} with the shell that ran {@code
+     * jk} — without it a suite that execs {@code node} searches whichever shell started the
+     * engine, possibly days ago and without nvm. It is not hashed into the action key; a module
+     * that needs the value keyed declares the name in {@code [test] env}.
+     *
+     * <p>A module that sets {@code JK_HOME} itself wins — the sandbox is a default, not an override.
+     */
     public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout) {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();

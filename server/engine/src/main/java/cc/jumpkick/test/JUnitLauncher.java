@@ -612,7 +612,7 @@ public final class JUnitLauncher {
         // A worker that died mid-suite while its siblings kept going used to vanish silently:
         // its in-flight class was neither run nor reported, so the suite went green with a
         // shortfall. Surface every abnormal exit as a failure naming the worker's last class
-        // (idle-watchdog kills land here too —). Skipped on user cancel: those exits
+        // (idle-watchdog kills land here too). Skipped on user cancel: those exits
         // are the kill we asked for.
         if (worstExit != 0 && !SessionCancel.cancelled()) {
             for (int i = 0; i < actualWorkers; i++) {
@@ -641,7 +641,7 @@ public final class JUnitLauncher {
      * per-worker {@code JK_STATE_DIR}. Engine identity is keyed on (state, store), so a shared
      * state dir means one socket for every worker — and one worker's engine force-stop aborts
      * its siblings mid-request. The suffix stays short: the state dir holds Unix domain sockets,
-     * and the JDK stops binding past 102 characters (; the budget is
+     * and the JDK stops binding past 102 characters (the budget is
      * {@code UnixSocketPaths.MAX_PATH_LENGTH}, proven there by binding).
      */
     static Map<String, String> workerEnv(Map<String, String> base, int workerId, Path tmp) {

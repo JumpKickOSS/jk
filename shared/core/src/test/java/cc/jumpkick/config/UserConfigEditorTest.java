@@ -23,6 +23,25 @@ class UserConfigEditorTest {
         assertThat(out).contains("other = 1");
     }
 
+    /** A copy under a table is one the reader ignores: it is removed and the key lands at the root. */
+    @Test
+    void a_copy_under_a_legacy_table_moves_to_the_root() {
+        String in = "color = auto\n\n[global]\nnerd-font = true\nother = 1\n";
+        String out = UserConfigEditor.upsertNerdFont(in, "\"pill\"");
+        assertThat(out).startsWith("nerd-font = \"pill\"\n");
+        assertThat(out).doesNotContain("nerd-font = true");
+        assertThat(out).contains("[global]\nother = 1");
+        assertThat(out.indexOf("nerd-font")).isLessThan(out.indexOf("[global]"));
+    }
+
+    /** A root copy and a table copy: the root one is replaced, the table one deleted. */
+    @Test
+    void a_root_copy_wins_and_the_table_copy_is_dropped() {
+        String in = "nerd-font = true\n\n[global]\nnerd-font = false\n";
+        String out = UserConfigEditor.upsertNerdFont(in, "\"wedge\"");
+        assertThat(out).isEqualTo("nerd-font = \"wedge\"\n\n[global]\n");
+    }
+
     @Test
     void inserts_at_top_when_missing() {
         String in = "color = auto\n";

@@ -103,8 +103,7 @@ env_block() {
     echo "| JAVA_HOME | ${JAVA_HOME:-unset} |"
     echo "| runs per side | $RUNS (first warms the daemon / engine) |"
     echo
-    echo "Guard parity note: G46, G47, G48 and G49 live in \`buildSrc\` only, not in"
-    echo "\`.jk/after-build.kts\` — Gradle does slightly *more* house-rule work in this comparison."
+    echo "Guard parity: both builds enforce the same guard letters (G51 checks the two sets)."
     echo
   } >> "$ROW_FILE"
 }

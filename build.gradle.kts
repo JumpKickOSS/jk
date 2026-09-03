@@ -52,7 +52,14 @@ tasks.register<org.gradle.testing.jacoco.tasks.JacocoReport>("coverageReport") {
     group = "verification"
     description = "Aggregate unit-test JaCoCo XML/HTML (inventory; never a gate)"
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" } })
-    executionData.from(fileTree(layout.projectDirectory) { include("**/build/jacoco/test.exec") })
+    // One known file per module, not a `**` walk of the whole checkout (which cannot prune and
+    // fingerprinted every build/, target/ and sandbox tree to find ~30 files). The report base
+    // filters missing files itself.
+    executionData.from(subprojects.map { it.layout.buildDirectory.file("jacoco/test.exec") })
+    // JacocoReportBase installs onlyIf("Any of the execution data files exists") in its
+    // constructor, which made the empty-inventory check below unreachable: without -Pjk.coverage
+    // the task was SKIPPED, BUILD SUCCESSFUL, no report. Always run, so the check can fire.
+    setOnlyIf { true }
     subprojects.forEach { sub ->
         sub.pluginManager.withPlugin("java") {
             val main = sub.extensions.getByType<SourceSetContainer>().named("main")
@@ -94,12 +101,28 @@ val testBuildSrc = tasks.register<Exec>("testBuildSrc") {
     doLast { marker.get().asFile.writeText("buildSrc tests passed\n") }
 }
 
-val nonGateChecks = setOf("checkFast", "checkAll")
+val nonGateChecks = setOf("check", "checkFast", "checkAll")
 val rootBranchGuards = tasks.matching { it.name.startsWith("check") && it.name !in nonGateChecks }
 val checkFast = tasks.register("checkFast") {
     group = "verification"
     description = "Run unit tests, buildSrc's tests, and every network-free structural guard"
     dependsOn(subprojects.map { it.tasks.matching { task -> task.name == "check" } }, rootBranchGuards, testBuildSrc)
+}
+
+// The root has no `base` plugin, so `./gradlew build` and `./gradlew check` used to run every
+// module's lifecycle and none of the tree-wide root guards: `build dist` passed with ticket ids
+// in the tree that only checkAll caught, commits later. jk build runs the same guards on every
+// build with work; the Gradle lifecycle now reaches them too. Cost on a no-op build is their
+// up-to-date checks — measured in docs/contributors/code-as-art.md, "Where a guard runs".
+val rootCheck = tasks.register("check") {
+    group = "verification"
+    description = "Every tree-wide root guard"
+    dependsOn(rootBranchGuards)
+}
+tasks.register("build") {
+    group = "build"
+    description = "Root lifecycle: the tree-wide root guards"
+    dependsOn(rootCheck)
 }
 
 tasks.register("checkAll") {
@@ -251,9 +274,16 @@ tasks.register("checkEngineConfigDocs") {
     val docs = layout.projectDirectory.file("docs/user/engine.md")
     inputs.files(model, docs)
     doLast {
-        val row = Regex("""control\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\)""")
-        val rows = row.findAll(model.asFile.readText()).map {
-            listOf(it.groupValues[1], it.groupValues[2], it.groupValues[3], it.groupValues[4])
+        val modelText = model.asFile.readText()
+        val row = Regex("""control\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*(?:"([^"]*)"|([A-Z_]+))\s*,\s*"([^"]*)"\s*\)""")
+        // The fourth argument is a literal or one of the class's own String constants (ENGINE_START).
+        val constants = Regex("""static final String ([A-Z_]+) = "([^"]*)";""")
+            .findAll(modelText).associate { it.groupValues[1] to it.groupValues[2] }
+        val rows = row.findAll(modelText).map {
+            val read = it.groupValues[4].ifEmpty {
+                constants[it.groupValues[5]] ?: throw GradleException("EngineControls: unknown constant ${it.groupValues[5]}")
+            }
+            listOf(it.groupValues[1], it.groupValues[2], it.groupValues[3], read, it.groupValues[6])
         }.toList()
         val table = rows.filter { it[0].isNotEmpty() }
         val process = rows.filter { it[0].isEmpty() }
@@ -274,16 +304,16 @@ tasks.register("checkEngineConfigDocs") {
         }
         val expectedTable = block(
             "engine-config",
-            "| Key | Env | Default | Meaning |",
-            "|---|---|---|---|",
+            "| Key | Env | Default | Read | Meaning |",
+            "|---|---|---|---|---|",
             table,
-        ) { "| `${it[0]}` | `${it[1]}` | ${it[2]} | ${it[3]} |" }
+        ) { "| `${it[0]}` | `${it[1]}` | ${it[2]} | ${it[3]} | ${it[4]} |" }
         val expectedProcess = block(
             "engine-process",
             "| Env | Default | Meaning |",
             "|---|---|---|",
             process,
-        ) { "| `${it[1]}` | ${it[2]} | ${it[3]} |" }
+        ) { "| `${it[1]}` | ${it[2]} | ${it[4]} |" }
         val actual = docs.asFile.readText()
         fun present(id: String): String =
             Regex("""(?s)<!-- $id:start -->.*?<!-- $id:end -->""").find(actual)?.value
@@ -430,17 +460,33 @@ tasks.register("checkSecurityDocs") {
     }
 }
 
+// The corpus every tree-wide text guard scans, pruned the way .jk/after-build.kts prunes it: build
+// output and tool directories are skipped only when they sit OUTSIDE a source root, because `build`
+// and `target` also name Java packages under src/ (cc.jumpkick.plugin.build is the plugin SPI) and a
+// `**/build/**` exclude silently scanned one package less than the jk gate did — a gap G51's letter
+// parity cannot see. Extension-blind: every scope a rule was given by extension was how it was missed
+// the next time; binaries are skipped by their own extensions.
+fun rootTextTree(): ConfigurableFileTree = fileTree(layout.projectDirectory) {
+    val pruned = setOf("build", "target", ".git", ".gradle", ".firebase", "node_modules", ".board", ".kotlin")
+    exclude { element ->
+        var underSrc = false
+        var prune = false
+        for (segment in element.relativePath.segments) {
+            if (segment == "src") underSrc = true
+            else if (!underSrc && segment in pruned) { prune = true; break }
+        }
+        prune
+    }
+    exclude("**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico",
+            "**/*.jar", "**/*.zip", "**/*.xz", "**/*.gz", "**/*.class", "**/*.aot",
+            "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.pdf", "**/*.so", "**/*.dylib", "**/*.exe")
+}
+
 // Guard G59: comments and docs state the current type, not the previous design.
 tasks.register("checkNoHistoricalNarration") {
     group = "verification"
     description = "Fail when comments or docs narrate a previous design"
-    val scanned = fileTree(layout.projectDirectory) {
-        exclude("**/build/**", "**/target/**", ".git/**", "**/.gradle/**", ".firebase/**",
-                "**/node_modules/**", ".board/**")
-        exclude("**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico",
-                "**/*.jar", "**/*.zip", "**/*.xz", "**/*.gz", "**/*.class", "**/*.aot",
-                "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.pdf")
-    }
+    val scanned = rootTextTree()
     inputs.files(scanned).withPropertyName("scanned")
     val treeRoot = layout.projectDirectory.asFile
     val exempt = mapOf(
@@ -479,6 +525,56 @@ tasks.register("checkNoHistoricalNarration") {
             throw GradleException("historical narration in comments or docs:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  State the current invariant. History belongs in the commit body.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
+// Guard G60: a JSON object is spliced in one place, Jsonl.append.
+tasks.register("checkOneJsonSplicer") {
+    group = "verification"
+    description = "Fail when a JSON object is spliced by hand outside Jsonl.append"
+    val scanned = rootTextTree()
+    inputs.files(scanned).withPropertyName("scanned")
+    val treeRoot = layout.projectDirectory.asFile
+    val owner = "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java"
+    val stamp = layout.buildDirectory.file("guards/one-json-splicer.ok")
+    outputs.file(stamp)
+    doLast {
+        // The two hand shapes: chop an object's closing brace and append to it, or open a literal
+        // brace and append another object from its second character. Both skip the validation and
+        // the separator rule the owner carries, and both emit `{,"b":2}` for an empty object.
+        val chop = Regex("(?s)\\.substring\\(0,\\s*\\w+\\.length\\(\\)\\s*-\\s*1\\)[^;]*\"\\}\"")
+        val insert = Regex("(?s)\"\\{(?:\\\\\"|[^\"])*\"[^;]*\\.substring\\(1\\)")
+        var candidates = 0
+        var ownerSplices = false
+        val hits = mutableListOf<String>()
+        scanned.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (!rel.endsWith(".java") || !rel.contains("/src/main/java/")) return@forEach
+            candidates++
+            val text = f.readText()
+            if (rel == owner) {
+                ownerSplices = chop.containsMatchIn(text)
+                return@forEach
+            }
+            val n = chop.findAll(text).count() + insert.findAll(text).count()
+            if (n > 0) hits.add("  $rel: $n")
+        }
+        // Measured when written: 1,378 main sources, one splice (the owner's), none elsewhere.
+        if (candidates < 500) {
+            throw GradleException("checkOneJsonSplicer scanned only $candidates main sources; the tree walk broke")
+        }
+        if (!ownerSplices) {
+            throw GradleException("$owner no longer splices with the shape this guard bans, so the guard"
+                    + " has lost the owner it exempts. Move the exemption with the splicer or retire the"
+                    + " guard deliberately.")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("a JSON object spliced by hand:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Call Jsonl.append(object, fields): it validates the object and owns the"
+                    + " separator, which is what every hand chop got wrong on an empty object.")
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
@@ -638,14 +734,7 @@ tasks.register("checkGuardRegistry") {
 tasks.register("checkNoTicketIds") {
     group = "verification"
     description = "Fail the build on a KanArtist ticket id anywhere in the tree"
-    val scanned = fileTree(layout.projectDirectory) {
-        exclude("**/build/**", "**/target/**", ".git/**", "**/.gradle/**", ".firebase/**",
-                "**/node_modules/**", ".board/**")
-        // Binaries: nothing to read, and decoding them as text is noise.
-        exclude("**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico",
-                "**/*.jar", "**/*.zip", "**/*.xz", "**/*.gz", "**/*.class", "**/*.aot",
-                "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.pdf")
-    }
+    val scanned = rootTextTree()
     inputs.files(scanned).withPropertyName("scanned")
     val treeRoot = layout.projectDirectory.asFile
     // The two places an id is the subject rather than a reference.
@@ -698,17 +787,13 @@ tasks.register("checkNoTicketIds") {
 // Comment-blind on purpose: the primary surface being protected IS comments and docs. A Javadoc
 // describing a resolver that no longer exists is the defect, not an exception to it.
 //
-// Four files read XDG variables to find OTHER programs' files. They are correct and exempt.
+// The allowlist below names the files that read XDG / Known Folders to find OTHER programs' files,
+// each with the reason; they are correct and exempt. Extension-blind like G50: install.cmd, TOML,
+// CI workflows and templates are readers' surfaces too.
 tasks.register("checkSingleHomeRoot") {
     group = "verification"
     description = "Fail the build on an old-layout path or a retired JK_*_DIR spelling"
-    val scanned = fileTree(layout.projectDirectory) {
-        include("**/*.java", "**/*.kt", "**/*.kts", "**/*.md", "**/*.sh", "**/*.ps1", "**/*.bat",
-                // The dashboard renders paths to users; it was outside this ban until a
-                // hard-coded `~/.config/jk/config.toml` fallback shipped in its config panel.
-                "**/*.html", "**/*.js", "**/*.mjs", "**/*.css")
-        exclude("**/build/**", "**/target/**", ".git/**", ".gradle/**", ".firebase/**", "**/node_modules/**")
-    }
+    val scanned = rootTextTree()
     inputs.files(scanned).withPropertyName("scanned")
     val treeRoot = layout.projectDirectory.asFile
     val allowedLines = mapOf(
@@ -746,7 +831,7 @@ tasks.register("checkSingleHomeRoot") {
             Regex("""\.cache/jk"""), Regex("""\.config/jk"""),
             Regex("""XDG_[A-Z_]+"""), Regex("""LOCALAPPDATA"""), Regex("""APPDATA"""),
             Regex("""<data>"""),
-            Regex("""(?i)\bdata root\b"""), Regex("""(?i)\bdata/lib\b"""),
+            Regex("""(?i)\bdata root\b"""), Regex("""(?i)\bdata/lib\b"""), Regex("""(?i)\bdata/store\b"""),
             Regex("""\$\{?JK_HOME\}?[/\\]data\b"""), Regex("""--data(?:-dir)?\b"""),
             Regex("""(?:homeDir\(\)|JkDirs\.home\(\))\.resolve\("data"\)"""),
             Regex("""JK_DATA_DIR|JK_BUILDS_DIR|JK_TMP_DIR|JK_BIN_DIR|JK_INSTALL_DIR"""),
@@ -755,6 +840,7 @@ tasks.register("checkSingleHomeRoot") {
         val fixtures = listOf(
             "the data root",
             "\$JK_HOME/data/lib",
+            "test-jk-home/data/store/git/",
             "\${JK_HOME}/data",
             """homeDir().resolve("data")""",
             "jk self nuke --data",

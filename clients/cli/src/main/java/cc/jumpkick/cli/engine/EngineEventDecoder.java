@@ -276,7 +276,8 @@ final class EngineEventDecoder {
                         Jsonl.str(line, "task"),
                         wireGroup(Jsonl.str(line, "stage")),
                         TaskStatus.valueOf(Jsonl.str(line, "status")),
-                        Duration.ofMillis(Jsonl.longValue(line, "millis", 0)));
+                        Duration.ofMillis(Jsonl.longValue(line, "millis", 0)),
+                        Duration.ofMillis(Jsonl.longValue(line, "waitMillis", 0)));
             default -> {
                 /* forward-compatible no-op */
             }
@@ -414,7 +415,7 @@ final class EngineEventDecoder {
     private static Task readTask(String line) {
         return Task.builder(Jsonl.str(line, "name"))
                 .label(Jsonl.str(line, "label"))
-                .phase(wireGroup(Jsonl.str(line, "stage")))
+                .group(wireGroup(Jsonl.str(line, "stage")))
                 .build();
     }
 

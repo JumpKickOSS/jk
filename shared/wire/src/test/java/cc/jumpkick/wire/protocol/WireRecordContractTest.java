@@ -45,14 +45,14 @@ import org.junit.jupiter.api.Test;
  * this one walks the package's own source directory and a new record is covered the day it lands.
  *
  * <p>Measured when written: 12 records discovered, 12 with both halves, 12 whose discriminator is a
- * token {@link EngineProtocol} declares, 12 round-tripping a fully populated instance. The
- * assertion on the discovered count is there because "no violations" and "scanned nothing" are the
- * same green otherwise.
+ * token {@link EngineProtocol} declares, 12 round-tripping a fully populated instance; 56 once every
+ * job and sync-read request became a record too. The assertion on the discovered count is there
+ * because "no violations" and "scanned nothing" are the same green otherwise.
  */
 class WireRecordContractTest {
 
-    /** Records in the package the day this landed. The floor, not the expectation. */
-    private static final int RECORDS_WHEN_WRITTEN = 12;
+    /** Records in the package when the last request builder became one. The floor, not the expectation. */
+    private static final int RECORDS_WHEN_WRITTEN = 56;
 
     @Test
     void every_wire_record_carries_both_halves_in_one_file() throws Exception {

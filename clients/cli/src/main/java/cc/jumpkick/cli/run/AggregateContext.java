@@ -5,6 +5,8 @@ import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Shared workspace UI sink for the CLI: one {@link JkManager} plus last errors.
@@ -18,6 +20,8 @@ public final class AggregateContext {
 
     private final JkManager cm;
     private volatile List<BuildPlanResult.Diagnostic> lastErrors = List.of();
+    /** Diagnostics a module listener already rendered from the live stream. */
+    private final Set<String> streamed = ConcurrentHashMap.newKeySet();
 
     public AggregateContext(JkManager cm) {
         this.cm = cm;
@@ -59,5 +63,15 @@ public final class AggregateContext {
 
     public void notifyErrors(List<BuildPlanResult.Diagnostic> errors) {
         this.lastErrors = errors;
+    }
+
+    /** A module listener rendered this diagnostic live; the workspace settle must not render it again. */
+    public void markStreamed(String step, String code, String message) {
+        streamed.add(ConsoleSpec.diagnosticKey(step, code, message));
+    }
+
+    /** {@link #lastErrors} minus what a module already rendered — the settle's share of the errors. */
+    public List<BuildPlanResult.Diagnostic> unstreamedErrors() {
+        return ConsoleSpec.withoutStreamed(lastErrors, streamed);
     }
 }

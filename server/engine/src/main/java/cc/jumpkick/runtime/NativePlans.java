@@ -156,8 +156,7 @@ public final class NativePlans {
     /**
      * Build-family exit-code mapping for a failed module plan: a native-step "main class"
      * misconfiguration or an image "no-main" diagnostic exits {@link Exit#USAGE}, a test failure
-     * exits 4, anything else 1. Shared by the workspace path for native AND image terminals
-     *.
+     * exits 4, anything else 1. Shared by the workspace path for native AND image terminals.
      */
     public static int failureExitCode(BuildPlan plan, BuildPlanResult result) {
         for (BuildPlanResult.Diagnostic d : result.errors()) {

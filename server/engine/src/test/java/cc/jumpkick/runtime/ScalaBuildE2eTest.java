@@ -29,6 +29,35 @@ class ScalaBuildE2eTest {
             junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
             """;
 
+    /**
+     * A compiler newer than the Scala stdlib Zinc itself drags onto the worker's classpath. Every
+     * {@code scala.*} class the compiler touches has to come from its own closure: parented on the
+     * worker loader, scalac 3.9.0 died on {@code NoSuchMethodError: scala.Option.orNull()} with
+     * the older Option loaded underneath it.
+     */
+    @Test
+    void a_compiler_newer_than_zincs_stdlib_compiles(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("newer"));
+        Files.writeString(project.resolve("jk.toml"), """
+                name    = "newer"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+                scala   = "=3.9.0"
+
+                """ + REPOS);
+        Path src = Files.createDirectories(project.resolve("src/com/example"));
+        Files.writeString(src.resolve("Newer.scala"), """
+                package com.example
+
+                object Newer:
+                  def orNone(s: String): Option[String] = Option(s).filter(_.nonEmpty)
+                """);
+        BuildPlanResult result = build(project, cache());
+        assertThat(result.errors()).as("errors=%s", result.errors()).isEmpty();
+        assertThat(project.resolve("target/lib/newer-1.0.0.jar")).exists();
+    }
+
     @Test
     void scala_only_module_compiles_and_packages(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("sapp"));

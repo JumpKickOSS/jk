@@ -417,8 +417,8 @@ public final class PlannerTest {
                     // stampKey is null only when computeKey failed open (unreadable
                     // input) — treat that as "not cached" and run the tests.
                     if (!rerun && stampKey != null) {
-                        var greenRecord = actionCache.lookup(stampKey);
-                        if (greenRecord.isPresent()) {
+                        var marker = actionCache.lookup(stampKey);
+                        if (marker.isPresent() && TestStamp.green(marker.get())) {
                             ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
                             ctx.label("tests up-to-date");
                             ctx.cached();
@@ -427,7 +427,7 @@ public final class PlannerTest {
                             // legitimate skip was indistinguishable from a module with no test
                             // sources. Markers written before counts were stored replay nothing;
                             // the next real run upgrades them.
-                            TestSummary previous = stampedSummary(greenRecord.get());
+                            TestSummary previous = stampedSummary(marker.get());
                             if (previous != null) ctx.put(TEST_RESULT, previous);
                             return; // skip — nothing changed since last green run
                         }
@@ -515,8 +515,18 @@ public final class PlannerTest {
                     }
                     ctx.put(TEST_RESULT, result);
                     if (!result.allPassed()) {
-                        // No marker on failure — the next build re-runs (the absence
-                        // of a record for this key is the "not yet green" signal).
+                        // A red marker on failure: the next build re-runs (only a green marker
+                        // skips), and the forecast prices that re-run as a suite rather than as a
+                        // drifted stamp — a module whose only dirty step is its suite looks the
+                        // same either way without it.
+                        if (stampKey != null) {
+                            actionCache.storeWithOutputs(
+                                    testTaskId,
+                                    stampKey,
+                                    Map.of(),
+                                    TestStamp.outcome(
+                                            result.total(), result.succeeded(), result.skipped(), result.failed()));
+                        }
                         // Surface each failure (name + stack trace) above the bar
                         // not just the count — like Maven/Gradle.
                         for (String line : TestSupport.renderFailures(result, in.dir(), snippets)) ctx.output(line);
@@ -538,10 +548,7 @@ public final class PlannerTest {
                                 testTaskId,
                                 stampKey,
                                 Map.of(),
-                                Map.of(
-                                        "tests.total", String.valueOf(result.total()),
-                                        "tests.succeeded", String.valueOf(result.succeeded()),
-                                        "tests.skipped", String.valueOf(result.skipped())));
+                                TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), 0));
                     }
                 })
                 .build();
@@ -551,10 +558,10 @@ public final class PlannerTest {
      * before counts were stored (or with unparseable ones) — the caller then replays nothing. */
     static TestSummary stampedSummary(ActionCache.ActionRecord record) {
         try {
-            String total = record.outputs().get("tests.total");
+            String total = record.outputs().get(TestStamp.TOTAL);
             if (total == null) return null;
-            long succeeded = Long.parseLong(record.outputs().getOrDefault("tests.succeeded", total));
-            long skipped = Long.parseLong(record.outputs().getOrDefault("tests.skipped", "0"));
+            long succeeded = Long.parseLong(record.outputs().getOrDefault(TestStamp.SUCCEEDED, total));
+            long skipped = Long.parseLong(record.outputs().getOrDefault(TestStamp.SKIPPED, "0"));
             return new TestSummary(Long.parseLong(total), succeeded, 0, skipped, List.of());
         } catch (NumberFormatException e) {
             return null;

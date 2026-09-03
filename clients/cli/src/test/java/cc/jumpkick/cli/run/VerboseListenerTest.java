@@ -36,7 +36,7 @@ class VerboseListenerTest {
                 "Test Failure end")) {
             v.output("run-tests", line);
         }
-        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(12));
+        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(12), Duration.ZERO);
         String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).doesNotContain("@@source");
         assertThat(plain).doesNotContain("@@src");
@@ -53,7 +53,7 @@ class VerboseListenerTest {
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
         var v = new VerboseListener(out, out);
         v.output("compile-main", "Note: Recompile with -Xlint");
-        v.stepFinish("compile-main", "compile", TaskStatus.SUCCESS, Duration.ofMillis(3));
+        v.stepFinish("compile-main", "compile", TaskStatus.SUCCESS, Duration.ofMillis(3), Duration.ZERO);
         String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).contains("Note: Recompile with -Xlint");
     }
@@ -88,7 +88,7 @@ class VerboseListenerTest {
         assertThat(plain).contains("after block");
         // The block was consumed — stepFinish must not repaint it.
         int first = plain.indexOf("FAILED Foo.bar()");
-        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(1));
+        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(1), Duration.ZERO);
         String after = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(after.indexOf("FAILED Foo.bar()", first + 1)).isNegative();
     }
@@ -136,7 +136,7 @@ class VerboseListenerTest {
         }
         for (Thread t : threads) t.start();
         for (Thread t : threads) t.join();
-        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(1));
+        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(1), Duration.ZERO);
 
         String plain = Width.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         for (int t = 0; t < threads.length; t++) {

@@ -6,10 +6,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.ExecPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExecPlan;
+import cc.jumpkick.wire.protocol.ExecPlanRequest;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -47,8 +47,9 @@ public final class ExecPlanVerb implements HostedVerb {
         try {
             ExecPlan plan;
             try {
-                String binDir = Jsonl.str(requestLine, "binDir");
-                String libDir = Jsonl.str(requestLine, "libDir");
+                ExecPlanRequest req = ExecPlanRequest.decode(requestLine);
+                String binDir = req.binDir();
+                String libDir = req.libDir();
                 // Under the request's session, not the daemon's. This verb assembles a
                 // BuildPlanner.Inputs rather than a Session, so nothing installed the request's
                 // toolchain selection and `jk run --jdk 21` resolved the JVM that runs the app
@@ -59,11 +60,11 @@ public final class ExecPlanVerb implements HostedVerb {
                 plan = SessionContext.where(
                         session,
                         () -> ExecPlans.execPlan(
-                                Path.of(Jsonl.str(requestLine, "dir")),
-                                Path.of(Jsonl.str(requestLine, "cache")),
-                                Jsonl.str(requestLine, "kind"),
-                                Jsonl.str(requestLine, "mainOverride"),
-                                Jsonl.str(requestLine, "binName"),
+                                Path.of(req.dir()),
+                                Path.of(req.cache()),
+                                req.kind(),
+                                req.mainOverride(),
+                                req.binName(),
                                 binDir == null ? null : Path.of(binDir),
                                 libDir == null ? null : Path.of(libDir),
                                 ProtoSession.variantOf(requestLine),

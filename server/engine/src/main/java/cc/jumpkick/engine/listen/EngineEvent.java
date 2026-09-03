@@ -62,7 +62,8 @@ public sealed interface EngineEvent {
             @Nullable String exceptionClass)
             implements EngineEvent {}
 
-    record StepFinish(String dir, String step, String phase, String status, long millis) implements EngineEvent {}
+    record StepFinish(String dir, String step, String phase, String status, long millis, long waitMillis)
+            implements EngineEvent {}
 
     record PlanFinishLine(String encodedWireLine) implements EngineEvent {}
 

@@ -60,7 +60,7 @@ public final class ModuleLayout {
     /**
      * Compact/SIMPLE layout. Honors an explicit {@code layout =} in {@code jk.toml} when present; a
      * workspace member that omits the key inherits the workspace root's {@code layout} (mirroring the
-     * resolved project's inheritance, so raw-scan call sites don't disagree with compile —);
+     * resolved project's inheritance, so raw-scan call sites don't disagree with compile);
      * otherwise probes the tree.
      */
     public static boolean isCompact(Path moduleDir) {

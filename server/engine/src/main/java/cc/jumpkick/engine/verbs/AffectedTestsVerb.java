@@ -7,15 +7,14 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.AffectedTestsCompute;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
+import cc.jumpkick.wire.protocol.AffectedTestsRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
-import cc.jumpkick.wire.protocol.ProtoJobs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -57,10 +56,11 @@ public final class AffectedTestsVerb implements HostedVerb {
         try {
             AffectedTestsReport report;
             try {
-                Path dir = Path.of(Jsonl.str(requestLine, "dir"));
-                String since = Jsonl.str(requestLine, "affectedSince");
+                AffectedTestsRequest req = AffectedTestsRequest.decode(requestLine);
+                Path dir = Path.of(req.dir());
+                String since = req.affectedSince();
                 Set<Path> only = null;
-                String modules = Jsonl.str(requestLine, "modules");
+                String modules = req.modules();
                 if (modules != null && !modules.isBlank()) {
                     // -m intersects the ranked cone, exactly as it does the build cone.
                     JkBuild entry = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
@@ -75,8 +75,7 @@ public final class AffectedTestsVerb implements HostedVerb {
                     only = new LinkedHashSet<>();
                     for (Path m : sel.moduleDirs()) only.add(m.toAbsolutePath().normalize());
                 }
-                AffectedTests ranked =
-                        AffectedTestsCompute.fromDisk(dir, ProtoJobs.testSelectionOf(requestLine), only, since);
+                AffectedTests ranked = AffectedTestsCompute.fromDisk(dir, req.selection(), only, since);
                 JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(dir), ranked);
                 report = toReport(ranked);
             } catch (Exception e) {

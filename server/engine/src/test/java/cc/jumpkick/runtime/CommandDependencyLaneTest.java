@@ -156,8 +156,8 @@ class CommandDependencyLaneTest {
         String oldRoot = System.getProperty(AndroidSdk.ROOT_PROPERTY);
         System.setProperty(AndroidSdk.ROOT_PROPERTY, tmp.resolve("sdk").toString());
         try {
-            LockPipeline pipeline = new LockPipeline(
-                    tmp, build, tmp.resolve("cache"), null, List.of(), false, new LockMode.Freshen(), "0.0.0-test");
+            LockPipeline pipeline =
+                    new LockPipeline(tmp, build, tmp.resolve("cache"), null, List.of(), false, new LockMode.Freshen());
 
             assertThat(pipeline.pinSdk(empty, LockPipeline.Progress.SILENT).sdk())
                     .containsExactly(new Lockfile.SdkEntry("platform-tools", "35.0.2"));

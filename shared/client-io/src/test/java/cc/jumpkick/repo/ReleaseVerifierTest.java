@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
@@ -22,8 +23,7 @@ class ReleaseVerifierTest {
     @Test
     void baked_in_release_key_is_present_and_parseable() {
         assertThat(ReleaseVerifier.BUILT_IN_KEY).isNotBlank();
-        ReleaseVerifier v = ReleaseVerifier.current(List.of());
-        assertThat(v.available()).isTrue();
+        assertThatCode(() -> ReleaseVerifier.current(List.of())).doesNotThrowAnyException();
     }
 
     @Test
@@ -49,7 +49,6 @@ class ReleaseVerifierTest {
         String pub = Base64.getEncoder().encodeToString(pair.getPublic().getEncoded());
 
         ReleaseVerifier verifier = ReleaseVerifier.of(List.of(pub));
-        assertThat(verifier.available()).isTrue();
         verifier.verify(sums, sig); // does not throw
 
         // Rotation shape: an unknown key first, the trusted one second — any trusted key passes.
@@ -93,6 +92,15 @@ class ReleaseVerifierTest {
                         "jk-linux-x86_64.xz"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("malformed");
+        // Strict LF: a CRLF manifest is a different file, and the shell verifiers already say so.
+        assertThatThrownBy(() -> ReleaseVerifier.sha256For(
+                        ("a".repeat(64) + "  jk-linux-x86_64.xz\r\n").getBytes(StandardCharsets.UTF_8),
+                        "jk-linux-x86_64.xz"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("malformed");
+        // Absent is an answer, corruption is not.
+        assertThat(ReleaseVerifier.find(valid, "other.xz")).isEmpty();
+        assertThatThrownBy(() -> ReleaseVerifier.find(duplicate, "other.xz")).isInstanceOf(IOException.class);
     }
 
     private static KeyPair rsaPair() throws Exception {

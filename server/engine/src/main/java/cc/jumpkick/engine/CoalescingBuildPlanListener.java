@@ -217,9 +217,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
         flush();
-        delegate.stepFinish(step, group, status, duration);
+        delegate.stepFinish(step, group, status, duration, waited);
     }
 
     @Override

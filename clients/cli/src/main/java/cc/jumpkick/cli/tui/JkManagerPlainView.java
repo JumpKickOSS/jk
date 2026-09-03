@@ -237,8 +237,7 @@ final class JkManagerPlainView {
     /**
      * There is no Ctrl-O listener and no settle dump in plain mode, so a tool/worker crash would
      * leave its only evidence (the buffered stdout ring) invisible. Print the uncommitted ring lines
-     * sequentially — they land directly above the failure wedge the settle is about to emit
-     *.
+     * sequentially — they land directly above the failure wedge the settle is about to emit.
      */
     void dumpProcessOutput() {
         synchronized (m.lock) {

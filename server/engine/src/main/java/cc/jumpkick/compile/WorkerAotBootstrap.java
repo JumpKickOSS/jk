@@ -94,7 +94,7 @@ public final class WorkerAotBootstrap {
                 } catch (Exception ignored) {
                 }
             }
-            if (!force && cache != null && Files.exists(AotCacheFiles.marker(cache))) {
+            if (!force && AotCacheFiles.blocked(cache)) {
                 skipped.add("java-compiler (prior train failed; will not retry until force)");
                 return;
             }

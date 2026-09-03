@@ -37,6 +37,27 @@ class AotCacheFilesTest {
         }
     }
 
+    /** Every sidecar follows the marker's rule: the whole cache name plus a suffix. */
+    @Test
+    void the_other_sidecars_follow_the_same_whole_name_rule() {
+        Path cache = Path.of("/aot/kotlinc-0123456789abcdef.aot");
+        assertThat(AotCacheFiles.configOf(cache)).hasFileName("kotlinc-0123456789abcdef.aot.config");
+        assertThat(AotCacheFiles.trainingClaim(cache)).hasFileName("kotlinc-0123456789abcdef.aot.training");
+        assertThat(AotCacheFiles.tmpFor(cache, 4242)).hasFileName("kotlinc-0123456789abcdef.aot.tmp-4242");
+        assertThat(AotCacheFiles.isSidecar("kotlinc-0123456789abcdef.aot.config"))
+                .isTrue();
+        assertThat(AotCacheFiles.isSidecar("kotlinc-0123456789abcdef.aot.training"))
+                .isTrue();
+        assertThat(AotCacheFiles.isSidecar("kotlinc-0123456789abcdef.aot.tmp-4242"))
+                .isTrue();
+        assertThat(AotCacheFiles.isSidecar("kotlinc-0123456789abcdef.aot.noaot"))
+                .isTrue();
+        assertThat(AotCacheFiles.isSidecar("kotlinc-0123456789abcdef.aot"))
+                .as("the cache itself")
+                .isFalse();
+        assertThat(AotCacheFiles.isSidecar("aot.toml")).isFalse();
+    }
+
     @Test
     void nothing_else_in_the_aot_directory_reads_as_a_marker() {
         assertThat(AotCacheFiles.isMarker("kotlinc-0123456789abcdef.aot")).isFalse();

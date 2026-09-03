@@ -12,6 +12,8 @@ object JkLayoutPaths {
     /** The one root: `$JK_HOME`, else `$HOME/.jk`. */
     fun homeRoot(): File {
         nonBlank(System.getenv("JK_HOME"))?.let {
+            // The same refusal as JkDirs: a relative JK_HOME is not a home jk itself would read.
+            require(File(it).isAbsolute) { "JK_HOME must be an absolute path: $it" }
             return File(it)
         }
         return File(userHome(), ".jk")

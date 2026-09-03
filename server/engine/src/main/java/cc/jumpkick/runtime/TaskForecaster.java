@@ -37,6 +37,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
@@ -691,9 +692,15 @@ public final class TaskForecaster {
                     String stampKey = PlannerSupport.runTestsStampKey(
                             dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
-                    boolean hit = stampKey != null && present(actionCache, stampKey);
+                    Optional<ActionCache.ActionRecord> marker =
+                            stampKey == null ? Optional.empty() : presentRecord(actionCache, stampKey);
+                    boolean hit = marker.isPresent() && TestStamp.green(marker.get());
+                    // The same key with a red record is the one shape a live run never skips:
+                    // say so, or the ETA reads "only the suite is dirty" as stamp drift.
+                    boolean red = marker.isPresent() && !hit;
                     if (Perf.ENABLED) {
-                        System.err.println("[jk-perf] forecast-test-stamp " + dir + " key=" + stampKey + " hit=" + hit);
+                        System.err.println("[jk-perf] forecast-test-stamp " + dir + " key=" + stampKey + " hit=" + hit
+                                + " red=" + red);
                     }
                     steps.add(
                             hit
@@ -702,7 +709,7 @@ public final class TaskForecaster {
                                     : new TaskForecast.Task(
                                             TaskNames.RUN_TESTS,
                                             TaskForecast.Status.RUN,
-                                            "run tests · " + tests,
+                                            "run tests · " + tests + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
                                             null));
                 }
             }
@@ -846,7 +853,7 @@ public final class TaskForecaster {
             // eligibility from the [native] table made fallback (table-less unique-main) modules
             // invisible (jar clean + binary missing ⇒ skipped ⇒ "success" with no binary) and
             // priced unselected cone prereqs WITH tables as perpetually dirty (their plans get
-            // allowNative=false, so the binary they were dirty "for" never appears) —.
+            // allowNative=false, so the binary they were dirty "for" never appears).
             boolean nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
             if ((nativeOnBuild || nativeOnNativeCmd) && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
@@ -1107,16 +1114,21 @@ public final class TaskForecaster {
      * <p>Presence check only ({@code pathFor} + {@code isRegularFile}); never hashes bytes.
      */
     static boolean present(ActionCache ac, String key) {
+        return presentRecord(ac, key).isPresent();
+    }
+
+    /** The record behind {@link #present}, for callers that read its markers. */
+    static Optional<ActionCache.ActionRecord> presentRecord(ActionCache ac, String key) {
         try {
             var rec = ac.lookup(key);
-            if (rec.isEmpty()) return false;
+            if (rec.isEmpty()) return Optional.empty();
             for (String sha : rec.get().outputs().values()) {
                 if (!isSha256Hex(sha)) continue; // marker scalar, not a CAS blob
-                if (!Files.isRegularFile(ac.cas().pathFor(sha))) return false;
+                if (!Files.isRegularFile(ac.cas().pathFor(sha))) return Optional.empty();
             }
-            return true;
+            return rec;
         } catch (Exception e) {
-            return false;
+            return Optional.empty();
         }
     }
 

@@ -259,8 +259,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
      * Root-level {@code id} — an unadvertised escape hatch, deliberately not on {@code
      * Project}. Scanned, not parsed, for the same reason {@link #coordOf} is: identity is
      * resolved on the client for history and dashboard routes, and {@code checkCliNoParseTypes}
-     * keeps {@link cc.jumpkick.config.JkBuildParser} — and tomlj with it — off the native image
-     *.
+     * keeps {@link cc.jumpkick.config.JkBuildParser} — and tomlj with it — off the native image.
      */
     private static Optional<String> explicitId(Path projectDir) {
         String id =

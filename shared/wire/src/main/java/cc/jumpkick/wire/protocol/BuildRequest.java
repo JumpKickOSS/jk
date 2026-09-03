@@ -30,7 +30,11 @@ public record BuildRequest(
         @Nullable List<String> modules,
         boolean keepGoing,
         @Nullable String workspaceTarget,
-        @Nullable Map<String, String> graalHomes) {
+        @Nullable Map<String, String> graalHomes,
+        /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
+        @Nullable String trigger,
+        /** Progress-bar mode the requester's environment asked for; null for auto. */
+        @Nullable String progressMode) {
 
     public BuildRequest {
         dirtyHint = dirtyHint == null || dirtyHint.isEmpty() ? null : List.copyOf(dirtyHint);
@@ -62,8 +66,8 @@ public record BuildRequest(
                 .optionalTrue("keepGoing", keepGoing)
                 .optionalNonBlankString("workspaceTarget", workspaceTarget)
                 .optionalMap("graalHomes", graalHomes)
-                .trigger()
-                .progressMode()
+                .optionalNonBlankString("trigger", trigger)
+                .optionalNonBlankString("progressMode", progressMode)
                 .finish();
     }
 
@@ -89,6 +93,8 @@ public record BuildRequest(
                 Jsonl.strArray(json, "modules"),
                 Jsonl.bool(json, "keepGoing", false),
                 Jsonl.str(json, "workspaceTarget"),
-                Jsonl.strMap(json, "graalHomes"));
+                Jsonl.strMap(json, "graalHomes"),
+                Jsonl.str(json, "trigger"),
+                Jsonl.str(json, "progressMode"));
     }
 }

@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import java.net.URI;
@@ -99,11 +98,7 @@ public final class AutoLock {
                     repoUrl,
                     features == null ? List.of() : List.copyOf(features),
                     withDefaults,
-                    new LockMode.Freshen(),
-                    // The header names the PRODUCT version, never a caller-supplied string: one
-                    // call site passed cacheKeyVersion() here and the salt (`jk 0.12.0#1`) went
-                    // into a committed file. There is exactly one right value, so no parameter.
-                    JkVersion.VERSION);
+                    new LockMode.Freshen());
             return pipeline.run(existing, observer, LockPipeline.Progress.SILENT);
         } catch (UnsatisfiableException e) {
             // Hard failure: dependencies are genuinely unsatisfiable — re-throw so

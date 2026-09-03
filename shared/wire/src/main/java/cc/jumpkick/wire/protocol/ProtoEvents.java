@@ -543,15 +543,12 @@ public final class ProtoEvents {
     }
 
     /** @see #stepFinish(String, String, String, String, long) */
-    public static String stepFinish(String dir, String step, String phase, String status) {
-        return stepFinish(dir, step, phase, status, 0L);
-    }
-
     /**
-     * Server → client: step terminal. {@code millis} is wall-clock duration (additive schema field;
-     * pre-1.0 clients may ignore it).
+     * Server → client: step terminal. {@code millis} is the wall clock, queue wait included;
+     * {@code waitMillis} is the part of it the step spent blocked on a shared resource.
      */
-    public static String stepFinish(String dir, String step, String phase, String status, long millis) {
+    public static String stepFinish(
+            String dir, String step, String phase, String status, long millis, long waitMillis) {
         return "{\"type\":\""
                 + EngineProtocol.TASK_FINISH
                 + "\",\"dir\":"
@@ -564,6 +561,8 @@ public final class ProtoEvents {
                 + Jsonl.quote(status)
                 + ",\"millis\":"
                 + millis
+                + ",\"waitMillis\":"
+                + waitMillis
                 + "}";
     }
 

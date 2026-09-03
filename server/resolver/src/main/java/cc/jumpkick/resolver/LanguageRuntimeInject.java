@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Puts language runtimes into the main lock graph so packaging can nest them. Engine classpath
@@ -21,9 +22,25 @@ import java.util.Set;
  * {@code kotlin}/{@code groovy}/{@code scala} pin when it has a literal; otherwise a floating major
  * of the current jk default so PubGrub still picks a concrete release at lock time.
  */
-final class LanguageRuntimeInject {
+public final class LanguageRuntimeInject {
 
     private LanguageRuntimeInject() {}
+
+    /**
+     * The compiler versions the lock is pinning, resolved before the solve. A stdlib is the
+     * compiler's stdlib: injected with an exact selector equal to the compiler's version rather
+     * than the manifest's floating one, so {@code scala = "3.8.4"} cannot lock a 3.8.4 compiler
+     * beside a 3.9.0 library (or the reverse skew, which is a worker crash). {@code null} means
+     * the language is not pinned here and the manifest selector is used as written.
+     */
+    public record ToolVersions(
+            @Nullable String kotlin, @Nullable String scala) {
+        public static final ToolVersions NONE = new ToolVersions(null, null);
+
+        static @Nullable VersionSelector exactOr(@Nullable String version, @Nullable VersionSelector declared) {
+            return version == null || version.isBlank() ? declared : new VersionSelector.Exact("=" + version, version);
+        }
+    }
 
     /**
      * Inject Groovy/Kotlin/Scala runtimes when the project has sources of that language.
@@ -34,7 +51,8 @@ final class LanguageRuntimeInject {
             JkBuild project,
             Path projectDir,
             Map<String, String> bomConstraints,
-            LinkedHashMap<String, Dependency> mainDeduped) {
+            LinkedHashMap<String, Dependency> mainDeduped,
+            ToolVersions tools) {
         Set<String> added = new LinkedHashSet<>();
         Project p = project.project();
         // Same inference the engine uses to enable lanes: an unpinned project with
@@ -52,12 +70,42 @@ final class LanguageRuntimeInject {
             addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", p.groovy(), "5");
         }
         if (langs.kotlin() && hasLangSources(projectDir, ".kt")) {
-            addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", p.kotlin(), "2");
+            VersionSelector kotlin = ToolVersions.exactOr(tools.kotlin(), p.kotlin());
+            addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", kotlin, "2");
         }
         if (langs.scala() && hasLangSources(projectDir, ".scala")) {
-            addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala3-library_3", p.scala(), "3");
+            VersionSelector scala = ToolVersions.exactOr(tools.scala(), p.scala());
+            addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala3-library_3", scala, "3");
+            // On 3.8+ the stub's own `scala-library` edge is the real stdlib, declared as a Maven soft
+            // version that highest-wins would float past the compiler (3.8.4 stub, 3.9.0 library).
+            // Root it exactly too, so the lock carries one Scala version.
+            if (tools.scala() != null && ScalaVersions.stdlibIsScalaLibrary(tools.scala())) {
+                addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala-library", scala, "3");
+            }
         }
         return added;
+    }
+
+    /** Where the Scala 3 stdlib lives, by compiler version. */
+    static final class ScalaVersions {
+        private ScalaVersions() {}
+
+        /**
+         * From 3.8 the stdlib ships as {@code org.scala-lang:scala-library} at the compiler's own
+         * version and {@code scala3-library_3} is an empty stub over it; before 3.8 the library was
+         * the 2.13 {@code scala-library}, whose version has nothing to do with the compiler's.
+         */
+        static boolean stdlibIsScalaLibrary(String scalaVersion) {
+            String[] parts = scalaVersion.split("[.-]");
+            if (parts.length < 2) return false;
+            try {
+                int major = Integer.parseInt(parts[0]);
+                int minor = Integer.parseInt(parts[1]);
+                return major > 3 || (major == 3 && minor >= 8);
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
     }
 
     /** True when any {@code ext} source exists under src/ or a plugin-contributed root. */

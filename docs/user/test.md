@@ -104,7 +104,9 @@ exclude-tags = ["slow", "network", "bench"]
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
 
 `--exclude-tags ""` is the CLI form of a clear. Suites and tags are part of the test
-stamp: changing selection re-runs tests even if sources are unchanged.
+stamp: changing selection re-runs tests even if sources are unchanged. A failed suite is never
+skipped: it leaves a red marker under the same stamp, so the next run executes it again and
+`jk explain` prices it as a suite rather than as a stale stamp.
 
 ## Workspace scope: tag filters come from the root
 

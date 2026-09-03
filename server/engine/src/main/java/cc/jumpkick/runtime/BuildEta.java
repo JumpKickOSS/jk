@@ -284,13 +284,16 @@ public final class BuildEta {
             // content, a heavy packaging tail, or other material work that is not the suite.
             // A suite-only dirty step is a drifted run-tests stamp key, not work — price a
             // recheck. Cascade-forced steps ("dependency changed", "main changed", "compile
-            // changed") are a sibling's consequence, not evidence here.
+            // changed") are a sibling's consequence, not evidence here. The exception is a
+            // suite whose last run under these inputs was red: the forecaster marks it, and the
+            // live run never skips it.
             boolean otherMaterialWork = m.steps().stream()
                     .anyMatch(s -> (distrust || !s.cached())
                             && !TaskNames.RUN_TESTS.equals(s.name())
                             && !TaskForecast.Module.isBookkeepingStep(s.name())
                             && !isCascadeForcedStep(s));
-            boolean keepFullTests = localCompile || hasHeavyPackagingTail(m) || otherMaterialWork;
+            boolean redRerun = m.steps().stream().anyMatch(BuildEta::isRedRerun);
+            boolean keepFullTests = localCompile || hasHeavyPackagingTail(m) || otherMaterialWork || redRerun;
             List<String> running = new ArrayList<>();
             int cascadeRecheck = 0;
             for (TaskForecast.Task s : m.steps()) {
@@ -469,6 +472,13 @@ public final class BuildEta {
      * Forecast forced RUN because an upstream compile-scope sibling is dirty (action key still
      * hashed the pre-rebuild jar). Live keys usually hit when the upstream jar is byte-identical.
      */
+    /** A {@code run-tests} step the forecaster marked as a re-run after a red suite. */
+    static boolean isRedRerun(TaskForecast.Task s) {
+        if (s == null || s.cached() || !TaskNames.RUN_TESTS.equals(s.name())) return false;
+        String t = s.text() == null ? "" : s.text();
+        return t.contains(TaskForecast.LAST_RUN_FAILED);
+    }
+
     static boolean isCascadeForcedStep(TaskForecast.Task s) {
         if (s == null || s.cached()) return false;
         String t = s.text() == null ? "" : s.text();

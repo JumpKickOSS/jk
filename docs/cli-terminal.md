@@ -987,7 +987,7 @@ public final class Interactivity {
         Terminals.shutdown();
     }
     private static boolean forcedNonInteractive() {
-        if (System.getenv("CI") != null) return true;
+        if (EnvValues.isCi(System::getenv)) return true; // truthy CI, not merely present
         String n = System.getenv("JK_NONINTERACTIVE");
         if (n != null && !n.isBlank()) return true;
         return "dumb".equals(System.getenv("TERM"));

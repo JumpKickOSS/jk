@@ -634,8 +634,7 @@ public final class ActionCache {
 
     /**
      * Metering from sizes already in hand — a restore has resolved every blob before it copies, and
-     * asking the filesystem again for a number it just read is a third of that path's stats
-     *.
+     * asking the filesystem again for a number it just read is a third of that path's stats.
      */
     private static void meter(Map<String, Blob> blobs, Map<String, String> outputs) {
         if (outputs.isEmpty()) return;

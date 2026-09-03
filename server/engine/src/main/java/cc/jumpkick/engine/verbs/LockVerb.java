@@ -6,7 +6,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -92,10 +91,5 @@ public final class LockVerb implements HostedVerb {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }
-    }
-
-    static @org.jspecify.annotations.Nullable URI repoUrlOf(String requestLine) {
-        String s = Jsonl.str(requestLine, "repoUrl");
-        return s != null ? URI.create(s) : null;
     }
 }

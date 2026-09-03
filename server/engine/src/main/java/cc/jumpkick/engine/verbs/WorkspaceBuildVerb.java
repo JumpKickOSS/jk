@@ -88,36 +88,36 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         boolean testOnly = "test".equals(spec.kind());
         boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind());
         return Jsonl.append(
-                ProtoSession.withTrigger(
-                        new BuildRequest(
-                                        entryDir.toString(),
-                                        JkDirs.cache().toString(),
-                                        JkDirs.jdks().toString(),
-                                        0,
-                                        null,
-                                        skipTests,
-                                        false,
-                                        0,
-                                        // Parallel module tests: same default as the CLI.
-                                        true,
-                                        false,
-                                        false,
-                                        true,
-                                        false,
-                                        testOnly,
-                                        dirty == null
-                                                ? null
-                                                : dirty.stream()
-                                                        .map(Path::toString)
-                                                        .sorted()
-                                                        .toList(),
-                                        JobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites()),
-                                        List.of(),
-                                        false,
-                                        null,
-                                        Map.of())
-                                .encode(),
-                        "web"),
+                new BuildRequest(
+                                entryDir.toString(),
+                                JkDirs.cache().toString(),
+                                JkDirs.jdks().toString(),
+                                0,
+                                null,
+                                skipTests,
+                                false,
+                                0,
+                                // Parallel module tests: same default as the CLI.
+                                true,
+                                false,
+                                false,
+                                true,
+                                false,
+                                testOnly,
+                                dirty == null
+                                        ? null
+                                        : dirty.stream()
+                                                .map(Path::toString)
+                                                .sorted()
+                                                .toList(),
+                                JobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites()),
+                                List.of(),
+                                false,
+                                null,
+                                Map.of(),
+                                "web",
+                                null)
+                        .encode(),
                 spec.affected() ? "\"affected\":true" : "");
     }
 
@@ -206,14 +206,20 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
             String workspaceTarget = body.workspaceTarget();
+            // The client resolved a GraalVM home for every module whose build links a native
+            // image; the plan reads it from the spec for any target, or the daemon would pick one
+            // from the shell that started it.
+            Map<Path, Path> graalByDir = new LinkedHashMap<>();
+            Map<String, String> homes = body.graalHomes();
+            if (homes != null) {
+                homes.forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+            }
             if ("install".equals(workspaceTarget)) {
-                Map<Path, Path> graalByDir = new LinkedHashMap<>();
-                Map<String, String> homes = body.graalHomes();
-                if (homes != null) {
-                    homes.forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
-                }
                 Set<Path> selected = dirty == null ? Set.of() : dirty;
                 req = req.withSpec(WorkspaceSpec.install(selected, graalByDir, null));
+            } else if (!graalByDir.isEmpty()) {
+                WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
+                req = req.withSpec(spec.withGraalByDir(graalByDir));
             }
             WorkspaceRequest workspaceReq = req;
 

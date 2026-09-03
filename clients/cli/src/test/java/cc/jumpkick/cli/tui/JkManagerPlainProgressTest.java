@@ -252,6 +252,27 @@ class JkManagerPlainProgressTest {
         });
     }
 
+    /**
+     * A diagnostic or completion line printed sequentially in plain mode must not ride along in the
+     * ring: the failure dump would print it a second time under a later module's failure.
+     */
+    @Test
+    void plain_failure_dump_does_not_repeat_lines_already_printed() {
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
+        SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
+            var buf = new ByteArrayOutputStream();
+            var cm = JkManager.plan(stream(buf), "Build", true);
+            cm.writeAbove("+ [1 of 2] com.example:core - took 7ms");
+            cm.writeProcessOutput("javac: some tool line");
+            cm.showProcessFailureOutput();
+            String out = buf.toString(StandardCharsets.UTF_8);
+            assertThat(out).contains("javac: some tool line");
+            assertThat(out.indexOf("+ [1 of 2] com.example:core"))
+                    .as("the completion line was printed once, when it happened")
+                    .isEqualTo(out.lastIndexOf("+ [1 of 2] com.example:core"));
+        });
+    }
+
     @Test
     void window_title_updates_only_when_fill_glyph_changes() {
         var buf = new ByteArrayOutputStream();

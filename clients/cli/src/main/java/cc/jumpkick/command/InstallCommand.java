@@ -378,14 +378,16 @@ public final class InstallCommand {
         // engine round-trip — three sweeps over a 30-module workspace is ~90 requests for nothing.
         Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
         for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
-        Map<Path, Path> graalByDir = new LinkedHashMap<>();
+        List<AlwaysNativeGraal.Module> alwaysNative = new ArrayList<>();
         for (Path mod : moduleDirs) {
             var info = infoByDir.get(mod);
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
-            Optional<Path> graal = new GraalResolver(null, false).resolve(mod, info.graal());
-            if (graal.isEmpty()) return 1;
-            graalByDir.put(mod, graal.get());
+            alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal()));
         }
+        Optional<Map<Path, Path>> resolved =
+                AlwaysNativeGraal.homes(alwaysNative, new GraalResolver(null, false)::resolve);
+        if (resolved.isEmpty()) return 1;
+        Map<Path, Path> graalByDir = resolved.get();
         List<String> tokens = cwdScope.scoped() ? List.of(cwdScope.modulesSpec()) : List.of();
         Set<Path> selected = cwdScope.scoped() ? Set.of(cwdScope.workingDir()) : Set.of();
         WorkspaceRequest req = new WorkspaceRequest(

@@ -11,6 +11,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /** Request/outcome records for engine-hosted verbs. */
 public final class EngineRequests {
@@ -77,7 +78,27 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             String variant,
-            Map<String, String> clientEnv) {
+            Map<String, String> clientEnv,
+            /** Client-resolved GraalVM home for an always-native module; null when none links. */
+            @Nullable Path graalHome) {
+
+        /** No GraalVM home: the module links no native image. */
+        public SingleBuildRequest(
+                Path entryDir,
+                Path cache,
+                Path jdksDir,
+                int workers,
+                String profile,
+                boolean skipTests,
+                boolean verbose,
+                boolean offline,
+                boolean force,
+                String variant,
+                Map<String, String> clientEnv) {
+            this(
+                    entryDir, cache, jdksDir, workers, profile, skipTests, verbose, offline, force, variant, clientEnv,
+                    null);
+        }
 
         /** Default variant, no client env. */
         public SingleBuildRequest(

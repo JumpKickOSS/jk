@@ -85,6 +85,8 @@ function Die([string] $Message) {
 # which it is, by having one answer.
 
 $JkHome = if ($env:JK_HOME) { $env:JK_HOME } else { Join-Path $HOME ".jk" }
+# Same refusal as JkDirs: a relative JK_HOME would install somewhere jk itself will not read.
+if (-not [IO.Path]::IsPathRooted($JkHome)) { Die "JK_HOME must be an absolute path: $JkHome" }
 $InstallDir = Join-Path $JkHome "bin"
 
 $ReleasesUrl = if ($env:JK_RELEASES_URL) { $env:JK_RELEASES_URL.TrimEnd("/") } else { "https://jumpkick.build/releases" }
@@ -149,7 +151,6 @@ function Get-StrictManifestHash {
     $matchCount = 0
     for ($i = 0; $i -lt $lines.Length; $i++) {
         $line = $lines[$i]
-        if ($line.EndsWith("`r")) { $line = $line.Substring(0, $line.Length - 1) }
         if ($line.Length -eq 0 -and $i -eq ($lines.Length - 1)) { continue }
         if ($line -notmatch '^([0-9A-Fa-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$') {
             throw "release SHA256SUMS has a malformed entry"

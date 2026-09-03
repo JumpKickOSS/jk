@@ -338,10 +338,10 @@ public final class CliSessionTranscript {
                         List.copyOf(modules)));
                 // Enrich finish with jid / buildNumber when known.
                 if ((jid > 0 || buildNumber > 0) && !finishLine.contains("\"jid\":")) {
-                    finishLine = finishLine.substring(0, finishLine.length() - 1)
-                            + (jid > 0 ? ",\"jid\":" + jid : "")
-                            + (buildNumber > 0 ? ",\"buildNumber\":" + buildNumber : "")
-                            + "}";
+                    List<String> fields = new ArrayList<>();
+                    if (jid > 0) fields.add("\"jid\":" + jid);
+                    if (buildNumber > 0) fields.add("\"buildNumber\":" + buildNumber);
+                    finishLine = Jsonl.append(finishLine, String.join(",", fields));
                 }
                 if (out != null) {
                     enqueueRecord(stripTrailingNewlines(finishLine));

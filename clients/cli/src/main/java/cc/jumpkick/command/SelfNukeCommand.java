@@ -200,8 +200,7 @@ public final class SelfNukeCommand implements CliCommand {
         // never end the command: the rows below — state and config — are deleted by this process
         // and need no engine at all. Letting an engine failure unwind
         // `run` meant a user who had just approved a table of five paths got an error about the
-        // engine and five surviving paths, plus the files the spawn attempt had just written
-        // .
+        // engine and five surviving paths, plus the files the spawn attempt had just written.
         List<String> delegatedFailures = new ArrayList<>();
         // A dry run never previews the store: its walk runs engine-side, and even the preview
         // spawns a daemon — which writes engine logs, an AOT index and a JDK registry into the

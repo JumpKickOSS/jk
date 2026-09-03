@@ -6,8 +6,8 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.runtime.CatalogReadOps;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
+import cc.jumpkick.wire.protocol.CatalogReadRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -45,8 +45,9 @@ public final class CatalogReadVerb implements HostedVerb {
         try {
             CatalogReadAck ack;
             try {
-                String dir = Jsonl.str(requestLine, "dir");
-                String cache = Jsonl.str(requestLine, "cache");
+                CatalogReadRequest req = CatalogReadRequest.decode(requestLine);
+                String dir = req.dir();
+                String cache = req.cache();
                 if (dir == null || dir.isBlank()) {
                     // A resident server has no meaningful cwd to fall back to.
                     throw new IllegalArgumentException("catalog-read request names no dir");
@@ -55,11 +56,11 @@ public final class CatalogReadVerb implements HostedVerb {
                         Path.of(dir),
                         cache == null || cache.isBlank() ? null : Path.of(cache),
                         null,
-                        Jsonl.str(requestLine, "query"),
-                        Jsonl.strArray(requestLine, "terms"),
-                        Jsonl.bool(requestLine, "offline", false),
-                        Jsonl.bool(requestLine, "includeCached", false),
-                        Jsonl.bool(requestLine, "bundledOnly", false)));
+                        req.query(),
+                        req.terms(),
+                        req.offline(),
+                        req.includeCached(),
+                        req.bundledOnly()));
             } catch (Exception e) {
                 ack = CatalogReadAck.error(Errors.text(e));
             }

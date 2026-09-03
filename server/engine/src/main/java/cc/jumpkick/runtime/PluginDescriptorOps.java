@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -130,7 +129,7 @@ public final class PluginDescriptorOps {
 
     /** First-party / official / Central — the stores that answer nearly every pinned lookup. */
     private static final List<String> FIXED_PROBE_ORDER =
-            List.of(RepoArtifactResolver.JK_LOCAL, PluginJar.OFFICIAL_REPO, RepositorySpec.CENTRAL);
+            List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL);
 
     /**
      * Every other {@code repos/<name>/} directory, so a user-declared remote (e.g. {@code local})

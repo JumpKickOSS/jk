@@ -623,22 +623,11 @@ public final class EngineServer implements AutoCloseable {
                     StatusSnapshot s = statusSnapshot();
                     HttpEngineServer hs = http.server();
                     String ack = ProtoLifecycle.statusAck(
-                            s.version(),
-                            s.pid(),
-                            s.startedAtMillis(),
-                            s.activeRequests(),
-                            s.activeBuildPlans(),
+                            s.vitals(),
                             draining,
-                            s.heapUsedBytes(),
-                            s.heapCommittedBytes(),
-                            s.heapMaxBytes(),
-                            s.rssBytes(),
-                            s.aotTrainingPid(),
                             hs != null ? hs.url() : null,
                             http.error(),
-                            hs != null && hs.mcpEnabled(),
-                            s.peakActiveRequests(),
-                            s.peakActiveBuildPlans());
+                            hs != null && hs.mcpEnabled());
                     WireWriter.send(writer, InputTrees.appendToStatusAck(ack));
                 }
                 case EngineProtocol.SHUTDOWN -> {

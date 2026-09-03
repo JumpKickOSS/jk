@@ -6,9 +6,9 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.runtime.CacheInventoryOps;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
+import cc.jumpkick.wire.protocol.CacheInventoryRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
@@ -47,16 +47,17 @@ public final class CacheInventoryVerb implements HostedVerb {
         try {
             CacheInventoryAck ack;
             try {
-                String query = Jsonl.str(requestLine, "query");
-                String cache = Jsonl.str(requestLine, "cache");
-                String store = Jsonl.str(requestLine, "store");
+                CacheInventoryRequest wire = CacheInventoryRequest.decode(requestLine);
+                String query = wire.query();
+                String cache = wire.cache();
+                String store = wire.store();
                 CacheInventoryOps.Request req = new CacheInventoryOps.Request(
                         query,
                         cache == null || cache.isBlank() ? null : Path.of(cache),
                         store == null || store.isBlank() ? null : Path.of(store),
-                        Jsonl.strArray(requestLine, "terms"),
-                        Jsonl.strArray(requestLine, "coords"),
-                        Jsonl.bool(requestLine, "dryRun", false));
+                        wire.terms(),
+                        wire.coords(),
+                        wire.dryRun());
                 boolean write = "wipe-store".equals(query) || "repo-refresh".equals(query);
                 if (write) {
                     Path lockRoot = req.cache() != null ? req.cache() : JkDirs.cache();

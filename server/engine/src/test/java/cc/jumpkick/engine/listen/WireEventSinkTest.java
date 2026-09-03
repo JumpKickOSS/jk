@@ -73,7 +73,8 @@ class WireEventSinkTest {
                     try {
                         assertThat(start.await(30, TimeUnit.SECONDS)).isTrue();
                         for (int i = 0; i < perThread; i++) {
-                            sink.emit(new EngineEvent.StepFinish("mod-" + id, "ensure-jdk", "resolve", "SUCCESS", i));
+                            sink.emit(
+                                    new EngineEvent.StepFinish("mod-" + id, "ensure-jdk", "resolve", "SUCCESS", i, 0L));
                         }
                     } catch (Throwable e) {
                         failures.add(e); // a pool task's throw is invisible to the main thread

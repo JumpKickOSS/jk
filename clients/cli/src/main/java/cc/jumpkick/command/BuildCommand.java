@@ -6,6 +6,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.GraalResolver;
 import cc.jumpkick.cli.ParallelTestsOpts;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
@@ -40,6 +41,7 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,6 +49,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /** {@code jk build} — orchestrates lock, sync, compile, test, and package. */
 public final class BuildCommand implements CliCommand {
@@ -260,6 +263,14 @@ public final class BuildCommand implements CliCommand {
             sel = resolveSelection(entryDir);
         }
 
+        // The GraalVM home for every always-native member, before any progress UI opens: the
+        // resolver may prompt or install, and the request carries the answer (the engine is a
+        // daemon and must not pick one from the shell that started it).
+        Optional<Map<Path, Path>> graal = AlwaysNativeGraal.homes(
+                AlwaysNativeGraal.fromManifests(entryDir), new GraalResolver(jdksDir, global.yes)::resolve);
+        if (graal.isEmpty()) return Exit.FAILURE; // the resolver printed why
+        this.graalHomes = graal.get();
+
         if (!live) {
             // --output json / --verbose: buffered, non-animated path. The engine drives the whole
             // workspace build (BuildService.buildWorkspace — resolve graph, memory plan, schedule,
@@ -346,6 +357,9 @@ public final class BuildCommand implements CliCommand {
         return "nothing affected since " + affectedSince;
     }
 
+    /** Client-resolved GraalVM home per always-native member; empty when the workspace links none. */
+    private Map<Path, Path> graalHomes = Map.of();
+
     private WorkspaceRequest workspaceRequest(Path entryDir, Path cache, List<String> modules) {
         return new WorkspaceRequest(
                         entryDir,
@@ -361,7 +375,8 @@ public final class BuildCommand implements CliCommand {
                         true) // jk build: auto-freshen a stale workspace lock engine-side
                 .withVariant(variant, clientEnv)
                 .withKeepGoing(keepGoing)
-                .withModules(modules);
+                .withModules(modules)
+                .withSpec(WorkspaceSpec.DEFAULT.withGraalByDir(graalHomes));
     }
 
     /**
@@ -551,6 +566,14 @@ public final class BuildCommand implements CliCommand {
         TestSummary[] testResultHolder = new TestSummary[1];
         String[] buildOutcomeHolder = new String[1];
         ProjectInfo tailInfo = ProjectInfos.orNull(dir);
+        // Same owner as the workspace path: a lone always-native module ships its GraalVM home.
+        AlwaysNativeGraal.Module alwaysNative = AlwaysNativeGraal.fromManifest(dir);
+        Path graalHome = null;
+        if (alwaysNative != null) {
+            Optional<Path> resolved = new GraalResolver(jdksDir, global.yes).resolve(dir, alwaysNative.graalSpec());
+            if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
+            graalHome = resolved.get();
+        }
         final Path tailDir = dir;
         final String timelineModule = target;
         ConsoleSpec spec = new ConsoleSpec(
@@ -574,7 +597,8 @@ public final class BuildCommand implements CliCommand {
                             SessionContext.current().offline(),
                             SessionContext.current().force(),
                             variant,
-                            clientEnv),
+                            clientEnv,
+                            graalHome),
                     steps -> {
                         var console = BuildPlanConsole.chooseConsoleListener(steps, mode, spec, timelineModule);
                         // Mirror plan events into details.jsonl (JSON mode dual-writes itself).

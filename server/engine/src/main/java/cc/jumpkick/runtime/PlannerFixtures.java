@@ -32,6 +32,7 @@ import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -221,6 +222,7 @@ public final class PlannerFixtures {
                             stateDir,
                             workerJar,
                             genDir);
+                    ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = false;
                     for (CompileResult.Diagnostic d : r.diagnostics()) {
                         if (d.severity() == CompileResult.Severity.ERROR) {

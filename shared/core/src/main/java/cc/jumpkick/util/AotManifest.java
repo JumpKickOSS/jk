@@ -242,8 +242,8 @@ public final class AotManifest {
                 String name = p.getFileName().toString();
                 if (name.equals(FILE_NAME)
                         || name.endsWith(".lock")
-                        || name.contains(".tmp-")
-                        || name.endsWith(".training")) continue;
+                        || name.contains(AotCacheFiles.TMP_INFIX)
+                        || name.endsWith(AotCacheFiles.TRAINING)) continue;
                 if (name.endsWith(".aot") && Files.isRegularFile(p)) {
                     Entry prev = map.get(name);
                     String status = usableSize(p) > 0 ? "ready" : "empty";

@@ -126,7 +126,7 @@ class ActionTreeTest {
      * anywhere instead picks up 100+ files that are nobody's production code: the
      * {@code docs/user/examples} fixtures, jk's self-hosted {@code target/} output, and — worst —
      * the third-party git checkouts an engine suite leaves under
-     * {@code server/engine/build/test-jk-home/data/store/git/}, where somebody else's
+     * {@code server/engine/build/test-jk-home/store/git/}, where somebody else's
      * {@code resolve("keys")} would fail this guard.
      */
     private static List<Path> productionSources(Path root) throws IOException {

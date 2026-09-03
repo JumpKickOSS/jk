@@ -145,6 +145,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         boolean showHeader = !grouped || compilerHeaders.show(step, code, module);
         String report = ConsoleSpec.renderError(step, code, message, module, showHeader);
         if (report != null && !report.isEmpty()) {
+            agg.markStreamed(step, code, message);
             // Same buffer-XOR-print rule as output(): the settled block is the single printing
             // path when not animating.
             if (outBuffer != null && !cm.animating()) {
@@ -184,7 +185,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
         flushBufferedFailure();
         // SKIPPED = cache hit / up-to-date — still a green terminal (matches BuildPlan.isOk).
         // Treating it as failure painted the live tree red with "Failed" while the build

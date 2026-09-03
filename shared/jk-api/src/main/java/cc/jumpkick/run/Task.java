@@ -209,14 +209,6 @@ public final class Task {
             return this;
         }
 
-        /**
-         * Same as {@link #group(String)}; retained so existing call sites and wire adapters keep
-         * compiling while the vocabulary settles on stage/group.
-         */
-        public Builder phase(@Nullable String group) {
-            return group(group);
-        }
-
         public Builder execute(Body body) {
             this.body = body;
             return this;

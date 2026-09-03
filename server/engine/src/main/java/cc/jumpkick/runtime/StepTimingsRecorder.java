@@ -57,10 +57,13 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
         // Only successful real work teaches the ledger — CANCELLED / FAIL / SKIPPED never do.
         if (status != TaskStatus.SUCCESS || !learnable(step)) return;
+        // The step's own work: a wall that is mostly queue wait behind a shared compiler worker
+        // would teach a per-source rate that prices the machine, not the compile.
         long ms = duration == null ? 0 : duration.toMillis();
+        if (waited != null) ms = Math.max(0, ms - waited.toMillis());
         durationByStep.put(step, ms);
         // Defer all samples until planFinish so a later cancel/fail drops the whole module's
         // mid-run SUCCESS ticks (estimator hygiene: only successful plans train rates).

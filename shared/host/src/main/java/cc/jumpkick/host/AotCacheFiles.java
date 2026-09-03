@@ -32,6 +32,15 @@ public final class AotCacheFiles {
      */
     public static final String MARKER = ".noaot";
 
+    /** Suffix of the JVM's AOT configuration sidecar, recorded beside the cache while training. */
+    public static final String CONFIG = ".config";
+
+    /** Suffix of the training claim — one trainer per cache at a time. */
+    public static final String TRAINING = ".training";
+
+    /** Infix of a trainer's private assembly target: {@code <cache>.tmp-<pid>}. */
+    public static final String TMP_INFIX = ".tmp-";
+
     /**
      * How long a refusal is believed, for every key — engine and worker alike. Past this age a
      * marker is expired at read time by {@link #blocked} and the key gets one fresh training
@@ -62,6 +71,26 @@ public final class AotCacheFiles {
     private AotCacheFiles() {}
 
     /** The sticky refusal marker beside {@code cache}. */
+    /** The configuration sidecar of {@code cache}: the same whole-name suffix rule as the marker. */
+    public static Path configOf(Path cache) {
+        return cache.resolveSibling(cache.getFileName() + CONFIG);
+    }
+
+    /** The training claim of {@code cache}. */
+    public static Path trainingClaim(Path cache) {
+        return cache.resolveSibling(cache.getFileName() + TRAINING);
+    }
+
+    /** The private assembly target a trainer with {@code pid} writes before the atomic move. */
+    public static Path tmpFor(Path cache, long pid) {
+        return cache.resolveSibling(cache.getFileName() + TMP_INFIX + pid);
+    }
+
+    /** True for a sidecar of any cache — config, training claim, refusal marker or a trainer's temp. */
+    public static boolean isSidecar(String name) {
+        return name.endsWith(CONFIG) || name.endsWith(TRAINING) || name.contains(TMP_INFIX) || isMarker(name);
+    }
+
     public static Path marker(Path cache) {
         return cache.resolveSibling(cache.getFileName() + MARKER);
     }

@@ -44,6 +44,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk tree} — print the resolved dependency tree. */
 public final class TreeCommand implements CliCommand {
@@ -80,28 +81,12 @@ public final class TreeCommand implements CliCommand {
         boolean stack = in.isSet("stack");
         boolean transitive = in.isSet("transitive");
 
-        // -s/--scopes: an explicit, ordered subset; default = export, main, runtime.
-        List<Scope> scopes = new ArrayList<>(DependencyTreeStyle.defaultScopeOrder());
-        var scopesArg = in.value("scopes");
-        if (scopesArg.isPresent()) {
-            List<String> tokens = Arrays.stream(scopesArg.get().split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .toList();
-            if (tokens.isEmpty()) {
-                CommandWedge.printFail("Tree", "--scopes requires at least one scope (valid: " + validScopes() + ")");
-                return Exit.CONFIG;
-            }
-            Set<Scope> ordered = new LinkedHashSet<>();
-            for (String token : tokens) {
-                List<Scope> expanded = resolveScopeToken(token);
-                if (expanded == null) {
-                    CommandWedge.printFail("Tree", "invalid scope '" + token + "' (valid: " + validScopes() + ")");
-                    return Exit.CONFIG;
-                }
-                ordered.addAll(expanded);
-            }
-            scopes = new ArrayList<>(ordered);
+        List<Scope> scopes;
+        try {
+            scopes = parseScopes(in.value("scopes").orElse(null));
+        } catch (IllegalArgumentException e) {
+            CommandWedge.printFail("Tree", e.getMessage());
+            return Exit.CONFIG;
         }
         GlobalOptions global = GlobalOptions.from(in);
         Path cwd = global.workingDir();
@@ -349,6 +334,34 @@ public final class TreeCommand implements CliCommand {
      * exec}/{@code run} expand to the run classpath; any other token is a single scope. Returns null
      * if the token is not a valid scope or meta-scope.
      */
+    /**
+     * The scopes {@code -s/--scopes} selects, in the order given and deduplicated; the default
+     * order ({@code export, main, runtime}) when the flag is absent. {@code all} and
+     * {@code exec}/{@code run} expand to their lists.
+     *
+     * @throws IllegalArgumentException carrying the user-facing message when the value is empty or
+     *     names an unknown scope
+     */
+    static List<Scope> parseScopes(@Nullable String scopesArg) {
+        if (scopesArg == null) return new ArrayList<>(DependencyTreeStyle.defaultScopeOrder());
+        List<String> tokens = Arrays.stream(scopesArg.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        if (tokens.isEmpty()) {
+            throw new IllegalArgumentException("--scopes requires at least one scope (valid: " + validScopes() + ")");
+        }
+        Set<Scope> ordered = new LinkedHashSet<>();
+        for (String token : tokens) {
+            List<Scope> expanded = resolveScopeToken(token);
+            if (expanded == null) {
+                throw new IllegalArgumentException("invalid scope '" + token + "' (valid: " + validScopes() + ")");
+            }
+            ordered.addAll(expanded);
+        }
+        return new ArrayList<>(ordered);
+    }
+
     private static List<Scope> resolveScopeToken(String token) {
         String t = token.toLowerCase(Locale.ROOT);
         if (t.equals("all")) return DependencyTreeStyle.allScopeOrder();

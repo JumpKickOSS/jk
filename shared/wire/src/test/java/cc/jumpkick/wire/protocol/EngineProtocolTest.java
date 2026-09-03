@@ -43,14 +43,37 @@ class EngineProtocolTest {
         assertThat(EngineProtocol.typeOf(ProtoLifecycle.pong())).isEqualTo(EngineProtocol.PONG);
     }
 
+    /** Vitals in the engine's own order; the socket-only keys follow them. */
+    private static Map<String, Object> vitals(int activeRequests, int activeBuildPlans) {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("version", "1.2.3");
+        v.put("pid", 42L);
+        v.put("startedAt", 1_000L);
+        v.put("activeRequests", activeRequests);
+        v.put("activeBuildPlans", activeBuildPlans);
+        v.put("heapUsedBytes", 18_000_000L);
+        v.put("heapCommittedBytes", 42_000_000L);
+        v.put("heapMaxBytes", 268_435_456L);
+        v.put("rssBytes", -1L);
+        v.put("aotTrainingPid", -1L);
+        v.put("cores", 8);
+        v.put("totalMemoryBytes", 16_000_000_000L);
+        v.put("availableMemoryBytes", 8_000_000_000L);
+        v.put("systemCpuLoad", 0.18);
+        v.put("systemLoadAverage", 1.2);
+        v.put("engineEpoch", "1.2.3@1000");
+        return v;
+    }
+
     @Test
-    void status_ack_round_trips_all_fields() {
-        String json = ProtoLifecycle.statusAck(
-                "1.2.3", 42, 1_000, 3, 7, true, 18_000_000, 42_000_000, 268_435_456, -1, -1, null, null);
+    void status_ack_carries_every_vital_and_the_socket_facts() {
+        String json = ProtoLifecycle.statusAck(vitals(3, 7), true, null, null, true);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.STATUS_ACK);
+        assertThat(json).startsWith("{\"" + EngineProtocol.TYPE_FIELD + "\":");
         assertThat(Jsonl.str(json, "version")).isEqualTo("1.2.3");
         assertThat(Jsonl.longValue(json, "pid", -1)).isEqualTo(42);
         assertThat(Jsonl.longValue(json, "startedAt", -1)).isEqualTo(1_000);
+        assertThat(Jsonl.intValue(json, "proto", -1)).isEqualTo(EngineProtocol.PROTOCOL);
         assertThat(Jsonl.intValue(json, "activeRequests", -99)).isEqualTo(3);
         assertThat(Jsonl.intValue(json, "activeBuildPlans", -99)).isEqualTo(7);
         assertThat(Jsonl.bool(json, "draining", false)).isTrue();
@@ -59,14 +82,21 @@ class EngineProtocolTest {
         assertThat(Jsonl.longValue(json, "heapMaxBytes", -99)).isEqualTo(268_435_456);
         assertThat(Jsonl.longValue(json, "rssBytes", -99)).isEqualTo(-1); // -1 = unobservable
         assertThat(Jsonl.longValue(json, "aotTrainingPid", -99)).isEqualTo(-1); // -1 = no trainer running
-        assertThat(Jsonl.str(json, "httpUrl")).isNull(); // omitted entirely when http is off
+        // The six that a positional parameter list left behind.
+        assertThat(Jsonl.intValue(json, "cores", -1)).isEqualTo(8);
+        assertThat(Jsonl.longValue(json, "totalMemoryBytes", -1)).isEqualTo(16_000_000_000L);
+        assertThat(Jsonl.longValue(json, "availableMemoryBytes", -1)).isEqualTo(8_000_000_000L);
+        assertThat(Jsonl.doubleValue(json, "systemCpuLoad", -1)).isEqualTo(0.18);
+        assertThat(Jsonl.doubleValue(json, "systemLoadAverage", -1)).isEqualTo(1.2);
+        assertThat(Jsonl.str(json, "engineEpoch")).isEqualTo("1.2.3@1000");
+        assertThat(Jsonl.str(json, "httpUrl")).isNull(); // null when http is off
         assertThat(Jsonl.str(json, "httpError")).isNull();
+        assertThat(Jsonl.str(json, "mcpUrl")).isNull();
     }
 
     @Test
     void status_ack_carries_http_url_when_serving() {
-        String json = ProtoLifecycle.statusAck(
-                "1.2.3", 42, 1_000, 3, 0, false, 1, 2, 3, -1, -1, "http://127.0.0.1:8910/", null);
+        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, "http://127.0.0.1:8910/", null, true);
         assertThat(Jsonl.str(json, "httpUrl")).isEqualTo("http://127.0.0.1:8910/");
         assertThat(Jsonl.str(json, "httpError")).isNull();
         // Trailing slash on httpUrl must not produce //mcp
@@ -75,8 +105,7 @@ class EngineProtocolTest {
 
     @Test
     void status_ack_omits_mcp_url_when_mcp_disabled() {
-        String json = ProtoLifecycle.statusAck(
-                "1.2.3", 42, 1_000, 3, 0, false, 1, 2, 3, -1, -1, "http://127.0.0.1:8910/", null, false, 3, 0);
+        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, "http://127.0.0.1:8910/", null, false);
         assertThat(Jsonl.str(json, "httpUrl")).isEqualTo("http://127.0.0.1:8910/");
         assertThat(Jsonl.str(json, "mcpUrl")).isNull();
     }
@@ -90,8 +119,7 @@ class EngineProtocolTest {
 
     @Test
     void status_ack_carries_http_error_when_bind_failed() {
-        String json = ProtoLifecycle.statusAck(
-                "1.2.3", 42, 1_000, 3, 0, false, 1, 2, 3, -1, -1, null, "Address already in use");
+        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, null, "Address already in use", true);
         assertThat(Jsonl.str(json, "httpUrl")).isNull();
         assertThat(Jsonl.str(json, "httpError")).isEqualTo("Address already in use");
     }
@@ -608,7 +636,8 @@ class EngineProtocolTest {
 
     @Test
     void explain_request_carries_the_eta_inputs() {
-        String json = ProtoReads.explainRequest("/work", "/cache", 4, true, "ci", "/jdks", true, true, false);
+        String json = new ExplainRequest("/work", "/cache", 4, true, "ci", "/jdks", true, true, false, false, 1, null)
+                .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.EXPLAIN_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.intValue(json, "workers", -1)).isEqualTo(4);
@@ -618,20 +647,22 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "serial", false)).isTrue();
         assertThat(Jsonl.bool(json, "parallelTests", false)).isTrue();
 
-        String defaults = ProtoReads.explainRequest("/w", "/c", 1, false, null, null, false, false, false);
+        String defaults =
+                new ExplainRequest("/w", "/c", 1, false, null, null, false, false, false, false, 0, null).encode();
         assertThat(Jsonl.str(defaults, "profile")).isNull();
         assertThat(Jsonl.str(defaults, "jdksDir")).isNull();
     }
 
     @Test
     void tool_resolve_request_and_finish_variant_round_trip() {
-        String req = ProtoSession.toolResolveRequest(
-                "com.example:widget-cli:1.0.0",
-                List.of("com.example:extra@1.2"),
-                "widget",
-                "com.example.Main",
-                "http://repo",
-                "/cache");
+        String req = new ToolResolveRequest(
+                        "com.example:widget-cli:1.0.0",
+                        List.of("com.example:extra@1.2"),
+                        "widget",
+                        "com.example.Main",
+                        "http://repo",
+                        "/cache")
+                .encode();
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.TOOL_RESOLVE_REQUEST);
         assertThat(Jsonl.str(req, "coord")).isEqualTo("com.example:widget-cli:1.0.0");
         assertThat(Jsonl.strArray(req, "with")).containsExactly("com.example:extra@1.2");
@@ -640,7 +671,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(req, "repoUrl")).isEqualTo("http://repo");
         assertThat(Jsonl.str(req, "cache")).isEqualTo("/cache");
 
-        String defaults = ProtoSession.toolResolveRequest("g:a:1", List.of(), "a", null, null, "/c");
+        String defaults = new ToolResolveRequest("g:a:1", List.of(), "a", null, null, "/c").encode();
         assertThat(Jsonl.str(defaults, "mainClass")).isNull();
         assertThat(Jsonl.str(defaults, "repoUrl")).isNull();
         assertThat(Jsonl.strArray(defaults, "with")).isEmpty();
@@ -665,14 +696,14 @@ class EngineProtocolTest {
 
     @Test
     void cache_prune_request_round_trips_all_fields() {
-        String json = ProtoSession.cachePruneRequest("prune", "/cache", true, true);
+        String json = new CachePruneRequest("prune", "/cache", null, true, true).encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.CACHE_PRUNE_REQUEST);
         assertThat(Jsonl.str(json, "op")).isEqualTo("prune");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
         assertThat(Jsonl.bool(json, "dryRun", false)).isTrue();
         assertThat(Jsonl.bool(json, "includeJkTmp", false)).isTrue();
 
-        String purge = ProtoSession.cachePruneRequest("purge", "/c", false, false);
+        String purge = new CachePruneRequest("purge", "/c", null, false, false).encode();
         assertThat(Jsonl.str(purge, "op")).isEqualTo("purge");
     }
 
@@ -717,7 +748,9 @@ class EngineProtocolTest {
                         List.of(),
                         false,
                         null,
-                        Map.of())
+                        Map.of(),
+                        null,
+                        null)
                 .encode();
     }
 }

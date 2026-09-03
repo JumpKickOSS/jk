@@ -4,8 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
-import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -149,15 +147,10 @@ class WorkspaceSchedulerTest {
                 .as("the fixture must cancel while \"slow\" is in flight, else nothing is drained")
                 .isTrue();
         assertThat(slowFinished).isTrue();
-        WorkspaceExecute.finish(
-                new WorkspaceBuildListener() {
-                    @Override
-                    public void onWorkspaceFinish(WorkspaceResult result) {
-                        lifecycle.add("workspace-finish");
-                    }
-                },
-                new WorkspaceResult(false, 1, List.of(), List.of(), true));
-        assertThat(lifecycle).containsExactly("module-finish:slow", "workspace-finish");
+        // The scheduler's own promise: the drained module finished before the scheduler returned.
+        // (Whether the workspace finish follows is the lifecycle's sequencing, not the scheduler's,
+        // and calling finish() here proved only the order this test would call it in.)
+        assertThat(lifecycle).containsExactly("module-finish:slow");
     }
 
     /** Assert every unit ran only after its prereqs finished (positional check on completion order). */

@@ -373,6 +373,16 @@ public final class BuildJournal {
         String declared = s.stage();
         String phase = sanitize(declared != null && !declared.isBlank() ? declared : TaskPhases.of(s.name()));
         sb.append("task.").append(task).append(".wall-ms = ").append(s.millis()).append('\n');
+        // wall-ms is the wall clock, queue wait included; wait-ms is the part of it spent blocked on
+        // a shared resource (one compiler worker serving thirty modules). Summed walls across a
+        // build read as machine-busy time, not work — the wait beside them says how much of that.
+        if (s.waitMillis() > 0) {
+            sb.append("task.")
+                    .append(task)
+                    .append(".wait-ms = ")
+                    .append(s.waitMillis())
+                    .append('\n');
+        }
         phaseTotals.merge(phase, s.millis(), Long::sum);
         if (moduleDir != null && !moduleDir.isBlank()) {
             String mod = sanitize(moduleDir);
@@ -383,6 +393,15 @@ public final class BuildJournal {
                     .append(".wall-ms = ")
                     .append(s.millis())
                     .append('\n');
+            if (s.waitMillis() > 0) {
+                sb.append("module.")
+                        .append(mod)
+                        .append(".task.")
+                        .append(task)
+                        .append(".wait-ms = ")
+                        .append(s.waitMillis())
+                        .append('\n');
+            }
             // A suite wall is only re-usable next time if we also say how many runners produced it,
             // and the re-usable form is the *normalized* one — see TestSuiteScaling.
             if (TaskNames.RUN_TESTS.equals(task)) {

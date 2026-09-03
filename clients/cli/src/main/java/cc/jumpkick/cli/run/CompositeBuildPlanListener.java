@@ -99,9 +99,9 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
-        a.stepFinish(step, group, status, duration);
-        b.stepFinish(step, group, status, duration);
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+        a.stepFinish(step, group, status, duration, waited);
+        b.stepFinish(step, group, status, duration, waited);
     }
 
     @Override

@@ -6,9 +6,9 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.runtime.ModuleGraphOps;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
+import cc.jumpkick.wire.protocol.ModuleGraphRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -45,16 +45,13 @@ public final class ModuleGraphVerb implements HostedVerb {
         try {
             ModuleGraphAck ack;
             try {
-                String dir = Jsonl.str(requestLine, "dir");
+                ModuleGraphRequest req = ModuleGraphRequest.decode(requestLine);
+                String dir = req.dir();
                 if (dir == null || dir.isBlank()) {
                     // A resident server has no meaningful cwd to fall back to.
                     throw new IllegalArgumentException("module-graph request names no dir");
                 }
-                ack = ModuleGraphOps.render(
-                        Path.of(dir),
-                        Jsonl.str(requestLine, "format"),
-                        Jsonl.str(requestLine, "modules"),
-                        Jsonl.str(requestLine, "affectedSince"));
+                ack = ModuleGraphOps.render(Path.of(dir), req.format(), req.modules(), req.affectedSince());
             } catch (Exception e) {
                 ack = ModuleGraphAck.error(Errors.text(e));
             }

@@ -119,6 +119,17 @@ class McpHandlerTest {
         Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
         assertThat(structured.get("type")).isEqualTo("status");
         assertThat(((Number) structured.get("pid")).longValue()).isEqualTo(1L);
+        // Same facts as GET /api/status: the host and epoch vitals ride too.
+        assertThat(structured)
+                .containsKeys(
+                        "aotTrainingPid",
+                        "totalMemoryBytes",
+                        "availableMemoryBytes",
+                        "systemCpuLoad",
+                        "systemLoadAverage",
+                        "engineEpoch",
+                        "peakActiveRequests",
+                        "peakActiveBuildPlans");
     }
 
     @Test

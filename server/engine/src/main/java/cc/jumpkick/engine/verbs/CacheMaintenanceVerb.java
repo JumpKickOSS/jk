@@ -5,11 +5,11 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.protocol.CachePruneRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
@@ -53,7 +53,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
     @Override
     public String decodeJob(JobSpec spec) {
         return ProtoSession.withTrigger(
-                ProtoSession.cacheClearRequest(JkDirs.cache().toString(), spec.dir(), false), "web");
+                new CachePruneRequest("clear", JkDirs.cache().toString(), spec.dir(), false, false).encode(), "web");
     }
 
     @Override
@@ -63,9 +63,10 @@ public final class CacheMaintenanceVerb implements HostedVerb {
         AtomicReference<PlanBurst.Outcome> finished = new AtomicReference<>();
         AtomicReference<BuildPlan> ranPlan = new AtomicReference<>();
         try {
-            String op = String.valueOf(Jsonl.str(requestLine, "op"));
-            Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-            boolean dryRun = Jsonl.bool(requestLine, "dryRun", false);
+            CachePruneRequest req = CachePruneRequest.decode(requestLine);
+            String op = String.valueOf(req.op());
+            Path cache = Path.of(req.cache());
+            boolean dryRun = req.dryRun();
 
             CacheMaintenanceLocks.exclusively(
                     host.cacheGate(),
@@ -77,12 +78,8 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                 switch (op) {
                                     case "purge" -> CachePlans.purgeBuildPlan(cache);
                                     case "sweep" -> CachePlans.sweepBuildPlan(cache, dryRun);
-                                    case "clear" ->
-                                        CachePlans.clearBuildPlan(
-                                                cache, Path.of(Jsonl.str(requestLine, "dir")), dryRun);
-                                    default ->
-                                        CachePlans.pruneBuildPlan(
-                                                cache, dryRun, Jsonl.bool(requestLine, "includeJkTmp", false));
+                                    case "clear" -> CachePlans.clearBuildPlan(cache, Path.of(req.dir()), dryRun);
+                                    default -> CachePlans.pruneBuildPlan(cache, dryRun, req.includeJkTmp());
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                         ranPlan.set(plan);

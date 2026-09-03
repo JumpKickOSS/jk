@@ -249,6 +249,7 @@ class ZincJavaCompilerMixedTest {
                         || named(n, "compiler-interface")
                         || n.startsWith("jline")
                         || n.startsWith("jansi")
+                        || n.startsWith("tasty-core")
                         || n.startsWith("scala")) {
                     out.add(asJar(p));
                     continue;
@@ -327,9 +328,14 @@ class ZincJavaCompilerMixedTest {
                 if (z.getEntry("dotty/tools/dotc/Compiler.class") != null) return Kind.COMPILER;
                 if (z.getEntry("dotty/tools/xsbt/CompilerBridge.class") != null) return Kind.BRIDGE;
                 if (z.getEntry("scala/Predef.class") != null) return Kind.LIBRARY;
+                // Everything scalac itself links against: the instance loader no longer sees the
+                // test JVM's classpath through a parent, so the closure has to be complete here.
                 if (z.getEntry("org/jline/terminal/Terminal.class") != null
                         || z.getEntry("org/fusesource/jansi/Ansi.class") != null
-                        || z.getEntry("xsbti/compile/CompilerInterface2.class") != null) {
+                        || z.getEntry("xsbti/compile/CompilerInterface2.class") != null
+                        || z.getEntry("dotty/tools/tasty/TastyReader.class") != null
+                        || z.getEntry("dotty/tools/dotc/interfaces/Diagnostic.class") != null
+                        || z.getEntry("scala/tools/asm/ClassReader.class") != null) {
                     return Kind.TOOL;
                 }
                 return Kind.OTHER;

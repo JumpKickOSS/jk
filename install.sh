@@ -71,6 +71,13 @@ note()  { printf '%s    %s%s\n' "$DIM" "$*" "$RESET"; }
 err()   { printf '%s%s%s %s\n' "$RED" "$CROSS" "$RESET" "$*" >&2; }
 die()   { err "$@"; exit 1; }
 
+# JkDirs refuses a relative JK_HOME (exit USAGE); an installer that accepted one put the client
+# under ./rel/bin and then every jk step it ran failed with that refusal, downgraded to a note.
+case "$JK_HOME_DIR" in
+  /*) ;;
+  *) die "JK_HOME must be an absolute path: $JK_HOME_DIR" ;;
+esac
+
 # Run a child `jk` with its stdin bound to the terminal (or /dev/null) — never
 # the (possibly piped) script stdin. Callers add their own stdout/stderr redirs.
 # ($JK_BIN is resolved at call time, after the install step sets it.)

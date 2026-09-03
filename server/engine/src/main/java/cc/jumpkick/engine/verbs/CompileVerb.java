@@ -95,8 +95,8 @@ public final class CompileVerb implements HostedVerb {
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 Path entryDir = session.workingDir();
                 // Workspace (root or member): the one-orchestrator COMPILE path — compile-only
-                // terminal on the selection, prereqs packaged first via the shared cascade
-                // . The client mirrors this condition and expects workspace events.
+                // terminal on the selection, prereqs packaged first via the shared cascade.
+                // The client mirrors this condition and expects workspace events.
                 var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
                     JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));

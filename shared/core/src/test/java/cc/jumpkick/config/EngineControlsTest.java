@@ -7,7 +7,9 @@ import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -19,13 +21,20 @@ class EngineControlsTest {
 
     private static final Pattern ENV = Pattern.compile("JK_ENGINE_[A-Z0-9_]+");
 
-    private static final String[] MAIN = {
-        "shared/core/src/main/java",
-        "shared/host/src/main/java",
-        "shared/wire/src/main/java",
-        "server/engine/src/main/java",
-        "clients/cli/src/main/java",
-    };
+    /** Every module's production sources — a hand-typed five-module list missed 26 of 31. */
+    private static List<Path> mainSourceRoots(Path root) throws IOException {
+        List<Path> out = new ArrayList<>();
+        for (String family : List.of("shared", "server", "clients", "plugins")) {
+            try (var modules = Files.list(root.resolve(family))) {
+                for (Path module : modules.sorted().toList()) {
+                    Path main = module.resolve("src/main/java");
+                    if (Files.isDirectory(main)) out.add(main);
+                }
+            }
+        }
+        if (out.size() < 20) throw new AssertionError("expected every module's src/main/java, found " + out.size());
+        return out;
+    }
 
     @Test
     void published_tables_match_the_catalog() throws IOException {
@@ -56,8 +65,7 @@ class EngineControlsTest {
     void every_live_jk_engine_env_is_in_the_catalog() throws IOException {
         Set<String> live = new LinkedHashSet<>();
         Path root = RepoRoot.find(EngineControlsTest.class);
-        for (String rel : MAIN) {
-            Path dir = root.resolve(rel);
+        for (Path dir : mainSourceRoots(root)) {
             if (!Files.isDirectory(dir)) continue;
             try (Stream<Path> walk = Files.walk(dir)) {
                 walk.filter(p -> p.toString().endsWith(".java")).forEach(p -> {

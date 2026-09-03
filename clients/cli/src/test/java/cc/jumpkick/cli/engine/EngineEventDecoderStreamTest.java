@@ -181,7 +181,8 @@ class EngineEventDecoderStreamTest {
                         ProtoEvents.planStep("/w/a", "compile-java", "compile", "compile"),
                         ProtoEvents.planDone(1),
                         ProtoEvents.moduleStart("/w/a"),
-                        ProtoEvents.stepFinish("/w/a", "compile-java", "compile", TaskStatus.SUCCESS.name(), 1_234),
+                        ProtoEvents.stepFinish(
+                                "/w/a", "compile-java", "compile", TaskStatus.SUCCESS.name(), 1_234, 900),
                         ProtoEvents.planFinish("/w/a", true),
                         ProtoEvents.moduleFinish("/w/a", "g:a:1", true, 0, 1_234),
                         ProtoEvents.workspaceFinish(true, 0, List.of(), false),
@@ -191,6 +192,7 @@ class EngineEventDecoderStreamTest {
                 null);
 
         assertThat(rec.stepDurations).containsExactly(Duration.ofMillis(1_234));
+        assertThat(rec.stepWaits).containsExactly(Duration.ofMillis(900));
     }
 
     /**
@@ -240,7 +242,7 @@ class EngineEventDecoderStreamTest {
         List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
         BuildPlanListener listener = new BuildPlanListener() {
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
                 durations.add(duration);
             }
 
@@ -263,7 +265,7 @@ class EngineEventDecoderStreamTest {
                 2,
                 List.of("void bar() {", "  fail();"));
 
-        String finish = ProtoEvents.stepFinish("/p", "audit", "verify", TaskStatus.SUCCESS.name(), 2_500);
+        String finish = ProtoEvents.stepFinish("/p", "audit", "verify", TaskStatus.SUCCESS.name(), 2_500, 0);
         String error = ProtoEvents.errorLine("/p", "run-tests", "test-failure", "boom", info);
         EngineEventDecoder.dispatch(Jsonl.str(finish, "type"), finish, listener, diagnostics::add);
         EngineEventDecoder.dispatch(Jsonl.str(error, "type"), error, listener, diagnostics::add);
@@ -280,6 +282,7 @@ class EngineEventDecoderStreamTest {
     /** Records what a workspace build actually told its front-end, per module. */
     private static final class Recorder implements WorkspaceBuildListener {
         final List<Duration> stepDurations = new ArrayList<>();
+        final List<Duration> stepWaits = new ArrayList<>();
         final Map<String, List<String>> diagnosticsByModule = new LinkedHashMap<>();
 
         @Override
@@ -287,8 +290,10 @@ class EngineEventDecoderStreamTest {
             String name = module.dir().getFileName().toString();
             return new BuildPlanListener() {
                 @Override
-                public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+                public void stepFinish(
+                        String step, String group, TaskStatus status, Duration duration, Duration waited) {
                     stepDurations.add(duration);
+                    stepWaits.add(waited);
                 }
 
                 @Override

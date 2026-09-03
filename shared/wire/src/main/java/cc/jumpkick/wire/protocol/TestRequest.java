@@ -16,7 +16,11 @@ public record TestRequest(
         boolean offline,
         boolean force,
         boolean parallelTests,
-        @Nullable TestSelection selection) {
+        @Nullable TestSelection selection,
+        /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
+        @Nullable String trigger,
+        /** Progress-bar mode the requester's environment asked for; null for auto. */
+        @Nullable String progressMode) {
 
     public TestRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;
@@ -34,8 +38,8 @@ public record TestRequest(
                 .bool("force", force)
                 .bool("parallelTests", parallelTests)
                 .testSelection(selection, false)
-                .trigger()
-                .progressMode()
+                .optionalNonBlankString("trigger", trigger)
+                .optionalNonBlankString("progressMode", progressMode)
                 .finish();
     }
 
@@ -50,6 +54,8 @@ public record TestRequest(
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "force", false),
                 Jsonl.bool(json, "parallelTests", true),
-                ProtoJobs.testSelectionOf(json));
+                ProtoJobs.testSelectionOf(json),
+                Jsonl.str(json, "trigger"),
+                Jsonl.str(json, "progressMode"));
     }
 }

@@ -8,44 +8,14 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-/** Session envelope, tool/script/cache/history request builders. */
+/**
+ * The session envelope — variant, client env, worker-JVM tuning, toolchain selection, trigger —
+ * spliced onto any encoded request line, with its decoders; plus the hosted long-tail
+ * {@code plan-finish} variants (tool, script, cache) and the {@code prune-wait} notice.
+ */
 public final class ProtoSession {
 
     private ProtoSession() {}
-
-    // ---- hosted long-tail commands -----------------------------------------------------------------
-
-    /**
-     * Resolve a Maven-published CLI tool (see {@link EngineProtocol#TOOL_RESOLVE_REQUEST}). {@code coord} is a
-     * {@code ToolCoordSpec} string — pinned {@code g:a:v} or floating {@code g:a[@selector]},
-     * pinned engine-side against maven-metadata. {@code with} carries {@code --with} extras (same
-     * grammar, may be empty). {@code mainClass} is the {@code --main} override ({@code null} =
-     * read the primary jar's manifest engine-side); {@code repoUrl} overrides Maven Central
-     * ({@code null} = Central).
-     */
-    public static String toolResolveRequest(
-            String coord,
-            List<String> with,
-            String bin,
-            @Nullable String mainClass,
-            @Nullable String repoUrl,
-            String cache) {
-        return "{\"type\":\""
-                + EngineProtocol.TOOL_RESOLVE_REQUEST
-                + "\",\"coord\":"
-                + Jsonl.quote(coord)
-                + ",\"with\":"
-                + quoteArray(with)
-                + ",\"bin\":"
-                + Jsonl.quote(bin)
-                + ",\"mainClass\":"
-                + Jsonl.quote(mainClass)
-                + ",\"repoUrl\":"
-                + Jsonl.quote(repoUrl)
-                + ",\"cache\":"
-                + Jsonl.quote(cache)
-                + "}";
-    }
 
     /**
      * As {@link ProtoEvents#planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#TOOL_RESOLVE_REQUEST}
@@ -68,37 +38,6 @@ public final class ProtoSession {
                 + Jsonl.quote(mainClass)
                 + ",\"toolClasspath\":"
                 + quoteArray(classpath)
-                + "}";
-    }
-
-    /**
-     * Prepare a loose script/jar for execution (see {@link EngineProtocol#SCRIPT_PREPARE_REQUEST}). {@code
-     * stateDir}/{@code repoUrl} may be {@code null} (defaults).
-     */
-    public static String scriptPrepareRequest(
-            String mode,
-            String script,
-            String cache,
-            String stateDir,
-            String repoUrl,
-            boolean forceRecompile,
-            List<String> with) {
-        return "{\"type\":\""
-                + EngineProtocol.SCRIPT_PREPARE_REQUEST
-                + "\",\"mode\":"
-                + Jsonl.quote(mode)
-                + ",\"with\":"
-                + quoteArray(with)
-                + ",\"script\":"
-                + Jsonl.quote(script)
-                + ",\"cache\":"
-                + Jsonl.quote(cache)
-                + ",\"stateDir\":"
-                + Jsonl.quote(stateDir)
-                + ",\"repoUrl\":"
-                + Jsonl.quote(repoUrl)
-                + ",\"forceRecompile\":"
-                + forceRecompile
                 + "}";
     }
 
@@ -131,44 +70,6 @@ public final class ProtoSession {
                 + Jsonl.quote(kotlincBin)
                 + ",\"scriptStdlib\":"
                 + Jsonl.quote(stdlib)
-                + "}";
-    }
-
-    /**
-     * Run a cache maintenance operation (see {@link EngineProtocol#CACHE_PRUNE_REQUEST}). {@code op} is {@code
-     * prune}/{@code purge}/{@code sweep}; {@code includeJkTmp} asks the prune to also sweep {@code
-     * state/tmp} (only when the default cache dir is in use).
-     */
-    public static String cachePruneRequest(String op, String cache, boolean dryRun, boolean includeJkTmp) {
-        return "{\"type\":\""
-                + EngineProtocol.CACHE_PRUNE_REQUEST
-                + "\",\"op\":"
-                + Jsonl.quote(op)
-                + ",\"cache\":"
-                + Jsonl.quote(cache)
-                + ",\"dryRun\":"
-                + dryRun
-                + ",\"includeJkTmp\":"
-                + includeJkTmp
-                + "}";
-    }
-
-    /**
-     * A project-scoped cache-clear request (see {@link EngineProtocol#CACHE_PRUNE_REQUEST}, {@code op="clear"}):
-     * invalidate the action-cache entries for the project at {@code projectRoot} and its workspace.
-     * Reuses the maintenance channel; {@code dir} is the project root (the one spelling every
-     * request uses for its location), and {@code dryRun} reports what would be removed without
-     * deleting.
-     */
-    public static String cacheClearRequest(String cache, String projectRoot, boolean dryRun) {
-        return "{\"type\":\""
-                + EngineProtocol.CACHE_PRUNE_REQUEST
-                + "\",\"op\":\"clear\",\"cache\":"
-                + Jsonl.quote(cache)
-                + ",\"dir\":"
-                + Jsonl.quote(projectRoot)
-                + ",\"dryRun\":"
-                + dryRun
                 + "}";
     }
 
@@ -397,26 +298,5 @@ public final class ProtoSession {
     /** {@code Jsonl} only reads string arrays; it has no writer half, so this is the encode side. */
     static String quoteArray(List<String> values) {
         return Jsonl.array(values);
-    }
-
-    // ---- build-history request builders (responses are built engine-side with JsonOut) ----------
-
-    public static String historyListRequest(int limit) {
-        return "{\"type\":\"" + EngineProtocol.HISTORY_LIST_REQUEST + "\",\"limit\":" + limit + "}";
-    }
-
-    public static String historyShowRequest(String id) {
-        return "{\"type\":\"" + EngineProtocol.HISTORY_SHOW_REQUEST + "\",\"id\":" + Jsonl.quote(id) + "}";
-    }
-
-    public static String historyDeleteRequest(String id) {
-        return "{\"type\":\"" + EngineProtocol.HISTORY_DELETE_REQUEST + "\",\"id\":" + Jsonl.quote(id) + "}";
-    }
-
-    /** A metrics stream request; null/blank {@code dir} asks for every row. */
-    public static String metricsRequest(String dir) {
-        return dir == null || dir.isBlank()
-                ? "{\"type\":\"" + EngineProtocol.METRICS_REQUEST + "\"}"
-                : "{\"type\":\"" + EngineProtocol.METRICS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + "}";
     }
 }

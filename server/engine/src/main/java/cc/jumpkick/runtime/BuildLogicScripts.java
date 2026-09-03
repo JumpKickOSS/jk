@@ -162,12 +162,25 @@ final class BuildLogicScripts {
         return BuildLogicStems.normalize(stem);
     }
 
+    /**
+     * {@code <module>/.jk/<file>}: the notice's key and its subject. Keyed by the file's full path,
+     * not its name — two modules with the same misspelled stem are two silent no-ops, and a
+     * per-run once-only notice keyed on the name alone reported the first and swallowed the second.
+     */
+    private static String moduleRelative(Path logicDir, Path file) {
+        Path module = logicDir.toAbsolutePath().normalize().getParent();
+        String owner = module == null || module.getFileName() == null
+                ? "."
+                : module.getFileName().toString();
+        return owner + "/" + logicDir.getFileName() + "/" + logicDir.relativize(file);
+    }
+
     private static void warnUnknownStem(Path logicDir, Path file, String stem) {
-        RunNotices.warnOnce("build-logic-unknown-stem:" + file.getFileName(), () -> {
+        RunNotices.warnOnce("build-logic-unknown-stem:" + file.toAbsolutePath().normalize(), () -> {
             String suggest = BuildLogicStems.closest(stem)
                     .map(s -> " Did you mean " + s + "?")
                     .orElse("");
-            return "[build] " + logicDir.getFileName() + "/" + file.getFileName()
+            return "[build] " + moduleRelative(logicDir, file)
                     + " is not a recognized build-logic stem, so it will not run." + suggest
                     + " Module stems: " + String.join(" / ", BuildLogicStems.MODULE)
                     + "; invocation-root stems: " + String.join(" / ", BuildLogicStems.ROOT) + ".";
@@ -184,11 +197,10 @@ final class BuildLogicScripts {
                 if (file.endsWith(".groovy")) stem = file.substring(0, file.length() - ".groovy".length());
                 else if (file.endsWith(".kts")) stem = file.substring(0, file.length() - ".kts".length());
                 if (stem == null || BuildLogicStems.match(stem).isEmpty()) return true;
-                Path rel = logicDir.relativize(p);
                 RunNotices.warnOnce(
-                        "build-logic-nested-stem:" + rel,
+                        "build-logic-nested-stem:" + p.toAbsolutePath().normalize(),
                         () -> "[build] "
-                                + logicDir.getFileName() + "/" + rel
+                                + moduleRelative(logicDir, p)
                                 + " will not run: build-logic scripts are discovered at the top level of "
                                 + logicDir.getFileName() + "/ only — move it up a level.");
                 return true;

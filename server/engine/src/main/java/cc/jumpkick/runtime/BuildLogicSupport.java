@@ -61,11 +61,19 @@ public final class BuildLogicSupport {
         return run(projectDir, layout, actionCache, classesDir, anchor, label, new AtomicReference<>());
     }
 
-    /** One line per line, skipping a trailing blank so a script's final newline adds nothing. */
-    private static void emitLines(String captured, Consumer<String> output) {
+    /**
+     * A script's transcript on the output channel: one header line naming the script, then its
+     * lines indented under it, so a reader of the Ctrl-O ring or a {@code -v} run knows which
+     * {@code .jk/*.kts} said what. Split on any line terminator — the Kotlin host captures
+     * {@code println} with the platform separator and the Groovy host reads the forked process
+     * raw, so on Windows every line would otherwise keep its {@code \r}. A trailing blank from the
+     * script's final newline adds nothing.
+     */
+    static void emitLines(String scriptFile, String captured, Consumer<String> output) {
         if (captured == null || captured.isBlank() || output == null) return;
-        for (String line : captured.stripTrailing().split("\n", -1)) {
-            output.accept(line);
+        output.accept(scriptFile + ":");
+        for (String line : captured.stripTrailing().split("\\R", -1)) {
+            output.accept("  " + line);
         }
     }
 
@@ -310,7 +318,7 @@ public final class BuildLogicSupport {
                 // use: buffered for the Ctrl-O peek ring, above the live region, printed under
                 // `-v`. Only the success path emits — a failure throws above with its output
                 // already attached to the message.
-                emitLines(captured, output);
+                emitLines(task.source(), captured, output);
             } catch (Exception e) {
                 if (e instanceof InterruptedException ie) throw ie;
                 if (e instanceof IOException ioe) throw ioe;
@@ -344,7 +352,8 @@ public final class BuildLogicSupport {
         String run(Path projectDir, Path outDir) throws Exception;
     }
 
-    private record RegisteredTask(String name, String kind, ScriptRun run, boolean always) {}
+    /** @param source the script's file name, for attributing its output */
+    private record RegisteredTask(String name, String kind, ScriptRun run, boolean always, String source) {}
 
     private static Map<BuildLogicAnchor, List<RegisteredTask>> emptyByAnchor() {
         Map<BuildLogicAnchor, List<RegisteredTask>> out = new EnumMap<>(BuildLogicAnchor.class);
@@ -375,7 +384,13 @@ public final class BuildLogicSupport {
                 }
             };
             String kindLabel = kind == BuildLogicScripts.ScriptKind.KTS ? "script-kts" : "script";
-            byAnchor.get(s.anchor()).add(new RegisteredTask(s.name(), kindLabel, task, s.always()));
+            byAnchor.get(s.anchor())
+                    .add(new RegisteredTask(
+                            s.name(),
+                            kindLabel,
+                            task,
+                            s.always(),
+                            s.file().getFileName().toString()));
         }
     }
 

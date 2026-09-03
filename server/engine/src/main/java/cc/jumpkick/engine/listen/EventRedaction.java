@@ -76,7 +76,7 @@ public final class EventRedaction {
      * discoverable. Once per run via {@link RunNotices}: the resident engine says it again for
      * the next build, not only for the first one after a restart.
      */
-    static void warnFailOpen(RuntimeException e) {
+    public static void warnFailOpen(RuntimeException e) {
         RunNotices.warnOnce(
                 "secret-redaction-fail-open",
                 () -> "jk engine: secret redaction failed open ("
@@ -161,6 +161,7 @@ public final class EventRedaction {
             String masked = redactor.maskTrailingSecretPrefix(head);
             return masked.equals(head) ? text : masked + text.substring(at);
         } catch (RuntimeException e) {
+            warnFailOpen(e);
             return text;
         }
     }

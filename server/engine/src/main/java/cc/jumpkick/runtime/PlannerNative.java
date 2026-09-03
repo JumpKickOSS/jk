@@ -76,9 +76,9 @@ public final class PlannerNative {
                 .execute(ctx -> {
                     // Fail-fast: verify native-image is available before compilation
                     // has already run and the user has waited for potentially minutes.
-                    // Resolution: explicit graalHome (client) → $GRAALVM_HOME → project JDK →
-                    // running JVM. [native] enabled = "always" on jk build takes this path with
-                    // graalHome=null and relies on env / project JDK having native-image.
+                    // Resolution: the client-resolved home → the request's $GRAALVM_HOME → project
+                    // JDK → running JVM. jk build, jk install and jk native all ship the first for
+                    // every module that links a native image; the rest is the safety net.
                     Path javaHomeEarly = resolveNativeImageHome(graalHome, dir, jdksDir);
                     if (cc.jumpkick.tool.NativeImageDriver.resolve(javaHomeEarly)
                             .isEmpty()) {

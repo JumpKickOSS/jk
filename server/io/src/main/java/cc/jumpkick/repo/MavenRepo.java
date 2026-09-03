@@ -426,7 +426,7 @@ public final class MavenRepo {
 
             // Prefer the collision-resistant .sha256 sidecar; fall back to .sha1 only when the repo
             // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
-            // for bytes any `mvn install` could have seeded —).
+            // for bytes any `mvn install` could have seeded).
             String vouchAlgo;
             Optional<String> advertised = fetchSidecar(uri, ".sha256", 64);
             if (advertised.isPresent()) {

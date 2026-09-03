@@ -8,12 +8,12 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ForecastRequest;
 import cc.jumpkick.wire.protocol.ProtoReads;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
@@ -54,13 +54,14 @@ public final class ForecastVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
+                ForecastRequest req = ForecastRequest.decode(requestLine);
+                Path entryDir = Path.of(req.dir());
+                Path cache = Path.of(req.cache());
+                boolean skipTests = req.skipTests();
                 JkConfig config = JkConfig.empty()
-                        .withOffline(Jsonl.bool(requestLine, "offline", false))
-                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
-                        .withForce(Jsonl.bool(requestLine, "force", false));
+                        .withOffline(req.offline())
+                        .withRebuild(req.rebuild())
+                        .withForce(req.force());
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)

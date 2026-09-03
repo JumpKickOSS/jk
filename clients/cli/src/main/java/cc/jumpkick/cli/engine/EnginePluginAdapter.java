@@ -112,7 +112,7 @@ final class EnginePluginAdapter {
                         case EngineProtocol.PLAN_TASK ->
                             steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
+                                    .group(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                         case EngineProtocol.AUDIT_FINDING,

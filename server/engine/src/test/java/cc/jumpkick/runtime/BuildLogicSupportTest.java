@@ -16,6 +16,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -162,7 +163,7 @@ class BuildLogicSupportTest {
         assertTrue(Files.isRegularFile(generated(layout, "before-compile", "before-compile.txt")));
         assertFalse(Files.exists(classes.resolve("before-compile.txt")), "codegen must not land in classes/");
         assertTrue(labels.toString().contains("before-compile"), labels.toString());
-        assertEquals("generate", BuildLogicAnchor.BEFORE_COMPILE.stageWireName());
+        assertEquals(BuildStage.GENERATE, BuildLogicAnchor.BEFORE_COMPILE.stage());
 
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(

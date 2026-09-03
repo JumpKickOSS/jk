@@ -6,10 +6,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.ProjectInfoPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.protocol.ProjectInfoRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -50,14 +50,11 @@ public final class ProjectInfoVerb implements HostedVerb {
                 // project's layout, lock freshness and test tags, and every one of those reads the
                 // ambient session; without this they read the daemon's.
                 Session session = host.resolveSession(requestLine, cancelToken, false);
+                ProjectInfoRequest req = ProjectInfoRequest.decode(requestLine);
                 info = SessionContext.where(
                         session,
                         () -> ProjectInfoPlans.projectInfo(
-                                Path.of(Jsonl.str(requestLine, "dir")),
-                                Jsonl.str(requestLine, "modules"),
-                                Jsonl.str(requestLine, "affectedSince"),
-                                Jsonl.bool(requestLine, "affected", false),
-                                Jsonl.bool(requestLine, "counts", false)));
+                                Path.of(req.dir()), req.modules(), req.affectedSince(), req.affected(), req.counts()));
             } catch (Exception e) {
                 info = ProjectInfo.error(Errors.text(e));
             }

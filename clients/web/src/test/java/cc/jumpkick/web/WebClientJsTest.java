@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -67,11 +69,21 @@ class WebClientJsTest {
         if ("1".equals(System.getenv(SKIP_ENV))) {
             Assumptions.abort(SKIP_ENV + "=1 — the JS suites were skipped on request");
         }
-        if (!nodeAvailable()) {
+        Optional<Integer> installed = installedNodeMajor();
+        if (installed.isEmpty()) {
             throw new AssertionError("`node` is not on PATH, and the dashboard's JS suites are part of "
                     + "the gate. Install Node " + requiredNodeVersion()
                     + " (see .nvmrc / CONTRIBUTING.md), or skip this tier deliberately with "
                     + SKIP_ENV + "=1.");
+        }
+        // The gate reads .nvmrc for real: a contributor on another major would otherwise run the
+        // suites under a runtime CI never sees, with a pin-named test staying green throughout.
+        int required = requiredNodeMajor();
+        if (installed.get() != required) {
+            throw new AssertionError("the dashboard's JS suites run on Node " + installed.get()
+                    + " here, but the gate pins Node " + requiredNodeVersion()
+                    + " (.nvmrc). Install that major (nvm/fnm/mise read the file), or skip this tier "
+                    + "deliberately with " + SKIP_ENV + "=1.");
         }
 
         Path assets = moduleRoot().resolve(WEB_ASSETS);
@@ -134,14 +146,6 @@ class WebClientJsTest {
      * template, where Vue resolves an unknown field to undefined and the column silently shows an
      * em dash forever.
      */
-    @Test
-    void required_node_version_is_the_nvmrc_pin() throws Exception {
-        String pin = Files.readString(RepoRoot.find(WebClientJsTest.class).resolve(".nvmrc"))
-                .trim();
-        assertThat(pin).matches("\\d+(\\.\\d+)*");
-        assertThat(requiredNodeVersion()).isEqualTo(pin);
-    }
-
     @Test
     void the_history_table_reads_the_nested_test_counts() throws Exception {
         String html = Files.readString(moduleRoot().resolve(WEB_ASSETS).resolve("index.html"));
@@ -216,13 +220,26 @@ class WebClientJsTest {
         }
     }
 
-    private static boolean nodeAvailable() {
+    /** The major of the {@code node} on PATH ({@code v24.15.0} → 24), or empty when there is none. */
+    private static Optional<Integer> installedNodeMajor() {
         try {
-            Process p = new ProcessBuilder("node", "--version").start();
-            return p.waitFor(10, TimeUnit.SECONDS) && p.exitValue() == 0;
+            Process p = new ProcessBuilder("node", "--version")
+                    .redirectErrorStream(true)
+                    .start();
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            if (!p.waitFor(10, TimeUnit.SECONDS) || p.exitValue() != 0) return Optional.empty();
+            Matcher m = Pattern.compile("^v?(\\d+)").matcher(out);
+            return m.find() ? Optional.of(Integer.parseInt(m.group(1))) : Optional.empty();
         } catch (IOException | InterruptedException e) {
-            return false;
+            return Optional.empty();
         }
+    }
+
+    /** The leading integer of the {@code .nvmrc} pin ({@code 24} or {@code 24.15.0} → 24). */
+    static int requiredNodeMajor() {
+        Matcher m = Pattern.compile("^v?(\\d+)").matcher(requiredNodeVersion());
+        if (!m.find()) throw new AssertionError(".nvmrc does not start with a Node major: " + requiredNodeVersion());
+        return Integer.parseInt(m.group(1));
     }
 
     /** Version token from {@code .nvmrc}, the same pin CI installs. */

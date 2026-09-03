@@ -294,9 +294,15 @@ public record BuildRecord(
      * cards render, and so the metrics rollup buckets by what the plan declared rather than
      * re-guessing from the task name.
      */
-    public record Task(String name, String stage, String status, long millis) {
+    /**
+     * @param millis the step's wall clock, queue wait included
+     * @param waitMillis the part of that wall spent blocked on a shared resource (a compiler
+     *     worker's queue); {@code millis - waitMillis} is the step's own work
+     */
+    public record Task(String name, String stage, String status, long millis, long waitMillis) {
         public Task {
             stage = stage == null ? "" : stage;
+            waitMillis = Math.max(0, waitMillis);
         }
     }
 

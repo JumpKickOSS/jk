@@ -57,7 +57,7 @@ public final class PropertyRoots {
 
     /**
      * Contributed teardown that must run while redirected roots are still in force. Register via
-     * {@code META-INF/services/cc.jumpkick.testing.RootTeardownHook} on the test classpath.
+     * {@code META-INF/services/cc.jumpkick.testing.PropertyRoots$RootTeardownHook} (the nested interface's binary name) on the test classpath.
      */
     public interface RootTeardownHook {
         void beforeRootTeardown();

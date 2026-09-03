@@ -4,7 +4,6 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -13,6 +12,7 @@ import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.ScriptPrepareRequest;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Files;
@@ -51,19 +51,20 @@ public final class ScriptPrepareVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                String mode = String.valueOf(Jsonl.str(requestLine, "mode"));
-                Path script = Path.of(Jsonl.str(requestLine, "script"));
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String stateDirStr = Jsonl.str(requestLine, "stateDir");
+                ScriptPrepareRequest req = ScriptPrepareRequest.decode(requestLine);
+                String mode = String.valueOf(req.mode());
+                Path script = Path.of(req.script());
+                Path cache = Path.of(req.cache());
+                String stateDirStr = req.stateDir();
                 Path stateDir = stateDirStr != null ? Path.of(stateDirStr) : JkDirs.state();
-                URI repoUrl = LockVerb.repoUrlOf(requestLine);
-                boolean forceRecompile = Jsonl.bool(requestLine, "forceRecompile", false);
+                URI repoUrl = req.repoUrl() == null ? null : URI.create(req.repoUrl());
+                boolean forceRecompile = req.forceRecompile();
                 Files.createDirectories(cache);
                 Session session = Session.defaults()
                         .withWorkingDir(script.toAbsolutePath().getParent())
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
-                List<Dependency> extraDeps = Jsonl.strArray(requestLine, "with").stream()
+                List<Dependency> extraDeps = req.with().stream()
                         .map(ScriptHeaderParser::parseDependency)
                         .toList();
                 BuildPlan plan =

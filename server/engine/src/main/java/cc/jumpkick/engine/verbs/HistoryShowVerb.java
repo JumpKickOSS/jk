@@ -9,9 +9,9 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.HistoryShowRequest;
 import java.io.BufferedWriter;
 import java.util.Objects;
 import java.util.Optional;
@@ -47,7 +47,7 @@ public final class HistoryShowVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String id = Jsonl.str(requestLine, "id");
+            String id = HistoryShowRequest.decode(requestLine).id();
             Optional<BuildRecord> found =
                     id == null ? Optional.empty() : host.journal().get(id);
             if (found.isEmpty()) {
@@ -150,6 +150,7 @@ public final class HistoryShowVerb implements HostedVerb {
         try {
             return EventRedaction.redactorFor(dir);
         } catch (RuntimeException e) {
+            EventRedaction.warnFailOpen(e);
             return SecretRedactor.none();
         }
     }
@@ -186,6 +187,7 @@ public final class HistoryShowVerb implements HostedVerb {
         try {
             return r.redact(text);
         } catch (RuntimeException e) {
+            EventRedaction.warnFailOpen(e);
             return text;
         }
     }

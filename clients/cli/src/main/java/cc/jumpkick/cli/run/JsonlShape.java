@@ -283,7 +283,7 @@ public final class JsonlShape {
 
     /**
      * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
-     * exceptionClass, and a single top-level stack (no nested throwable duplicate —).
+     * exceptionClass, and a single top-level stack (no nested throwable duplicate).
      */
     static String error(String step, String code, String msg, TestFailureInfo failure) {
         if (failure == null) return error(step, code, msg);
@@ -319,7 +319,7 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
-    static String stepFinish(String step, String group, TaskStatus status, Duration duration) {
+    static String stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
         return open(EngineProtocol.TASK_FINISH)
                 .append(",\"task\":")
                 .append(js(step))
@@ -329,6 +329,8 @@ public final class JsonlShape {
                 .append(js(status.name()))
                 .append(",\"duration_ms\":")
                 .append(duration.toMillis())
+                .append(",\"wait_ms\":")
+                .append(waited == null ? 0 : waited.toMillis())
                 .append('}')
                 .toString();
     }

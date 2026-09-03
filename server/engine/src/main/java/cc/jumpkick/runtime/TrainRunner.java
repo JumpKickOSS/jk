@@ -210,8 +210,8 @@ public final class TrainRunner {
         sb.append("jk=").append(JkVersion.VERSION).append('\n');
         sb.append("agent=native-image-agent\n");
         // The AOT cache is valid only for the exact JVM build that trained it, and a rejected
-        // cache is silent at runtime — a JDK switch must therefore invalidate the outputs
-        // . The release file carries vendor+build identity.
+        // cache is silent at runtime — a JDK switch must therefore invalidate the outputs.
+        // The release file carries vendor+build identity.
         sb.append("jvm=").append(jvmIdentityToken(javaHome)).append('\n');
         if (Files.isRegularFile(lockFile)) {
             sb.append("lock=").append(Hashing.sha256Hex(lockFile)).append('\n');

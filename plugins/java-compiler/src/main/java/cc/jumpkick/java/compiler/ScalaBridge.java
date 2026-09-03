@@ -3,11 +3,13 @@ package cc.jumpkick.java.compiler;
 
 import cc.jumpkick.host.Classpaths;
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -102,11 +104,21 @@ final class ScalaBridge {
                     "Scala compiler classpath must include org.scala-lang:scala-library (the stdlib)");
         }
         String scalaVersion = mixed.version();
-        URL[] allUrls = urls(allJars);
         URL[] libraryUrls = urls(libraryJars);
-        ClassLoader parent = ScalaBridge.class.getClassLoader();
-        ClassLoader libraryLoader = new URLClassLoader(libraryUrls, parent);
-        ClassLoader compilerLoader = new URLClassLoader(allUrls, parent);
+        File[] compilerOnly = without(allJars, libraryJars, bridge);
+        URL[] compilerOnlyUrls = urls(compilerOnly);
+        // The instance loaders never parent on this worker's app loader: it carries Zinc's own
+        // transitive Scala stdlib, and a parent-first URLClassLoader resolved every scala.* class
+        // from it, so the compiler ran against a stdlib it was not built for (scalac 3.9.0 died on
+        // NoSuchMethodError: scala.Option.orNull() with the older Option loaded underneath it).
+        // What the compiler does need from this side is xsbti.* — the callback types Zinc hands
+        // the bridge must be the same class objects the compiler's sbt phases were linked
+        // against — so the parent exposes exactly that package from the worker loader and the JDK
+        // from the platform loader, as sbt's top loader does. The bridge jar stays out of the
+        // instance: Zinc loads it itself, over its own xsbti/scala dual loader.
+        ClassLoader root = new XsbtiTopLoader(ScalaBridge.class.getClassLoader());
+        ClassLoader libraryLoader = new URLClassLoader(libraryUrls, root);
+        ClassLoader compilerLoader = new URLClassLoader(compilerOnlyUrls, libraryLoader);
         ScalaInstance instance = new ScalaInstance(
                 scalaVersion,
                 compilerLoader,
@@ -136,6 +148,46 @@ final class ScalaBridge {
         if (out.isEmpty() && mixed.libraryJar() != null)
             out.add(mixed.libraryJar().toFile());
         return out.toArray(File[]::new);
+    }
+
+    /** {@code all} minus {@code drop} and {@code also}, in order — the compiler-only half of the closure. */
+    private static File[] without(File[] all, File[] drop, File also) {
+        List<File> out = new ArrayList<>();
+        List<File> dropped = new ArrayList<>(List.of(drop));
+        dropped.add(also);
+        for (File f : all) if (!dropped.contains(f)) out.add(f);
+        return out.toArray(File[]::new);
+    }
+
+    /**
+     * The top of the ScalaInstance loader chain: {@code xsbti.*} from the worker's loader (Zinc's
+     * compiler interface, one set of class objects for the bridge, the compiler's sbt phases and
+     * Zinc itself), everything else from the platform loader. No {@code scala.*} can come through
+     * here, which is the point.
+     */
+    private static final class XsbtiTopLoader extends ClassLoader {
+        private final ClassLoader xsbti;
+
+        XsbtiTopLoader(ClassLoader xsbti) {
+            super(ClassLoader.getPlatformClassLoader());
+            this.xsbti = xsbti;
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if (name.startsWith("xsbti.")) return xsbti.loadClass(name);
+            return super.loadClass(name, resolve);
+        }
+
+        @Override
+        public URL getResource(String name) {
+            return name.startsWith("xsbti/") ? xsbti.getResource(name) : super.getResource(name);
+        }
+
+        @Override
+        public Enumeration<URL> getResources(String name) throws IOException {
+            return name.startsWith("xsbti/") ? xsbti.getResources(name) : super.getResources(name);
+        }
     }
 
     private static File firstJar(Path extra, File[] allJars, String artifactPrefix) {

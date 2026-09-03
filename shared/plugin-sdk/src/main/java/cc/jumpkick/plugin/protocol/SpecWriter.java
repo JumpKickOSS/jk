@@ -65,7 +65,13 @@ public final class SpecWriter {
         return this;
     }
 
-    public SpecWriter configString(String key, String value) {
+    /**
+     * A {@code null} value is "unset": no line is written and the worker's {@code stringOpt(key)}
+     * is empty. Writing {@code "value":null} instead made both readers fail their non-null check
+     * with a message that named the field, not the key.
+     */
+    public SpecWriter configString(String key, @Nullable String value) {
+        if (value == null) return this;
         lines.add("{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + ",\"kind\":\"string\",\"value\":"
                 + Jsonl.quote(value) + "}");
         return this;

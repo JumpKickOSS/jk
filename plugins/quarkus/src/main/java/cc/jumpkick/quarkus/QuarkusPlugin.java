@@ -241,8 +241,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         try (Stream<Path> walk = Files.walk(root, 5)) {
             // Cheapest rejection first: the name test is free, isRegularFile re-resolves the path for
             // a stat, and the sibling-directory probe is a second stat — so the name goes first and
-            // the two stats only run for the handful of entries actually called quarkus-run.jar
-            // .
+            // the two stats only run for the handful of entries actually called quarkus-run.jar.
             return walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
                     .filter(Files::isRegularFile)
                     .filter(p -> Files.isDirectory(p.getParent().resolve("lib")))

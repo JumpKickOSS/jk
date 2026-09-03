@@ -48,9 +48,6 @@ public enum PluginJar {
     PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar", ":protobuf:installLocal"),
     MINIFIED("jk-minified", "jk.minified.plugin.jar", ":minified:installLocal");
 
-    /** Cache store + remote repo name for the official first-party Maven repo. */
-    public static final String OFFICIAL_REPO = "jumpkick";
-
     private final String artifactId;
     private final String jarProperty;
     private final String installTask;
@@ -104,7 +101,8 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, RepositorySpec.CENTRAL)) {
+        for (String repoName :
+                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
             RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
@@ -136,7 +134,8 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, RepositorySpec.CENTRAL)) {
+        for (String repoName :
+                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
             var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
             if (result.isPresent()) return result.get();
         }
@@ -197,7 +196,7 @@ public enum PluginJar {
             }
             sha = published.get();
         }
-        RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
+        RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), RepositorySpec.JUMPKICK_NAME);
         Files.createDirectories(cas.root());
         Path tmpJar = Files.createTempFile(cas.root(), ".worker-", ".jar");
         Path tmpPom = Files.createTempFile(cas.root(), ".worker-", ".pom");
@@ -229,7 +228,8 @@ public enum PluginJar {
             throw new IOException("cannot parse Maven coordinate of official worker jar " + workerJar);
         }
         // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central) — not ~/.m2.
-        MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas, RepoCredential.ANONYMOUS, false);
+        MavenRepo official =
+                new MavenRepo(RepositorySpec.JUMPKICK_NAME, base, http, cas, RepoCredential.ANONYMOUS, false);
         MavenRepo central = new MavenRepo(
                 RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
         RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));

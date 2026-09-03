@@ -99,7 +99,7 @@ class BuildLogicAnchorGatingTest {
     }
 
     private static BuildPlan plan(Path project, Path cache, boolean skipTests) {
-        FilesCreateCache(cache);
+        createCacheDirs(cache);
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
@@ -123,7 +123,7 @@ class BuildLogicAnchorGatingTest {
         return b.build();
     }
 
-    private static void FilesCreateCache(Path cache) {
+    private static void createCacheDirs(Path cache) {
         try {
             Files.createDirectories(cache);
         } catch (Exception e) {

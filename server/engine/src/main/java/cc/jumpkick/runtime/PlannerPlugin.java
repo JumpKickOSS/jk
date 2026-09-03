@@ -489,7 +489,6 @@ public final class PlannerPlugin {
         String pkgTask = packaging.keyed().taskId();
         String pkgKey = packaging.keyed().key();
         if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
-            ctx.put(JAR_PATH, jarPath);
             ctx.label(jarPath.getFileName() + " up-to-date");
             ctx.cached();
             ctx.progress(1);
@@ -583,7 +582,6 @@ public final class PlannerPlugin {
                 jarPath.getParent(),
                 produced,
                 !in.ephemeralActions());
-        ctx.put(JAR_PATH, jarPath);
         ctx.progress(1);
     }
 

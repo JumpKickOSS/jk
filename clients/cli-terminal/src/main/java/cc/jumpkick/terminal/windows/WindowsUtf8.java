@@ -85,8 +85,7 @@ public final class WindowsUtf8 {
      * line, so every line wrote through twice and a truecolor tree row could split mid-SGR-sequence.
      * A larger buffer costs nothing in liveness here: {@link PrintStream} with {@code autoFlush}
      * flushes on every {@code println} regardless of buffer size, so the size only decides how many
-     * {@code WriteFile} calls one line takes — and each of those is a round trip through conhost
-     *.
+     * {@code WriteFile} calls one line takes — and each of those is a round trip through conhost.
      *
      * <p>Autoflush holds for pipes too, not just consoles. Nothing flushes these streams at JVM
      * exit, so a piped caller — every agent harness, every {@code jk … | tail} — lost whatever sat

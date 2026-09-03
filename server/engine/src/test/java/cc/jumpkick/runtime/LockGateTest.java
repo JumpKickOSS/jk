@@ -14,7 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * One monitor per lock dir. {@link LockFlow} remains the sole acquisition owner, and
+ * One monitor per stripe, and the same normalized dir always maps to the same monitor. Two dirs
+ * may share a stripe (the cost of a collision is over-serialization, never a missed exclusion), so
+ * no test asserts they differ. {@link LockFlow} remains the sole acquisition owner, and
  * {@link WorkspaceLock} enters it rather than adding another workspace lifecycle lock.
  */
 class LockGateTest {
@@ -22,7 +24,6 @@ class LockGateTest {
     @Test
     void same_dir_resolves_to_the_same_monitor(@TempDir Path tmp) {
         assertThat(LockGate.monitorFor(tmp)).isSameAs(LockGate.monitorFor(tmp.resolve("x/..")));
-        assertThat(LockGate.monitorFor(tmp)).isNotSameAs(LockGate.monitorFor(tmp.resolve("other")));
     }
 
     @Test

@@ -17,6 +17,15 @@ class LayoutTest {
         assertThat(Layout.parse("  ")).isEqualTo(Layout.AUTO);
     }
 
+    /** The scaffold vocabulary is everything parse accepts, default first and auto (detect) last. */
+    @Test
+    void the_scaffold_vocabulary_names_its_default_first_and_auto_last() {
+        assertThat(Layout.SCAFFOLD_TOKENS).containsExactly("traditional", "simple", "auto");
+        assertThat(Layout.scaffoldHelp()).isEqualTo("traditional (default) | simple | auto");
+        for (String token : Layout.SCAFFOLD_TOKENS)
+            assertThat(Layout.parse(token)).isNotNull();
+    }
+
     @Test
     void parse_rejects_unknown_tokens() {
         assertThatThrownBy(() -> Layout.parse("mill"))

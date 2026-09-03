@@ -31,7 +31,7 @@ class AggregateModuleListenerTest {
         a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("compile", "compile", 10);
         a.progress("compile", 10, new BuildPlanView("build", 10, 10, 1, 1, false));
-        a.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ZERO);
+        a.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ZERO, Duration.ZERO);
         a.planFinish(result(true));
 
         var b = new AggregateModuleListener(agg, "g:web", List.of(step("test", "Test")));
@@ -146,7 +146,7 @@ class AggregateModuleListenerTest {
         var a = new AggregateModuleListener(agg, "cc.jumpkick:jk-engine", List.of(step("run-tests", "Testing")));
         a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("run-tests", "test", 10);
-        a.stepFinish("run-tests", "test", TaskStatus.SKIPPED, Duration.ZERO);
+        a.stepFinish("run-tests", "test", TaskStatus.SKIPPED, Duration.ZERO, Duration.ZERO);
 
         // Successful SKIPPED → phase drops from the live chain (same as SUCCESS).
         String all = String.join(
@@ -169,7 +169,7 @@ class AggregateModuleListenerTest {
         a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("compile-java", "compile", 10);
         a.error("compile-java", "javac", "cannot find symbol");
-        a.stepFinish("compile-java", "compile", TaskStatus.FAIL, Duration.ZERO);
+        a.stepFinish("compile-java", "compile", TaskStatus.FAIL, Duration.ZERO, Duration.ZERO);
 
         String all = String.join(
                 "\n",
@@ -216,7 +216,7 @@ class AggregateModuleListenerTest {
         a.label("ensure-jdk", "resolve JDK");
         // No stepFinish for ensure-jdk — wire drop / cancel mid-step.
         a.stepStart("compile-java", "compile", 1);
-        a.stepFinish("compile-java", "compile", TaskStatus.SUCCESS, Duration.ZERO);
+        a.stepFinish("compile-java", "compile", TaskStatus.SUCCESS, Duration.ZERO, Duration.ZERO);
         a.planFinish(result(true));
 
         // Sibling module still running — the orphan row must not stay in the live tree.

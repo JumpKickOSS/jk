@@ -40,7 +40,7 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        LanguageRuntimeInject.inject(p, dir, Map.of(), deps);
+        LanguageRuntimeInject.inject(p, dir, Map.of(), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(deps).containsKey(key(GROOVY));
         assertThat(deps).doesNotContainKey(key(KOTLIN_STDLIB));
     }
@@ -52,8 +52,53 @@ class LanguageRuntimeInjectTest {
         Files.createDirectories(dir.resolve("src/main/groovy"));
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        LanguageRuntimeInject.inject(p, dir, Map.of(), deps);
+        LanguageRuntimeInject.inject(p, dir, Map.of(), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(deps).isEmpty();
+    }
+
+    /**
+     * The stdlib is the compiler's stdlib. A floating manifest selector resolved the compiler to one
+     * version and the library to whatever was newest; with the resolved compiler version handed in,
+     * the injected runtime is pinned to it exactly.
+     */
+    @Test
+    void injected_runtime_is_pinned_to_the_resolved_compiler_version(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/scala"));
+        Files.writeString(dir.resolve("src/main/scala/A.scala"), "class A");
+        Files.createDirectories(dir.resolve("src/main/kotlin"));
+        Files.writeString(dir.resolve("src/main/kotlin/K.kt"), "class K");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nscala=\"3.8.4\"\nkotlin=\"2.2\"\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        var skipStrip = LanguageRuntimeInject.inject(
+                p, dir, Map.of(), deps, new LanguageRuntimeInject.ToolVersions("2.2.20", "3.8.4"));
+        assertThat(deps.get(key("org.scala-lang:scala3-library_3")).version())
+                .isInstanceOf(VersionSelector.Exact.class)
+                .extracting(v -> ((VersionSelector.Exact) v).version())
+                .isEqualTo("3.8.4");
+        // 3.8+: the stub's scala-library edge is the real stdlib and is rooted exactly as well.
+        assertThat(deps.get(key("org.scala-lang:scala-library")).version())
+                .isInstanceOf(VersionSelector.Exact.class)
+                .extracting(v -> ((VersionSelector.Exact) v).version())
+                .isEqualTo("3.8.4");
+        assertThat(deps.get(key("org.jetbrains.kotlin:kotlin-stdlib")).version())
+                .isInstanceOf(VersionSelector.Exact.class)
+                .extracting(v -> ((VersionSelector.Exact) v).version())
+                .isEqualTo("2.2.20");
+        assertThat(skipStrip)
+                .as("an exact pin is deliberate: not on the BOM strip skip-list")
+                .isEmpty();
+    }
+
+    @Test
+    void pre_3_8_compilers_leave_the_2_13_library_to_the_stub() {
+        assertThat(LanguageRuntimeInject.ScalaVersions.stdlibIsScalaLibrary("3.7.2"))
+                .isFalse();
+        assertThat(LanguageRuntimeInject.ScalaVersions.stdlibIsScalaLibrary("3.8.0"))
+                .isTrue();
+        assertThat(LanguageRuntimeInject.ScalaVersions.stdlibIsScalaLibrary("3.9.0-RC1"))
+                .isTrue();
+        assertThat(LanguageRuntimeInject.ScalaVersions.stdlibIsScalaLibrary("garbage"))
+                .isFalse();
     }
 
     @Test
@@ -64,7 +109,8 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.7\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        var skipStrip = LanguageRuntimeInject.inject(p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
+        var skipStrip = LanguageRuntimeInject.inject(
+                p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(deps.get(key(GROOVY)).version().raw()).contains("5.0.7");
         assertThat(skipStrip).isEmpty();
     }
@@ -75,7 +121,8 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        var skipStrip = LanguageRuntimeInject.inject(p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
+        var skipStrip = LanguageRuntimeInject.inject(
+                p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(deps.get(key(GROOVY)).version().raw()).contains("5.0.6");
         assertThat(skipStrip).containsExactly("org.apache.groovy:groovy");
     }
@@ -86,7 +133,7 @@ class LanguageRuntimeInjectTest {
         // compiler but has nothing to run — no runtime dep.
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nkotlin=\"=2.1.0\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        LanguageRuntimeInject.inject(p, dir, Map.of(), deps);
+        LanguageRuntimeInject.inject(p, dir, Map.of(), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(deps).isEmpty();
     }
 
@@ -98,7 +145,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         Dependency user = new Dependency("org.apache.groovy:groovy", VersionSelector.parse("=5.0.7"));
         deps.put(user.packageKey(), user);
-        LanguageRuntimeInject.inject(p, dir, Map.of(), deps);
+        LanguageRuntimeInject.inject(p, dir, Map.of(), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(deps).hasSize(1);
         assertThat(deps.get(user.packageKey())).isSameAs(user);
     }
@@ -119,7 +166,7 @@ class LanguageRuntimeInjectTest {
         Dependency user = new Dependency("org.apache.groovy:groovy", VersionSelector.parse("=4.0.21"));
         deps.put(user.packageKey(), user);
 
-        LanguageRuntimeInject.inject(p, dir, Map.of(), deps);
+        LanguageRuntimeInject.inject(p, dir, Map.of(), deps, LanguageRuntimeInject.ToolVersions.NONE);
 
         assertThat(deps).hasSize(1);
         assertThat(deps.get(user.packageKey())).isSameAs(user);
@@ -134,7 +181,7 @@ class LanguageRuntimeInjectTest {
         Dependency user = new Dependency("org.jetbrains.kotlin:kotlin-stdlib", VersionSelector.parse("=2.1.0"));
         deps.put(user.packageKey(), user);
 
-        LanguageRuntimeInject.inject(p, dir, Map.of(), deps);
+        LanguageRuntimeInject.inject(p, dir, Map.of(), deps, LanguageRuntimeInject.ToolVersions.NONE);
 
         assertThat(deps).hasSize(1);
         assertThat(deps.get(user.packageKey())).isSameAs(user);
@@ -146,7 +193,8 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"latest\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        var skipStrip = LanguageRuntimeInject.inject(p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
+        var skipStrip = LanguageRuntimeInject.inject(
+                p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(deps.get(key(GROOVY)).version()).isInstanceOf(VersionSelector.Latest.class);
         assertThat(skipStrip).isEmpty();
     }

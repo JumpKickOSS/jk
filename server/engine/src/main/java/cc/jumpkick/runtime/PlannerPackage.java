@@ -118,7 +118,6 @@ public final class PlannerPackage {
                     String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
                     String pkgKey = ActionKey.forArtifact(pkgTask, BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
-                        ctx.put(JAR_PATH, jarPath);
                         writeSidecarPom(project, layout, jarPath);
                         ctx.label(jarPath.getFileName() + " up-to-date");
                         ctx.cached();
@@ -145,7 +144,6 @@ public final class PlannerPackage {
                             jarPath.getParent(),
                             List.of(jarPath),
                             !in.ephemeralActions());
-                    ctx.put(JAR_PATH, jarPath);
                     writeSidecarPom(project, layout, jarPath);
                     ctx.progress(1);
                 })

@@ -4,7 +4,6 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -12,6 +11,7 @@ import cc.jumpkick.runtime.ToolPlans;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.ToolResolveRequest;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Files;
@@ -50,16 +50,16 @@ public final class ToolResolveVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String coord = Jsonl.str(requestLine, "coord");
-                String bin = Jsonl.str(requestLine, "bin");
-                String mainClass = Jsonl.str(requestLine, "mainClass");
-                URI repoUrl = LockVerb.repoUrlOf(requestLine);
+                ToolResolveRequest req = ToolResolveRequest.decode(requestLine);
+                Path cache = Path.of(req.cache());
+                String coord = req.coord();
+                String bin = req.bin();
+                String mainClass = req.mainClass();
+                URI repoUrl = req.repoUrl() == null ? null : URI.create(req.repoUrl());
                 Files.createDirectories(cache);
                 ToolCoordSpec spec = ToolCoordSpec.parse(coord);
-                List<ToolCoordSpec> with = Jsonl.strArray(requestLine, "with").stream()
-                        .map(ToolCoordSpec::parse)
-                        .toList();
+                List<ToolCoordSpec> with =
+                        req.with().stream().map(ToolCoordSpec::parse).toList();
                 Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Plain g:a[:v] label — coordinate colorization is a client-side concern.

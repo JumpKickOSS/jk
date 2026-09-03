@@ -2,6 +2,9 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /** Lifecycle + job-admit JSONL: hello, status, shutdown, cancel, errors. */
@@ -168,109 +171,28 @@ public final class ProtoLifecycle {
     }
 
     /**
-     * The status snapshot. Memory fields are best-effort observations of the engine process itself:
-     * heap from the runtime, {@code rssBytes} from the OS ({@code -1} where it exposes none). The
-     * http fields describe the embedded HTTP server ({@code docs/http.md}): {@code httpUrl} is
-     * non-null while it's serving, {@code httpError} when the {@code [http]} table is enabled but
-     * the server failed to start; both null means disabled. {@code mcpUrl} is the HTTP base without a
-     * trailing slash plus {@code /mcp} when HTTP is up, else null. (Keys are always
-     * emitted — the protocol has ONE null convention: key present, value null.) {@code
-     * aotTrainingPid} is the engine's sidecar AOT trainer while one is running, {@code -1}
-     * otherwise — the client never talks to that process, it only reports it
-     * (docs/architecture.md).
+     * Ack for {@link EngineProtocol#STATUS}: the engine's vitals — the same ordered map the REST,
+     * SSE and MCP surfaces render, so a vital added to the snapshot reaches this socket the same
+     * day — followed by the socket-only facts: {@code proto}, {@code draining}, the HTTP URL or the
+     * bind error, and the MCP endpoint derived from the HTTP URL when MCP is enabled. Vitals are
+     * carried as a map because this class cannot see the engine's snapshot type; the per-field
+     * parameter list this replaced is what let six of them go missing here.
      */
     public static String statusAck(
-            String version,
-            long pid,
-            long startedAtMillis,
-            int activeRequests,
-            int activeBuildPlans,
+            Map<String, Object> vitals,
             boolean draining,
-            long heapUsedBytes,
-            long heapCommittedBytes,
-            long heapMaxBytes,
-            long rssBytes,
-            long aotTrainingPid,
-            @Nullable String httpUrl,
-            @Nullable String httpError) {
-        return statusAck(
-                version,
-                pid,
-                startedAtMillis,
-                activeRequests,
-                activeBuildPlans,
-                draining,
-                heapUsedBytes,
-                heapCommittedBytes,
-                heapMaxBytes,
-                rssBytes,
-                aotTrainingPid,
-                httpUrl,
-                httpError,
-                true,
-                activeRequests,
-                activeBuildPlans);
-    }
-
-    /**
-     * Status ack with high-water concurrency marks (instrumentation for concurrent memory
-     * decisions). Peaks are non-decreasing for the engine process lifetime.
-     */
-    public static String statusAck(
-            String version,
-            long pid,
-            long startedAtMillis,
-            int activeRequests,
-            int activeBuildPlans,
-            boolean draining,
-            long heapUsedBytes,
-            long heapCommittedBytes,
-            long heapMaxBytes,
-            long rssBytes,
-            long aotTrainingPid,
             @Nullable String httpUrl,
             @Nullable String httpError,
-            boolean mcpEnabled,
-            int peakActiveRequests,
-            int peakActiveBuildPlans) {
-        @Nullable String mcpUrl = mcpEnabled ? mcpUrlFromHttp(httpUrl) : null;
-        return "{\"type\":\""
-                + EngineProtocol.STATUS_ACK
-                + "\",\"version\":"
-                + Jsonl.quote(version)
-                + ",\"pid\":"
-                + pid
-                + ",\"startedAt\":"
-                + startedAtMillis
-                + ",\"proto\":"
-                + EngineProtocol.PROTOCOL
-                + ",\"activeRequests\":"
-                + activeRequests
-                + ",\"activeBuildPlans\":"
-                + activeBuildPlans
-                + ",\"draining\":"
-                + draining
-                + ",\"heapUsedBytes\":"
-                + heapUsedBytes
-                + ",\"heapCommittedBytes\":"
-                + heapCommittedBytes
-                + ",\"heapMaxBytes\":"
-                + heapMaxBytes
-                + ",\"rssBytes\":"
-                + rssBytes
-                + ",\"aotTrainingPid\":"
-                + aotTrainingPid
-                + ",\"httpUrl\":"
-                + Jsonl.quote(httpUrl)
-                + ",\"httpError\":"
-                + Jsonl.quote(httpError)
-                + ",\"mcpUrl\":"
-                + Jsonl.quote(mcpUrl)
-                + ",\"peakActiveRequests\":"
-                + peakActiveRequests
-                + ",\"peakActiveBuildPlans\":"
-                + peakActiveBuildPlans
-                + "}";
+            boolean mcpEnabled) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put(EngineProtocol.TYPE_FIELD, EngineProtocol.STATUS_ACK);
+        m.putAll(vitals);
+        m.put("proto", EngineProtocol.PROTOCOL);
+        m.put("draining", draining);
+        m.put("httpUrl", httpUrl);
+        m.put("httpError", httpError);
+        m.put("mcpUrl", mcpEnabled ? mcpUrlFromHttp(httpUrl) : null);
+        return MiniJson.write(m);
     }
 
     /**

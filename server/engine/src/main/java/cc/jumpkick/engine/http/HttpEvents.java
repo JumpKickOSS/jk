@@ -152,14 +152,8 @@ public final class HttpEvents {
      * plus {@code event} (the dashboard type name) for clients that prefer a top-level name.
      */
     static String mcpFrame(long id, String type, String data) {
-        // data is already a JSON object from JsonOut; inject event + wrap as JSON-RPC notification.
-        String params;
-        if (data != null && data.startsWith("{") && data.endsWith("}")) {
-            // Insert "event":"<type>" after the opening brace (and schema if present stays).
-            params = "{\"event\":" + Jsonl.quote(type) + "," + data.substring(1);
-        } else {
-            params = "{\"event\":" + Jsonl.quote(type) + ",\"data\":" + data + "}";
-        }
+        // data is an encoded JSON object from JsonOut; the splicer refuses anything else.
+        String params = Jsonl.append(data, "\"event\":" + Jsonl.quote(type));
         String rpc = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/jk/event\",\"params\":" + params + "}";
         return "id: " + id + "\nevent: message\ndata: " + rpc + "\n\n";
     }

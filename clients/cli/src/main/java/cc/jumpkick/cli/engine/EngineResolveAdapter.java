@@ -9,11 +9,12 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
+import cc.jumpkick.wire.protocol.AffectedTestsRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
-import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.protocol.OutdatedRequest;
 import cc.jumpkick.wire.protocol.SyncRequest;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import java.io.BufferedReader;
@@ -47,7 +48,7 @@ final class EngineResolveAdapter {
             throws IOException {
         return EngineReads.request(
                 paths,
-                ProtoReads.affectedTestsRequest(dir.toString(), selection, since, modules),
+                new AffectedTestsRequest(dir.toString(), selection, since, modules).encode(),
                 EngineProtocol.AFFECTED_TESTS_ACK,
                 "affected-tests request",
                 AffectedTestsReport::decode);
@@ -61,12 +62,13 @@ final class EngineResolveAdapter {
     static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
         return EngineReads.request(
                 paths,
-                ProtoReads.outdatedRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.repoUrl() != null ? req.repoUrl().toString() : null,
-                        req.offline(),
-                        req.force()),
+                new OutdatedRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.repoUrl() != null ? req.repoUrl().toString() : null,
+                                req.offline(),
+                                req.force())
+                        .encode(),
                 EngineProtocol.OUTDATED_ACK,
                 "outdated request",
                 OutdatedReport::decode);
@@ -173,7 +175,7 @@ final class EngineResolveAdapter {
                         case EngineProtocol.PLAN_TASK ->
                             steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
+                                    .group(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                         case EngineProtocol.BUILDPLAN_FINISH -> {
@@ -236,7 +238,7 @@ final class EngineResolveAdapter {
                         case EngineProtocol.PLAN_TASK ->
                             steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
+                                    .group(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         case EngineProtocol.PLAN_DONE ->
                             listener = handler.onModuleStart(currentDir, currentCoord, steps);

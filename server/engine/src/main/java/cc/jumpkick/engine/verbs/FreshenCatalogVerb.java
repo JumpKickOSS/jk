@@ -8,12 +8,12 @@ import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkCatalogClient;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.repo.LibraryRegistryClient;
 import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.FreshenCatalogRequest;
 import cc.jumpkick.wire.protocol.ProtoReads;
 import java.io.BufferedWriter;
 import java.net.URI;
@@ -51,10 +51,11 @@ public final class FreshenCatalogVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String catalog = Jsonl.str(requestLine, "catalog");
-            boolean offline = Jsonl.bool(requestLine, "offline", false);
-            String url = Jsonl.str(requestLine, "url");
-            String cacheFile = Jsonl.str(requestLine, "cacheFile");
+            FreshenCatalogRequest req = FreshenCatalogRequest.decode(requestLine);
+            String catalog = req.catalog();
+            boolean offline = req.offline();
+            String url = req.url();
+            String cacheFile = req.cacheFile();
             String error = null;
             try {
                 switch (String.valueOf(catalog)) {
@@ -67,7 +68,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
                     case "libraries" -> {
                         URI src = url != null ? URI.create(url) : LibraryRegistryClient.DEFAULT_SOURCE;
                         Path dest = cacheFile != null ? Path.of(cacheFile) : JkDirs.libraryRegistry();
-                        if (Jsonl.bool(requestLine, "force", false)) {
+                        if (req.force()) {
                             LibraryRegistrySync.refreshNow(src, dest);
                         } else {
                             LibraryRegistrySync.ensurePresent(offline, src, dest);

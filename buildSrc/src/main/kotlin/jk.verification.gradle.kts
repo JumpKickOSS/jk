@@ -1392,9 +1392,8 @@ val checkNoBareTierName = registerGuard("checkNoBareTierName") {
 //      split against the filesystem, never handed to `-cp`. Classpaths owns the `-cp` vocabulary
 //      and SearchPath owns `PATH`'s (blank entries kept — an empty entry is the current directory
 //      on POSIX — nothing absolutised, order is precedence); both are exempt as declared input
-//      files, so moving either fails loudly. This arm shipped as a six-entry ratchet while `PATH`
-//      had no owner; SearchPath is that owner, and the ratchet below holds the sites still to be
-//      swept onto it — when it empties, delete the map and the arm is a pure ban.
+//      files, so moving either fails loudly. Every `PATH` site calls SearchPath, so the arm is a
+//      pure ban with no per-file allowance.
 //
 //      The banned spelling is READ FROM THE OWNER: `Classpaths.SEPARATOR`'s initialiser, plus the
 //      `…Char` variant of it. `System.getProperty("path.separator")` is re-typed, and safely so —
@@ -1409,14 +1408,6 @@ val checkNoBareTierName = registerGuard("checkNoBareTierName") {
 // branch, and a guard that banned the property in tests would delete the coverage that proves the
 // predicate right.
 // ---------------------------------------------------------------------------
-
-/**
- * `PATH` sites not yet calling `cc.jumpkick.host.SearchPath`; see G20 arm 2. One join (prepend a
- * bin dir) and one split (walk the search path) — a one-line swap each. Delete the map when it
- * empties and the arm is a pure ban.
- */
-val pathSeparatorRatchet = mapOf(
-        "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java" to 1)
 
 val checkSingleHostSurface = registerGuard("checkSingleHostSurface") {
     group = "verification"
@@ -1434,7 +1425,6 @@ val checkSingleHostSurface = registerGuard("checkSingleHostSurface") {
     inputs.file(spOwner).withPropertyName("searchPathOwner")
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
-    val allowed = pathSeparatorRatchet
     val stamp = layout.buildDirectory.file("guards/single-host-surface.ok")
     outputs.file(stamp)
     doLast {
@@ -1484,7 +1474,7 @@ val checkSingleHostSurface = registerGuard("checkSingleHostSurface") {
                 if (n > 0) sepHits[rel] = n
             }
         }
-        val (grew, unlisted, loose) = GuardScan.ratchetVerdict(sepHits, allowed, here)
+        val unlisted = GuardScan.ratchetVerdict(sepHits, emptyMap(), here).second
 
         val problems = mutableListOf<String>()
         if (unownedOsReads.isNotEmpty()) {
@@ -1500,22 +1490,13 @@ val checkSingleHostSurface = registerGuard("checkSingleHostSurface") {
         if (unlisted.isNotEmpty()) {
             problems.add("The separator has two owners, one per vocabulary: cc.jumpkick.host.Classpaths"
                     + " for -cp, cc.jumpkick.host.SearchPath for PATH. These name it"
-                    + " themselves and are not on the ratchet:\n"
+                    + " themselves:\n"
                     + unlisted.joinToString("\n")
                     + "\n  Call Classpaths.join(entries) / Classpaths.split(cp) for a classpath, or"
                     + " SearchPath.prepend(binDir, existing) / SearchPath.entries(path) for an"
                     + " executable search path — the two disagree about blank entries on purpose.")
         }
-        if (grew.isNotEmpty()) {
-            problems.add("A file on the path-separator ratchet may only shrink. These grew:\n"
-                    + grew.joinToString("\n"))
-        }
         if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
-
-        if (loose.isNotEmpty()) {
-            logger.lifecycle("pathSeparatorRatchet is loose (these shrank — tighten it in this commit):")
-            loose.forEach { logger.lifecycle(it) }
-        }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
@@ -1979,7 +1960,8 @@ val checkBlindWalkRatchet = registerGuard("checkBlindWalkRatchet") {
 // is the same spelling in a different spec — judged per G21's rule, so those two files are exempt
 // BY FILE with the reason held here. Measured when the names entered the ban list: five bare
 // repo-name literals in `src/main/java` (one `"google"`, four `"jumpkick"`), three format-style
-// hits that must stay, two package segments.
+// hits that must stay, two package segments. The five now call the owner, so the names are a pure
+// ban with no per-file allowance.
 //
 // Scope is `src/main/java`. Test sources keep their literals on purpose: a fixture that stands up a
 // fake Central and asserts on the URL is pinning the OUTBOUND value, and borrowing the constant
@@ -2000,15 +1982,6 @@ val formatStyleVocabulary = setOf(
         "shared/core/src/main/java/cc/jumpkick/config/FormatStyles.java",
         "plugins/formatter/src/main/java/cc/jumpkick/format/CodeFormatter.java")
 
-/**
- * Repo-name literals not yet calling `RepositorySpec` — `PluginJar.OFFICIAL_REPO` is a second
- * owner of `"jumpkick"` to be deleted, `RepoGroupBuilder` matches `"google"` inline. Both are a
- * one-line swap in `:engine`. Delete the map when it empties and the names are a pure ban.
- */
-val repoNameRatchet = mapOf(
-        "server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginJar.java" to 1,
-        "server/engine/src/main/java/cc/jumpkick/runtime/RepoGroupBuilder.java" to 1)
-
 /** The host that resolves to Central but matches neither the mirror nor the cooldown. */
 val centralAliasHost = "repo1.maven.org"
 
@@ -2023,7 +1996,6 @@ val checkSingleCentralAddress = registerGuard("checkSingleCentralAddress") {
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
     val exempt = foreignRepoReaders + formatStyleVocabulary
-    val allowed = repoNameRatchet
     val alias = centralAliasHost
     val stamp = layout.buildDirectory.file("guards/single-central-address.ok")
     outputs.file(stamp)
@@ -2066,7 +2038,7 @@ val checkSingleCentralAddress = registerGuard("checkSingleCentralAddress") {
                 }
             }
         }
-        val (grew, unlisted, loose) = GuardScan.ratchetVerdict(nameCounts, allowed, here)
+        val unlisted = GuardScan.ratchetVerdict(nameCounts, emptyMap(), here).second
 
         val problems = mutableListOf<String>()
         if (aliasHits.isNotEmpty() || unlisted.isNotEmpty()) {
@@ -2085,16 +2057,7 @@ val checkSingleCentralAddress = registerGuard("checkSingleCentralAddress") {
                     + " a repo's spelling is the other (formatStyleVocabulary). Add to either only"
                     + " with a reason.")
         }
-        if (grew.isNotEmpty()) {
-            problems.add("A file on the repo-name ratchet may only shrink. These grew:\n"
-                    + grew.joinToString("\n"))
-        }
         if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
-
-        if (loose.isNotEmpty()) {
-            logger.lifecycle("repoNameRatchet is loose (these shrank — tighten it in this commit):")
-            loose.forEach { logger.lifecycle(it) }
-        }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }

@@ -14,7 +14,6 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -51,7 +50,7 @@ public final class PlannerResources {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COPY_RESOURCES)
-                .stage(BuildStage.COMPILE)
+                .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Resources")
                 .kind(TaskKind.CPU)
                 // After AFTER_COMPILE so generated classes land before resource merge.
@@ -170,7 +169,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
-                .stage(BuildStage.GENERATE)
+                .stage(BuildLogicAnchor.BEFORE_COMPILE.stage())
                 .label("Build logic (before compile)")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK)
@@ -207,7 +206,7 @@ public final class PlannerResources {
         String mainCompile = cx.mainCompile();
         AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
-                .stage(BuildStage.COMPILE)
+                .stage(BuildLogicAnchor.AFTER_COMPILE.stage())
                 .label("Build logic (after compile)")
                 .kind(TaskKind.CPU)
                 .requires(mainCompile)
@@ -243,7 +242,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
-                .stage(BuildStage.PACKAGE)
+                .stage(BuildLogicAnchor.BEFORE_PACKAGE.stage())
                 .label("Build logic (before package)")
                 .kind(TaskKind.CPU)
                 .requires(beforePackageRequires(in))
@@ -287,7 +286,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_BUILD)
-                .stage(BuildStage.PACKAGE)
+                .stage(BuildLogicAnchor.AFTER_BUILD.stage())
                 .label("Build logic (after build)")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.RESOLVE_DEPS)
@@ -325,7 +324,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_GATE)
-                .stage(BuildStage.PACKAGE)
+                .stage(BuildLogicAnchor.GATE.stage())
                 .label("Build logic (gate)")
                 .kind(TaskKind.CPU)
                 .requires(requires)

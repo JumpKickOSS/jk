@@ -121,6 +121,10 @@ assert_refused_unchanged "duplicate-name"
 write_evidence "$hash  jk-linux-x86_64-0.9.0"$'\n'
 assert_refused_unchanged "other-release-manifest"
 
+# Strict LF: the signer and every verifier agree on the bytes; a CRLF manifest is refused everywhere.
+write_evidence "$hash  $ARTIFACT"$'\r\n'
+assert_refused_unchanged "crlf-manifest"
+
 write_evidence
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$WORK/other-key.pem" 2>/dev/null
 "$ROOT/scripts/sign-release.sh" "$RELEASE/SHA256SUMS" "$WORK/other-key.pem" >/dev/null
@@ -129,5 +133,22 @@ assert_refused_unchanged "untrusted-key"
 write_evidence
 rm -f "$RELEASE/SHA256SUMS.sig"
 assert_refused_unchanged "missing-signature"
+
+# A relative JK_HOME is refused before anything is downloaded or written (JkDirs would refuse it
+# on every later step, so an installer that accepted it reported success over a dead install).
+write_evidence
+if ( cd "$WORK" && PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" JK_HOME="rel-home" JK_VERSION=1.0.0 \
+    JK_ARCHIVE_URL="https://fixture/releases/1.0.0/$ARTIFACT" JK_RELEASES_URL="https://fixture/releases" CI=1 \
+    bash "$WORK/install.sh" >"$WORK/last-install.log" 2>&1 ); then
+  cat "$WORK/last-install.log" >&2
+  echo "relative JK_HOME unexpectedly installed" >&2
+  exit 1
+fi
+grep -q "JK_HOME must be an absolute path" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2
+  echo "relative JK_HOME was refused for another reason" >&2
+  exit 1
+}
+[[ ! -e "$WORK/rel-home" ]] || { echo "relative JK_HOME created a directory" >&2; exit 1; }
 
 echo "Shell installer verification fixtures passed."

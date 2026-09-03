@@ -65,6 +65,37 @@ class BuildEtaStampDriftTest {
                 .isZero();
     }
 
+    /**
+     * The same shape with a different cause: nothing else changed because the last run was red and
+     * the stamp is never green after a failure. The forecaster marks it, and the suite is priced.
+     */
+    @Test
+    void a_rerun_after_a_red_suite_is_priced_as_a_suite() throws Exception {
+        var m = new TaskForecast.Module(
+                Path.of("/host"),
+                "g:host",
+                List.of(
+                        task("compile-main", TaskForecast.Status.CACHED, ""),
+                        task("compile-test", TaskForecast.Status.CACHED, ""),
+                        task(
+                                "run-tests",
+                                TaskForecast.Status.RUN,
+                                "run tests · ~147 tests · " + TaskForecast.LAST_RUN_FAILED),
+                        task("package-jar", TaskForecast.Status.CACHED, "")),
+                40,
+                147,
+                true,
+                false);
+
+        var cost = price(m).stream()
+                .filter(c -> c.dir().equals(m.dir()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(cost.testWeight())
+                .as("a red suite is never skipped by the live run, so it is a suite to price")
+                .isGreaterThan(0);
+    }
+
     /** A test-only edit recompiles the test sources — that IS evidence, so keep the full suite. */
     @Test
     void a_test_only_edit_still_prices_its_suite() throws Exception {

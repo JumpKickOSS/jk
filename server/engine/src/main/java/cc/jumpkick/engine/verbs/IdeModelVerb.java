@@ -5,11 +5,10 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.IdeOps;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.IdeModelRequest;
 import cc.jumpkick.wire.protocol.IdeWireModel;
-import cc.jumpkick.wire.protocol.ProtoJobs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -46,12 +45,10 @@ public final class IdeModelVerb implements HostedVerb {
         try {
             IdeWireModel model;
             try {
-                String jdksDir = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
+                IdeModelRequest req = IdeModelRequest.decode(requestLine);
+                String jdksDir = req.jdksDir();
                 model = IdeOps.ideModel(
-                        Path.of(Jsonl.str(requestLine, "dir")),
-                        Path.of(Jsonl.str(requestLine, "cache")),
-                        jdksDir == null ? null : Path.of(jdksDir),
-                        false);
+                        Path.of(req.dir()), Path.of(req.cache()), jdksDir == null ? null : Path.of(jdksDir), false);
             } catch (RuntimeException e) {
                 model = IdeWireModel.error(Errors.text(e));
             }

@@ -9,7 +9,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -123,14 +122,7 @@ public final class LockFlow {
             boolean conservative) {
         LockMode mode = conservative ? new LockMode.Freshen() : new LockMode.Explicit(false);
         LockPipeline pipeline = new LockPipeline(
-                scope.lockDir(),
-                scope.effective(),
-                cache,
-                repoUrl,
-                features,
-                !noDefaultFeatures,
-                mode,
-                JkVersion.VERSION);
+                scope.lockDir(), scope.effective(), cache, repoUrl, features, !noDefaultFeatures, mode);
         try {
             Lockfile lock = pipeline.run(
                     LockPipeline.readIfPresent(scope.lockDir()), ResolveObserver.NOOP, LockPipeline.Progress.SILENT);

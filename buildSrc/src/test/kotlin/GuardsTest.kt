@@ -11,7 +11,7 @@ class GuardsTest {
         val letters = Guards.tableRows.mapNotNull { it.letter }
         val highest = letters.maxOf { it }
         assertThat(letters).containsExactlyElementsOf((0..highest).toList())
-        assertThat(highest).isGreaterThanOrEqualTo(59)
+        assertThat(highest).isGreaterThanOrEqualTo(60)
     }
 
     @Test

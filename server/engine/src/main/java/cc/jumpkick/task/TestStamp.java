@@ -10,6 +10,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Content-hashed key for incremental test skipping. On green runs the build stores a CAS marker
@@ -29,6 +30,40 @@ public final class TestStamp {
      * Combined content key for all test inputs, or {@code null} if any required input is
      * unreadable (callers must retest).
      */
+    /** Scalar markers a run-tests record carries in place of CAS outputs. */
+    public static final String TOTAL = "tests.total";
+
+    public static final String SUCCEEDED = "tests.succeeded";
+    public static final String SKIPPED = "tests.skipped";
+    public static final String FAILED = "tests.failed";
+
+    /**
+     * The record a finished suite stores under its key, red or green. Storing the red run too is
+     * what lets the next build tell "this suite failed under exactly these inputs" from "the key
+     * formula drifted": the first is a suite to run and price in full, the second a recheck.
+     */
+    public static Map<String, String> outcome(long total, long succeeded, long skipped, long failed) {
+        return Map.of(
+                TOTAL, String.valueOf(total),
+                SUCCEEDED, String.valueOf(succeeded),
+                SKIPPED, String.valueOf(skipped),
+                FAILED, String.valueOf(failed));
+    }
+
+    /**
+     * True when {@code record} is a run-tests marker whose run passed. A record with no failed
+     * count predates red markers and could only have been written by a green run.
+     */
+    public static boolean green(ActionCache.ActionRecord record) {
+        String failed = record.outputs().get(FAILED);
+        if (failed == null) return true;
+        try {
+            return Long.parseLong(failed) == 0;
+        } catch (NumberFormatException e) {
+            return true;
+        }
+    }
+
     public static String computeKey(
             List<Path> testSources,
             Path mainClasses,

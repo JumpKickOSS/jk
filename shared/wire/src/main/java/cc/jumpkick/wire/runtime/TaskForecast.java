@@ -15,6 +15,13 @@ public final class TaskForecast {
     private TaskForecast() {}
 
     /** Per-step verdict. CACHED = restored from cache; the rest do real work. */
+    /**
+     * Detail suffix on a {@code run-tests} step whose last run under the same inputs was red. The
+     * ETA reads it as evidence of a suite to run; without it a module whose only dirty step is its
+     * suite is priced as a drifted stamp.
+     */
+    public static final String LAST_RUN_FAILED = "last run failed";
+
     public enum Status {
         CACHED,
         FULL,

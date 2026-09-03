@@ -329,7 +329,7 @@ final class WorkspaceRunView {
             // line — which stays last so the outcome is visible without scrolling.
             List<String> failAbove = new ArrayList<>(above);
             List<BuildPlanResult.Diagnostic> settleErrors = new ArrayList<>();
-            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
+            for (BuildPlanResult.Diagnostic d : agg.unstreamedErrors()) {
                 if ("test-failure".equals(d.code())) continue; // already printed by run-tests
                 settleErrors.add(d);
             }

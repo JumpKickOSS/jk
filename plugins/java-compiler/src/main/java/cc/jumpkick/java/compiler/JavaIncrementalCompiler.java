@@ -76,7 +76,7 @@ public final class JavaIncrementalCompiler implements Plugin {
                         }
                     };
             // Keep the worst (highest) exit code: a later compile error (1) must not overwrite an
-            // earlier usage/unknown error (Exit.USAGE) —.
+            // earlier usage/unknown error (Exit.USAGE).
             worst = Math.max(worst, code);
         }
     }

@@ -45,7 +45,7 @@ class WorkspaceSchedulerKeepGoingTest {
         String stopped =
                 WorkspaceScheduler.run(UNITS, WorkspaceSchedulerKeepGoingTest::p, NO_EDGES, task, sink, 1, () -> false);
         // Fail-fast surfaces the failure to the caller; keep-going leaves the verdict to the
-        // outcome list, which is exactly how WorkspaceExecute recomputes its exit code.
+        // outcome list, which is exactly how WorkspaceFinalPhase.aggregate recomputes the exit code.
         assertThat(stopped).isEqualTo(keepGoing ? null : "FAILED");
         return ran;
     }

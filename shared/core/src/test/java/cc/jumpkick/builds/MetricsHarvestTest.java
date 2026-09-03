@@ -64,7 +64,10 @@ class MetricsHarvestTest {
 
     @Test
     void isHostKey_classifies() {
-        assertThat(MetricsHarvest.isHostKey("host.x")).isTrue();
+        // Nothing writes a `host.` prefix: a bare prefixed key has no producer and is not a host key,
+        // while a prefixed *rate* row from an older store is still one by its suffix.
+        assertThat(MetricsHarvest.isHostKey("host.x")).isFalse();
+        assertThat(MetricsHarvest.isHostKey("host.run-tests-per-method-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("step.compile-java.wall-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("run-tests-per-method-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("native-image-ms-per-mib")).isTrue();

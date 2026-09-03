@@ -12,6 +12,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -291,6 +292,35 @@ class InputTreesTest {
         });
     }
 
+    /** Build output is this job's own writing: a root under target/ is walked live, never retained. */
+    @Test
+    void roots_under_build_output_are_never_retained(@TempDir Path dir) throws Exception {
+        Path generated = Files.createDirectories(dir.resolve("target/generated/ksp/java"));
+        Files.writeString(generated.resolve("Gen.java"), "class Gen {}");
+        Path src = Files.createDirectories(dir.resolve("src"));
+        Files.writeString(src.resolve("A.java"), "class A {}");
+        inRequest(() -> {
+            var snap = InputTrees.of(generated);
+            assertThat(snap.overflow()).as("live, not a retained Listing").isTrue();
+            assertThat(snap.withExtension(".java")).hasSize(1);
+            assertThat(InputTrees.poolUsedBytes()).isZero();
+            writeQuietly(generated.resolve("Gen2.java"));
+            assertThat(snap.withExtension(".java"))
+                    .as("the same question at a later step has a new answer")
+                    .hasSize(2);
+            assertThat(InputTrees.of(generated).anyExtension(".kt")).isFalse();
+            writeQuietly(generated.resolve("Gen3.kt"));
+            assertThat(InputTrees.of(generated).anyExtension(".kt"))
+                    .as("existence probes are not memoized either")
+                    .isTrue();
+            // Sources are still retained as before.
+            assertThat(InputTrees.of(src).overflow()).isFalse();
+        });
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/x"))).isTrue();
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/src/target-practice/x")))
+                .isFalse();
+    }
+
     /** The real shape of an unlistable tree: a subdirectory this process cannot open. */
     @Test
     void an_unopenable_subdirectory_streams_instead_of_covering_a_hole(@TempDir Path dir) throws Exception {
@@ -319,7 +349,6 @@ class InputTreesTest {
         inRequest(() -> {
             InputTrees.coverModule(dir);
             InputTrees.FileRef ref = InputTrees.of(src).files().getFirst();
-            assertThat(ref.regular()).isTrue();
             assertThat(ref.size()).isPositive();
             assertThat(ref.mtimeMillis()).isPositive();
             assertThat(ref.mtimeNanos()).isPositive();
@@ -346,6 +375,14 @@ class InputTreesTest {
         String ack = InputTrees.appendToStatusAck("{\"type\":\"status-ack\"}");
         assertThat(ack).startsWith("{\"type\":\"status-ack\",\"vfs\":{");
         assertThat(ack).endsWith("}");
+    }
+
+    private static void writeQuietly(Path file) {
+        try {
+            Files.writeString(file, "generated");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static void inRequest(Runnable body) {

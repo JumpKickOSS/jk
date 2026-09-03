@@ -42,6 +42,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolve.ResolveProfile;
+import cc.jumpkick.resolver.LanguageRuntimeInject;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.VersionSelectors;
@@ -172,15 +173,15 @@ public final class LockPipeline {
             @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaults,
-            LockMode mode,
-            String jkVersion) {
+            LockMode mode) {
         this.lockDir = lockDir;
         this.effective = effective;
         this.cache = cache;
         this.repoUrl = repoUrl;
         this.features = List.copyOf(features);
         this.withDefaults = withDefaults;
-        this.jkVersion = jkVersion;
+        // There is exactly one right value; a parameter only let a caller pass the wrong one.
+        this.jkVersion = JkVersion.VERSION;
         this.policy = policyFor(mode, effective);
     }
 
@@ -277,13 +278,18 @@ public final class LockPipeline {
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
 
         boolean keepPins = policy.keepPins() && existing != null;
+        // Compiler pins first: the solve injects each language's stdlib pinned to its compiler.
+        LanguageRuntimeInject.ToolVersions tools =
+                resolveToolVersions(keepPins ? existing : null, pathPrep.repos(), progress);
+        orchestrator.withToolVersions(tools);
         long resolveT0 = profile ? System.nanoTime() : 0L;
         Lockfile lock = solve(orchestrator, pathPrep.project(), keepPins ? existing : null, observer);
         if (profile) ResolveProfile.phaseResolve(System.nanoTime() - resolveT0);
 
         long postT0 = profile ? System.nanoTime() : 0L;
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
-        lock = withToolPins(lock, keepPins ? existing : null, pathPrep.repos(), progress);
+        if (tools.kotlin() != null) lock = lock.withKotlin(tools.kotlin());
+        if (tools.scala() != null) lock = lock.withScala(tools.scala());
         lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         // graal() is non-null exactly when [native].graal is set or [native] turns native-image on,
         // which is what "the project asked for Graal" means.
@@ -324,22 +330,18 @@ public final class LockPipeline {
     }
 
     /**
-     * The Kotlin and Scala compiler pins. A freshen carries the pin the lock already holds —
-     * bumping the compiler is {@code jk lock}'s job — and otherwise every path resolves it, since a
-     * lock written without it loses compiler provisioning.
+     * The Kotlin and Scala compiler pins, resolved before the dependency solve so the injected
+     * stdlibs can follow them exactly. A freshen carries the pin the lock already holds — bumping
+     * the compiler is {@code jk lock}'s job — and otherwise every path resolves it, since a lock
+     * written without it loses compiler provisioning.
      */
-    private Lockfile withToolPins(Lockfile lock, @Nullable Lockfile pins, RepoGroup repos, Progress progress) {
+    private LanguageRuntimeInject.ToolVersions resolveToolVersions(
+            @Nullable Lockfile pins, RepoGroup repos, Progress progress) {
         String kotlin = pins != null && pins.kotlin() != null ? pins.kotlin() : resolveKotlinVersion(effective, repos);
-        if (kotlin != null) {
-            progress.label("resolved kotlin " + kotlin);
-            lock = lock.withKotlin(kotlin);
-        }
+        if (kotlin != null) progress.label("resolved kotlin " + kotlin);
         String scala = pins != null && pins.scala() != null ? pins.scala() : resolveScalaVersion(effective, repos);
-        if (scala != null) {
-            progress.label("resolved scala " + scala);
-            lock = lock.withScala(scala);
-        }
-        return lock;
+        if (scala != null) progress.label("resolved scala " + scala);
+        return new LanguageRuntimeInject.ToolVersions(kotlin, scala);
     }
 
     /**

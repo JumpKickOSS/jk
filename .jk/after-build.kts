@@ -160,8 +160,7 @@ val treeFiles: List<Path> by lazy {
         // `build` and `target` name build output at a module root and a java package underneath a
         // source root, and pruning on the name alone loses the second: `cc.jumpkick.plugin.build`
         // is the plugin SPI, so every guard reading this walker was silently scanning one package
-        // less of the tree than it claimed. G53 is the one that noticed — it counted 14 API
-        // packages against the 15 that are there — and a corpus floor catching it is exactly what
+        // less of the tree than it claimed; a corpus floor is what catches that, which is what
         // corpus floors are for. Anything under a `src/` directory is source, whatever it is called.
         override fun preVisitDirectory(d: Path, a: BasicFileAttributes): FileVisitResult =
             if (d != root && d.fileName.toString() in skipDirs && !rel(d).contains("/src/")) {
@@ -2769,9 +2768,15 @@ guard("G52", "checkTestTierDocs") {
 
 guard("G55", "checkEngineConfigDocs") {
     val model = text(at("shared/core/src/main/java/cc/jumpkick/config/EngineControls.java"))
-    val row = Regex("""control\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\)""")
+    val row = Regex("""control\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*(?:"([^"]*)"|([A-Z_]+))\s*,\s*"([^"]*)"\s*\)""")
+    // The fourth argument is a literal or one of the class's own String constants (ENGINE_START).
+    val constants = Regex("""static final String ([A-Z_]+) = "([^"]*)";""")
+        .findAll(model).associate { it.groupValues[1] to it.groupValues[2] }
     val rows = row.findAll(model).map {
-        listOf(it.groupValues[1], it.groupValues[2], it.groupValues[3], it.groupValues[4])
+        val read = it.groupValues[4].ifEmpty {
+            constants[it.groupValues[5]] ?: error("EngineControls: unknown constant ${it.groupValues[5]}")
+        }
+        listOf(it.groupValues[1], it.groupValues[2], it.groupValues[3], read, it.groupValues[6])
     }.toList()
     val table = rows.filter { it[0].isNotEmpty() }
     val process = rows.filter { it[0].isEmpty() }
@@ -2788,16 +2793,16 @@ guard("G55", "checkEngineConfigDocs") {
     }
     val expectedTable = block(
         "engine-config",
-        "| Key | Env | Default | Meaning |",
-        "|---|---|---|---|",
+        "| Key | Env | Default | Read | Meaning |",
+        "|---|---|---|---|---|",
         table,
-    ) { "| `${it[0]}` | `${it[1]}` | ${it[2]} | ${it[3]} |" }
+    ) { "| `${it[0]}` | `${it[1]}` | ${it[2]} | ${it[3]} | ${it[4]} |" }
     val expectedProcess = block(
         "engine-process",
         "| Env | Default | Meaning |",
         "|---|---|---|",
         process,
-    ) { "| `${it[1]}` | ${it[2]} | ${it[3]} |" }
+    ) { "| `${it[1]}` | ${it[2]} | ${it[4]} |" }
     val docs = text(at("docs/user/engine.md"))
     fun present(id: String): String =
         Regex("""(?s)<!-- $id:start -->.*?<!-- $id:end -->""").find(docs)?.value
@@ -2955,6 +2960,40 @@ guard("G59", "checkNoHistoricalNarration") {
         error("historical narration in comments or docs:\n"
             + bullets(hits.sorted())
             + "\n  State the current invariant. History belongs in the commit body.")
+    }
+}
+
+guard("G60", "checkOneJsonSplicer") {
+    val owner = "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java"
+    val chop = Regex("(?s)\\.substring\\(0,\\s*\\w+\\.length\\(\\)\\s*-\\s*1\\)[^;]*\"\\}\"")
+    val insert = Regex("(?s)\"\\{(?:\\\\\"|[^\"])*\"[^;]*\\.substring\\(1\\)")
+    var candidates = 0
+    var ownerSplices = false
+    val hits = mutableListOf<String>()
+    treeFiles.forEach { f ->
+        val here = rel(f)
+        if (!here.endsWith(".java") || !here.contains("/src/main/java/")) return@forEach
+        candidates++
+        val t = text(f)
+        if (here == owner) {
+            ownerSplices = chop.containsMatchIn(t)
+            return@forEach
+        }
+        val n = chop.findAll(t).count() + insert.findAll(t).count()
+        if (n > 0) hits.add("$here: $n")
+    }
+    if (candidates < 500) {
+        error("Scanned only $candidates main sources — the tree walk broke and this guard is passing vacuously.")
+    }
+    if (!ownerSplices) {
+        error("$owner no longer splices with the shape this guard bans, so the guard has lost the owner"
+            + " it exempts. Move the exemption with the splicer or retire the guard deliberately.")
+    }
+    if (hits.isNotEmpty()) {
+        error("a JSON object spliced by hand:\n"
+            + bullets(hits.sorted())
+            + "\n  Call Jsonl.append(object, fields): it validates the object and owns the separator,"
+            + " which is what every hand chop got wrong on an empty object.")
     }
 }
 

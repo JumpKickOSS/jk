@@ -534,8 +534,10 @@ public final class EffortWeights {
             }
             weight += w;
             if (TaskNames.RUN_TESTS.equals(step)) testWeight += w;
-            // Requires only package-jar, so it overlaps the suite rather than following it.
-            if (TaskNames.PACKAGING_TAILS.contains(step)) tailWeight += w;
+            // Every tail requires only package-jar, so the tails overlap the suite AND each other:
+            // the branch's length is its longest tail, not their sum (cli: native-image 37 +
+            // assembly 3 + sources 2 priced 42 against a true 37).
+            if (TaskNames.PACKAGING_TAILS.contains(step)) tailWeight = Math.max(tailWeight, w);
         }
         return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
     }
@@ -1177,7 +1179,7 @@ public final class EffortWeights {
             }
             weight += stepWeight;
             if (step.name().equals(TaskNames.RUN_TESTS)) testWeight += stepWeight;
-            if (TaskNames.PACKAGING_TAILS.contains(step.name())) tailWeight += stepWeight;
+            if (TaskNames.PACKAGING_TAILS.contains(step.name())) tailWeight = Math.max(tailWeight, stepWeight);
         }
         return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
     }

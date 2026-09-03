@@ -128,8 +128,8 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             }
 
             @Override
-            public void stepFinished(String d, String step, String phase, String status, long millis) {
-                nested.stepFinished(d, step, phase, status, millis);
+            public void stepFinished(String d, String step, String phase, String status, long millis, long waitMillis) {
+                nested.stepFinished(d, step, phase, status, millis, waitMillis);
             }
 
             @Override

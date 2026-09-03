@@ -11,7 +11,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -50,6 +49,11 @@ public final class InputTrees {
         // Off a request there is no finishJob to release retained bytes, so never retain or
         // charge — live-walk, which is what every pre-VFS caller did anyway.
         if (!RequestScope.hasRequest()) return live(abs, skipId);
+        // Build output is never in the VFS (vfs.md): this job writes it, so a listing memoized at
+        // one step is stale by the next. A generated-source root reached through the request
+        // collectors (the groovyc compile set walks KSP and plugin-contributed roots under target/)
+        // is answered live on every ask — never retained, never charged, never memoized.
+        if (isBuildOutput(abs)) return new BuildOutput(abs, skipId);
         Table table = table();
         Key key = new Key(abs, skipId);
         Snapshot hit = table.byKey.get(key);
@@ -67,11 +71,8 @@ public final class InputTrees {
                 return hit;
             }
             decideStream(table);
+            // covering holds Listing keys only, so an ancestor is a Listing or nothing.
             Snapshot ancestor = ancestor(table, abs, skipId);
-            if (ancestor instanceof Overflow) {
-                table.misses.incrementAndGet();
-                return live(abs, skipId);
-            }
             if (ancestor instanceof Listing listing) {
                 Listing prefix = listing.prefix(abs);
                 table.byKey.put(key, prefix);
@@ -136,6 +137,10 @@ public final class InputTrees {
                     table.streamOnly);
             released = table.bytes;
             table.bytes = 0;
+            // Nothing may retain against a released table: a straggler still holding the
+            // ambient ledger (a lane outliving the runner on cancel) would charge the pool with
+            // no finishJob left to give it back.
+            table.streamOnly = true;
         }
         if (released > 0) POOL_USED.addAndGet(-released);
     }
@@ -228,20 +233,17 @@ public final class InputTrees {
 
         boolean anyExtension(String ext);
 
-        Optional<FileRef> get(Path file);
-
         boolean overflow();
     }
 
-    public record FileRef(Path path, String name, long size, long mtimeMillis, long mtimeNanos, boolean regular) {
+    public record FileRef(Path path, String name, long size, long mtimeMillis, long mtimeNanos) {
         static FileRef from(Path file, BasicFileAttributes attrs) {
             return new FileRef(
                     file.toAbsolutePath().normalize(),
                     file.getFileName().toString(),
                     attrs.size(),
                     attrs.lastModifiedTime().toMillis(),
-                    attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
-                    attrs.isRegularFile());
+                    attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
         }
 
         long estimateBytes() {
@@ -292,15 +294,6 @@ public final class InputTrees {
                 if (f.name.endsWith(ext)) return true;
             }
             return false;
-        }
-
-        @Override
-        public Optional<FileRef> get(Path file) {
-            Path abs = file.toAbsolutePath().normalize();
-            for (FileRef f : files) {
-                if (f.path.equals(abs)) return Optional.of(f);
-            }
-            return Optional.empty();
         }
 
         @Override
@@ -359,8 +352,40 @@ public final class InputTrees {
         }
 
         @Override
-        public Optional<FileRef> get(Path file) {
-            return Optional.empty();
+        public boolean overflow() {
+            return true;
+        }
+    }
+
+    /**
+     * The build-output shape: every query walks live and nothing is memoized, because the job
+     * asking is the job writing. {@link Overflow} memoizes each question per request; here the
+     * same question at two steps legitimately has two answers.
+     */
+    private record BuildOutput(Path root, String skipId) implements Snapshot {
+        @Override
+        public List<FileRef> files() {
+            return List.of();
+        }
+
+        @Override
+        public List<Path> withExtension(String ext) {
+            return livePaths(root, skipId, p -> p.getFileName().toString().endsWith(ext));
+        }
+
+        @Override
+        public List<Path> withExtensions(String... exts) {
+            return livePaths(root, skipId, p -> endsWithAny(p.getFileName().toString(), exts));
+        }
+
+        @Override
+        public boolean anyExtension(String ext) {
+            try {
+                return PathUtil.anyRegularFile(
+                        root, skipPred(skipId), p -> p.getFileName().toString().endsWith(ext));
+            } catch (IOException e) {
+                return false;
+            }
         }
 
         @Override
@@ -500,6 +525,14 @@ public final class InputTrees {
         table.bytes += used[0];
         table.nodes += files.size();
         return new Listing(root, skipId, List.copyOf(files));
+    }
+
+    /** True when any segment of {@code abs} is the build-output directory name. */
+    static boolean isBuildOutput(Path abs) {
+        for (Path segment : abs) {
+            if (BuildLayout.TARGET.equals(segment.toString())) return true;
+        }
+        return false;
     }
 
     private static boolean tryCharge(long n) {

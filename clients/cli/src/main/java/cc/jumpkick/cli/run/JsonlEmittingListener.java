@@ -85,8 +85,8 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus s, Duration d) {
-        line(JsonlShape.stepFinish(step, wire(group), s, d), EngineProtocol.TASK_FINISH);
+    public void stepFinish(String step, String group, TaskStatus s, Duration d, Duration waited) {
+        line(JsonlShape.stepFinish(step, wire(group), s, d, waited), EngineProtocol.TASK_FINISH);
     }
 
     @Override

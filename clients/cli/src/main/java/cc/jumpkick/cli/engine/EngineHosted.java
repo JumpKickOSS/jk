@@ -9,14 +9,16 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AuditRequest;
+import cc.jumpkick.wire.protocol.CachePruneRequest;
 import cc.jumpkick.wire.protocol.CompileRequest;
 import cc.jumpkick.wire.protocol.FormatRequest;
 import cc.jumpkick.wire.protocol.GitFetchRequest;
 import cc.jumpkick.wire.protocol.ImageRequest;
 import cc.jumpkick.wire.protocol.ImportRequest;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.ProvisionRequest;
 import cc.jumpkick.wire.protocol.PublishRequest;
+import cc.jumpkick.wire.protocol.ScriptPrepareRequest;
+import cc.jumpkick.wire.protocol.ToolResolveRequest;
 import cc.jumpkick.wire.protocol.TrainRequest;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -379,13 +381,14 @@ final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                ProtoSession.toolResolveRequest(
-                        req.coord(),
-                        req.with(),
-                        req.bin(),
-                        req.mainClass(),
-                        req.repoUrl() != null ? req.repoUrl().toString() : null,
-                        req.cache().toString()),
+                new ToolResolveRequest(
+                                req.coord(),
+                                req.with(),
+                                req.bin(),
+                                req.mainClass(),
+                                req.repoUrl() != null ? req.repoUrl().toString() : null,
+                                req.cache().toString())
+                        .encode(),
                 "tool-resolve",
                 listenerFactory,
                 (type, line) -> {});
@@ -411,14 +414,15 @@ final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                ProtoSession.scriptPrepareRequest(
-                        req.mode(),
-                        req.script().toString(),
-                        req.cache().toString(),
-                        req.stateDir() != null ? req.stateDir().toString() : null,
-                        req.repoUrl() != null ? req.repoUrl().toString() : null,
-                        req.forceRecompile(),
-                        req.with()),
+                new ScriptPrepareRequest(
+                                req.mode(),
+                                req.script().toString(),
+                                req.cache().toString(),
+                                req.stateDir() != null ? req.stateDir().toString() : null,
+                                req.repoUrl() != null ? req.repoUrl().toString() : null,
+                                req.forceRecompile(),
+                                req.with())
+                        .encode(),
                 "script-prepare",
                 listenerFactory,
                 (type, line) -> {});
@@ -452,10 +456,13 @@ final class EngineHosted {
             ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)
             throws IOException {
-        String requestLine = "clear".equals(req.op())
-                ? ProtoSession.cacheClearRequest(
-                        req.cache().toString(), req.projectRoot().toString(), req.dryRun())
-                : ProtoSession.cachePruneRequest(req.op(), req.cache().toString(), req.dryRun(), req.includeJkTmp());
+        String requestLine = new CachePruneRequest(
+                        req.op(),
+                        req.cache().toString(),
+                        "clear".equals(req.op()) ? req.projectRoot().toString() : null,
+                        req.dryRun(),
+                        req.includeJkTmp())
+                .encode();
         return EnginePluginAdapter.stream(
                         paths,
                         requestLine,

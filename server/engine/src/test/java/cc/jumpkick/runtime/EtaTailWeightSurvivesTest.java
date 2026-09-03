@@ -3,10 +3,12 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.WorkSchedule;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +41,32 @@ class EtaTailWeightSurvivesTest {
         assertThat(dto.tailWeight()).isEqualTo(37);
         // prefix 6 + max(10, 37) = 43, not the 53 sum.
         assertThat(WorkSchedule.moduleWall(dto)).isEqualTo(43);
+    }
+
+    /** Several tails hang off one jar and run together, so the branch is the longest, not the sum. */
+    @Test
+    void several_tails_price_as_the_longest_not_the_sum() {
+        EffortWeights.ModuleCost cost = EffortWeights.costFromRunningSteps(
+                CLI,
+                Set.of(),
+                List.of(TaskNames.NATIVE_IMAGE, TaskNames.PACKAGE_ASSEMBLY, TaskNames.PACKAGE_SOURCES),
+                BuildMetrics.load(Path.of("/no/such/metrics.json")),
+                null,
+                List.of(),
+                Map.of(),
+                1);
+        int nativeAlone = EffortWeights.costFromRunningSteps(
+                        CLI,
+                        Set.of(),
+                        List.of(TaskNames.NATIVE_IMAGE),
+                        BuildMetrics.load(Path.of("/no/such/metrics.json")),
+                        null,
+                        List.of(),
+                        Map.of(),
+                        1)
+                .tailWeight();
+        assertThat(cost.tailWeight()).as("longest tail, not Σ tails").isEqualTo(nativeAlone);
+        assertThat(cost.weight()).as("the sum still counts every step").isGreaterThan(nativeAlone);
     }
 
     @Test

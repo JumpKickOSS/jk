@@ -5,8 +5,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.HistoryDeleteRequest;
 import java.io.BufferedWriter;
 
 public final class HistoryDeleteVerb implements HostedVerb {
@@ -40,7 +40,7 @@ public final class HistoryDeleteVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String id = Jsonl.str(requestLine, "id");
+            String id = HistoryDeleteRequest.decode(requestLine).id();
             boolean deleted = id != null && host.journal().delete(id);
             host.send(
                     writer,

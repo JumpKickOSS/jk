@@ -9,6 +9,7 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
@@ -35,7 +36,7 @@ public final class NewTool implements McpTool {
                         "lang",
                         McpSchemas.string("java (default) | kotlin | groovy"),
                         "layout",
-                        McpSchemas.string("traditional (default) | simple — where to place sources, not a jk.toml key"),
+                        McpSchemas.string(Layout.scaffoldHelp() + " — where to place sources, not a jk.toml key"),
                         "template",
                         McpSchemas.string("Giter8 id (java/spring-boot/hello), framework/name, or name under none"),
                         "preview",

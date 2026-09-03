@@ -366,16 +366,16 @@ public final class BuildAccumulator {
         synchronized (m) {
             BuildRecord.Task existing = m.get(step);
             if (existing != null && isTerminalTaskStatus(existing.status())) return;
-            m.put(step, new BuildRecord.Task(step, phase == null ? "" : phase, "RUN", 0L));
+            m.put(step, new BuildRecord.Task(step, phase == null ? "" : phase, "RUN", 0L, 0L));
         }
     }
 
     /** One finished step, stored under its module dir ("" for a single-plan build). */
-    public void addTask(String dir, String step, String phase, String status, long millis) {
+    public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;
         stepsByDir
                 .computeIfAbsent(dir == null ? "" : dir, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
-                .put(step, new BuildRecord.Task(step, phase, status, millis));
+                .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis));
         if (timeline != null) {
             timeline.complete(timelineModule(dir), step, status == null ? "" : status, millis);
         }
@@ -580,8 +580,7 @@ public final class BuildAccumulator {
     /**
      * Fold in one plan's affected-tests slice ({@code --affected} runs). Workspace builds call it
      * per module; the merged report is written to {@code jk-tests-affected.md} at request-finish.
-     * The accumulator lives exactly one request, so a later run never inherits this run's rows
-     *.
+     * The accumulator lives exactly one request, so a later run never inherits this run's rows.
      */
     public synchronized void addAffected(@Nullable AffectedTests slice) {
         if (slice == null) return;

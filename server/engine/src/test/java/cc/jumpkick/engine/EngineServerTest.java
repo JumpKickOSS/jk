@@ -9,8 +9,8 @@ import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.MetricsRequest;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -138,7 +138,7 @@ class EngineServerTest extends EngineServerHarness {
 
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             // Unfiltered: global build row + both project rows + global/project step rows.
-            c.sendLine(ProtoSession.metricsRequest(null));
+            c.sendLine(new MetricsRequest(null).encode());
             List<String> rows = new ArrayList<>();
             String line;
             while ((line = c.readLine()) != null && EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(line))) {
@@ -164,7 +164,7 @@ class EngineServerTest extends EngineServerHarness {
             assertThat(Jsonl.longValue(failedProject, "failTotalMillis", -1)).isEqualTo(400);
 
             // Filtered: /proj/a's rows plus the always-included global tiers; /proj/b drops out.
-            c.sendLine(ProtoSession.metricsRequest("/proj/a"));
+            c.sendLine(new MetricsRequest("/proj/a").encode());
             List<String> filtered = new ArrayList<>();
             while ((line = c.readLine()) != null && EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(line))) {
                 filtered.add(line);

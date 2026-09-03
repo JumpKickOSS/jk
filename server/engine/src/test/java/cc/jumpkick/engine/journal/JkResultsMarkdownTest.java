@@ -240,7 +240,7 @@ class JkResultsMarkdownTest {
     }
 
     private static BuildRecord.Task task(String name, String stage, String status, long ms) {
-        return new BuildRecord.Task(name, stage, status, ms);
+        return new BuildRecord.Task(name, stage, status, ms, 0L);
     }
 
     private static BuildRecord record(

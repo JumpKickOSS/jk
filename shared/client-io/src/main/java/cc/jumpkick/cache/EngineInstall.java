@@ -263,8 +263,8 @@ public final class EngineInstall {
                 } else if (AotCacheFiles.isMarker(name)) {
                     String primaryName = AotCacheFiles.cacheOf(name);
                     if (isPrimaryAotCacheName(primaryName)) removedPrimaries.add(primaryName);
-                } else if (name.endsWith(AotCacheFiles.CACHE + ".config")) {
-                    String primaryName = name.substring(0, name.length() - ".config".length());
+                } else if (name.endsWith(AotCacheFiles.CACHE + AotCacheFiles.CONFIG)) {
+                    String primaryName = name.substring(0, name.length() - AotCacheFiles.CONFIG.length());
                     if (isPrimaryAotCacheName(primaryName)) removedPrimaries.add(primaryName);
                 }
             }
@@ -317,11 +317,7 @@ public final class EngineInstall {
      */
     static boolean isAotArtifactName(String name) {
         if (name == null || name.isBlank()) return false;
-        return name.endsWith(AotCacheFiles.CACHE)
-                || name.endsWith(AotCacheFiles.MARKER)
-                || name.endsWith(".config")
-                || name.endsWith(".training")
-                || name.contains(".tmp-");
+        return name.endsWith(AotCacheFiles.CACHE) || AotCacheFiles.isSidecar(name);
     }
 
     static boolean isParkedClientName(String name) {

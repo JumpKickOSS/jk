@@ -15,6 +15,7 @@ import cc.jumpkick.wire.protocol.ImageRequest;
 import cc.jumpkick.wire.protocol.InstallRequest;
 import cc.jumpkick.wire.protocol.NativeRequest;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.RequestEnvironment;
 import cc.jumpkick.wire.protocol.SingleBuildRequest;
 import cc.jumpkick.wire.protocol.TestRequest;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -119,7 +120,9 @@ final class EngineJobs {
                         req.modules(),
                         req.keepGoing(),
                         workspaceTarget,
-                        graalHomes)
+                        graalHomes,
+                        RequestEnvironment.trigger(),
+                        RequestEnvironment.progressMode())
                 .encode();
     }
 
@@ -159,7 +162,9 @@ final class EngineJobs {
                                                 req.offline(),
                                                 req.force(),
                                                 req.parallelTests() || session.parallelTests(),
-                                                sel)
+                                                sel,
+                                                RequestEnvironment.trigger(),
+                                                RequestEnvironment.progressMode())
                                         .encode(),
                                 session.variant(),
                                 session.clientEnv(),
@@ -207,6 +212,9 @@ final class EngineJobs {
                                                 req.verbose(),
                                                 req.offline(),
                                                 req.force(),
+                                                req.graalHome() != null
+                                                        ? req.graalHome().toString()
+                                                        : null,
                                                 // jk build --all / tag flags on a single project.
                                                 session.testSelection())
                                         .encode(),

@@ -167,7 +167,11 @@ jobs:
   # `git diff --exit-code` on the lockfiles is the real assertion here, not a tidiness check:
   # jk.toml declares only exact pins, so a build that rewrites a committed jk-lock.toml means
   # either a pin drifted or the lock writer put something non-deterministic in the file. That
-  # is lockfile-as-law, enforced on the samples that are supposed to demonstrate it.
+  # is lockfile-as-law, enforced on the samples that are supposed to demonstrate it — with one
+  # pre-1.0 exception: a first-party plugin pinned at the product's own, still-moving version
+  # (cc.jumpkick:jk-minified 0.12.0) is republished with every side-load, so its sha256 can never
+  # match a committed lock. Each sample is re-locked against the jk this job just built, and the
+  # diff may contain checksum lines and nothing else.
   examples:
     name: Doc examples build and test
     runs-on: ubuntu-latest
@@ -201,7 +205,7 @@ jobs:
           for manifest in docs/user/examples/*/jk.toml; do
             sample="$(dirname "$manifest")"
             echo "::group::$sample"
-            if ! ( cd "$sample" && jk build --no-ansi && jk test --no-ansi ); then
+            if ! ( cd "$sample" && jk lock --no-ansi && jk build --no-ansi && jk test --no-ansi ); then
               echo "::error file=$manifest::sample failed: $sample"
               failed=1
             fi
@@ -209,8 +213,16 @@ jobs:
           done
           exit "$failed"
 
-      - name: A sample build must not rewrite its committed lockfile
-        run: git diff --exit-code -- 'docs/user/examples/**/jk-lock.toml'
+      - name: A sample relock may move first-party plugin checksums and nothing else
+        run: |
+          set -euo pipefail
+          git diff --stat -- 'docs/user/examples/**/jk-lock.toml'
+          drift="$(git diff -U0 -- 'docs/user/examples/**/jk-lock.toml' | grep -E '^[+-][^+-]' | grep -vE '^[+-]checksum = "sha256:' || true)"
+          if [ -n "$drift" ]; then
+            echo "::error::a sample lock changed beyond first-party plugin checksums:"
+            printf '%s\n' "$drift"
+            exit 1
+          fi
 
   # Thin-client product smoke on the OSes the PR gate does not run. Native images stay on
   # release.yml. Network is required (first lock/build of a fresh project).

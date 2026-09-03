@@ -193,7 +193,6 @@ public final class MetricsHarvest {
      */
     static boolean isHostKey(String key) {
         if (key == null || key.isBlank()) return false;
-        if (key.startsWith("host.")) return true;
         if (key.startsWith("lock.") || key.startsWith("fetch.") || key.startsWith("probe.")) return true;
         if (key.startsWith("task.") && !key.contains("module.")) return true;
         if (key.startsWith("phase.") && !key.contains("module.")) return true;

@@ -35,8 +35,8 @@ import java.util.function.Function;
  */
 public final class BuildMetrics {
 
-    /** The current on-disk schema version. */
-    public static final int SCHEMA = 2;
+    /** The on-disk schema version — 1 until 1.0, like every other jk schema (architecture.md). */
+    public static final int SCHEMA = 1;
 
     /** In-memory key separator; never appears in a sane path or step name. */
     private static final char SEP = '\n';
@@ -672,9 +672,10 @@ public final class BuildMetrics {
         Map<String, Entry> ph = new LinkedHashMap<>();
         try {
             if (Files.isRegularFile(file) && MiniJson.parse(Files.readString(file)) instanceof Map<?, ?> root) {
-                // The step->task rename changed the shape under schema 1, so a version check is
-                // the whole migration: an old store decodes to empty and the priors re-learn in
-                // one run — cheaper than dual reads living forever.
+                // Shape changes happen in place under one version: a store written before the
+                // step->task rename carries a `steps` table this reader does not consult, so its
+                // task priors re-learn in one run while its invocation priors survive. No dual
+                // reader, no version bump.
                 if (!(root.get("schema") instanceof Number v) || v.longValue() < SCHEMA) {
                     return new BuildMetrics(inv, ph);
                 }

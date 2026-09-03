@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import java.time.Duration;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -35,6 +36,14 @@ public interface TaskContext {
 
     /** Mark outputs already up-to-date/cached; recorded as {@link TaskStatus#SKIPPED}. Idempotent. */
     default void cached() {}
+
+    /**
+     * Time this step spent blocked on a shared resource — a compiler worker's queue, a slot — as
+     * opposed to doing its own work. Journaled beside the step's wall ({@code wait-ms} next to
+     * {@code wall-ms}) and subtracted from it when learning per-unit rates: a rate learned from
+     * queue wait prices the machine, not the work. Additive; call once per wait.
+     */
+    default void waited(Duration blocked) {}
 
     /** Accumulating warning for the run report. */
     void warn(String code, String message);

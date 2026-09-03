@@ -106,8 +106,7 @@ public final class CodeFormatter implements Plugin {
             }
         } finally {
             workers.close();
-            // One write for the whole run: every contains/record above was a map operation
-            // .
+            // One write for the whole run: every contains/record above was a map operation.
             if (stampCache != null) stampCache.save();
         }
 

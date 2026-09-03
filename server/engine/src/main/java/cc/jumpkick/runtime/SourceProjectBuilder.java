@@ -8,12 +8,12 @@ import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -271,7 +271,8 @@ final class SourceProjectBuilder {
         String path = System.getenv("PATH");
         if (path == null) return null;
         List<String> names = Os.isWindows() ? List.of(bin + ".bat", bin + ".cmd", bin + ".exe", bin) : List.of(bin);
-        for (String dir : path.split(File.pathSeparator)) {
+        for (String dir : SearchPath.entries(path)) {
+            // A blank entry is the current directory on POSIX; a build wrapper is never taken from there.
             if (dir.isBlank()) continue;
             for (String name : names) {
                 Path candidate = Path.of(dir, name);

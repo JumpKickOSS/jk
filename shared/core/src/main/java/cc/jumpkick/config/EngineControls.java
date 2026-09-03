@@ -17,9 +17,13 @@ public final class EngineControls {
 
     /**
      * One published control. {@link #toml()} is empty for process-only env. {@link #env()} may list
-     * several names separated by {@code /}.
+     * several names separated by {@code /}. {@link #whenRead()} says when a change takes effect —
+     * at engine start, per command, per job, or per idle cycle — because the keys differ and a
+     * doc that said "read once at engine start" was wrong for three of five.
      */
-    public record Control(String toml, String env, String defaultValue, String meaning) {}
+    public record Control(String toml, String env, String defaultValue, String whenRead, String meaning) {}
+
+    static final String ENGINE_START = "engine start";
 
     /** {@code [engine]} keys in {@code ~/.jk/config.toml}. */
     public static final List<Control> TABLE = List.of(
@@ -27,36 +31,61 @@ public final class EngineControls {
                     "max-heap-mb",
                     "JK_ENGINE_MAX_HEAP_MB",
                     "256; 512 when CI is set",
+                    ENGINE_START,
                     "Engine process heap ceiling (-Xmx). 0 = uncapped."),
             control(
                     "jobs",
                     "JK_JOBS",
                     "cores (0 = all cores)",
+                    "each command",
                     "Concurrent module/worker budget. CLI -j wins. Alias JK_ENGINE_JOBS."),
             control(
                     "continue",
                     "JK_CONTINUE",
                     "false; true when CI is set",
+                    "each job",
                     "Keep going after a failed module. Does not change the verdict."),
             control(
                     "vfs-max-mb",
                     "JK_ENGINE_VFS_MAX_MB",
                     "32",
+                    ENGINE_START,
                     "Per-job input-tree retain in MiB. 0 = off. CI does not bump this."),
             control(
                     "auto-warmup",
                     "JK_AUTO_WARMUP",
                     "true",
+                    "each idle cycle",
                     "Idle AOT train and host calibration. false skips the whole pass."));
 
     /** {@code JK_ENGINE_*} env that is not an {@code [engine]} key. */
     public static final List<Control> PROCESS = List.of(
-            control("", "JK_ENGINE_EXE", "unset", "Override engine binary instead of the product-lib jar."),
-            control("", "JK_ENGINE_JDK", "unset", "JDK the engine JVM runs on. Same pin as [toolchain].jdk."),
-            control("", "JK_ENGINE_TRANSPORT", "unix; tcp on Windows", "Force tcp or unix for the client-engine wire."),
-            control("", "JK_ENGINE_HEARTBEAT_MS", "30000", "Heartbeat while async jobs run. 0 disables."),
-            control("", "JK_ENGINE_JOB_DEADLINE_MS", "0", "Job wall deadline in ms. 0 = off."),
-            control("", "JK_ENGINE_JOB_DEADLINE_GRACE_MS", "30000", "Join grace after a deadline cancel, in ms."));
+            control(
+                    "",
+                    "JK_ENGINE_EXE",
+                    "unset",
+                    ENGINE_START,
+                    "Override engine binary instead of the product-lib jar."),
+            control(
+                    "",
+                    "JK_ENGINE_JDK",
+                    "unset",
+                    ENGINE_START,
+                    "JDK the engine JVM runs on. Same pin as [toolchain].jdk."),
+            control(
+                    "",
+                    "JK_ENGINE_TRANSPORT",
+                    "unix; tcp on Windows",
+                    ENGINE_START,
+                    "Force tcp or unix for the client-engine wire."),
+            control("", "JK_ENGINE_HEARTBEAT_MS", "30000", ENGINE_START, "Heartbeat while async jobs run. 0 disables."),
+            control("", "JK_ENGINE_JOB_DEADLINE_MS", "0", ENGINE_START, "Job wall deadline in ms. 0 = off."),
+            control(
+                    "",
+                    "JK_ENGINE_JOB_DEADLINE_GRACE_MS",
+                    "30000",
+                    ENGINE_START,
+                    "Join grace after a deadline cancel, in ms."));
 
     /** TomlScan keys: {@code engine.max-heap-mb}, … */
     public static String[] tomlScanKeys() {
@@ -75,10 +104,11 @@ public final class EngineControls {
     public static String tableMarkdown() {
         return markdown(
                 "engine-config",
-                "| Key | Env | Default | Meaning |",
-                "|---|---|---|---|",
+                "| Key | Env | Default | Read | Meaning |",
+                "|---|---|---|---|---|",
                 TABLE,
-                c -> "| `" + c.toml() + "` | `" + c.env() + "` | " + c.defaultValue() + " | " + c.meaning() + " |");
+                c -> "| `" + c.toml() + "` | `" + c.env() + "` | " + c.defaultValue() + " | " + c.whenRead() + " | "
+                        + c.meaning() + " |");
     }
 
     public static String processMarkdown() {
@@ -110,7 +140,7 @@ public final class EngineControls {
     }
 
     /** Parseable row factory so both builds can regex the catalog. */
-    static Control control(String toml, String env, String defaultValue, String meaning) {
-        return new Control(toml, env, defaultValue, meaning);
+    static Control control(String toml, String env, String defaultValue, String whenRead, String meaning) {
+        return new Control(toml, env, defaultValue, whenRead, meaning);
     }
 }

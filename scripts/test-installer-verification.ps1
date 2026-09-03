@@ -83,6 +83,10 @@ try {
     Write-Evidence "$(Get-ArtifactHash)  jk-windows-x86_64-0.9.0.zip`n"
     Assert-Fails "other release manifest"
 
+    # Strict LF, as install.sh and the Java verifier: a CRLF manifest is a different file.
+    Write-Evidence "$(Get-ArtifactHash)  $artifactName`r`n"
+    Assert-Fails "crlf manifest"
+
     $hash = Get-ArtifactHash
     Write-Evidence "$hash  $artifactName`n$hash  $artifactName`n"
     Assert-Fails "duplicate artifact name"
@@ -111,3 +115,4 @@ try {
     $rsa.Dispose()
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
+exit 0

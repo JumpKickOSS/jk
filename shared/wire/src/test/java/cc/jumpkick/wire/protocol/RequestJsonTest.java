@@ -24,6 +24,22 @@ class RequestJsonTest {
 
     private static final String SRC = "shared/wire/src/main/java/cc/jumpkick/wire/protocol";
 
+    /**
+     * The trigger and progress mode are the requester's facts, carried as components: a build the
+     * engine encodes for the dashboard says web whatever JK_BUILD_TRIGGER the daemon started under.
+     */
+    @Test
+    void trigger_and_progress_mode_are_components_not_environment_reads() {
+        TestRequest cli = new TestRequest("/p", "/c", null, 0, null, false, false, false, true, null, "ci", "plain");
+        String json = cli.encode();
+        assertThat(json).contains("\"trigger\":\"ci\"").contains("\"progressMode\":\"plain\"");
+        TestRequest back = TestRequest.decode(json);
+        assertThat(back.trigger()).isEqualTo("ci");
+        assertThat(back.progressMode()).isEqualTo("plain");
+        TestRequest bare = new TestRequest("/p", "/c", null, 0, null, false, false, false, true, null, null, null);
+        assertThat(bare.encode()).doesNotContain("trigger").doesNotContain("progressMode");
+    }
+
     @Test
     void writer_preserves_order_and_owns_typed_omission() {
         Map<String, String> map = new LinkedHashMap<>();
@@ -53,7 +69,7 @@ class RequestJsonTest {
     @Test
     void every_job_request_round_trips_its_defaults() throws Exception {
         List<Class<?>> records = requestRecords();
-        assertThat(records).hasSize(18);
+        assertThat(records).hasSize(43);
         for (Class<?> type : records) {
             Object original = defaultInstance(type);
             String encoded = (String) type.getMethod("encode").invoke(original);
@@ -68,7 +84,7 @@ class RequestJsonTest {
     void default_optional_fields_stay_omitted() {
         String build = new BuildRequest(
                         null, null, null, 0, null, false, false, 0, false, false, false, false, false, false, null,
-                        null, null, false, null, null)
+                        null, null, false, null, null, null, null)
                 .encode();
         assertThat(build)
                 .doesNotContain(
@@ -81,7 +97,8 @@ class RequestJsonTest {
                         "\"workspaceTarget\"",
                         "\"graalHomes\"");
 
-        String single = new SingleBuildRequest(null, null, null, 0, null, false, false, false, false, null).encode();
+        String single =
+                new SingleBuildRequest(null, null, null, 0, null, false, false, false, false, null, null).encode();
         assertThat(single).doesNotContain("\"allSuites\"", "\"suites\"", "\"includeTags\"");
 
         String provision = new ProvisionRequest(null, null, false, false, null, null).encode();

@@ -3,7 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -13,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -95,6 +98,23 @@ class WorkspaceLifecyclePhasesTest {
 
     private static BuildGraph.BuildUnit unit(Path dir) {
         return new BuildGraph.BuildUnit(dir, null, null, null);
+    }
+
+    /**
+     * A cancel during a parallel prepare stops tasks before they run; the plans that never came back
+     * are left out of the ordered map rather than carried as nulls into onPlan.
+     */
+    @Test
+    void units_left_unprepared_by_a_cancel_are_omitted_not_nulled() {
+        Path a = Path.of("ws", "a").toAbsolutePath();
+        Path b = Path.of("ws", "b").toAbsolutePath();
+        ModulePlan planA = new ModulePlan(a, "g:a", BuildPlan.builder("a").build(), 1, false, Path.of("cache"));
+
+        Map<Path, ModulePlan> ordered =
+                WorkspacePreparePhase.orderLikeUnits(List.of(unit(a), unit(b)), Map.of(a, planA));
+        assertThat(ordered).containsExactly(Map.entry(a, planA));
+        assertThat(WorkspacePreparePhase.orderLikeUnits(List.of(unit(a), unit(b)), Map.of()))
+                .isEmpty();
     }
 
     @Test

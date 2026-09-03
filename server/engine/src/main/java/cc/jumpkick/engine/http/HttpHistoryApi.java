@@ -112,6 +112,7 @@ final class HttpHistoryApi {
                 try {
                     return EventRedaction.redactorFor(dir);
                 } catch (RuntimeException e) {
+                    EventRedaction.warnFailOpen(e);
                     return SecretRedactor.none();
                 }
             });
@@ -119,6 +120,7 @@ final class HttpHistoryApi {
             // a quote/backslash/control char streams through verbatim.
             return redactor.forEscapedJson().redact(raw);
         } catch (RuntimeException e) {
+            EventRedaction.warnFailOpen(e);
             return raw;
         }
     }

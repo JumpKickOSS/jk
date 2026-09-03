@@ -159,7 +159,7 @@ public final class RepoGroupBuilder {
     /** True for the built-in Google Maven remote (name or well-known host). */
     static boolean isGoogleAndroidMaven(RepositorySpec spec) {
         if (spec == null) return false;
-        if ("google".equalsIgnoreCase(spec.name())) return true;
+        if (RepositorySpec.GOOGLE.equalsIgnoreCase(spec.name())) return true;
         String host = spec.url().getHost();
         return host != null && (host.equalsIgnoreCase("dl.google.com") || host.equalsIgnoreCase("maven.google.com"));
     }

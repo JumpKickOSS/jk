@@ -7,10 +7,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.OutdatedPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.OutdatedReport;
+import cc.jumpkick.wire.protocol.OutdatedRequest;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -48,13 +48,11 @@ public final class OutdatedVerb implements HostedVerb {
         try {
             OutdatedReport report;
             try {
-                Path dir = Path.of(Jsonl.str(requestLine, "dir"));
-                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String repoUrl = Jsonl.str(requestLine, "repoUrl");
-                JkConfig config = JkConfig.empty()
-                        .withOffline(Jsonl.bool(requestLine, "offline", false))
-                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
-                        .withForce(Jsonl.bool(requestLine, "force", false));
+                OutdatedRequest req = OutdatedRequest.decode(requestLine);
+                Path dir = Path.of(req.dir());
+                Path cache = Path.of(req.cache());
+                String repoUrl = req.repoUrl();
+                JkConfig config = JkConfig.empty().withOffline(req.offline()).withForce(req.force());
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(dir)

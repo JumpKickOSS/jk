@@ -2,7 +2,12 @@
 package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.resolver.DependencyTreeStyle;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +31,52 @@ class TreeCommandTest {
     void explicit_depth_wins_over_transitive() {
         assertThat(TreeCommand.maxDepth(true, 2)).isEqualTo(2);
         assertThat(TreeCommand.maxDepth(false, 1)).isEqualTo(1);
+    }
+
+    /** The default scope set is the style's declared order, through the command, not the list alone. */
+    @Test
+    void scopes_default_to_export_main_runtime() {
+        assertThat(TreeCommand.parseScopes(null))
+                .containsExactlyElementsOf(DependencyTreeStyle.defaultScopeOrder())
+                .extracting(Scope::canonical)
+                .containsExactly("export", "main", "runtime");
+    }
+
+    @Test
+    void scopes_keep_the_order_given_and_drop_repeats() {
+        assertThat(TreeCommand.parseScopes("runtime, main,export,main"))
+                .extracting(Scope::canonical)
+                .containsExactly("runtime", "main", "export");
+    }
+
+    @Test
+    void all_and_exec_are_meta_tokens() {
+        assertThat(TreeCommand.parseScopes("ALL")).containsExactlyElementsOf(DependencyTreeStyle.allScopeOrder());
+        assertThat(TreeCommand.parseScopes("exec")).isEqualTo(TreeCommand.parseScopes("run"));
+        assertThat(TreeCommand.parseScopes("run")).isNotEmpty();
+    }
+
+    @Test
+    void an_unknown_scope_names_the_valid_set() {
+        assertThatThrownBy(() -> TreeCommand.parseScopes("main,bogus"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("invalid scope 'bogus'")
+                .hasMessageContaining("exec/run, all");
+        assertThatThrownBy(() -> TreeCommand.parseScopes(" , "))
+                .hasMessageContaining("--scopes requires at least one scope");
+    }
+
+    /** The short flags and their long names, on the surface the user reads. */
+    @Test
+    void help_lists_the_short_flags() {
+        String help =
+                Capture.stdout(() -> assertThat(Jk.execute("tree", "--help")).isZero());
+        assertThat(help)
+                .contains("-d, --depth")
+                .contains("-f, --flatten")
+                .contains("-S, --stack")
+                .contains("-s, --scopes")
+                .contains("exec/run/all");
     }
 
     @Test

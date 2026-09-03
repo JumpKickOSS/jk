@@ -3,7 +3,6 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -91,17 +90,6 @@ final class RequestJson {
                 .optionalTrue("gate", value.gate())
                 .optionalTrue("scriptsOnly", value.scriptsOnly())
                 .optionalTrue("noScripts", value.noScripts());
-    }
-
-    RequestJson trigger() {
-        String trigger = System.getProperty("jk.build.trigger");
-        if (trigger == null || trigger.isBlank()) trigger = System.getenv("JK_BUILD_TRIGGER");
-        return trigger == null || trigger.isBlank() ? this : string("trigger", trigger.trim());
-    }
-
-    RequestJson progressMode() {
-        ProgressBarMode mode = ProgressBarMode.fromEnvironment();
-        return mode == ProgressBarMode.AUTO ? this : string("progressMode", mode.wireName());
     }
 
     String finish() {

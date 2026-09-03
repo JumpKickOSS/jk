@@ -118,7 +118,7 @@ public final class VerboseListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
         flushOutput(step);
         String glyph =
                 switch (status) {

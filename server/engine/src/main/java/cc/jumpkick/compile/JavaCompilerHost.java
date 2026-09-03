@@ -118,6 +118,10 @@ public final class JavaCompilerHost {
         String status;
         String outcome;
         String reason;
+        /** nanoTime at enqueue and the queue wait measured at dispatch — the step's wait, not its work. */
+        long enqueuedNanos;
+
+        long waitNanos;
 
         private Work(ForkedJavac.Request req, boolean plan) {
             this.req = req;
@@ -143,9 +147,14 @@ public final class JavaCompilerHost {
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
         // PluginSlots permit while idle. Touched only by the io thread.
         private PluginSlots.Lease slot;
-        // Bounded ring of the worker's most recent non-protocol lines, surfaced on a crash.
-        private static final int TAIL_MAX = 50;
+        // Bounded record of the worker's non-protocol lines, surfaced on a crash: the first lines
+        // (where a stack trace names its exception) and the most recent ones (where it ends). A
+        // tail alone kept fifty frames of scalac internals and dropped the one line that said why.
+        private static final int HEAD_MAX = 25;
+        private static final int TAIL_MAX = 40;
+        private final ConcurrentLinkedDeque<String> passthroughHead = new ConcurrentLinkedDeque<>();
         private final ConcurrentLinkedDeque<String> passthroughTail = new ConcurrentLinkedDeque<>();
+        private long passthroughDropped;
 
         Session(long id, ForkedJavac.Request template) {
             io = Thread.ofVirtual().name("jk-zinc-host-" + id).start(() -> run(template));
@@ -179,6 +188,7 @@ public final class JavaCompilerHost {
          * this item, hanging {@code compile.get} forever. The re-check fails it here.
          */
         private void enqueue(Work w) {
+            w.enqueuedNanos = System.nanoTime();
             queue.add(w);
             if (dead) drainFailQueued(new IOException("zinc worker exited"));
         }
@@ -236,6 +246,7 @@ public final class JavaCompilerHost {
                 // RESULT/ERROR/failure so an idle session holds none.
                 slot = PluginSlots.acquire();
                 try {
+                    next.waitNanos = System.nanoTime() - next.enqueuedNanos;
                     next.spec = ForkedJavac.writeSpec(next.req);
                     inflight = next;
                     convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
@@ -290,10 +301,17 @@ public final class JavaCompilerHost {
             }
         }
 
-        /** Keep the last {@link #TAIL_MAX} non-protocol worker lines for crash diagnostics. */
+        /** Keep the first {@link #HEAD_MAX} and last {@link #TAIL_MAX} worker lines for crash diagnostics. */
         private void recordTail(String line) {
+            if (passthroughHead.size() < HEAD_MAX) {
+                passthroughHead.addLast(line);
+                return;
+            }
             passthroughTail.addLast(line);
-            while (passthroughTail.size() > TAIL_MAX) passthroughTail.pollFirst();
+            while (passthroughTail.size() > TAIL_MAX) {
+                passthroughTail.pollFirst();
+                passthroughDropped++;
+            }
         }
 
         /** Return the in-flight worker slot to the pool (idempotent; io thread only). */
@@ -313,6 +331,10 @@ public final class JavaCompilerHost {
             }
         }
 
+        private static long waitMillis(Work w) {
+            return TimeUnit.NANOSECONDS.toMillis(Math.max(0, w.waitNanos));
+        }
+
         private static void complete(Work w) {
             deleteSpec(w);
             if (w.plan) {
@@ -323,10 +345,11 @@ public final class JavaCompilerHost {
                     items.add(new ForkedJavac.Invalidation(w.compiledSources.get(i), why));
                 }
                 w.forecast.complete(new ForkedJavac.Plan(full, w.reason == null ? "" : w.reason, items));
-                w.compile.complete(new ForkedJavac.Result(true, List.of(), Map.of(), List.of()));
+                w.compile.complete(new ForkedJavac.Result(true, List.of(), Map.of(), List.of(), waitMillis(w)));
             } else {
                 boolean success = "OK".equals(w.status);
-                w.compile.complete(new ForkedJavac.Result(success, w.diagnostics, w.generated, w.compiledSources));
+                w.compile.complete(
+                        new ForkedJavac.Result(success, w.diagnostics, w.generated, w.compiledSources, waitMillis(w)));
                 w.forecast.complete(new ForkedJavac.Plan(false, "", List.of()));
             }
         }
@@ -349,9 +372,13 @@ public final class JavaCompilerHost {
          * with no cause.
          */
         private Throwable withWorkerTail(Throwable e) {
-            if (passthroughTail.isEmpty()) return e;
-            String tail = String.join("\n", passthroughTail);
-            return new IOException(e.getMessage() + "\n--- zinc worker output ---\n" + tail, e);
+            if (passthroughHead.isEmpty()) return e;
+            StringBuilder sb = new StringBuilder(e.getMessage()).append("\n--- zinc worker output ---\n");
+            sb.append(String.join("\n", passthroughHead));
+            if (passthroughDropped > 0)
+                sb.append("\n... ").append(passthroughDropped).append(" lines elided ...");
+            if (!passthroughTail.isEmpty()) sb.append('\n').append(String.join("\n", passthroughTail));
+            return new IOException(sb.toString(), e);
         }
 
         /**

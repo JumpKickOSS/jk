@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
@@ -22,6 +23,29 @@ public enum Layout {
 
     /** Canonical token for {@link #AUTO}; usable in {@code switch} case labels. */
     public static final String TOKEN_AUTO = "auto";
+
+    /**
+     * The trees {@code jk new} / {@code jk init} can place, first is the default. {@code auto} is
+     * not one of them: it is the {@code jk.toml} value meaning "detect", and a scaffold has nothing
+     * to detect. One list for the CLI help, the MCP schema and {@code builtinLayouts}, so the three
+     * surfaces cannot describe this enum three ways.
+     */
+    public static final List<String> SCAFFOLD_TOKENS = List.of(TOKEN_TRADITIONAL, TOKEN_SIMPLE, TOKEN_AUTO);
+
+    /**
+     * {@code traditional (default) | simple | auto} — the help phrase every scaffold surface shows.
+     * {@code auto} is last: it places no tree of its own ({@code jk init} detects the existing one),
+     * but it is a value {@link #parse} accepts, so the help lists everything the flag takes.
+     */
+    public static String scaffoldHelp() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < SCAFFOLD_TOKENS.size(); i++) {
+            if (i > 0) sb.append(" | ");
+            sb.append(SCAFFOLD_TOKENS.get(i));
+            if (i == 0) sb.append(" (default)");
+        }
+        return sb.toString();
+    }
 
     /** Parse from a jk.toml string value; null or blank → AUTO. */
     public static Layout parse(@Nullable String raw) {

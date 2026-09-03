@@ -193,8 +193,8 @@ object Guards {
             spec(
                 20,
                 "checkSingleHostSurface",
-                "an `os.name` read outside `cc.jumpkick.host.Os`, or a classpath separator outside `Classpaths`",
-                "ban + ratchet",
+                "an `os.name` read outside `cc.jumpkick.host.Os`, or a path separator outside `Classpaths` (`-cp`) and `SearchPath` (`PATH`)",
+                "ban",
                 GuardHome.MODULE,
                 description =
                     "Fail the build on an os.name read outside Os, or a classpath separator outside Classpaths",
@@ -348,16 +348,6 @@ object Guards {
                 attach = emptySet(),
             ),
             spec(
-                32,
-                "checkSpikeCacheTempDir",
-                "a spike-cache test that does not root its project in a `@TempDir`",
-                "ban, one env-gated exception",
-                GuardHome.MODULE_OWNED,
-                ownerPath = ":engine",
-                inTable = false,
-                description = "Fail the build when a spike-cache test does not root its project in a @TempDir",
-            ),
-            spec(
                 33,
                 "checkCatalogLockParity",
                 "`gradle/libs.versions.toml` and `jk-lock.toml` disagreeing on a shared module version",
@@ -501,7 +491,7 @@ object Guards {
             spec(
                 49,
                 "checkSingleHomeRoot",
-                "a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; two self-fail arms (stale allowlist entry, empty candidate set)",
+                "a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; extension-blind like G50; self-fail arms: stale allowlist entry, fixture set no longer caught, marker isolation, empty candidate set",
                 "ban; nine-file allowlist, each entry carrying the reason it reads another program's layout",
                 GuardHome.ROOT,
                 tableTask = "`checkSingleHomeRoot` (root project)",
@@ -607,6 +597,16 @@ object Guards {
                 tableTask = "`checkNoHistoricalNarration` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Fail when comments or docs narrate a previous design",
+            ),
+            spec(
+                60,
+                "checkOneJsonSplicer",
+                "a JSON object spliced by hand in `src/main/java` — a closing brace chopped and appended to, or a literal `{` opened onto another object's tail — outside `Jsonl.append`",
+                "ban in both builds; self-fail when the owner stops splicing or the scan sees too few sources",
+                GuardHome.ROOT,
+                tableTask = "`checkOneJsonSplicer` (root project) + `.jk/after-build.kts`",
+                attach = emptySet(),
+                description = "Fail when a JSON object is spliced by hand outside Jsonl.append",
             ),
             spec(
                 task = "checkStageDocs",

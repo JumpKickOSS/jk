@@ -40,6 +40,8 @@ class WrapperTemplateTest {
         assertThat(sh).contains("ver_ge").contains("requires jk >=");
         // Unix wrapper matches install.sh: .xz, inflated with system xz. No zip.
         assertThat(sh).contains("jk-$OS-$ARCH-$VERSION.xz").contains("xz -dc");
+        // The same refusal JkDirs makes: a relative JK_HOME is not a home jk would read.
+        assertThat(sh).contains("JK_HOME must be an absolute path");
         assertThat(sh).doesNotContain(".zip");
         // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness.
         assertThat(sh).doesNotContain(".sock").doesNotContain("endpoint").doesNotContain("gen1");
@@ -57,6 +59,7 @@ class WrapperTemplateTest {
         assertThat(bat).doesNotContain("JK_BIN_DIR").doesNotContain("JK_INSTALL_DIR");
         // Windows wrapper matches install.ps1: .zip (no system xz). Not .exe.zip.
         assertThat(bat).contains("jk-windows-x86_64-%VERSION%.zip");
+        assertThat(bat).contains("JK_HOME must be an absolute path");
         assertThat(bat).doesNotContain(".exe.zip").doesNotContain(".xz");
         assertThat(bat).doesNotContain(".sock").doesNotContain("endpoint");
     }

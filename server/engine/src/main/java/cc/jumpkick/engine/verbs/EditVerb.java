@@ -5,8 +5,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.EditOps;
+import cc.jumpkick.wire.protocol.EditRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoReads;
 import java.io.BufferedWriter;
@@ -45,10 +45,8 @@ public final class EditVerb implements HostedVerb {
         try {
             EditOps.Result result;
             try {
-                result = EditOps.apply(
-                        Path.of(Jsonl.str(requestLine, "file")),
-                        Jsonl.str(requestLine, "op"),
-                        Jsonl.strArray(requestLine, "args"));
+                EditRequest req = EditRequest.decode(requestLine);
+                result = EditOps.apply(Path.of(req.file()), req.op(), req.args());
             } catch (RuntimeException e) {
                 result = new EditOps.Result(false, Errors.text(e));
             }

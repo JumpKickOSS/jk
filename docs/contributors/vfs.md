@@ -84,7 +84,7 @@ nested `of()` that walked the covering parent), `src/` is `recursed` and
 
 | Tree | Why |
 |---|---|
-| `target/`, CAS, plugin scratch, KSP, generated sources | This job writes them. `RequestScope` already refuses to cache mutables. |
+| `target/`, CAS, plugin scratch, KSP, generated sources | This job writes them. `RequestScope` already refuses to cache mutables, and `InputTrees.of` answers any root with a `target` segment live on every ask — never retained, never charged, never memoized. |
 | File **bytes** | `FileHashMemo` owns content hashes, keyed on live `(path, size, mtimeMillis, mtimeNanos)`. |
 | Toolchain installs, Maven store | Rarely change; not this workspace. |
 | Plugin-worker heaps | Other JVMs. They receive `PluginProtocol.SOURCE` **paths**, not a tree snapshot. Proto stays 1. |

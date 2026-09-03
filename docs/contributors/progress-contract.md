@@ -66,7 +66,7 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **One function** | Both call `BuildService.estimateEtaMillis` only for `R0`. |
 | **One forecast** | Costs from `TaskForecaster` / `ExplainPlan` only. |
 | **Material dirty only** | A module is dirty only if a *material* step (compile/test/package/native/…) is not CACHED — not parse-build / resolve-deps / write-stamp bookkeeping. Resource drift is material: the forecaster emits `copy-resources` (main/extra) or `copy-test-resources` (test scope) only when trees actually drifted, and either schedules the module. Compile-consumer cascade seeds from **compile/package** only (not `copy-resources` alone): consumers hash the packaged jar; package is forecast against a post-copy projection when resources drifted. A dirty `order-after`-only prereq adds an unpriced `order-check` task: the dependent schedules (real action keys re-check out-of-band outputs) but contributes nothing to ETA. |
-| **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. Cascade-forced compile/package/**native** (`dependency changed` / `main changed` / `compile changed` without local *compile* content) are recheck tokens, not suite/native walls. Resource-only modules (copy/package resources) price package+copy only — never unlock compile/test suite walls. `run-tests` stays full when the module has local compile content, no compile steps (test-dep only), or a heavy packaging tail forecast (cli-shaped); pure cascade modules discount tests. |
+| **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. Cascade-forced compile/package/**native** (`dependency changed` / `main changed` / `compile changed` without local *compile* content) are recheck tokens, not suite/native walls. Resource-only modules (copy/package resources) price package+copy only — never unlock compile/test suite walls. `run-tests` stays full when the module has local compile content, no compile steps (test-dep only), a heavy packaging tail forecast (cli-shaped), or a red marker under its current key (`run tests · … · last run failed` — a failed suite stores its counts under the same key a green one does, so the re-run is evidence rather than stamp drift); pure cascade modules discount tests. |
 | **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
 | **Seed path lock** | Client freezes the R0 *seed path* when execute starts (provisional eta thrash guard). Residual still re-anchors the painted countdown mid-run. |
 | **Mild over-estimate** | After schedule + history clamp, non-zero `R0` gets `×1.01` (`preferSlightOverEstimate`) so a hair high is preferred over a hair low — not a multi-minute floor. |
@@ -164,6 +164,17 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
       details.jsonl
       metrics.toml
 ```
+
+## Step metrics: wall and wait
+
+`metrics.toml` records every successful step twice: `task.<step>.wall-ms` /
+`module.<dir>.task.<step>.wall-ms` is the step's wall clock, and where the step spent part of
+that wall blocked on a shared resource, `…wait-ms` beside it says how much. All Java compilation
+in a job goes through one resident compiler worker, so on a wide build a module's `compile-java`
+wall is mostly its place in that queue: thirty modules summing to a minute of `compile-java`
+is a minute of machine-busy time, not a minute of javac. The wall stays the honest wall; the
+learned per-unit rates (`StepTimings`) train on `wall − wait`, so a rate never prices the queue
+as work. The wire (`task-finish` `waitMillis`, JSONL `wait_ms`) carries the same split.
 
 ## Out of scope
 

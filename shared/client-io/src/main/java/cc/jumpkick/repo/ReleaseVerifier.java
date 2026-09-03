@@ -60,11 +60,6 @@ public final class ReleaseVerifier {
                 .toList());
     }
 
-    /** True when at least one trusted key is configured — verification is possible at all. */
-    public boolean available() {
-        return !trusted.isEmpty();
-    }
-
     /**
      * Verify {@code signatureBase64} over {@code sumsBytes} against any trusted key. Throws with
      * an actionable message on failure — a bad signature must never degrade to a warning.
@@ -108,6 +103,17 @@ public final class ReleaseVerifier {
      * Every non-final line must be {@code <64 hex><two spaces><plain filename>}.
      */
     public static String sha256For(byte[] sumsBytes, String artifactName) throws IOException {
+        return find(sumsBytes, artifactName)
+                .orElseThrow(() -> new IOException("release SHA256SUMS has no unique exact entry for " + artifactName));
+    }
+
+    /**
+     * The digest for {@code artifactName}, or empty when the manifest simply has no such entry. A
+     * manifest that is malformed, not UTF-8, or names an artifact twice still throws: absence is an
+     * answer, corruption is not. Strict LF line endings — the signer and every verifier agree on
+     * the exact bytes, so a CRLF manifest is a different file, not the same file typed on Windows.
+     */
+    public static Optional<String> find(byte[] sumsBytes, String artifactName) throws IOException {
         String text;
         try {
             text = StandardCharsets.UTF_8
@@ -126,7 +132,6 @@ public final class ReleaseVerifier {
         String[] lines = text.split("\n", -1);
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
-            if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
             if (line.isEmpty() && i == lines.length - 1) continue;
             var match = entry.matcher(line);
             if (!match.matches()) {
@@ -138,9 +143,6 @@ public final class ReleaseVerifier {
             }
             if (name.equals(artifactName)) found = match.group(1).toLowerCase(Locale.ROOT);
         }
-        if (found == null) {
-            throw new IOException("release SHA256SUMS has no unique exact entry for " + artifactName);
-        }
-        return found;
+        return Optional.ofNullable(found);
     }
 }

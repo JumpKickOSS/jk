@@ -15,9 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link WorkspaceExecute#requestKnobs} is the one spelling of the request-knob set. Both roads to
+ * {@link WorkspacePreparePhase#requestKnobs} is the one spelling of the request-knob set. Both roads to
  * a module's {@link BuildPlanner.Inputs} — the decorate operator the NATIVE/IMAGE/COMPILE terminal
- * branches take, and {@link WorkspaceExecute#moduleInputs} on the PACKAGE/INSTALL path — must
+ * branches take, and {@link WorkspacePreparePhase#moduleInputs} on the PACKAGE/INSTALL path — must
  * deliver the request's knobs verbatim; a knob dropped from the owner is a module silently planned
  * against a different manifest than its siblings.
  */

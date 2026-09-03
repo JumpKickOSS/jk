@@ -2,8 +2,10 @@
 # application + its runtime closure, packaged as a slim self-contained jar — the fat-jar
 # counterpart of Android's release shrinking, for CLI tools, functions, and services that
 # ship a single artifact. Opt-in via [application] minified = true (preferred) or a
-# [minified] table (keep rules / r8-version). Reflection-heavy frameworks need keep rules
-# the user owns; jk never guesses.
+# [minified] table (keep rules / r8-version). Anything found by name at run time — services
+# files, vendor marker directories, resource indexes whose entries are class names — needs keep
+# rules the user owns; jk never guesses. Compile-time DI moves the hazard from reflection to
+# discovery, it does not remove it (docs/user/packaging.md).
 
 [plugin]
 id        = "minified"

@@ -65,12 +65,15 @@ final class WorkspacePreparePhase {
                         + ")",
                 started);
 
-        listener.onPlan(List.copyOf(plans.values()));
-        listener.onModuleGraph(resources.preflight().graph().edges());
-        listener.onEtaEstimate(resources.etaMs());
+        // A cancel during a parallel prepare leaves the map short of units; finish here rather
+        // than announce a partial plan (List.copyOf rejects a null, and the verb's catch-all
+        // was the only thing turning that NPE into a clean cancellation).
         if (SessionCancel.cancelled()) {
             return new Completed(new WorkspaceResult(false, 1, List.of(), List.of(), true));
         }
+        listener.onPlan(List.copyOf(plans.values()));
+        listener.onModuleGraph(resources.preflight().graph().edges());
+        listener.onEtaEstimate(resources.etaMs());
         return new Ready(new Prepared(resources, Collections.unmodifiableMap(new LinkedHashMap<>(plans))));
     }
 
@@ -145,9 +148,18 @@ final class WorkspacePreparePhase {
             if (cause instanceof RuntimeException runtime) throw runtime;
             throw new RuntimeException(cause);
         }
+        return orderLikeUnits(resources.dirtyUnits(), plans);
+    }
+
+    /**
+     * The prepared plans in unit order. A unit with no plan — a cancel stopped its task before it
+     * ran — is left out, never carried as a null the plan list would choke on.
+     */
+    static Map<Path, ModulePlan> orderLikeUnits(List<BuildGraph.BuildUnit> units, Map<Path, ModulePlan> plans) {
         Map<Path, ModulePlan> ordered = new LinkedHashMap<>();
-        for (BuildGraph.BuildUnit unit : resources.dirtyUnits()) {
-            ordered.put(unit.dir(), plans.get(unit.dir()));
+        for (BuildGraph.BuildUnit unit : units) {
+            ModulePlan plan = plans.get(unit.dir());
+            if (plan != null) ordered.put(unit.dir(), plan);
         }
         return ordered;
     }
@@ -258,7 +270,9 @@ final class WorkspacePreparePhase {
         boolean testOnly = (target.testOnly() || request.testOnly()) && !consumed;
         BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testOnly);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);
-        if (!testOnly) PlannerTails.appendDeclaredTails(builder, inputs);
+        if (!testOnly) {
+            PlannerTails.appendDeclaredTails(builder, inputs, GraalHomes.lookup(dir, spec.graalByDir()), true);
+        }
         return builder.build();
     }
 

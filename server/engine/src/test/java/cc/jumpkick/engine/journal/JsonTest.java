@@ -34,11 +34,11 @@ class JsonTest {
                         1,
                         3000,
                         List.of(
-                                new BuildRecord.Task("compile", "compile", "SUCCESS", 800),
-                                new BuildRecord.Task("test", "test", "FAIL", 1200)))),
+                                new BuildRecord.Task("compile", "compile", "SUCCESS", 800, 650L),
+                                new BuildRecord.Task("test", "test", "FAIL", 1200, 0L)))),
                 List.of(
-                        new BuildRecord.Task("compile", "compile", "SUCCESS", 800),
-                        new BuildRecord.Task("test", "test", "FAIL", 1200)),
+                        new BuildRecord.Task("compile", "compile", "SUCCESS", 800, 0L),
+                        new BuildRecord.Task("test", "test", "FAIL", 1200, 0L)),
                 List.of(new BuildRecord.Diag(
                         "error",
                         "/proj",
@@ -210,7 +210,7 @@ class JsonTest {
                 "9.9",
                 null,
                 List.of(),
-                List.of(new BuildRecord.Task("run-tests", "test", "FAIL", 10)),
+                List.of(new BuildRecord.Task("run-tests", "test", "FAIL", 10, 0L)),
                 diagnostics,
                 "cli",
                 "abc1234",

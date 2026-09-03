@@ -224,6 +224,10 @@ public final class BuildPlan {
                                 admittedInline = true;
                             } else {
                                 failed = true;
+                                // A SYNC failure with async siblings in flight would otherwise sit
+                                // in events.take() until the next sibling finished — a 30 s
+                                // native-image running to completion for a write-stamp that threw.
+                                if (!cancelled.get()) cancelSiblings(outstanding);
                             }
                             break; // re-scan from the top: readiness changed
                         }
@@ -244,22 +248,7 @@ public final class BuildPlan {
                 if (isOk(done.status())) completedOk.add(done.task().name());
                 else failed = true;
                 if (failed && !cancelled.get()) {
-                    // A step failed while siblings are still running. Unlike the wave executor —
-                    // where the expensive tails had not started yet, so returning early was free —
-                    // first-ready means a 30 s native-image can already be in flight when a 5 s
-                    // test suite goes red. Waiting for it would make every failed build as slow as
-                    // a successful one, so flip the cooperative flag now: running steps observe
-                    // ctx.cancelled() and bail, and runOneStep terminals them CANCELLED rather
-                    // than FAIL (the "sibling fail" arm it already documents).
-                    cancelled.set(true);
-                    try {
-                        Thread.sleep(COOPERATIVE_CANCEL_GRACE.toMillis());
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    for (CompletableFuture<TaskStatus> f : outstanding) {
-                        if (!f.isDone()) f.cancel(true);
-                    }
+                    cancelSiblings(outstanding);
                 }
                 // Loop back and keep draining until `running` hits zero: cancelling a future
                 // completes it, so each started step still yields exactly one event and the
@@ -418,6 +407,27 @@ public final class BuildPlan {
         return s == TaskStatus.SUCCESS || s == TaskStatus.SKIPPED;
     }
 
+    /**
+     * A step failed while siblings are still running. Unlike the wave executor — where the
+     * expensive tails had not started yet, so returning early was free — first-ready means a 30 s
+     * native-image can already be in flight when a 5 s test suite goes red. Waiting for it would
+     * make every failed build as slow as a successful one, so flip the cooperative flag now:
+     * running steps observe {@code ctx.cancelled()} and bail, and {@code runOneStep} terminals them
+     * CANCELLED rather than FAIL (the "sibling fail" arm it documents). Called from both failure
+     * paths — an async {@code Done} and an inline SYNC step — so neither waits on the other's tail.
+     */
+    private void cancelSiblings(Collection<CompletableFuture<TaskStatus>> outstanding) {
+        cancelled.set(true);
+        try {
+            Thread.sleep(COOPERATIVE_CANCEL_GRACE.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        for (CompletableFuture<TaskStatus> f : outstanding) {
+            if (!f.isDone()) f.cancel(true);
+        }
+    }
+
     private TaskStatus runOneStep(Task step, int initialTicks, int weight) {
         Instant start = Instant.now();
         long startNum = numerator.sum();
@@ -451,7 +461,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, Instant.now());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
-            emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur));
+            emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
         } catch (Throwable t) {
             if (ticked) easing.remove(ctx);
@@ -483,7 +493,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, Instant.now());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
-            emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur));
+            emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
         }
     }
@@ -552,6 +562,12 @@ public final class BuildPlan {
      * state steps produced — resolved lockfile, JDK outcome, etc. — into their summary output
      * without needing a separate holder object.
      */
+    /**
+     * The value under {@code key}, or empty when unset. An undeclared key is also empty, on purpose:
+     * a plan may read state another plan published (a verb reading {@code CLASSES_DIR} off a plan
+     * that never declared it), and only the writer knows the declared set. {@link #declares} tells
+     * the two apart; {@code require} uses it to name the real defect.
+     */
     public <T> Optional<T> get(BuildPlanKey<T> key) {
         BuildPlanKey<?> declared = stateKeys.get(key.name());
         if (declared == null) return Optional.empty();
@@ -559,6 +575,11 @@ public final class BuildPlan {
         Object raw = state.get(key.name());
         if (raw == null) return Optional.empty();
         return Optional.of(key.cast(raw));
+    }
+
+    /** True when this plan declared {@code key} in its state keys. */
+    boolean declares(BuildPlanKey<?> key) {
+        return stateKeys.containsKey(key.name());
     }
 
     <T> void put(BuildPlanKey<T> key, T value) {

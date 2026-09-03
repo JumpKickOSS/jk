@@ -27,7 +27,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public interface Hooks {
         default void planProgress(String dir, BuildPlanView view) {}
 
-        default void stepFinished(String dir, String step, String phase, String status, long millis) {}
+        default void stepFinished(String dir, String step, String phase, String status, long millis, long waitMillis) {}
 
         default void planFinished(String dir, BuildPlanResult result) {}
 
@@ -167,12 +167,13 @@ public final class BridgingPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
         long millis = duration.toMillis();
+        long waitMillis = waited == null ? 0 : waited.toMillis();
         String phase = phaseWire(group);
         String st = status.name();
-        sink.emit(new EngineEvent.StepFinish(dir, step, phase, st, millis));
-        hooks.stepFinished(dir, step, phase, st, millis);
+        sink.emit(new EngineEvent.StepFinish(dir, step, phase, st, millis, waitMillis));
+        hooks.stepFinished(dir, step, phase, st, millis, waitMillis);
     }
 
     @Override

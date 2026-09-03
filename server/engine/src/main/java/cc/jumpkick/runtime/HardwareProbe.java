@@ -383,7 +383,7 @@ final class HardwareProbe {
 
     /**
      * One Central GET. Production is {@link #httpGet}; the injection point exists so a test can
-     * drive the whole fetch-and-publish route — the part got wrong — without a network
+     * drive the whole fetch-and-publish route without a network
      * and without a mutable static base URL.
      */
     @FunctionalInterface

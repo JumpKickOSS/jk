@@ -97,6 +97,22 @@ class StatusSnapshotJsonTest {
         assertThat(body).contains("\"uptimeSeconds\":");
     }
 
+    /** Every component is a key of {@code vitals()} — the check the two other surfaces inherit by starting from it. */
+    @Test
+    void vitals_carries_every_component_of_the_record() {
+        Map<String, Object> vitals = SNAPSHOT.vitals();
+        List<String> missing = new ArrayList<>();
+        for (RecordComponent c : StatusSnapshot.class.getRecordComponents()) {
+            String wireName = RENAMED.getOrDefault(c.getName(), c.getName());
+            if (!vitals.containsKey(wireName)) missing.add(c.getName());
+        }
+        assertThat(missing).as("StatusSnapshot components that vitals() omits").isEmpty();
+        assertThat(vitals).containsKey("uptimeSeconds");
+        assertThat(vitals.keySet().iterator().next())
+                .as("version leads, as every surface renders it")
+                .isEqualTo("version");
+    }
+
     /** Values, not just keys — a serializer that emitted every name and the wrong number passes a key check. */
     @Test
     void to_json_carries_the_snapshots_own_values() {
@@ -126,12 +142,11 @@ class StatusSnapshotJsonTest {
      * keeps {@code LiveVitals.PresentStatus}, which reads thirteen accessors to build a change-gate
      * fingerprint and serializes nothing, out of the result.
      *
-     * <p>{@code HttpReadApi} and {@code LiveVitals} were both in this set before and must
-     * not come back. {@code McpVitals} is the one that remains; when it is routed through
-     * {@code toJson()} this expectation goes to empty and the entry below is deleted.
+     * <p>The expectation is empty: every renderer starts from {@code vitals()} and reads no accessor
+     * of its own.
      */
     @Test
-    void only_mcp_still_renders_engine_vitals_without_the_owner() throws IOException {
+    void no_file_renders_engine_vitals_without_the_owner() throws IOException {
         Path main = RepoRoot.dir(StatusSnapshotJsonTest.class, "server/engine/src/main/java");
         Set<String> accessors = new LinkedHashSet<>();
         for (RecordComponent c : StatusSnapshot.class.getRecordComponents()) {
@@ -157,7 +172,7 @@ class StatusSnapshotJsonTest {
                 .as("engine production sources scanned under %s", main)
                 .hasSizeGreaterThan(200);
         assertThat(renderers)
-                .as("files rendering StatusSnapshot as JSON without StatusSnapshot.toJson()")
-                .containsExactly("cc/jumpkick/engine/http/mcp/McpVitals.java");
+                .as("files rendering StatusSnapshot as JSON without StatusSnapshot.vitals()")
+                .isEmpty();
     }
 }

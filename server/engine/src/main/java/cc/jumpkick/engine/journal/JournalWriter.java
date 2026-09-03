@@ -102,9 +102,10 @@ public final class JournalWriter {
         if (a != null) a.noteTaskStart(dir, step, phase);
     }
 
-    public void accStepFinish(long requestId, String dir, String step, String phase, String status, long millis) {
+    public void accStepFinish(
+            long requestId, String dir, String step, String phase, String status, long millis, long waitMillis) {
         BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.addTask(dir, step, phase, status, millis);
+        if (a != null) a.addTask(dir, step, phase, status, millis, waitMillis);
     }
 
     public void accTests(long requestId, TestSummary tests) {

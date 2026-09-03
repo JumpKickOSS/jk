@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.JsonOut;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * The engine vitals {@code GET /api/status} reports — supplied per request by {@code EngineServer}
@@ -99,25 +101,35 @@ public record StatusSnapshot(
      * it itself would be reading a second clock.
      */
     public JsonOut toJson() {
-        return JsonOut.object()
-                .put("version", version)
-                .put("pid", pid)
-                .put("startedAt", startedAtMillis)
-                .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - startedAtMillis) / 1000))
-                .put("activeRequests", activeRequests)
-                .put("activeBuildPlans", activeBuildPlans)
-                .put("peakActiveRequests", peakActiveRequests)
-                .put("peakActiveBuildPlans", peakActiveBuildPlans)
-                .put("heapUsedBytes", heapUsedBytes)
-                .put("heapCommittedBytes", heapCommittedBytes)
-                .put("heapMaxBytes", heapMaxBytes)
-                .put("rssBytes", rssBytes)
-                .put("aotTrainingPid", aotTrainingPid)
-                .put("cores", cores)
-                .put("totalMemoryBytes", totalMemoryBytes)
-                .put("availableMemoryBytes", availableMemoryBytes)
-                .put("systemCpuLoad", systemCpuLoad)
-                .put("systemLoadAverage", systemLoadAverage)
-                .put("engineEpoch", engineEpoch);
+        return JsonOut.rawObject(vitals());
+    }
+
+    /**
+     * The vitals as one ordered map — the single enumeration every surface renders from:
+     * {@link #toJson} for REST and SSE, the MCP status payload, and the socket status ack. A
+     * component added to the record is added here once and reaches all of them.
+     */
+    public Map<String, Object> vitals() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("version", version);
+        m.put("pid", pid);
+        m.put("startedAt", startedAtMillis);
+        m.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - startedAtMillis) / 1000));
+        m.put("activeRequests", activeRequests);
+        m.put("activeBuildPlans", activeBuildPlans);
+        m.put("peakActiveRequests", peakActiveRequests);
+        m.put("peakActiveBuildPlans", peakActiveBuildPlans);
+        m.put("heapUsedBytes", heapUsedBytes);
+        m.put("heapCommittedBytes", heapCommittedBytes);
+        m.put("heapMaxBytes", heapMaxBytes);
+        m.put("rssBytes", rssBytes);
+        m.put("aotTrainingPid", aotTrainingPid);
+        m.put("cores", cores);
+        m.put("totalMemoryBytes", totalMemoryBytes);
+        m.put("availableMemoryBytes", availableMemoryBytes);
+        m.put("systemCpuLoad", systemCpuLoad);
+        m.put("systemLoadAverage", systemLoadAverage);
+        m.put("engineEpoch", engineEpoch);
+        return m;
     }
 }

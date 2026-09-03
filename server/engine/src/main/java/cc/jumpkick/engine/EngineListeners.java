@@ -150,8 +150,8 @@ public final class EngineListeners {
             long rid, String dir, @Nullable BufferedWriter writer, boolean releaseSlotOnFinish) {
         return new BridgingPlanListener.Hooks() {
             @Override
-            public void stepFinished(String d, String step, String phase, String status, long millis) {
-                journal.accStepFinish(rid, d, step, phase, status, millis);
+            public void stepFinished(String d, String step, String phase, String status, long millis, long waitMillis) {
+                journal.accStepFinish(rid, d, step, phase, status, millis, waitMillis);
             }
 
             @Override

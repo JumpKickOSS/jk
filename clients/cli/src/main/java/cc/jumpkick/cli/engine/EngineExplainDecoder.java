@@ -5,7 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
-import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
@@ -44,22 +44,23 @@ final class EngineExplainDecoder {
      */
     static ExplainPlan explain(EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long[] etaOut)
             throws IOException {
-        String request = ProtoReads.explainRequest(
-                req.entryDir().toString(),
-                req.cache().toString(),
-                req.workers(),
-                req.skipTests(),
-                req.profile(),
-                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                req.serial(),
-                req.parallelTests(),
-                req.verbose(),
-                req.rebuild(),
-                req.maxModuleConcurrency(),
-                // The session's resolved selection, same as jk build sends: it feeds every
-                // module's run-tests stamp key, and an explain that omits it forecasts a suite
-                // re-run for every module in the tree.
-                SessionContext.current().testSelection());
+        String request = new ExplainRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.workers(),
+                        req.skipTests(),
+                        req.profile(),
+                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                        req.serial(),
+                        req.parallelTests(),
+                        req.verbose(),
+                        req.rebuild(),
+                        req.maxModuleConcurrency(),
+                        // The session's resolved selection, same as jk build sends: it feeds every
+                        // module's run-tests stamp key, and an explain that omits it forecasts a suite
+                        // re-run for every module in the tree.
+                        SessionContext.current().testSelection())
+                .encode();
         return EngineWire.stream(paths, request, (reader, ch) -> {
             List<TaskForecast.Module> modules = new ArrayList<>();
             Map<String, List<TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();

@@ -6,13 +6,12 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.ExplainReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
-import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoReads;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
@@ -51,22 +50,12 @@ public final class ExplainVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
-                String entryDirStr = Jsonl.str(requestLine, "dir");
-                String cacheStr = Jsonl.str(requestLine, "cache");
-                Path entryDir = Path.of(entryDirStr);
-                Path cache = Path.of(cacheStr);
+                ExplainRequest req = ExplainRequest.decode(requestLine);
+                Path entryDir = Path.of(req.dir());
+                Path cache = Path.of(req.cache());
                 // --redo rides the same session flag as jk build --redo so forecast
                 // (all steps RUN) and ETA (build:rebuild history) match the live rebuild path.
-                boolean rebuild = Jsonl.bool(requestLine, "rebuild", false);
-                boolean force = Jsonl.bool(requestLine, "force", false);
-                boolean offline = Jsonl.bool(requestLine, "offline", false);
-                boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-                boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-                JkConfig config = JkConfig.empty()
-                        .withOffline(offline)
-                        .withRebuild(rebuild)
-                        .withVerbose(verbose)
-                        .withForce(force);
+                JkConfig config = JkConfig.empty().withRebuild(req.rebuild()).withVerbose(req.verbose());
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)
@@ -75,12 +64,11 @@ public final class ExplainVerb implements HostedVerb {
                         // applies it. Without it this session carried TestSelection.DEFAULT, whose
                         // empty exclude-tag list is itself a stamp input — so the forecast computed
                         // a run-tests key no build had ever stored and called all 30 modules dirty.
-                        .withTestSelection(ProtoJobs.testSelectionOf(requestLine));
+                        .withTestSelection(req.selection());
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
-                String etaJdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
-                int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
-                int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
-                if (maxModuleConcurrency <= 0 && Jsonl.bool(requestLine, "serial", false)) {
+                String etaJdksDirStr = req.jdksDir();
+                int maxModuleConcurrency = req.maxModuleConcurrency();
+                if (maxModuleConcurrency <= 0 && req.serial()) {
                     maxModuleConcurrency = 1;
                 }
                 ExplainReport report = ExplainReport.compute(
@@ -90,13 +78,12 @@ public final class ExplainVerb implements HostedVerb {
                         session,
                         new ExplainReport.Knobs(
                                 etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
-                                Jsonl.str(requestLine, "profile"),
-                                workers,
+                                req.profile(),
+                                req.workers(),
                                 maxModuleConcurrency,
-                                // Same default as the build surfaces.
-                                Jsonl.bool(requestLine, "parallelTests", true),
-                                skipTests,
-                                verbose));
+                                req.parallelTests(),
+                                req.skipTests(),
+                                req.verbose()));
                 ExplainPlan plan = report.plan();
                 if (plan.hasErrors()) {
                     for (String err : plan.errors()) {

@@ -245,9 +245,9 @@ class BuildJournalTest {
         BuildJournal j = new BuildJournal(dir);
         var tasks = List.of(
                 // ofTaskName would call this one `compile`; the plan says `generate`.
-                new BuildRecord.Task("plugin-android-res", "generate", "SUCCESS", 700),
+                new BuildRecord.Task("plugin-android-res", "generate", "SUCCESS", 700, 0L),
                 // ofTaskName has no case for this name at all and would bucket it `other`.
-                new BuildRecord.Task("resolve-kotlinc", "resolve", "SUCCESS", 300));
+                new BuildRecord.Task("resolve-kotlinc", "resolve", "SUCCESS", 300, 0L));
         String locator =
                 j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
@@ -265,10 +265,10 @@ class BuildJournalTest {
     void metrics_toml_sums_phase_walls_per_run() throws Exception {
         BuildJournal j = new BuildJournal(dir);
         var tasks = List.of(
-                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000),
-                new BuildRecord.Task("copy-resources", "compile", "SUCCESS", 1000),
-                new BuildRecord.Task("write-stamp", "compile", "SUCCESS", 500),
-                new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000));
+                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 0L),
+                new BuildRecord.Task("copy-resources", "compile", "SUCCESS", 1000, 0L),
+                new BuildRecord.Task("write-stamp", "compile", "SUCCESS", 500, 0L),
+                new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000, 0L));
         String locator =
                 j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
         Path metrics = j.runDir(locator).orElseThrow().resolve("metrics.toml");
@@ -282,6 +282,25 @@ class BuildJournalTest {
                 .isEqualTo(1);
         // Per-task keys stay per task.
         assertThat(toml).contains("task.compile-java.wall-ms = 2000");
+    }
+
+    /**
+     * A step that queued behind the shared compiler worker records that wait beside its wall, so a
+     * reader summing walls across thirty modules can see how much of the sum was the queue.
+     */
+    @Test
+    void metrics_toml_records_a_steps_queue_wait_beside_its_wall() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        var tasks = List.of(
+                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 1700L),
+                new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000, 0L));
+        String locator =
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
+        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        assertThat(toml).contains("task.compile-java.wall-ms = 2000");
+        assertThat(toml).contains("task.compile-java.wait-ms = 1700");
+        assertThat(toml).contains("task.run-tests.wall-ms = 4000");
+        assertThat(toml).doesNotContain("task.run-tests.wait-ms");
     }
 
     @Test
@@ -603,7 +622,7 @@ class BuildJournalTest {
                 true,
                 0,
                 20_000,
-                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 17_384))));
+                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 17_384, 0L))));
         String locator =
                 j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE);
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
@@ -627,7 +646,7 @@ class BuildJournalTest {
                 true,
                 0,
                 2_000,
-                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 1_500))));
+                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 1_500, 0L))));
         String locator =
                 j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE);
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));

@@ -67,7 +67,7 @@ public final class WireEventSink implements EventSink {
             case EngineEvent.ErrorLine e ->
                 ProtoEvents.errorLine(e.dir(), e.step(), e.code(), e.message(), e.test(), e.exceptionClass());
             case EngineEvent.StepFinish e ->
-                ProtoEvents.stepFinish(e.dir(), e.step(), e.phase(), e.status(), e.millis());
+                ProtoEvents.stepFinish(e.dir(), e.step(), e.phase(), e.status(), e.millis(), e.waitMillis());
             case EngineEvent.PlanFinishLine e -> e.encodedWireLine();
             case EngineEvent.PlanDiagnostic e ->
                 ProtoEvents.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.test(), e.exceptionClass());

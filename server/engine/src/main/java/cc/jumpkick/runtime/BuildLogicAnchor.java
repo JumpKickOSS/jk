@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.run.BuildStage;
+
 /**
  * BuildPlan splice points for project {@code .jk/} stem-script tasks.
  *
@@ -15,16 +17,16 @@ public enum BuildLogicAnchor {
      * Before main language compile (java/kotlin/groovy). Use for codegen that must land as
      * sources before {@code compile-*}. Product stage wire: {@code generate}.
      */
-    BEFORE_COMPILE("generate"),
+    BEFORE_COMPILE(BuildStage.GENERATE),
     /** After main sources are compiled (and mixed modules assembled). Stage wire: {@code compile}. */
-    AFTER_COMPILE("compile"),
+    AFTER_COMPILE(BuildStage.COMPILE),
     /**
      * After static resources are copied into classes. Stage wire: {@code compile} (resources ride
      * with the compile strip).
      */
-    AFTER_RESOURCES("compile"),
+    AFTER_RESOURCES(BuildStage.COMPILE),
     /** Immediately before packaging the jar / image. Stage wire: {@code package}. */
-    BEFORE_PACKAGE("package"),
+    BEFORE_PACKAGE(BuildStage.PACKAGE),
 
     /**
      * The workspace root's own always-on anchor: after every member module has finished building.
@@ -38,7 +40,7 @@ public enum BuildLogicAnchor {
      * <p>Stage wire {@code package}: it is the last thing in the build, and the fold a user reads
      * has no bucket further right.
      */
-    AFTER_BUILD("package"),
+    AFTER_BUILD(BuildStage.PACKAGE),
 
     /**
      * Share-the-commit checks bound to {@code --gate} / {@code --scripts-only}. Same root-only
@@ -46,12 +48,12 @@ public enum BuildLogicAnchor {
      * an inner {@code jk test} / {@code jk build}. Legal at a workspace root or a standalone
      * project; illegal in a workspace member.
      */
-    GATE("package");
+    GATE(BuildStage.PACKAGE);
 
-    private final String stageWire;
+    private final BuildStage stage;
 
-    BuildLogicAnchor(String stageWire) {
-        this.stageWire = stageWire;
+    BuildLogicAnchor(BuildStage stage) {
+        this.stage = stage;
     }
 
     /** Whether this anchor belongs to the workspace root rather than to a module. */
@@ -59,11 +61,8 @@ public enum BuildLogicAnchor {
         return this == AFTER_BUILD || this == GATE;
     }
 
-    /**
-     * Product stage wire name for UI fold / ETA ({@code generate}, {@code compile}, {@code package}).
-     * Same spelling as {@code BuildStage#wireName()}.
-     */
-    public String stageWireName() {
-        return stageWire;
+    /** The stage the anchor's task carries, for UI fold, ETA and the plan's stage ordering. */
+    public BuildStage stage() {
+        return stage;
     }
 }

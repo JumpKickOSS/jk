@@ -5,9 +5,9 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.MetricsRequest;
 import java.io.BufferedWriter;
 
 public final class MetricsVerb implements HostedVerb {
@@ -41,7 +41,7 @@ public final class MetricsVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String dirFilter = Jsonl.str(requestLine, "dir");
+            String dirFilter = MetricsRequest.decode(requestLine).dir();
             int n = 0;
             for (BuildMetrics.Entry e : BuildMetrics.load(host.metricsFile()).entries()) {
                 // Project rows are stored as bare dir and dirty-count shapes (dir#dN). Match

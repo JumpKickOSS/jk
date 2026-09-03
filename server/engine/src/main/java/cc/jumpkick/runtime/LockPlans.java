@@ -11,7 +11,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.model.command.Exit;
@@ -164,8 +163,7 @@ public final class LockPlans {
             LockMode mode,
             ResolveObserver observer,
             @Nullable BiFunction<String, String, String> coordLabel) {
-        LockPipeline pipeline = new LockPipeline(
-                dir, effective, cache, repoUrl, features, withDefaultFeatures, mode, JkVersion.VERSION);
+        LockPipeline pipeline = new LockPipeline(dir, effective, cache, repoUrl, features, withDefaultFeatures, mode);
         PlanShape shape = shapeFor(mode);
         Path lockFile = pipeline.lockFile();
         int resolveTicks = scopeEstimate(effective, lockFile);
@@ -378,14 +376,7 @@ public final class LockPlans {
             List<Dependency> targeted)
             throws Exception {
         LockPipeline pipeline = new LockPipeline(
-                dir,
-                effective,
-                cache,
-                repoUrl,
-                features,
-                withDefaultFeatures,
-                new LockMode.Update(null),
-                JkVersion.VERSION);
+                dir, effective, cache, repoUrl, features, withDefaultFeatures, new LockMode.Update(null));
         // Digest captured before resolving.
         String manifestsSha = pipeline.manifestsSha();
         Lockfile oldLock = LockPipeline.readIfPresent(dir);

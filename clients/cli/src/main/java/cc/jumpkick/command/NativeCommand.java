@@ -413,7 +413,7 @@ public final class NativeCommand implements CliCommand {
                     .orElse("build");
             view.finishBuildPlanFailure(Coord.module(failedCoord) + " " + BuildTails.elapsedSince(buildStart));
             List<String> rendered = new ArrayList<>();
-            ConsoleSpec.appendErrors(rendered, agg.lastErrors());
+            ConsoleSpec.appendErrors(rendered, agg.unstreamedErrors());
             for (String line : rendered) CliOutput.err(line);
             return result.exitCode();
         }

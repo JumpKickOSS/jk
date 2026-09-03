@@ -102,7 +102,8 @@ public final class SingleBuildVerb implements HostedVerb {
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
             BuildPlan plan = SessionContext.where(session, () -> {
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, false);
-                PlannerTails.appendDeclaredTails(builder, inputs);
+                Path graal = body.graalHome() == null ? null : Path.of(body.graalHome());
+                PlannerTails.appendDeclaredTails(builder, inputs, graal);
                 return builder.build();
             });
             long barWeight = plan.estimatedTotalWeight();

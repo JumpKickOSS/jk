@@ -8,9 +8,9 @@ import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.HistoryListRequest;
 import java.io.BufferedWriter;
 import java.util.List;
 
@@ -45,7 +45,7 @@ public final class HistoryListVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
+            int limit = Math.max(1, HistoryListRequest.decode(requestLine).limit());
             // Truncate in the journal (synthetic fixtures are already filtered there) rather
             // than materialising every record on disk and then dropping most of them.
             // Oversample then keep only build-like kinds so lock/format/etc. never dilute history.

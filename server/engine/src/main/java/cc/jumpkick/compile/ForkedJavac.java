@@ -42,11 +42,13 @@ public final class ForkedJavac {
      * @param generated generated source file → the input source file(s) it originated from
      * @param compiledSources sources Zinc (or javac) actually compiled this invocation
      */
+    /** @param waitMillis time the request sat in the shared worker's queue before it was dispatched */
     public record Result(
             boolean success,
             List<CompileResult.Diagnostic> diagnostics,
             Map<Path, Set<Path>> generated,
-            List<Path> compiledSources) {
+            List<Path> compiledSources,
+            long waitMillis) {
         public Result {
             diagnostics = List.copyOf(diagnostics);
             compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
@@ -54,7 +56,7 @@ public final class ForkedJavac {
         }
 
         public Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {
-            this(success, diagnostics, generated, List.of());
+            this(success, diagnostics, generated, List.of(), 0L);
         }
     }
 
@@ -219,7 +221,7 @@ public final class ForkedJavac {
                     })
                     .run(command);
             boolean success = exit == 0 && "OK".equals(status[0]);
-            return new Result(success, diagnostics, generated, compiledSources);
+            return new Result(success, diagnostics, generated, compiledSources, 0L);
         } finally {
             Files.deleteIfExists(spec);
         }

@@ -11,6 +11,10 @@ set -eu
 # one expression rather than a cascade. The wrapper must never invent its own layout: an
 # earlier one cached into a directory the resolver did not name, shadowing the real install
 # forever, so `jk self update` (which replaces the bin-dir binary) never reached its users.
+case "${JK_HOME:-/}" in
+  /*) ;;
+  *) echo "jk wrapper: JK_HOME must be an absolute path: $JK_HOME" >&2; exit 1 ;;
+esac
 BIN_DIR="${JK_HOME:-$HOME/.jk}/bin"
 RELEASES="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 RELEASE_RSA_SPKI="MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA62bXAMmyIpPgiFzT9lcuIPWvvXHmWfGDPbMJAG1lRlbSJ9EFRahqkie0LQaFtXn8W3l2BP/9D0DwdXztS/eVo8WqSNMOZo/srBKrViVJGEOFm0fDmhqrlA3bCZz43+DgFjj7SacI2nJVB4PRjV5jvRwBnZrIUwcvynIQmx2SoWoKgudoje7vNM7UkYmEnZExfmiPQaPmSYCKzXA4pP5KPWD+49bo7o3cLeiO5/Shc27OC0IvK+Vj8CUe4URSt5zHjHUpiE+h4SVTMrGoJg9rgWmRgMHdshsq3aoAkA3jC/YB5SzLwUJeObWGP8I9w7yj8uiSTNIt3KslbRfVtb4vbNoZ4zKPMkCaYhy5ar0sGOqxW97wobIWBiX5pT+knluZErrsJFWpx2dQtRtb2wPovihL7Z9Q18vZb371Gx+rzkNi7jdFvWaGYgsraf01l63Gg2bfy1bleSLhDKmh94yGMoHfszEcE1785xteYOdVSwawUPwWgx8iZ7a4lqOL0MrrAgMBAAE="

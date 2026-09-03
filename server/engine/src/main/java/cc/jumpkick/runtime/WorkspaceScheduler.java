@@ -41,8 +41,8 @@ public final class WorkspaceScheduler {
     /**
      * Build one unit, calling {@code artifactsReady} the moment its cross-module artifacts
      * (package-jar / package-assembly) are terminal — usually well before the unit's tests and
-     * terminal tails finish. Admission of dependents keys on that signal, not on completion
-     *: Mill/Gradle-shaped edges, where a dependent's compile waits on the upstream
+     * terminal tails finish. Admission of dependents keys on that signal, not on completion:
+     * Mill/Gradle-shaped edges, where a dependent's compile waits on the upstream
      * artifact and never on the upstream suite. Calling it more than once is harmless; a task
      * that never calls it (compile/package failed, or no package steps) implicitly publishes on
      * completion so admission can never wedge — the failed case is then handled by the sink's

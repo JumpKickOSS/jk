@@ -708,8 +708,8 @@ public final class HttpEngineServer implements AutoCloseable {
         var out = exchange.getResponseBody();
         // Detached until hydrated: broadcasts don't reach the subscription while the connect
         // snapshot is captured, and the engine's rehydrate callback attaches it under its
-        // connect ordering lock — so no event can fall between the snapshot and the queue
-        // . If anything below throws before attach, the subscription was never in the
+        // connect ordering lock — so no event can fall between the snapshot and the queue.
+        // If anything below throws before attach, the subscription was never in the
         // hub, so hasSubscribers() cannot stay true for the process's life.
         HttpEvents.Subscription subscription = events.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
         try {
@@ -717,8 +717,8 @@ public final class HttpEngineServer implements AutoCloseable {
             // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
             // skipped) so the tab does not wait for the first 2s / 60s sampler tick — without
             // re-broadcasting chrome to every open tab. Cache hydrate re-sends the last
-            // captured snapshot — the store walk must not delay the ": connected" write
-            // . Mid-flight catch-up is one compact run-snapshot per job delivered to
+            // captured snapshot — the store walk must not delay the ": connected" write.
+            // Mid-flight catch-up is one compact run-snapshot per job delivered to
             // THIS subscription only — never a broadcast phase replay (that filled the 256-frame
             // queue and froze the SPA for seconds behind live ticks).
             liveVitals.hydrateFor(subscription);

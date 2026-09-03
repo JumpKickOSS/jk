@@ -250,16 +250,18 @@ final class JkManagerView {
             }
             if (m.planMode) {
                 if (text == null) return;
-                // append() reports blank-strips; a size compare would misread ring-full
-                // eviction (size unchanged on every accepted append) as a strip.
-                boolean accepted = m.outputWindow.append(text);
                 if (!m.animate || !Theme.active().isAnsi()) {
-                    // No live region to lift: print diagnostics sequentially. Tool stdout uses
-                    // writeProcessOutput (silent in plain mode unless --verbose).
+                    // No live region to lift: print diagnostics sequentially, and keep them out of
+                    // the ring. The ring is the plain-mode failure dump's source (tool stdout that
+                    // was never shown), and a line that was already printed rode along in it, so a
+                    // later module's failure re-printed every earlier module's completion line.
                     m.out.println(text);
                     m.out.flush();
                     return;
                 }
+                // append() reports blank-strips; a size compare would misread ring-full
+                // eviction (size unchanged on every accepted append) as a strip.
+                boolean accepted = m.outputWindow.append(text);
                 if (!accepted) return; // blank-stripped: nothing new for the live region
                 if (m.outputWindow.visible()) {
                     // Lift live region → emit one line into scrollback → repaint rule+wedge only.

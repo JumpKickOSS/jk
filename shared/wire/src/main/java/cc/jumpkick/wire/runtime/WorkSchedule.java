@@ -135,7 +135,10 @@ public final class WorkSchedule {
      * native-image at 47 s would claim a serialization the executor no longer has.
      *
      * <p>A module with no tail prices at exactly {@code weight()}, so this is a no-op for the
-     * ordinary compile-test-package module and only bites where a real tail exists.
+     * ordinary compile-test-package module and only bites where a real tail exists. The tail weight
+     * is the longest packaging tail, not their sum — assembly, minified, native-image and sources all
+     * hang off the jar and run together. The prefix still carries {@code compile-test}, which the
+     * tail branch never waits on: a known over-price, small next to a suite.
      */
     public static long moduleWall(ModuleWorkCost m) {
         long test = Math.max(0, m.testWeight());

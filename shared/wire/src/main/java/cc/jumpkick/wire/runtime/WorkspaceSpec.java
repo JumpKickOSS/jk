@@ -74,6 +74,22 @@ public record WorkspaceSpec(
                 WorkspaceTarget.INSTALL, selected, graalByDir, null, List.of(), null, null, null, null, null, m2Dir);
     }
 
+    /** This spec with the client-resolved GraalVM home per always-native module. */
+    public WorkspaceSpec withGraalByDir(Map<Path, Path> homes) {
+        return new WorkspaceSpec(
+                target,
+                selectedModules,
+                homes,
+                nativeMain,
+                nativeExtraArgs,
+                imageMain,
+                imageRegistry,
+                imageTag,
+                imageTarball,
+                imageDocker,
+                m2Dir);
+    }
+
     public boolean hasSelection() {
         return !selectedModules.isEmpty();
     }

@@ -58,8 +58,7 @@ public final class StampedMemo<K, S, V> {
      * small, and the map is bounded in practice by the number of distinct files a process reads. It is
      * <em>not</em> right for a memo whose values are large — a parsed {@code Lockfile} can be
      * megabytes, and the engine runs on a 256&nbsp;MB heap. Two readers hand-rolled this rule with
-     * their own bounds rather than use this class, which is a fair sign the class was missing it
-     *.
+     * their own bounds rather than use this class, which is a fair sign the class was missing it.
      */
     private final int maxEntries;
 

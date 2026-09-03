@@ -359,7 +359,7 @@ public final class PluginAot {
 
     static void trainAsync(String what, Path cache, TrainerCommand trainer, CacheMeta meta) {
         if (trainer == null || !TRAINING.add(cache)) return;
-        Path claim = cache.resolveSibling(cache.getFileName() + ".training");
+        Path claim = AotCacheFiles.trainingClaim(cache);
         try {
             Files.createDirectories(cache.getParent());
             if (!claimed(claim)) {
@@ -382,7 +382,7 @@ public final class PluginAot {
             waitForCache(cache, timeoutMs);
             return;
         }
-        Path claim = cache.resolveSibling(cache.getFileName() + ".training");
+        Path claim = AotCacheFiles.trainingClaim(cache);
         try {
             Files.createDirectories(cache.getParent());
             if (!claimed(claim)) {
@@ -429,8 +429,7 @@ public final class PluginAot {
         Path scratch = null;
         boolean keepClaim = false;
         Process p = null;
-        Path tmp = cache.resolveSibling(
-                cache.getFileName() + ".tmp-" + ProcessHandle.current().pid());
+        Path tmp = AotCacheFiles.tmpFor(cache, ProcessHandle.current().pid());
         try {
             scratch = Files.createTempDirectory("jk-worker-aot-");
             Files.createDirectories(scratch.resolve("out"));
@@ -482,7 +481,7 @@ public final class PluginAot {
         } finally {
             if (p != null) LIVE_TRAINERS.remove(p);
             deleteQuietly(tmp);
-            deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // interrupted recording
+            deleteQuietly(AotCacheFiles.configOf(tmp)); // interrupted recording
             if (!keepClaim) deleteQuietly(claim);
             if (scratch != null) PathUtil.deleteRecursively(scratch);
             TRAINING.remove(cache);
@@ -570,7 +569,7 @@ public final class PluginAot {
                 removed.add(p.getFileName().toString());
                 deleteQuietly(p);
                 deleteQuietly(AotCacheFiles.marker(p));
-                deleteQuietly(p.resolveSibling(p.getFileName() + ".config"));
+                deleteQuietly(AotCacheFiles.configOf(p));
             }
         }
         for (Path m : markers) {

@@ -26,6 +26,7 @@ import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -739,6 +740,7 @@ public final class TestSupport {
                 stateDir,
                 workerJar,
                 gen);
+        ctx.waited(Duration.ofMillis(r.waitMillis()));
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.

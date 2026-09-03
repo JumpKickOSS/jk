@@ -12,11 +12,13 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AuditRequest;
+import cc.jumpkick.wire.protocol.CachePruneRequest;
 import cc.jumpkick.wire.protocol.CompileRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.SingleBuildRequest;
+import cc.jumpkick.wire.protocol.ToolResolveRequest;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -337,7 +339,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {
             String plain = new SingleBuildRequest(
-                            project.toString(), cache.toString(), null, 1, null, true, false, false, false, null)
+                            project.toString(), cache.toString(), null, 1, null, true, false, false, false, null, null)
                     .encode();
 
             // First build: real compile, stamps + caches populated.
@@ -468,13 +470,14 @@ class EngineServerRequestTest extends EngineServerHarness {
             String planFinish = null;
             String buildError = null;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
-                c.sendLine(ProtoSession.toolResolveRequest(
-                        "com.example:widget-cli:1.0.0",
-                        List.of(),
-                        "widget",
-                        "com.example.Main",
-                        repoUrl,
-                        cache.toString()));
+                c.sendLine(new ToolResolveRequest(
+                                "com.example:widget-cli:1.0.0",
+                                List.of(),
+                                "widget",
+                                "com.example.Main",
+                                repoUrl,
+                                cache.toString())
+                        .encode());
                 String line;
                 while ((line = c.readLine()) != null) {
                     String type = EngineProtocol.typeOf(line);
@@ -548,7 +551,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(ProtoSession.cachePruneRequest("prune", cache.toString(), false, false));
+            c.sendLine(new CachePruneRequest("prune", cache.toString(), null, false, false).encode());
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -620,7 +623,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(ProtoSession.cacheClearRequest(cache.toString(), project.toString(), false));
+            c.sendLine(new CachePruneRequest("clear", cache.toString(), project.toString(), false, false).encode());
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);

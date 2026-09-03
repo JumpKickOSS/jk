@@ -357,13 +357,8 @@ public final class SelfCommand extends GroupCommand {
         }
 
         private static boolean sumHas(String sumsText, String name) throws IOException {
-            try {
-                ReleaseVerifier.sha256For(sumsText.getBytes(StandardCharsets.UTF_8), name);
-                return true;
-            } catch (IOException e) {
-                if (e.getMessage().contains("no unique exact entry")) return false;
-                throw e;
-            }
+            return ReleaseVerifier.find(sumsText.getBytes(StandardCharsets.UTF_8), name)
+                    .isPresent();
         }
 
         /**

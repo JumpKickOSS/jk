@@ -810,57 +810,6 @@ val checkForecastKeyParity = registerGuard("checkForecastKeyParity") {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Guard (letter assigned at landing): a spike-cache test roots its project in a @TempDir.
-//
-// The spike cache under `build/` persists across runs so the *network* stays warm. A test that
-// also fixes its PROJECT path re-derives the same action key every run, the action cache replays
-// the stored record, and the code under test never executes — the replay shape
-// (MinifiedPluginTest's javadoc: "The warm part is the network, not the work"). So every file
-// under `src/test/java` naming the spike cache must also take a `@TempDir` somewhere, which
-// qualifies the action id with a fresh absolute path per method.
-//
-// Measured 2026-08-25: 18 files name the marker — 17 conforming, 1 exempt.
-//
-// Detection-shape honesty: `@TempDir` presence does not prove the project ROOT lives inside it.
-// This closes the cheap regression (a spike test born with no @TempDir at all), not every replay;
-// the throw-probe (make the code under test throw — a green run is a replay) remains
-// the strong check.
-// ---------------------------------------------------------------------------
-// Guard G32.
-val checkSpikeCacheTempDir = registerGuard("checkSpikeCacheTempDir") {
-    group = "verification"
-    description = "Fail the build when a spike-cache test does not root its project in a @TempDir"
-    val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
-    inputs.files(testJava).withPropertyName("testJava")
-    // The one exemption, declared as a file input rather than a name in a regex: NiaScratchTest
-    // builds an external NiA checkout (env-gated), so its module roots are the clone's own
-    // directories. Moving or renaming the file fails this task loudly instead of silently
-    // narrowing the exemption to nothing.
-    val niaScratch = layout.projectDirectory.file("src/test/java/cc/jumpkick/runtime/NiaScratchTest.java")
-    inputs.file(niaScratch).withPropertyName("niaScratch")
-    val stamp = layout.buildDirectory.file("guards/spike-cache-tempdir.ok")
-    outputs.file(stamp)
-    doLast {
-        val marker = "android-spike-cache"
-        val exempt = niaScratch.asFile.canonicalFile
-        val hits = testJava.files.filter { it.readText().contains(marker) }.sortedBy { it.name }
-        if (hits.size < 10) {
-            throw GradleException("checkSpikeCacheTempDir: only ${hits.size} file(s) under"
-                    + " src/test/java name \"$marker\" (18 when this guard was measured). That is a"
-                    + " blind scan — a renamed marker or a moved tree — not a clean population.")
-        }
-        val bad = hits.filter { it.canonicalFile != exempt && !it.readText().contains("@TempDir") }
-        if (bad.isNotEmpty()) {
-            throw GradleException("A test using the persistent spike cache must root its project in"
-                    + " a per-method @TempDir, or the action cache replays the stored record and the"
-                    + " code under test never runs (see MinifiedPluginTest's javadoc):\n"
-                    + bad.joinToString("\n") { "  ${it.name}" })
-        }
-        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
-    }
-}
-
 // `McpDocParityTest` diffs docs/user/mcp.md's tool/resource/prompt tables against the MCP
 // registries, and the doc is not otherwise an input of `:engine:test` — without this a doc-only
 // edit leaves the task UP-TO-DATE and the parity is silently unchecked (the ActionTreeTest

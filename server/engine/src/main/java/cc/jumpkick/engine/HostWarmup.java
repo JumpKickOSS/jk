@@ -12,7 +12,6 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.Calibration;
-import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
@@ -25,21 +24,22 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * Engine self-heal: store feeds → official templates → worker AOT → host calibration.
+ * Engine self-heal: worker AOT → host calibration.
  *
  * <p>Not a user-facing command. Queued on the idle-boundary worker after first start and each
  * wall-clock 12 h maintenance cycle ({@link EngineMaintenance}). Disable with {@code [engine]
- * auto-warmup = false} or {@code JK_AUTO_WARMUP=off} — that skips the whole pass.
- * {@link EngineMaintenance#runMaintenanceCycle} still does feeds and templates on its own
- * cadence.
+ * auto-warmup = false} or {@code JK_AUTO_WARMUP=off} — that skips the whole pass. Store feeds and
+ * official templates are {@link EngineMaintenance#runMaintenanceCycle}'s alone: it refreshes both
+ * immediately before the hook that reaches this pass, so their cadence has one owner and is not
+ * behind the auto-warmup switch.
  *
  * <h2>What a warmup writes, and what it therefore cannot undo</h2>
  *
  * Every root this pass touches is outside {@code JK_CACHE_DIR}:
  *
  * <ul>
- *   <li><b>artifact store</b> — {@code libs.global.toml}, {@code jdks.json}, {@code templates/},
- *       and the worker jars {@code PluginJar.locate()} fetches via {@code JkStores.storeCas()}.
+ *   <li><b>artifact store</b> — the worker jars {@code PluginJar.locate()} fetches via
+ *       {@code JkStores.storeCas()}.
  *   <li><b>state</b> — {@code state/aot} ({@code PluginAot.dir()}) and
  *       {@code state/builds/host-metrics.toml}.
  * </ul>
@@ -96,9 +96,13 @@ public final class HostWarmup {
         }
     }
 
-    /** Pure decision: a missing cache still needs train unless a sticky noaot marker blocks it. */
+    /**
+     * Pure decision: a missing cache still needs train unless a live noaot marker blocks it. The
+     * marker's TTL is judged by its owner, so an expired refusal re-queues the train here exactly
+     * when the trainer itself would attempt it again.
+     */
     static boolean missingKeyNeedsTrain(Path cache) {
-        return cache == null || !Files.exists(AotCacheFiles.marker(cache));
+        return cache == null || !AotCacheFiles.blocked(cache);
     }
 
     private static Path cachePath(String tool, Path host, PluginJar jar) {
@@ -149,20 +153,12 @@ public final class HostWarmup {
     }
 
     /**
-     * Full warmup pass on the idle daemon: store feeds, official templates, worker AOT, host
-     * calibration — in that order, all four behind the switch. Best-effort; never throws. Network
-     * errors are quiet (no retries).
+     * Full warmup pass on the idle daemon: worker AOT, then host calibration — both behind the
+     * switch. Best-effort; never throws. Network errors are quiet (no retries).
      */
     public static void runIdle(boolean forceAot, Consumer<String> log) {
         Consumer<String> out = log == null ? s -> {} : log;
-        runIdle(
-                forceAot,
-                enabled(),
-                List.of(
-                        () -> new StoreFeedRefresh(out).refreshFeedsQuietly(),
-                        () -> OfficialTemplatesFreshen.refreshQuiet(out),
-                        () -> trainWorkerAot(forceAot, out),
-                        () -> calibrateHost(out)));
+        runIdle(forceAot, enabled(), List.of(() -> trainWorkerAot(forceAot, out), () -> calibrateHost(out)));
     }
 
     /**

@@ -52,8 +52,7 @@ class ClasspathAfterSyncTest {
 
         PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store));
 
-        @SuppressWarnings("unchecked")
-        List<Path> cp = (List<Path>) f.ctx.require(BuildPlanner.CLASSPATH);
+        List<Path> cp = f.ctx.require(BuildPlanner.CLASSPATH);
         assertThat(cp).contains(f.libJar.toAbsolutePath().normalize());
         assertThat(new ClasspathResolver(store).classpathFor(f.lock, ClasspathResolver.COMPILE_MAIN, true))
                 .contains(f.libJar.toAbsolutePath().normalize());

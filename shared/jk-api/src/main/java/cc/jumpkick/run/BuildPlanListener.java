@@ -57,7 +57,13 @@ public interface BuildPlanListener {
                 failure.exceptionClass());
     }
 
-    default void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration) {}
+    /**
+     * @param duration the step's wall clock, queue wait included
+     * @param waited the part of that wall the step spent blocked on a shared resource ({@link
+     *     TaskContext#waited}); {@code duration - waited} is the step's own work
+     */
+    default void stepFinish(
+            String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {}
 
     default void planFinish(BuildPlanResult result) {}
 }

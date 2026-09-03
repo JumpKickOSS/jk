@@ -6,9 +6,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,8 +48,21 @@ class HostWarmupTest {
         // Missing cache, no marker: train.
         assertThat(HostWarmup.missingKeyNeedsTrain(cache)).isTrue();
         // Prior train failed (sticky marker): do not re-queue warmup every cycle.
-        Files.createFile(AotCacheFiles.marker(cache));
+        Path marker = AotCacheFiles.marker(cache);
+        Files.createFile(marker);
         assertThat(HostWarmup.missingKeyNeedsTrain(cache)).isFalse();
+        // Past the marker's TTL the refusal has expired: one fresh attempt is due, and the owner
+        // removes the marker as it answers.
+        long expired = System.currentTimeMillis()
+                - AotCacheFiles.MARKER_TTL_MILLIS
+                - Duration.ofDays(1).toMillis();
+        Files.setLastModifiedTime(marker, FileTime.fromMillis(expired));
+        assertThat(HostWarmup.missingKeyNeedsTrain(cache))
+                .as("an expired marker no longer blocks")
+                .isTrue();
+        assertThat(Files.exists(marker))
+                .as("the owner deletes an expired marker on read")
+                .isFalse();
         // Unresolvable key: conservative, still ask for work.
         assertThat(HostWarmup.missingKeyNeedsTrain(null)).isTrue();
     }
@@ -59,32 +75,38 @@ class HostWarmupTest {
 
     /**
      * The off-switch covers the whole pass, not the tail of it. With {@code auto-warmup = false}
-     * none of feeds, templates, worker AOT, or calibration run.
+     * neither worker AOT nor calibration runs.
      *
      * <p>Driven through the composition seam rather than the live pass: the real {@code runIdle}
      * would need a network to prove the negative, and a step that no-ops offline would not show
      * whether the switch actually skipped the step.
      */
     @Test
-    void the_off_switch_stops_every_step_not_just_the_last_two() {
+    void the_off_switch_stops_every_step() {
         List<String> ran = new ArrayList<>();
-        List<Runnable> steps = steps(ran, "feeds", "templates", "aot", "calibration");
+        List<Runnable> steps = steps(ran, "aot", "calibration");
 
         HostWarmup.runIdle(false, false, steps);
-        assertThat(ran)
-                .as("warmup disabled and not forced: nothing runs, including the feeds")
-                .isEmpty();
+        assertThat(ran).as("warmup disabled and not forced: nothing runs").isEmpty();
 
         HostWarmup.runIdle(false, true, steps);
-        assertThat(ran).containsExactly("feeds", "templates", "aot", "calibration");
+        assertThat(ran).containsExactly("aot", "calibration");
     }
 
-    /** {@code jk optimize} asks for a pass explicitly, so it overrides the switch — all four steps. */
+    /** {@code jk optimize} asks for a pass explicitly, so it overrides the switch — both steps. */
     @Test
     void an_explicit_optimize_overrides_the_off_switch() {
         List<String> ran = new ArrayList<>();
-        HostWarmup.runIdle(true, false, steps(ran, "feeds", "templates", "aot", "calibration"));
-        assertThat(ran).containsExactly("feeds", "templates", "aot", "calibration");
+        HostWarmup.runIdle(true, false, steps(ran, "aot", "calibration"));
+        assertThat(ran).containsExactly("aot", "calibration");
+    }
+
+    /** Feed and template refresh belong to the maintenance cycle; the live pass never runs them. */
+    @Test
+    void the_live_pass_is_worker_aot_then_calibration_only() throws Exception {
+        String source = Files.readString(
+                RepoRoot.file(HostWarmupTest.class, "server/engine/src/main/java/cc/jumpkick/engine/HostWarmup.java"));
+        assertThat(source).doesNotContain("StoreFeedRefresh").doesNotContain("OfficialTemplatesFreshen");
     }
 
     /** One step's failure is that step's business; the rest of the pass still runs. */
@@ -96,11 +118,11 @@ class HostWarmupTest {
                 true,
                 List.of(
                         () -> {
-                            ran.add("feeds");
-                            throw new IllegalStateException("offline");
+                            ran.add("aot");
+                            throw new IllegalStateException("no HotSpot on this host");
                         },
-                        () -> ran.add("aot")));
-        assertThat(ran).containsExactly("feeds", "aot");
+                        () -> ran.add("calibration")));
+        assertThat(ran).containsExactly("aot", "calibration");
     }
 
     /**
@@ -108,8 +130,8 @@ class HostWarmupTest {
      * nuke} — which removes that root and nothing else — is not undone by the 12 h cycle. Filed as
      * "HostWarmup re-downloads worker jars into the cache CAS"; the misreading is
      * {@code PluginJar.locate()}'s {@code JkStores.storeCas()}, whose argument is ignored
-     * and which resolves the <em>store</em> CAS. Asserting the four roots the pass actually uses is
-     * what keeps that from quietly becoming true.
+     * and which resolves the <em>store</em> CAS. Asserting the three roots the pass actually uses
+     * is what keeps that from quietly becoming true.
      */
     @Test
     void every_root_a_warmup_writes_is_outside_the_cache_root(@TempDir Path home) throws Exception {
@@ -124,20 +146,12 @@ class HostWarmupTest {
 
             // 1. worker jars — the root PluginJar.locate() fetches into.
             assertThat(JkStores.storeCas().root()).isEqualTo(store);
-            // 2. store feeds and templates.
-            assertThat(JkDirs.libraryRegistry()).startsWithRaw(store);
-            assertThat(JkDirs.templates()).startsWithRaw(store);
-            // 3. worker AOT caches.
+            // 2. worker AOT caches.
             assertThat(PluginAot.dir()).startsWithRaw(state);
-            // 4. host calibration (state/builds/host-metrics.toml).
+            // 3. host calibration (state/builds/host-metrics.toml).
             assertThat(JkDirs.builds()).startsWithRaw(state);
 
-            for (Path written : List.of(
-                    JkStores.storeCas().root(),
-                    JkDirs.libraryRegistry(),
-                    JkDirs.templates(),
-                    PluginAot.dir(),
-                    JkDirs.builds())) {
+            for (Path written : List.of(JkStores.storeCas().root(), PluginAot.dir(), JkDirs.builds())) {
                 assertThat(written.startsWith(cache))
                         .as("%s is under the cache root, which would make a nuke self-healing", written)
                         .isFalse();

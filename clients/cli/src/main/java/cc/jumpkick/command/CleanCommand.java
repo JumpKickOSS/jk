@@ -105,21 +105,22 @@ public final class CleanCommand implements CliCommand {
      * Delete each project's output tree (or, with {@code keepArtifacts}, only its intermediates).
      * Outputs live at the layout-resolved target dir — {@code <workspace>/target/<rel>/} for a
      * member, not {@code <member>/target/}. A distinct member-local {@code target/} is also
-     * swept when present.
+     * swept when present: nested-engine test modules write their sandbox home there
+     * ({@code PlannerSupport}), so it is current output, not a leftover.
      */
     static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
             throws IOException {
         for (Path projectDir : projectDirs) {
             Path layoutTarget = BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
-            Path legacyTarget = projectDir.resolve(BuildLayout.TARGET);
-            boolean distinct = !layoutTarget.equals(legacyTarget);
+            Path memberLocalTarget = projectDir.resolve(BuildLayout.TARGET);
+            boolean distinct = !layoutTarget.equals(memberLocalTarget);
             if (!keepArtifacts) {
                 deleteRecursively(layoutTarget, stats);
-                if (distinct) deleteRecursively(legacyTarget, stats);
+                if (distinct) deleteRecursively(memberLocalTarget, stats);
             } else {
                 for (String sub : INTERMEDIATE_SUBDIRS) {
                     deleteRecursively(layoutTarget.resolve(sub), stats);
-                    if (distinct) deleteRecursively(legacyTarget.resolve(sub), stats);
+                    if (distinct) deleteRecursively(memberLocalTarget.resolve(sub), stats);
                 }
             }
         }

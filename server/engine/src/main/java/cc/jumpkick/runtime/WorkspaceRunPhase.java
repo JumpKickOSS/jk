@@ -145,7 +145,7 @@ final class WorkspaceRunPhase {
         AtomicInteger remaining = new AtomicInteger(artifactSteps.size());
         plan.addListener(new BuildPlanListener() {
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
                 if (!artifactSteps.contains(step)) return;
                 if (status != TaskStatus.SUCCESS && status != TaskStatus.SKIPPED) return;
                 if (remaining.decrementAndGet() == 0) artifactsReady.run();

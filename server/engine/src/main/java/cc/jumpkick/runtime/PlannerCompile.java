@@ -44,6 +44,7 @@ import cc.jumpkick.test.AffectedChangedPublish;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -63,8 +64,8 @@ public final class PlannerCompile {
     // builds itself. Every field of that request the build sets and the forecast does not is a key
     // the two sides can never agree on — a phantom rebuild reported forever, or (running the other
     // way) a stale artifact blessed. Six such drifts were live at once, and three of them were in
-    // this one request: scalaVersion, compilerClasspath and the Groovy stubs --source-path
-    // , joined by javaHome the moment forJavac started hashing it.
+    // this one request: scalaVersion, compilerClasspath and the Groovy stubs --source-path,
+    // joined by javaHome the moment forJavac started hashing it.
     //
     // A text guard can compare which FIELDS each side sets (checkForecastKeyParity arm B) but not
     // which VALUES it puts in them, so the field list is only half the problem. These four methods
@@ -87,7 +88,7 @@ public final class PlannerCompile {
     /**
      * What {@code BuildPlanner.JAVA_SOURCES} holds: the module's {@code .java} plus the extra-src
      * overlay, plus <em>every</em> {@code .scala} (a mixed Java+Scala module compiles through one
-     * Zinc session, so the Scala sources are javac's inputs too —). {@code javaSeed} is the
+     * Zinc session, so the Scala sources are javac's inputs too). {@code javaSeed} is the
      * caller's already-walked {@code .java} list, so the common path does not walk twice.
      */
     public static List<Path> javaAndScalaSources(JkBuild project, Path moduleDir, boolean compact, List<Path> javaSeed)
@@ -383,6 +384,7 @@ public final class PlannerCompile {
                             workerJar,
                             genDir);
                     ctx.put(ACTION_KEY, r.actionKey());
+                    ctx.waited(Duration.ofMillis(r.waitMillis()));
                     // Forward every javac diagnostic to the terminal, by severity:
                     // errors fail the build, warnings/notes (e.g. deprecation) are
                     // surfaced but don't. Strip the leading severity word — the

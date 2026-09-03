@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.TestStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -33,6 +34,22 @@ class TaskForecasterPresentTest {
                         "tests.succeeded", "0",
                         "tests.skipped", "0"));
         assertThat(TaskForecaster.present(ac, key)).isTrue();
+    }
+
+    /** A red run stores the same marker shape with a failed count: present, but not green. */
+    @Test
+    void red_run_tests_record_is_present_but_not_green(@TempDir Path tmp) throws Exception {
+        Path cache = tmp.resolve("cache");
+        Files.createDirectories(cache);
+        ActionCache ac = new ActionCache(new Cas(cache.resolve("cas")), cache.resolve("actions"));
+        String key = "test-stamp-key-" + "c".repeat(49);
+        ac.storeWithOutputs("run-tests@deadbeef", key, Map.of(), TestStamp.outcome(12, 11, 0, 1));
+        var record = TaskForecaster.presentRecord(ac, key);
+        assertThat(record).isPresent();
+        assertThat(TestStamp.green(record.get())).isFalse();
+        ac.storeWithOutputs("run-tests@deadbeef", key, Map.of(), TestStamp.outcome(12, 12, 0, 0));
+        assertThat(TestStamp.green(TaskForecaster.presentRecord(ac, key).orElseThrow()))
+                .isTrue();
     }
 
     @Test

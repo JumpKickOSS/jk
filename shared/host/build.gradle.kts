@@ -280,7 +280,7 @@ fun javaStringLiterals(src: String): List<String> {
 
 val checkSingleAotMarkerSpelling = registerGuard("checkSingleAotMarkerSpelling") {
     group = "verification"
-    description = "Fail the build on a .noaot marker suffix typed outside cc.jumpkick.host.AotCacheFiles"
+    description = "Fail the build on an AOT sidecar suffix typed outside cc.jumpkick.host.AotCacheFiles"
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val owner = rootProject.layout.projectDirectory.file(
             "shared/host/src/main/java/cc/jumpkick/host/AotCacheFiles.java")
@@ -301,6 +301,13 @@ val checkSingleAotMarkerSpelling = registerGuard("checkSingleAotMarkerSpelling")
                                 + " constant or retire the guard deliberately.")
         val marker = constant("MARKER")
         val cache = constant("CACHE")
+        val training = constant("TRAINING")
+        val config = constant("CONFIG")
+        val tmpInfix = constant("TMP_INFIX")
+        // `.config` and `.tmp-` are ordinary spellings elsewhere (XDG paths, generic staging), so
+        // for those two the banned shape is the sidecar derivation itself: a file name with the
+        // suffix appended. `.training` has no other meaning in the tree and is banned bare.
+        val derivation = Regex("""getFileName\(\)\s*\+\s*"(?:${Regex.escape(config)}|${Regex.escape(tmpInfix)})"""")
 
         val files = javaSources.files.filter { it != ownerFile }.sorted()
         val mainFiles = files.filter { it.invariantSeparatorsPath.contains("/src/main/java/") }
@@ -314,9 +321,12 @@ val checkSingleAotMarkerSpelling = registerGuard("checkSingleAotMarkerSpelling")
 
         val hits = mutableListOf<String>()
         mainFiles.forEach { f ->
-            javaStringLiterals(f.readText()).filter { it.contains(marker) }.forEach {
-                hits.add("  ${f.relativeTo(treeRoot).invariantSeparatorsPath}: \"$it\"")
+            val text = f.readText()
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            javaStringLiterals(text).filter { it.contains(marker) || it == training }.forEach {
+                hits.add("  $rel: \"$it\"")
             }
+            derivation.findAll(text).forEach { hits.add("  $rel: ${it.value}") }
         }
         testFiles.forEach { f ->
             javaStringLiterals(f.readText()).filter { it == marker || it == cache + marker }.forEach {
@@ -324,11 +334,12 @@ val checkSingleAotMarkerSpelling = registerGuard("checkSingleAotMarkerSpelling")
             }
         }
         if (hits.isNotEmpty()) {
-            throw GradleException("The AOT refusal marker is named once, in"
-                    + " cc.jumpkick.host.AotCacheFiles. These re-type it:\n"
+            throw GradleException("The AOT cache's sidecars are named once, in"
+                    + " cc.jumpkick.host.AotCacheFiles. These re-type one:\n"
                     + hits.joinToString("\n")
-                    + "\n  Use AotCacheFiles.marker(cache) / isMarker(name) / cacheOf(name) /"
-                    + " blocked(cache), or AotCacheFiles.MARKER when only the suffix will do."
+                    + "\n  Use AotCacheFiles.marker(cache) / configOf(cache) / trainingClaim(cache) /"
+                    + " tmpFor(cache, pid) / isSidecar(name), or the MARKER / CONFIG / TRAINING /"
+                    + " TMP_INFIX constants when only the suffix will do."
                     + " :host is on every production module's classpath. A test fixture may spell a"
                     + " whole cache file name, never the bare suffix.")
         }

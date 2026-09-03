@@ -113,7 +113,7 @@ class ScheduleBiasTest {
     @Test
     void read_clamp_bounds_a_poisoned_store() {
         Path proj = home.resolve("proj");
-        // One absurd observation (ratio clamps to 2.5 at fold; read clamps to 2.0).
+        // One absurd observation (clamped to MAX_BIAS at fold and again on read).
         ScheduleBias.observe(proj, 10_000, 500_000, 29);
         assertThat(ScheduleBias.current(proj, 29)).isEqualTo(ScheduleBias.MAX_BIAS);
     }

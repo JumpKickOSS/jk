@@ -35,20 +35,22 @@ class BuildMetricsTest {
     }
 
     @Test
-    void a_pre_rename_schema_1_store_decodes_to_empty(@TempDir Path dir) throws Exception {
-        // The step->task rename changed the shape under schema 1; the version check IS the
-        // migration — priors re-learn in one run, dual reads do not live forever.
+    void a_pre_rename_store_keeps_its_invocation_priors_and_relearns_its_tasks(@TempDir Path dir) throws Exception {
+        // The step->task rename changed the shape in place, under schema 1: the old `steps` table
+        // is simply not consulted, and the invocation priors it sat beside are still worth having.
         Files.writeString(file(dir), """
                 {"schema": 1,
                  "invocations": [{"kind": "build", "dir": "/p", "ok": {"count": 1}}],
                  "steps": [{"dir": "/p", "step": "compile-java", "ok": {"count": 1}}]}
                 """);
         BuildMetrics.clearMemo();
-        assertThat(BuildMetrics.load(file(dir)).isEmpty()).isTrue();
+        BuildMetrics m = BuildMetrics.load(file(dir));
+        assertThat(m.invocation("build", "/p")).isPresent();
+        assertThat(EffortWeights.stepOkAvgMillisOwn(m, "/p", "compile-java")).isZero();
     }
 
     @Test
-    void a_schema_2_store_round_trips(@TempDir Path dir) {
+    void a_store_round_trips(@TempDir Path dir) {
         record(
                 dir.resolve("m.json"),
                 build("/p", true, 800, new BuildMetrics.StepSample("/p", "compile-java", "SUCCESS", 500)),

@@ -151,7 +151,8 @@ public final class JobEnvelope {
 
     /**
      * One submit path for every transport. {@link JobTransport.SocketWatch} forks the job and keeps
-     * reading the connection for EOF (cancellation arrives out-of-band as\n     * {@link EngineProtocol#CANCEL_REQUEST}), joining before
+     * reading the connection for EOF (cancellation arrives out-of-band as
+     * {@link EngineProtocol#CANCEL_REQUEST}), joining before
      * return; {@link JobTransport.FireAndForget} returns the jid immediately (progress is the
      * sink) and throws {@link AlreadyRunning} / {@link IllegalStateException} on refusal.
      */

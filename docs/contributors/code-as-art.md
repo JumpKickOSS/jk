@@ -314,6 +314,13 @@ Apply to every new file and every extract, not only the engine.
   or SSE connect ordering. If the new type cannot express the old
   invariant, the type is unfinished.
 - `jk format` before every commit.
+- **Change what a key hashes → turn the salt, in the same commit.** Every
+  action key composes the product version with `BuildIdentity.CACHE_KEY_SALT`.
+  A change to the bytes a key covers (a new input, a dropped one, a different
+  hashing order) without a salt bump lets a stale entry answer for the new
+  key on every machine that has one; bumping it retires every entry at once.
+  `BuildIdentityTest` pins that the salt reaches both the release and the
+  dev-build branches of the key.
 - Comments state the **current** type or method only — no `JK-` ids, no
   historical essays, no agent decision records. Policy:
   [AGENTS.md — Comments and Javadoc](../../AGENTS.md#comments-and-javadoc).
@@ -743,6 +750,23 @@ the lexer is memoised per file and the vocabulary guards ask each file which
 of the banned literals it contains rather than asking each literal which
 files contain it.
 
+**When each build runs them.** `jk build` runs the gate on every build that
+does work. On the Gradle side the tree-wide root guards (`checkSingleHomeRoot`,
+`checkNoTicketIds`, `checkNoHistoricalNarration`, `checkGuardRegistry`,
+`checkGuardParity`, …) are wired to the root `check`, which the root `build`
+depends on, so `./gradlew build` and `./gradlew check` reach them exactly as
+`./gradlew checkFast` does. That was not always so: the root had no `base`
+plugin, so `./gradlew build` ran every module's lifecycle and none of the root
+guards — `build dist` once passed with ticket ids in the tree that only
+`checkAll` caught, commits later. G51 compares the *set* of letters between the
+two builds, not their triggers, so a gap like that is invisible to it; the
+lifecycle wiring is what closes it. The four tree-wide text guards cost
+about 0.7 s on a no-op `./gradlew build` — the whole invocation, five guards
+up-to-date (their input fingerprints are the cost) —
+against ~9 s when they run. The bar for a code change is still `checkFast`
+(AGENTS.md); `build` is now at least as strict as `jk build`, not a weaker
+sibling with a stronger name.
+
 **Two arms stay Gradle-only, and say why here rather than going quietly
 missing.** `checkPublishedPomCoordinates` (G19) reads the POM
 `maven-publish` generates into `build/publications`; jk writes a POM at
@@ -854,7 +878,7 @@ Letters are allocated when a guard lands and are never reused.
 | G17 | `checkNoBareWireType` | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban |
 | G18 | `checkNoBareTargetDir` | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban |
 | G19 | `checkPublishedPomCoordinates` | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist |
-| G20 | `checkSingleHostSurface` | an `os.name` read outside `cc.jumpkick.host.Os`, or a classpath separator outside `Classpaths` | ban + ratchet |
+| G20 | `checkSingleHostSurface` | an `os.name` read outside `cc.jumpkick.host.Os`, or a path separator outside `Classpaths` (`-cp`) and `SearchPath` (`PATH`) | ban |
 | G21 | `checkOneJsonCodec` | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist |
 | G22 | `IdeClientWiringTest` (`:cli`) | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist |
 | G23 | `checkNoOrphanTestTags` | a `@Tag` no test task runs, a tag no tier owns, or a `TestTiers` table that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions |
@@ -883,7 +907,7 @@ Letters are allocated when a guard lands and are never reused.
 | G46 | `checkJdkRemovalConfined` | JDK removal reachable from anything but an explicit `jk jdk` verb — an ordinary build deleted the JDK it was running on, twice in one afternoon, taking four installs including both GraalVMs | ban + self-fail on `JdkGarbage` still carrying the members it reads |
 | G47 | `checkCaseConversionLocale` | a `toLowerCase()` / `toUpperCase()` in `src/main` without `Locale.ROOT` — under tr_TR/az `'i' ⇄ 'I'` do not round-trip, so an identifier parser is wrong for an entire locale family; one silently rewrote an MCP client's `runtime` scope into `main` | ban + a self-fail arm on scanning zero files |
 | G48 | `checkNoGluedInlineTag` | an inline Javadoc tag glued to its payload (`{@code.asc}`) — renders as literal garbage, and blocks FQCN shortening for the whole file | ban, no allowlist |
-| G49 | `checkSingleHomeRoot` (root project) | a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; two self-fail arms (stale allowlist entry, empty candidate set) | ban; nine-file allowlist, each entry carrying the reason it reads another program's layout |
+| G49 | `checkSingleHomeRoot` (root project) | a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; extension-blind like G50; self-fail arms: stale allowlist entry, fixture set no longer caught, marker isolation, empty candidate set | ban; nine-file allowlist, each entry carrying the reason it reads another program's layout |
 | G50 | `checkNoTicketIds` (root project) | a KanArtist ticket id anywhere in the tree — extension-blind, because every scope this rule was given by extension is where it was missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS held ~50 after the second, and a Giter8 template wrote one into a user's own new project | ban, two exemptions (`AGENTS.md`'s board protocol, this page's ban examples) + a self-fail on an empty candidate set |
 | G51 | `checkGuardParity` (root project) + `.jk/after-build.kts` | a guard letter enforced by one build and not the other — G46 through G50 lived on the Gradle side only, so `jk build` printed "house rules clean" while enforcing 36 of the 41 it claimed, and neither gate's count was wrong about itself. Deliberately implemented twice: a parity check only one build runs has the shape of the problem it prevents. The exception list is single-owner (`guard-parity.txt`), so a letter cannot be excused on one side and demanded on the other | ban; exceptions carry the reason parity is impossible, and "not ported yet" is not one |
 | G52 | `checkTestTierDocs` (root project) + `.jk/after-build.kts` | the contributor tier table differs from `TestTiers` task names, include/exclude tags, order, or `checkAll` membership | exact generated-block comparison in both builds |
@@ -894,6 +918,7 @@ Letters are allocated when a guard lands and are never reused.
 | G57 | `checkCiCadence` (root project) + `.jk/after-build.kts` | nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke | workflow text scan in both builds |
 | G58 | `checkSecurityDocs` (root project) + `.jk/after-build.kts` | the security-reporting page, the GitHub `SECURITY.md` pointer, or the advisory URL is missing | file and pointer scan in both builds |
 | G59 | `checkNoHistoricalNarration` (root project) + `.jk/after-build.kts` | a comment or doc narrates a previous design instead of the current invariant | phrase scan in both builds; AGENTS.md and comments.md exempt because they name the ban |
+| G60 | `checkOneJsonSplicer` (root project) + `.jk/after-build.kts` | a JSON object spliced by hand in `src/main/java` — a closing brace chopped and appended to, or a literal `{` opened onto another object's tail — outside `Jsonl.append` | ban in both builds; self-fail when the owner stops splicing or the scan sees too few sources |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.

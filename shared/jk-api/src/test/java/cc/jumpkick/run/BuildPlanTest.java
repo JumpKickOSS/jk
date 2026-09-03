@@ -67,6 +67,39 @@ class BuildPlanTest {
         assertThat(result.errors()).hasSize(1);
     }
 
+    /** What a step reports as blocked time rides beside its wall to every listener. */
+    @Test
+    void a_steps_reported_wait_reaches_listeners_beside_its_wall() {
+        List<Duration> waits = new ArrayList<>();
+        List<Duration> walls = new ArrayList<>();
+        var plan = BuildPlan.builder("queued")
+                .addListener(new BuildPlanListener() {
+                    @Override
+                    public void stepFinish(
+                            String step,
+                            @Nullable String group,
+                            TaskStatus status,
+                            Duration duration,
+                            Duration waited) {
+                        walls.add(duration);
+                        waits.add(waited);
+                    }
+                })
+                .addTask(Task.builder("compile-java")
+                        .ticks(1)
+                        .execute(ctx -> {
+                            ctx.waited(Duration.ofMillis(30));
+                            ctx.waited(Duration.ofMillis(12));
+                        })
+                        .build())
+                .addTask(Task.builder("write-stamp").ticks(1).execute(ctx -> {}).build())
+                .build();
+
+        assertThat(plan.run().success()).isTrue();
+        assertThat(waits).containsExactly(Duration.ofMillis(42), Duration.ZERO);
+        assertThat(walls).allSatisfy(w -> assertThat(w).isGreaterThanOrEqualTo(Duration.ZERO));
+    }
+
     @Test
     void scope_sums_across_phases() {
         var plan = BuildPlan.builder("multi")
@@ -468,6 +501,30 @@ class BuildPlanTest {
             if (e.getCause() instanceof Exception cause) throw cause;
             throw e;
         }
+    }
+
+    /** put on an undeclared key names the key and the plan; require on one says "never declared". */
+    @Test
+    void undeclared_keys_are_named_as_such_on_put_and_require() {
+        BuildPlanKey<String> DECLARED = BuildPlanKey.scalar("declared", String.class);
+        BuildPlanKey<String> STRAY = BuildPlanKey.scalar("stray", String.class);
+        var writer = BuildPlan.builder("writer")
+                .stateKeys(DECLARED)
+                .addTask(Task.builder("w").execute(ctx -> ctx.put(STRAY, "x")).build())
+                .build();
+        var written = writer.run();
+        assertThat(written.success()).isFalse();
+        assertThat(written.errors().getFirst().message()).contains("plan state key 'stray' was not declared");
+
+        var reader = BuildPlan.builder("reader")
+                .stateKeys(DECLARED)
+                .addTask(Task.builder("r").execute(ctx -> ctx.require(STRAY)).build())
+                .build();
+        var read = reader.run();
+        assertThat(read.success()).isFalse();
+        assertThat(read.errors().getFirst().message()).contains("never declared");
+        // get stays lenient for cross-plan reads: empty, not an error.
+        assertThat(reader.get(STRAY)).isEmpty();
     }
 
     @Test

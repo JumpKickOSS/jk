@@ -431,7 +431,7 @@ public class IdeEngineClient {
             }
 
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
                 boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
                 progress.onStepFinish(step, ok, status == null ? "" : status.name());
             }

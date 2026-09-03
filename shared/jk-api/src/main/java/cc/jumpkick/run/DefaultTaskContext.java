@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -33,6 +34,9 @@ final class DefaultTaskContext implements TaskContext {
 
     private final long startNanos;
 
+    /** Nanoseconds the step reported blocked on a shared resource; see {@link #waited(Duration)}. */
+    private final AtomicLong waitedNanos = new AtomicLong();
+
     DefaultTaskContext(
             String step,
             BuildPlan plan,
@@ -48,6 +52,15 @@ final class DefaultTaskContext implements TaskContext {
         this.internalTicks = new AtomicLong(internalTicks);
         this.expectedNanos = weighted ? expectedNanos : 0;
         this.startNanos = startNanos;
+    }
+
+    @Override
+    public void waited(Duration blocked) {
+        if (blocked != null && !blocked.isNegative()) waitedNanos.addAndGet(blocked.toNanos());
+    }
+
+    Duration waited() {
+        return Duration.ofNanos(waitedNanos.get());
     }
 
     @Override
@@ -227,11 +240,13 @@ final class DefaultTaskContext implements TaskContext {
     @Override
     public <T> T require(BuildPlanKey<T> key) {
         return plan.get(key)
-                .orElseThrow(() -> new IllegalStateException("step '"
-                        + step
-                        + "' required key '"
-                        + key.name()
-                        + "' but it wasn't set by any upstream step"));
+                .orElseThrow(
+                        () -> new IllegalStateException(
+                                plan.declares(key)
+                                        ? "step '" + step + "' required key '" + key.name()
+                                                + "' but it wasn't set by any upstream step"
+                                        : "step '" + step + "' required key '" + key.name()
+                                                + "' which this BuildPlan never declared — a consumer-side typo, or a key missing from the plan's state keys"));
     }
 
     /**

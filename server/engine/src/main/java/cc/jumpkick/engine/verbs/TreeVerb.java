@@ -5,10 +5,10 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.GraphOps;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.protocol.TreeRequest;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -47,12 +47,9 @@ public final class TreeVerb implements HostedVerb {
             String error = null;
             String rendered = null;
             try {
+                TreeRequest req = TreeRequest.decode(requestLine);
                 rendered = GraphOps.treeRender(
-                        Path.of(Jsonl.str(requestLine, "dir")),
-                        Jsonl.intValue(requestLine, "maxDepth", Integer.MAX_VALUE),
-                        Jsonl.bool(requestLine, "flatten", false),
-                        Jsonl.bool(requestLine, "stack", false),
-                        Jsonl.strArray(requestLine, "scopes"));
+                        Path.of(req.dir()), req.maxDepth(), req.flatten(), req.stack(), req.scopes());
             } catch (IOException | RuntimeException e) {
                 error = Errors.text(e);
             }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
@@ -147,8 +148,7 @@ public final class EngineMain {
 
     /** The trainer's private assembly target: a same-directory sibling, atomically movable. */
     static Path trainerTmpPath(Path finalPath) {
-        return finalPath.resolveSibling(
-                finalPath.getFileName() + ".tmp-" + ProcessHandle.current().pid());
+        return AotCacheFiles.tmpFor(finalPath, ProcessHandle.current().pid());
     }
 
     /** The sidecar command line; {@code tmpOut} — never the final cache path — receives the cache. */
@@ -181,7 +181,7 @@ public final class EngineMain {
             System.err.println("jk engine: could not publish the AOT cache: " + e.getMessage());
         }
         deleteQuietly(tmp);
-        deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // interrupted recording
+        deleteQuietly(AotCacheFiles.configOf(tmp)); // interrupted recording
     }
 
     /**
@@ -191,7 +191,7 @@ public final class EngineMain {
     private static void cleanStaleTrainerTmps(Path finalPath) {
         Path dir = finalPath.getParent();
         if (dir == null) return;
-        String prefix = finalPath.getFileName() + ".tmp-";
+        String prefix = finalPath.getFileName() + AotCacheFiles.TMP_INFIX;
         try (var entries =
                 Files.newDirectoryStream(dir, p -> p.getFileName().toString().startsWith(prefix))) {
             for (Path p : entries) deleteQuietly(p);

@@ -6,9 +6,9 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.NewProjectAck;
+import cc.jumpkick.wire.protocol.NewProjectRequest;
 import java.io.BufferedWriter;
 import java.util.List;
 
@@ -50,26 +50,27 @@ public final class NewProjectVerb implements HostedVerb {
         try {
             NewProjectAck ack;
             try {
+                NewProjectRequest wire = NewProjectRequest.decode(requestLine);
                 NewProjectOps.Request req = new NewProjectOps.Request(
-                        Jsonl.str(requestLine, "name"),
-                        Jsonl.str(requestLine, "parentDir"),
-                        Jsonl.str(requestLine, "group"),
-                        Jsonl.str(requestLine, "lang"),
-                        Jsonl.str(requestLine, "layout"),
-                        Jsonl.str(requestLine, "template"),
-                        Jsonl.bool(requestLine, "executable", false),
-                        Jsonl.str(requestLine, "jdk"),
-                        Jsonl.intValue(requestLine, "javaRelease", 0),
-                        Jsonl.bool(requestLine, "assembly", false),
-                        Jsonl.bool(requestLine, "nativeImage", false),
-                        Jsonl.bool(requestLine, "plugin", false),
-                        Jsonl.str(requestLine, "kotlinModule"),
-                        Jsonl.strArray(requestLine, "deps"),
-                        Jsonl.bool(requestLine, "sample", true),
-                        Jsonl.bool(requestLine, "standalone", true),
-                        Jsonl.strMap(requestLine, "templateParams"),
-                        Jsonl.bool(requestLine, "relaxParent", false),
-                        Jsonl.str(requestLine, "targetDir"));
+                        wire.name(),
+                        wire.parentDir(),
+                        wire.group(),
+                        wire.lang(),
+                        wire.layout(),
+                        wire.template(),
+                        wire.executable(),
+                        wire.jdk(),
+                        wire.javaRelease(),
+                        wire.assembly(),
+                        wire.nativeImage(),
+                        wire.plugin(),
+                        wire.kotlinModule(),
+                        wire.deps(),
+                        wire.sample(),
+                        wire.standalone(),
+                        wire.templateParams(),
+                        wire.relaxParent(),
+                        wire.targetDir());
                 NewProjectOps.Created created = NewProjectOps.createWithIdentity(req);
                 ack = NewProjectAck.of(created.path().toString(), created.projectId(), created.filesWritten());
             } catch (Exception e) {

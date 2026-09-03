@@ -145,7 +145,7 @@ public final class StepTimings {
             } else if (k.startsWith("step.") && k.endsWith(".per-unit-ms")) {
                 String step = k.substring("step.".length(), k.length() - ".per-unit-ms".length());
                 m.putIfAbsent(key(HOST_METHOD_MS_DIR, step), new Entry(v, now));
-            } else if (k.startsWith("host.") || k.endsWith("-per-method-ms") || k.endsWith("-per-source-ms")) {
+            } else if (k.endsWith("-per-method-ms") || k.endsWith("-per-source-ms")) {
                 m.put(key(HOST_METHOD_MS_DIR, k), new Entry(v, now));
             }
         }

@@ -327,20 +327,19 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 6. `ideModel()` — absolute classpath jars + source/classes roots for the open workspace.
 7. Optional `build(listener)` — module/step events for a Build tool window.
 8. Keep `jk ide` / export for writing `.idea` / `.vscode` files when desired.
-9. **BSP:** `jk bsp install` writes `.bsp/jk.json`; `jk bsp serve` speaks a minimal
-   BSP 2.x JSON-RPC on stdio and delegates to `IdeEngineClient` (initialize, buildTargets, sources,
-   dependencyModules, compile). No engine jars on the IDE classpath. Marketplace plugins
-   can sit on BSP or call the facade directly.
+9. **BSP:** `jk bsp install` writes `.bsp/jk.json`; `jk bsp serve` speaks BSP 2.x JSON-RPC on
+   stdio and delegates to `IdeEngineClient`. No engine jars on the IDE classpath. Marketplace
+   plugins can sit on BSP or call the facade directly.
 
-### BSP ↔ engine wire (MVP)
+### BSP ↔ engine wire
 
-| BSP | JumpKick |
-|---|---|
-| `build/initialize` | local capability advertise |
-| `workspace/buildTargets` | `projectInfo` + `ideModel` modules |
-| `buildTarget/sources` | module source roots from layout / model |
-| `buildTarget/dependencyModules` | `ideModel` lib jars (absolute URIs) |
-| `buildTarget/compile` | `IdeEngineClient.build` |
+The method set is `BspServer`'s dispatch — `build/initialize` and `build/initialized`,
+`workspace/buildTargets` and `workspace/reload`, `buildTarget/sources`, `dependencyModules`,
+`outputPaths`, `compile`, `test` and `run`, `build/cancel`, `build/shutdown`, `build/exit`, plus the
+`build/publishDiagnostics` and `build/logMessage` notifications. Reads answer from `projectInfo` +
+`ideModel`; `compile`/`test`/`run` are engine jobs through `IdeEngineClient`. The user-facing
+capability table, including what is deliberately not implemented (a debug adapter), is
+[docs/user/ide.md](../user/ide.md) — one owner, so this page does not carry a second copy to drift.
 
 - **VS Code:** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.
 - **IntelliJ:** `clients/intellij/` — install-from-disk zip. **Sync project**

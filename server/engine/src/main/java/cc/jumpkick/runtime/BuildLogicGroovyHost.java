@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
@@ -163,7 +163,16 @@ final class BuildLogicGroovyHost {
                     "206b6edca13aeafe4f10995589b7cefd7aff403a24cb34cf085893e2b3e44b19"));
 
     /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from Central. */
+    /**
+     * The verified closure, once per engine process. {@link #published} hashes every jar (groovy
+     * alone is ~8 MB), and a truncated download only needs catching on the first touch; before
+     * this every script evaluation on a cache miss re-hashed all seven.
+     */
+    private static volatile Path[] verifiedJars;
+
     static Path[] ensureJars() throws IOException {
+        Path[] known = verifiedJars;
+        if (known != null) return known;
         Path cache = toolCache();
         Files.createDirectories(cache);
         Path[] jars = new Path[PINNED_JARS.size()];
@@ -175,6 +184,7 @@ final class BuildLogicGroovyHost {
             }
             jars[i] = out;
         }
+        verifiedJars = jars;
         return jars;
     }
 
@@ -213,7 +223,7 @@ final class BuildLogicGroovyHost {
                 RepositorySpec.MAVEN_CENTRAL.name(),
                 RepositorySpec.MAVEN_CENTRAL.url(),
                 new Http(),
-                new Cas(JkDirs.store()));
+                JkStores.storeCas());
         try {
             return central.fetchArtifact(jar.coordinate(), jar.sha256(), () -> false)
                     .cachePath();

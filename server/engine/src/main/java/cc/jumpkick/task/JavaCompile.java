@@ -22,12 +22,14 @@ public final class JavaCompile {
 
     private JavaCompile() {}
 
+    /** @param waitMillis time spent queued behind the shared compiler worker; see TaskContext#waited */
     public record Result(
             boolean success,
             String outcome,
             String actionKey,
             List<CompileResult.Diagnostic> diagnostics,
-            List<Path> compiledSources) {
+            List<Path> compiledSources,
+            long waitMillis) {
         public Result {
             diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
             compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
@@ -89,14 +91,14 @@ public final class JavaCompile {
         Path out = request.outputDir();
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
-            return new Result(true, "no-sources", "", List.of(), List.of());
+            return new Result(true, "no-sources", "", List.of(), List.of(), 0L);
         }
 
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
-                return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of());
+                return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of(), 0L);
             }
         }
 
@@ -135,17 +137,18 @@ public final class JavaCompile {
             outputs = prewriter.finish();
         }
         if (!wr.success()) {
-            return new Result(false, "errors", key, wr.diagnostics(), wr.compiledSources());
+            return new Result(false, "errors", key, wr.diagnostics(), wr.compiledSources(), wr.waitMillis());
         }
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
-            return new Result(true, "compiled-no-outputs", key, wr.diagnostics(), wr.compiledSources());
+            return new Result(
+                    true, "compiled-no-outputs", key, wr.diagnostics(), wr.compiledSources(), wr.waitMillis());
         }
         if (persist) {
             actionCache.storeWithOutputs(taskId, key, ActionKey.snapshotInputs(request), outputs);
         } else if (Files.isDirectory(stateDir)) {
             PathUtil.deleteRecursively(stateDir);
         }
-        return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources());
+        return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), wr.waitMillis());
     }
 
     public static Prediction predict(

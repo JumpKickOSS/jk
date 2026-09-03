@@ -111,6 +111,23 @@ class PluginSpecTest {
      * mode of a fork path that forgot to stamp it must be a refusal a developer sees, not a request
      * a user was told would not happen.
      */
+    /** A null string config is unset, not a null literal the reader trips over. */
+    @Test
+    void a_null_string_config_is_unset(@TempDir Path dir) throws Exception {
+        Path spec = dir.resolve("null.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PACKAGE, null, "jk-quarkus")
+                        .configString("present", "yes")
+                        .configString("absent", null)
+                        .lines(),
+                StandardCharsets.UTF_8);
+        PluginSpec parsed = PluginSpec.read(spec);
+        assertThat(parsed.config().stringOpt("present")).contains("yes");
+        assertThat(parsed.config().stringOpt("absent")).isEmpty();
+    }
+
     @Test
     void a_spec_with_no_policy_line_reads_as_offline(@TempDir Path dir) throws Exception {
         Path spec = dir.resolve("bare.spec");

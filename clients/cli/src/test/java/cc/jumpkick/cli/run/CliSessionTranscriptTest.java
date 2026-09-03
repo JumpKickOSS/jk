@@ -172,7 +172,9 @@ class CliSessionTranscriptTest {
         assertEquals(before, still.size(), "lazy line must not partial-flush mid-record");
         assertFalse(Files.readString(file).contains("buffered-only"));
 
-        session.append(JsonlShape.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ofMillis(1)), true);
+        session.append(
+                JsonlShape.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ofMillis(1), Duration.ZERO),
+                true);
         String after = Files.readString(file);
         assertTrue(after.contains("buffered-only"));
         assertTrue(after.contains("task-finish"));

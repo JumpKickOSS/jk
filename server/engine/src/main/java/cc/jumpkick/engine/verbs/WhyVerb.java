@@ -5,10 +5,10 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.GraphOps;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.WhyReport;
+import cc.jumpkick.wire.protocol.WhyRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -45,7 +45,8 @@ public final class WhyVerb implements HostedVerb {
         try {
             WhyReport report;
             try {
-                report = GraphOps.why(Path.of(Jsonl.str(requestLine, "dir")), Jsonl.str(requestLine, "query"));
+                WhyRequest req = WhyRequest.decode(requestLine);
+                report = GraphOps.why(Path.of(req.dir()), req.query());
             } catch (RuntimeException e) {
                 report = WhyReport.error(Errors.text(e));
             }

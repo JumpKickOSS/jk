@@ -107,6 +107,8 @@ public final class LockOrchestrator {
     /** Consuming project directory — resolves path= deps for cross-package features. */
     private Path projectDir;
 
+    private LanguageRuntimeInject.ToolVersions toolVersions = LanguageRuntimeInject.ToolVersions.NONE;
+
     private Diagnostics.Palette diagnosticPalette;
 
     /** BOM pin policy; default {@link PlatformPolicy#ENFORCED}. */
@@ -116,6 +118,12 @@ public final class LockOrchestrator {
     private UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
 
     /** Directory of the consuming {@code jk.toml} (path= feature expansion). */
+    /** The compiler versions this lock pins; the injected stdlibs follow them exactly. */
+    public LockOrchestrator withToolVersions(LanguageRuntimeInject.ToolVersions tools) {
+        this.toolVersions = tools == null ? LanguageRuntimeInject.ToolVersions.NONE : tools;
+        return this;
+    }
+
     public LockOrchestrator withProjectDir(Path projectDir) {
         this.projectDir = projectDir;
         return this;
@@ -321,7 +329,8 @@ public final class LockOrchestrator {
         // Engine classpath injection alone is not enough for standalone `java -jar`.
         // Runs AFTER BOM collection: a platform that manages the runtime (grails-bom's groovy)
         // owns its version — the inject must not smuggle the scaffold default past it.
-        Set<String> injected = LanguageRuntimeInject.inject(project, projectDir, bomConstraints, mainDeduped);
+        Set<String> injected =
+                LanguageRuntimeInject.inject(project, projectDir, bomConstraints, mainDeduped, toolVersions);
 
         List<Dependency> fileDeps = new ArrayList<>();
         List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);

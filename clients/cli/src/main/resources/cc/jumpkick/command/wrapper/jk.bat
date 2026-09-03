@@ -7,6 +7,13 @@ setlocal enabledelayedexpansion
 
 rem Bin dir resolution mirrors install.ps1 / JkDirs, which is now one answer rather than a
 rem cascade - the wrapper must not invent its own layout.
+if not "%JK_HOME%"=="" (
+  set "JK_HOME_CHECK=%JK_HOME%"
+  if not "!JK_HOME_CHECK:~1,1!"==":" if not "!JK_HOME_CHECK:~0,2!"=="\\" (
+    echo jk wrapper: JK_HOME must be an absolute path: %JK_HOME% 1>&2
+    exit /b 1
+  )
+)
 set "JK_HOME_DIR=%JK_HOME%"
 if "%JK_HOME_DIR%"=="" set "JK_HOME_DIR=%USERPROFILE%\.jk"
 set "BIN_DIR=%JK_HOME_DIR%\bin"
@@ -52,7 +59,7 @@ mkdir "!TMP!"
 powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing '%JK_RELEASES_URL%/%VERSION%/%FILE%' -OutFile '!TMP!\%FILE%'; Invoke-WebRequest -UseBasicParsing '%JK_RELEASES_URL%/%VERSION%/SHA256SUMS' -OutFile '!TMP!\SHA256SUMS'; Invoke-WebRequest -UseBasicParsing '%JK_RELEASES_URL%/%VERSION%/SHA256SUMS.sig' -OutFile '!TMP!\SHA256SUMS.sig'" || exit /b 1
 set "JK_WRAPPER_TMP=!TMP!"
 set "JK_WRAPPER_FILE=%FILE%"
-powershell -NoProfile -Command "$d=$env:JK_WRAPPER_TMP; $f=$env:JK_WRAPPER_FILE; $m=[IO.File]::ReadAllBytes((Join-Path $d 'SHA256SUMS')); $st=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $d 'SHA256SUMS.sig'))); if($st -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$'){exit 1}; try{$sig=[Convert]::FromBase64String($st.TrimEnd([char[]]\"`r`n\"))}catch{exit 1}; $p=New-Object Security.Cryptography.RSAParameters; $p.Modulus=[Convert]::FromBase64String($env:RELEASE_RSA_MODULUS); $p.Exponent=[Convert]::FromBase64String($env:RELEASE_RSA_EXPONENT); $r=[Security.Cryptography.RSA]::Create(); $r.ImportParameters($p); if(-not $r.VerifyData($m,$sig,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)){exit 1}; try{$text=(New-Object -TypeName Text.UTF8Encoding -ArgumentList @($false,$true)).GetString($m)}catch{exit 1}; $seen=@{}; $want=$null; $count=0; $lines=$text.Split([char]10); for($i=0;$i -lt $lines.Length;$i++){$line=$lines[$i]; if($line.EndsWith(\"`r\")){$line=$line.Substring(0,$line.Length-1)}; if($line.Length -eq 0 -and $i -eq $lines.Length-1){continue}; if($line -notmatch '^([0-9A-Fa-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$'){exit 1}; $n=$Matches[2]; if($seen.ContainsKey($n)){exit 1}; $seen[$n]=$true; if($n -ceq $f){$count++;$want=$Matches[1].ToLowerInvariant()}}; if($count -ne 1){exit 1}; $got=(Get-FileHash -Algorithm SHA256 (Join-Path $d $f)).Hash.ToLowerInvariant(); if($got -cne $want){exit 1}" || (
+powershell -NoProfile -Command "$d=$env:JK_WRAPPER_TMP; $f=$env:JK_WRAPPER_FILE; $m=[IO.File]::ReadAllBytes((Join-Path $d 'SHA256SUMS')); $st=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $d 'SHA256SUMS.sig'))); if($st -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$'){exit 1}; try{$sig=[Convert]::FromBase64String($st.TrimEnd([char[]]\"`r`n\"))}catch{exit 1}; $p=New-Object Security.Cryptography.RSAParameters; $p.Modulus=[Convert]::FromBase64String($env:RELEASE_RSA_MODULUS); $p.Exponent=[Convert]::FromBase64String($env:RELEASE_RSA_EXPONENT); $r=[Security.Cryptography.RSA]::Create(); $r.ImportParameters($p); if(-not $r.VerifyData($m,$sig,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)){exit 1}; try{$text=(New-Object -TypeName Text.UTF8Encoding -ArgumentList @($false,$true)).GetString($m)}catch{exit 1}; $seen=@{}; $want=$null; $count=0; $lines=$text.Split([char]10); for($i=0;$i -lt $lines.Length;$i++){$line=$lines[$i]; if($line.Length -eq 0 -and $i -eq $lines.Length-1){continue}; if($line -notmatch '^([0-9A-Fa-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$'){exit 1}; $n=$Matches[2]; if($seen.ContainsKey($n)){exit 1}; $seen[$n]=$true; if($n -ceq $f){$count++;$want=$Matches[1].ToLowerInvariant()}}; if($count -ne 1){exit 1}; $got=(Get-FileHash -Algorithm SHA256 (Join-Path $d $f)).Hash.ToLowerInvariant(); if($got -cne $want){exit 1}" || (
   echo jk wrapper: signed release verification failed for %FILE% - refusing. 1>&2
   exit /b 1
 )

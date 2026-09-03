@@ -190,9 +190,14 @@ export const ModuleDepGraph = {
     },
     toggleScope(sc, ev) {
       const on = !!(ev && ev.target && ev.target.checked);
-      // Keep at least one scope selected (re-check main if the user clears the last box).
+      // Keep at least one scope selected (re-check main if the user clears the last box). When
+      // the box being cleared IS main, the bound value goes true → true and the vnode diff never
+      // patches the DOM property back, so the box is re-checked here as well.
       const next = { ...this.selectedScopes, [sc]: on };
-      if (!Object.values(next).some(Boolean)) next.main = true;
+      if (!Object.values(next).some(Boolean)) {
+        next.main = true;
+        if (sc === 'main' && ev && ev.target) ev.target.checked = true;
+      }
       this.selectedScopes = next;
       this.scheduleLoad();
     },
@@ -263,17 +268,26 @@ export const ModuleDepGraph = {
       } catch (e) {
         if (e && e.name === 'AbortError') return;
         if (ac.signal.aborted) return;
-        this.loading = false;
-        if (e && e.status === 401) {
-          this.error = 'Authorization required to load the graph';
-        } else if (e && e.error) {
-          // The engine names what is broken (malformed jk.toml, missing workspace member).
-          this.error = e.error;
-        } else if (e && e.status) {
-          this.error = 'Failed to load graph (HTTP ' + e.status + ')';
-        } else {
-          this.error = 'Failed to load graph';
-        }
+        this.failLoad(e);
+      }
+    },
+    /**
+     * A failed fetch describes THIS selection, so the previous selection's chart and node counts
+     * must not stand in for it: the graph is dropped with the error. An in-flight reload keeps the
+     * chart (see load) — only a failure clears it.
+     */
+    failLoad(e) {
+      this.loading = false;
+      this.graph = null;
+      if (e && e.status === 401) {
+        this.error = 'Authorization required to load the graph';
+      } else if (e && e.error) {
+        // The engine names what is broken (malformed jk.toml, missing workspace member).
+        this.error = e.error;
+      } else if (e && e.status) {
+        this.error = 'Failed to load graph (HTTP ' + e.status + ')';
+      } else {
+        this.error = 'Failed to load graph';
       }
     },
     renderChart() {

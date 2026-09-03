@@ -201,14 +201,24 @@ public final class IdleHousekeeping {
      * <p>The file-hash and ABI memos are persisted here rather than dropped: they do not grow with
      * the number of builds, and their whole payoff is the build after this one.
      */
-    private static void dropHeapResidue() {
+    private void dropHeapResidue() {
+        dropHeapResidue(historyConfig.enabled());
+    }
+
+    /**
+     * Release the per-build memos. The class-wall buffer is dropped only when history is on: the
+     * finish path has harvested it into {@code metrics.toml} by then and the estimator reads it
+     * back from disk. With history off there is no harvest, so the buffer is the only cross-build
+     * test ETA the process has, and an idle boundary must not reset it to cold priors.
+     */
+    static void dropHeapResidue(boolean historyEnabled) {
         try {
             FileHashMemo.flush();
             AbiMemo.flush();
             ActionCache.clearStampCache();
             ResolveProcessCacheControl.clearAll();
             BuildMetrics.clearSessionAggregatesMemo();
-            TestClassWalls.takeAll();
+            if (historyEnabled) TestClassWalls.takeAll();
         } catch (RuntimeException ignored) {
             // hygiene, never load-bearing
         }

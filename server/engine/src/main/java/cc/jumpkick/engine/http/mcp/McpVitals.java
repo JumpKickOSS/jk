@@ -23,18 +23,8 @@ public final class McpVitals {
 
     public static Map<String, Object> statusPayload(McpContext ctx) {
         StatusSnapshot s = ctx.status().get();
-        Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("version", s.version());
-        fields.put("pid", s.pid());
-        fields.put("startedAt", s.startedAtMillis());
-        fields.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000));
-        fields.put("activeRequests", s.activeRequests());
-        fields.put("activeBuildPlans", s.activeBuildPlans());
-        fields.put("heapUsedBytes", s.heapUsedBytes());
-        fields.put("heapCommittedBytes", s.heapCommittedBytes());
-        fields.put("heapMaxBytes", s.heapMaxBytes());
-        fields.put("rssBytes", s.rssBytes());
-        fields.put("cores", s.cores());
+        // Every vital, from the one enumeration; only the MCP-specific keys are added here.
+        Map<String, Object> fields = new LinkedHashMap<>(s.vitals());
         String bound = ctx.session().dir();
         if (bound != null) fields.put("boundDir", bound);
         fields.put("jobs", liveJobRows(ctx));

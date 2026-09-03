@@ -8,8 +8,10 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.wire.protocol.BuildRequest;
 import cc.jumpkick.wire.protocol.SingleBuildRequest;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -39,12 +41,41 @@ class EngineJobsEncodeTest {
     void the_single_build_request_carries_a_selection_too() {
         TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
 
-        String json =
-                new SingleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, widened).encode();
+        String json = new SingleBuildRequest(
+                        "/proj", "/cache", null, 0, null, false, false, false, false, null, widened)
+                .encode();
 
         assertThat(SingleBuildRequest.decode(json).selection()).isEqualTo(widened);
-        assertThat(new SingleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, null).encode())
+        assertThat(new SingleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, null, null)
+                        .encode())
                 .doesNotContain("allSuites");
+    }
+
+    /** A package build ships the client-resolved GraalVM home of every always-native module. */
+    @Test
+    void graal_homes_ride_the_package_build_request() {
+        Map<Path, Path> homes = Map.of(Path.of("/proj/app"), Path.of("/jdks/graalvm-25"));
+        WorkspaceRequest req = request().withSpec(WorkspaceSpec.DEFAULT.withGraalByDir(homes));
+
+        String json = EngineJobs.encodeWorkspaceRequest(req, Session.defaults());
+
+        BuildRequest back = BuildRequest.decode(json);
+        assertThat(back.workspaceTarget()).as("still a plain package build").isNull();
+        assertThat(back.graalHomes()).containsEntry("/proj/app", "/jdks/graalvm-25");
+        assertThat(new SingleBuildRequest(
+                                "/proj/app",
+                                "/cache",
+                                null,
+                                0,
+                                null,
+                                false,
+                                false,
+                                false,
+                                false,
+                                "/jdks/graalvm-25",
+                                null)
+                        .encode())
+                .contains("\"graalHome\":\"/jdks/graalvm-25\"");
     }
 
     @Test

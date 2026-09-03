@@ -16,6 +16,8 @@ public record SingleBuildRequest(
         boolean verbose,
         boolean offline,
         boolean force,
+        /** Client-resolved GraalVM home for an always-native module; null when the build links none. */
+        @Nullable String graalHome,
         @Nullable TestSelection selection) {
 
     public SingleBuildRequest {
@@ -33,6 +35,7 @@ public record SingleBuildRequest(
                 .bool("verbose", verbose)
                 .bool("offline", offline)
                 .bool("force", force)
+                .optionalNonBlankString("graalHome", graalHome)
                 .testSelection(selection, true)
                 .finish();
     }
@@ -48,6 +51,7 @@ public record SingleBuildRequest(
                 Jsonl.bool(json, "verbose", false),
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "force", false),
+                Jsonl.str(json, "graalHome"),
                 ProtoJobs.testSelectionOf(json));
     }
 }

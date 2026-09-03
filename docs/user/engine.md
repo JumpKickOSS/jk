@@ -44,22 +44,25 @@ MCP: [MCP](mcp.md). Token, bind, and reporting: [Security](security.md).
 
 ## Configuration
 
-`[engine]` in `~/.jk/config.toml` is machine-scoped: not project-overridable, read once
-at engine start. Precedence is **env > file > default**. `jobs` also has CLI `-j` /
-`--jobs`, which wins over env.
+`[engine]` in `~/.jk/config.toml` is machine-scoped: not project-overridable. The **Read**
+column says when a change takes effect: keys read at *engine start* need `jk engine stop`
+(the resident engine keeps the env it was spawned with), keys read *each command* or
+*each job* take effect on the next one, and *each idle cycle* keys are re-read from the
+file between builds. Precedence is **env > file > default**, resolved at that moment.
+`jobs` also has CLI `-j` / `--jobs`, which wins over env.
 
 `CI=1` / `true` raises the *unset* heap default 256 → 512 and the *unset* `continue`
 default fail-fast → keep-going. An explicit file or env value still wins. `vfs-max-mb`
 and `auto-warmup` do not follow CI.
 
 <!-- engine-config:start -->
-| Key | Env | Default | Meaning |
-|---|---|---|---|
-| `max-heap-mb` | `JK_ENGINE_MAX_HEAP_MB` | 256; 512 when CI is set | Engine process heap ceiling (-Xmx). 0 = uncapped. |
-| `jobs` | `JK_JOBS` | cores (0 = all cores) | Concurrent module/worker budget. CLI -j wins. Alias JK_ENGINE_JOBS. |
-| `continue` | `JK_CONTINUE` | false; true when CI is set | Keep going after a failed module. Does not change the verdict. |
-| `vfs-max-mb` | `JK_ENGINE_VFS_MAX_MB` | 32 | Per-job input-tree retain in MiB. 0 = off. CI does not bump this. |
-| `auto-warmup` | `JK_AUTO_WARMUP` | true | Idle AOT train and host calibration. false skips the whole pass. |
+| Key | Env | Default | Read | Meaning |
+|---|---|---|---|---|
+| `max-heap-mb` | `JK_ENGINE_MAX_HEAP_MB` | 256; 512 when CI is set | engine start | Engine process heap ceiling (-Xmx). 0 = uncapped. |
+| `jobs` | `JK_JOBS` | cores (0 = all cores) | each command | Concurrent module/worker budget. CLI -j wins. Alias JK_ENGINE_JOBS. |
+| `continue` | `JK_CONTINUE` | false; true when CI is set | each job | Keep going after a failed module. Does not change the verdict. |
+| `vfs-max-mb` | `JK_ENGINE_VFS_MAX_MB` | 32 | engine start | Per-job input-tree retain in MiB. 0 = off. CI does not bump this. |
+| `auto-warmup` | `JK_AUTO_WARMUP` | true | each idle cycle | Idle AOT train and host calibration. false skips the whole pass. |
 <!-- engine-config:end -->
 
 Short-lived CI engines should set `JK_AOT_TRAIN=off` (skip train-on-miss; still use

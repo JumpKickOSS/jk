@@ -22,7 +22,8 @@ class JsonlShapeTest {
 
     @Test
     void events_include_schema_ts_and_type() {
-        String line = JsonlShape.stepFinish("run-tests", "test", TaskStatus.SUCCESS, Duration.ofMillis(12));
+        String line =
+                JsonlShape.stepFinish("run-tests", "test", TaskStatus.SUCCESS, Duration.ofMillis(12), Duration.ZERO);
         assertThat(line).startsWith("{\"schema\":" + JsonlShape.SCHEMA);
         assertThat(line).contains("\"type\":\"task-finish\"");
         assertThat(line).contains("\"ts\":");
