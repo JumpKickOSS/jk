@@ -121,6 +121,7 @@ final class EngineJobs {
                         req.keepGoing(),
                         workspaceTarget,
                         graalHomes,
+                        spec != null && spec.m2Dir() != null ? spec.m2Dir().toString() : null,
                         RequestEnvironment.trigger(),
                         RequestEnvironment.progressMode())
                 .encode();

@@ -29,9 +29,11 @@ class PluginInstallLocalTest {
                 "--state-dir",
                 dir.resolve("state").toString(),
                 "--bin-dir",
-                dir.resolve("bin").toString());
+                dir.resolve("bin").toString(),
+                "--m2-dir",
+                dir.resolve("m2").toString());
         assertThat(exit).isZero();
-        assertInstalled(cache, worker);
+        assertInstalled(dir, worker);
         assertThat(dir.resolve("bin/jk-test-runner")).doesNotExist();
     }
 
@@ -53,9 +55,11 @@ class PluginInstallLocalTest {
                 "--state-dir",
                 dir.resolve("state").toString(),
                 "--bin-dir",
-                dir.resolve("bin").toString());
+                dir.resolve("bin").toString(),
+                "--m2-dir",
+                dir.resolve("m2").toString());
         assertThat(exit).isZero();
-        assertInstalled(cache, worker);
+        assertInstalled(dir, worker);
     }
 
     private static Path writePluginWorkspace(Path dir) throws Exception {
@@ -69,11 +73,18 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
+        // `[m2] install` defaults ON machine-wide, and that branch makes the Maven local repo
+        // primary: the jar and POM go to ~/.m2 and repos/jk-local keeps only a memo pointing
+        // there. This test is about the jk-local store, so the module opts out — and the
+        // --m2-dir redirect above means even a policy regression cannot reach the real ~/.m2.
         Files.writeString(mod.resolve("jk.toml"), """
                 group = "cc.jumpkick"
                 name = "jk-test-runner"
                 version = "0.12.0"
                 java = 25
+
+                [m2]
+                install = false
                 """);
         Files.writeString(mod.resolve("jk-plugin.toml"), """
                 [plugin]
@@ -84,14 +95,18 @@ class PluginInstallLocalTest {
         return mod;
     }
 
-    private static void assertInstalled(Path cache, Path worker) {
-        Path dest = cache.resolve("repos/jk-local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
-        Path storeDest =
-                JkStores.store().resolve("repos/jk-local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
-        Path jar = Files.isRegularFile(dest) ? dest : storeDest;
+    /**
+     * The local-install write is store-rooted whatever {@code --cache-dir} says, so the store is
+     * the only place to look: resolvers read {@code repos/jk-local} from there.
+     */
+    private static void assertInstalled(Path dir, Path worker) {
+        Path jar = JkStores.resolve("repos")
+                .resolve("jk-local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
         assertThat(jar).isRegularFile();
-        Path pom = jar.resolveSibling("jk-test-runner-0.12.0.pom");
-        assertThat(pom).isRegularFile();
+        assertThat(jar.resolveSibling("jk-test-runner-0.12.0.pom")).isRegularFile();
+        assertThat(dir.resolve("m2"))
+                .as("[m2] install = false must leave the Maven local repo alone")
+                .doesNotExist();
         assertThat(worker.resolve("src/main/java/x/X.java")).isRegularFile();
     }
 }

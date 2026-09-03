@@ -1199,11 +1199,6 @@ val formatStyleVocabulary = setOf(
     "shared/core/src/main/java/cc/jumpkick/config/FormatStyles.java",
     "plugins/formatter/src/main/java/cc/jumpkick/format/CodeFormatter.java")
 
-/** Repo-name literals not yet calling `RepositorySpec`. Delete the map when it empties. */
-val repoNameRatchet = mapOf(
-    "server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginJar.java" to 1,
-    "server/engine/src/main/java/cc/jumpkick/runtime/RepoGroupBuilder.java" to 1)
-
 /** The host that resolves to Central but matches neither the mirror nor the cooldown. */
 val centralAliasHost = "repo1.maven.org"
 
@@ -1237,12 +1232,11 @@ guard("G16", "checkSingleCentralAddress") {
             }
         }
     }
-    val (grew, unlisted, loose) = ratchetVerdict(nameCounts, repoNameRatchet)
-    val faults = mutableListOf<String>()
-    if (aliasHits.isNotEmpty() || unlisted.isNotEmpty()) {
-        val offending = unlisted.map { it.trim().substringAfter("  ") }
-        val details = nameDetails.filterKeys { it in offending }.values.flatten()
-        faults.add("Maven Central is addressed once, through RepositorySpec.MAVEN_CENTRAL, and a"
+    // No ratchet: PluginJar and RepoGroupBuilder were the last two files on it and both came
+    // clean, so every remaining spelling is a fault rather than a budgeted one.
+    if (aliasHits.isNotEmpty() || nameCounts.isNotEmpty()) {
+        val details = nameDetails.values.flatten()
+        error("Maven Central is addressed once, through RepositorySpec.MAVEN_CENTRAL, and a"
             + " repository name is spelled once, in RepositorySpec. These spell it themselves:\n"
             + bullets((aliasHits + details).sorted())
             + "\n  $centralAliasHost is a CNAME for the canonical host, so the mirror and the"
@@ -1250,9 +1244,6 @@ guard("G16", "checkSingleCentralAddress") {
             + " outside cc.jumpkick.http.Http misses both regardless of the hostname. Use the"
             + " constant AND the shared transport.")
     }
-    if (grew.isNotEmpty()) faults.add("A file on the repo-name ratchet may only shrink. These grew:\n" + bullets(grew))
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-    if (loose.isNotEmpty()) notes.add("repoNameRatchet is loose (these shrank — tighten it in this commit):\n" + bullets(loose))
 }
 
 // ---------------------------------------------------------------------------
@@ -1265,10 +1256,6 @@ guard("G16", "checkSingleCentralAddress") {
 // rather than by the pattern. Arm 2 has two owners because the vocabulary genuinely overlaps —
 // `File.pathSeparator` is also PATH's separator, and PATH is an executable search path.
 // ---------------------------------------------------------------------------
-
-/** `PATH` sites not yet calling `SearchPath`. Delete the map when it empties. */
-val pathSeparatorRatchet = mapOf(
-    "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java" to 1)
 
 guard("G20", "checkSingleHostSurface") {
     val osOwner = "shared/host/src/main/java/cc/jumpkick/host/Os.java"
@@ -1305,7 +1292,6 @@ guard("G20", "checkSingleHostSurface") {
             if (n > 0) sepHits[r] = n
         }
     }
-    val (grew, unlisted, loose) = ratchetVerdict(sepHits, pathSeparatorRatchet)
     val faults = mutableListOf<String>()
     if (unownedOsReads.isNotEmpty()) {
         faults.add("The host is read in one place, cc.jumpkick.host.Os. These read the property"
@@ -1314,16 +1300,17 @@ guard("G20", "checkSingleHostSurface") {
             + " string for a message or a test seam. Do NOT re-derive the predicate: a copy that"
             + " tests contains(\"win\") calls Darwin a Windows box.")
     }
-    if (unlisted.isNotEmpty()) {
+    // No ratchet: SourceProjectBuilder was the last file on it and came clean, so every
+    // remaining spelling is a fault rather than a budgeted one.
+    if (sepHits.isNotEmpty()) {
         faults.add("The separator has two owners, one per vocabulary: Classpaths for -cp, SearchPath"
-            + " for PATH. These name it themselves and are not on the ratchet:\n" + bullets(unlisted)
+            + " for PATH. These name it themselves:\n"
+            + bullets(sepHits.toSortedMap().map { (r, n) -> "%5d  %s".format(n, r) })
             + "\n  Call Classpaths.join(entries) / Classpaths.split(cp) for a classpath, or"
             + " SearchPath.prepend(binDir, existing) / SearchPath.entries(path) for an executable"
             + " search path — the two disagree about blank entries on purpose.")
     }
-    if (grew.isNotEmpty()) faults.add("A file on the path-separator ratchet may only shrink. These grew:\n" + bullets(grew))
     if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-    if (loose.isNotEmpty()) notes.add("pathSeparatorRatchet is loose (these shrank — tighten it in this commit):\n" + bullets(loose))
 }
 
 // ---------------------------------------------------------------------------
@@ -2994,6 +2981,72 @@ guard("G60", "checkOneJsonSplicer") {
             + bullets(hits.sorted())
             + "\n  Call Jsonl.append(object, fields): it validates the object and owns the separator,"
             + " which is what every hand chop got wrong on an empty object.")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Guard G61: a test that runs the install verb redirects the Maven local repo.
+//
+// `[m2] install` defaults on, so an install's primary destination is the Maven local repo — and a
+// test JVM inherits the real home, so that is the developer's own ~/.m2. A workspace-install test
+// with no --m2-dir published its fixture jar into ~/.m2/repository/cc/jumpkick on every run, and
+// the same gap hid a defect: --m2-dir never rode the workspace wire, so the redirect the tests
+// that DID pass it asked for was not applied by the engine either. Neither is visible from a
+// green suite — the write lands outside the checkout, in a directory no assertion looks at.
+//
+// Every install invocation, not only the ones whose branch writes ~/.m2 today. A test cannot see
+// which branch its install takes, and the file / coordinate modes are one refactor from the m2
+// one; a flag that is inert on those paths is cheaper than a rule with exceptions.
+// ---------------------------------------------------------------------------
+
+guard("G61", "checkInstallTestsRedirectM2") {
+    // The two in-process entry points — JkRun.run delegates to Jk.execute — leading with the
+    // install verb, in either of its two spellings. `jk tool install <dir>` delegates to the same
+    // app pipeline as `jk install`, and that is the one that published a fixture into the real
+    // ~/.m2 after the first-argument-only version of this scan called the tree clean. `jk jdk
+    // install` and `jk bsp install` are different verbs that publish nothing, and `List.of(
+    // "install", …)` is data — none of the three match.
+    val call = Regex(
+        """\b(?:execute|run)\s*\(\s*(?:new\s+String\s*\[\s*]\s*\{\s*)?(?:"tool"\s*,\s*)?"install"\s*[,)}]""")
+    var sites = 0
+    val hits = mutableListOf<String>()
+    testJava.forEach { f ->
+        // Two views of the same offsets: the verb and the flag are string literals, so the search
+        // needs them intact, while the walk to the end of the argument list must not be
+        // unbalanced by a brace inside a fixture manifest. blankNonCode preserves length, so an
+        // index found in one view means the same character in the other.
+        val code = codeOf(f)
+        val blank = blankedOf(f)
+        call.findAll(code).forEach { m ->
+            val open = code.indexOf('(', m.range.first)
+            var depth = 0
+            var i = open
+            while (i < blank.length) {
+                val c = blank[i]
+                if (c == '(' || c == '{') depth++
+                else if (c == ')' || c == '}') {
+                    depth--
+                    if (depth == 0) break
+                }
+                i++
+            }
+            sites++
+            if (!code.substring(open, minOf(i + 1, code.length)).contains("--m2-dir")) {
+                hits.add("${rel(f)}:${code.take(open).count { it == '\n' } + 1}")
+            }
+        }
+    }
+    // Measured when written: 25 install invocations across 5 test classes, all redirected.
+    if (sites < 20) {
+        error("Found only $sites in-process `install` invocations in the test corpus — the entry-point"
+            + " pattern no longer matches how tests drive the CLI, and this guard is passing vacuously.")
+    }
+    if (hits.isNotEmpty()) {
+        error("A test runs the install verb without redirecting the Maven local repo:\n"
+            + bullets(hits.sorted())
+            + "\n  Pass --m2-dir into the test's own temp dir. `[m2] install` is on by default, so"
+            + " without it the install publishes into the developer's real ~/.m2 — outside the"
+            + " checkout, where no assertion and no clean task will ever look.")
     }
 }
 

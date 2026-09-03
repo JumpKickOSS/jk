@@ -750,6 +750,7 @@ class EngineProtocolTest {
                         null,
                         Map.of(),
                         null,
+                        null,
                         null)
                 .encode();
     }

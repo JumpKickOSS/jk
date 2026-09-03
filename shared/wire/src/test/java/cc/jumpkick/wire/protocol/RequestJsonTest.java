@@ -84,7 +84,7 @@ class RequestJsonTest {
     void default_optional_fields_stay_omitted() {
         String build = new BuildRequest(
                         null, null, null, 0, null, false, false, 0, false, false, false, false, false, false, null,
-                        null, null, false, null, null, null, null)
+                        null, null, false, null, null, null, null, null)
                 .encode();
         assertThat(build)
                 .doesNotContain(
@@ -95,7 +95,8 @@ class RequestJsonTest {
                         "\"modules\"",
                         "\"keepGoing\"",
                         "\"workspaceTarget\"",
-                        "\"graalHomes\"");
+                        "\"graalHomes\"",
+                        "\"m2Dir\"");
 
         String single =
                 new SingleBuildRequest(null, null, null, 0, null, false, false, false, false, null, null).encode();

@@ -43,6 +43,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -91,6 +93,8 @@ class InstallExecCommandTest {
                 bin.toString(),
                 "--repo-url",
                 maven.base().toString(),
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "com.example:widget-cli:1.0.0");
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("widget-cli")).exists();
@@ -106,6 +110,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -131,6 +137,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -175,6 +183,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -205,6 +215,8 @@ class InstallExecCommandTest {
             int exit = run(
                     "tool",
                     "install",
+                    "--m2-dir",
+                    tempDir.resolve("m2").toString(),
                     "--cache-dir",
                     tempDir.resolve("cache").toString(),
                     "--state-dir",
@@ -235,6 +247,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -265,6 +279,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -297,6 +313,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -328,6 +346,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -371,6 +391,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 SharedTestCache.arg(),
                 "--state-dir",
@@ -386,7 +408,8 @@ class InstallExecCommandTest {
     void tool_install_of_a_non_project_dir_is_a_config_error(@TempDir Path tempDir) throws Exception {
         Path dir = tempDir.resolve("empty");
         Files.createDirectories(dir);
-        assertThat(run("tool", "install", dir.toString())).isEqualTo(2); // CONFIG: no jk.toml
+        assertThat(run("tool", "install", "--m2-dir", tempDir.resolve("m2").toString(), dir.toString()))
+                .isEqualTo(2); // CONFIG: no jk.toml
     }
 
     @Test
@@ -402,6 +425,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",
@@ -419,7 +444,14 @@ class InstallExecCommandTest {
     @Test
     void tool_install_from_an_untrusted_url_is_rejected(@TempDir Path tempDir) throws Exception {
         maven.served().put("/r/Web.java", "public class Web {}".getBytes());
-        int exit = run("tool", "install", "--state-dir", tempDir.toString(), maven.base() + "/r/Web.java");
+        int exit = run(
+                "tool",
+                "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
+                "--state-dir",
+                tempDir.toString(),
+                maven.base() + "/r/Web.java");
         assertThat(exit).isEqualTo(64);
     }
 
@@ -437,6 +469,8 @@ class InstallExecCommandTest {
         int exit = run(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",

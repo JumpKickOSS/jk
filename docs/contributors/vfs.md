@@ -84,7 +84,7 @@ nested `of()` that walked the covering parent), `src/` is `recursed` and
 
 | Tree | Why |
 |---|---|
-| `target/`, CAS, plugin scratch, KSP, generated sources | This job writes them. `RequestScope` already refuses to cache mutables, and `InputTrees.of` answers any root with a `target` segment live on every ask — never retained, never charged, never memoized. |
+| `target/`, CAS, plugin scratch, KSP, generated sources | This job writes them. `RequestScope` already refuses to cache mutables, and `InputTrees.of` answers any root with a `target` segment live on every ask — never retained, never charged, never memoized. The one carve-out is `target/tmp/`, the declared scratch root (`BuildLayout.tmpDir`): no build step writes there, and it is where a forked test JVM's temp root lives, so a name-only rule would call every `@TempDir` fixture build output. A `target/` tree *inside* a scratch tree is build output again. |
 | File **bytes** | `FileHashMemo` owns content hashes, keyed on live `(path, size, mtimeMillis, mtimeNanos)`. |
 | Toolchain installs, Maven store | Rarely change; not this workspace. |
 | Plugin-worker heaps | Other JVMs. They receive `PluginProtocol.SOURCE` **paths**, not a tree snapshot. Proto stays 1. |

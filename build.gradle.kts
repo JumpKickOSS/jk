@@ -530,6 +530,83 @@ tasks.register("checkNoHistoricalNarration") {
     }
 }
 
+// Guard G61: a test that runs the install verb redirects the Maven local repo.
+//
+// `[m2] install` defaults on, so an install's primary destination is the Maven local repo — and a
+// test JVM inherits the real home, so that is the developer's own ~/.m2. A workspace-install test
+// with no --m2-dir published its fixture jar into ~/.m2/repository/cc/jumpkick on every run, and the
+// same gap hid a defect: --m2-dir never rode the workspace wire, so the redirect the tests that DID
+// pass it asked for was not applied by the engine either. Neither is visible from a green suite —
+// the write lands outside the checkout, in a directory no assertion looks at.
+//
+// Every install invocation, not only the ones whose branch writes ~/.m2 today. A test cannot see
+// which branch its install takes, and the file / coordinate modes are one refactor from the m2 one;
+// a flag that is inert on those paths is cheaper than a rule with exceptions.
+tasks.register("checkInstallTestsRedirectM2") {
+    group = "verification"
+    description = "Fail when a test runs the install verb without --m2-dir"
+    val scanned = rootTextTree()
+    inputs.files(scanned).withPropertyName("scanned")
+    val treeRoot = layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/install-tests-redirect-m2.ok")
+    outputs.file(stamp)
+    doLast {
+        // The two in-process entry points — JkRun.run delegates to Jk.execute — leading with the
+        // install verb, in either of its two spellings. `jk tool install <dir>` delegates to the
+        // same app pipeline as `jk install`, and that is the one that published a fixture into the
+        // real ~/.m2 after the first-argument-only version of this scan called the tree clean.
+        // `jk jdk install` and `jk bsp install` are different verbs that publish nothing, and
+        // `List.of("install", …)` is data — none of the three match.
+        val call = Regex(
+            """\b(?:execute|run)\s*\(\s*(?:new\s+String\s*\[\s*]\s*\{\s*)?(?:"tool"\s*,\s*)?"install"\s*[,)}]""")
+        var sites = 0
+        val hits = mutableListOf<String>()
+        scanned.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (!rel.endsWith(".java") || !rel.contains("/src/test/java/")) return@forEach
+            val src = try { f.readText() } catch (_: Exception) { return@forEach }
+            // Two views of the same offsets: the verb and the flag are string literals, so the
+            // search needs them intact, while the walk to the end of the argument list must not be
+            // unbalanced by a brace inside a fixture manifest. blankNonCode preserves length, so an
+            // index found in one view means the same character in the other.
+            val code = GuardScan.blankNonCode(src, blankStrings = false)
+            val blank = GuardScan.blankNonCode(src)
+            call.findAll(code).forEach { m ->
+                val open = code.indexOf('(', m.range.first)
+                var depth = 0
+                var i = open
+                while (i < blank.length) {
+                    val c = blank[i]
+                    if (c == '(' || c == '{') depth++
+                    else if (c == ')' || c == '}') {
+                        depth--
+                        if (depth == 0) break
+                    }
+                    i++
+                }
+                sites++
+                if (!code.substring(open, minOf(i + 1, code.length)).contains("--m2-dir")) {
+                    hits.add("  $rel:${code.take(open).count { it == '\n' } + 1}")
+                }
+            }
+        }
+        // Measured when written: 25 install invocations across 5 test classes, all redirected.
+        if (sites < 20) {
+            throw GradleException("checkInstallTestsRedirectM2 found only $sites in-process `install`"
+                    + " invocations in the test corpus — the entry-point pattern no longer matches how"
+                    + " tests drive the CLI, and the guard is passing vacuously.")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("a test runs the install verb without redirecting the Maven local"
+                    + " repo:\n" + hits.sorted().joinToString("\n")
+                    + "\n  Pass --m2-dir into the test's own temp dir. `[m2] install` is on by default,"
+                    + " so without it the install publishes into the developer's real ~/.m2 — outside"
+                    + " the checkout, where no assertion and no clean task will ever look.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
 // Guard G60: a JSON object is spliced in one place, Jsonl.append.
 tasks.register("checkOneJsonSplicer") {
     group = "verification"

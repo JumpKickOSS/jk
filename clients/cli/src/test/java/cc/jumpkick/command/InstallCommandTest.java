@@ -65,7 +65,9 @@ class InstallCommandTest {
                 "--state-dir",
                 tempDir.resolve("state").toString(),
                 "--bin-dir",
-                tempDir.resolve("bin").toString());
+                tempDir.resolve("bin").toString(),
+                "--m2-dir",
+                tempDir.resolve("m2").toString());
         assertThat(exit).isEqualTo(64); // USAGE: a target is required outside a project
     }
 
@@ -150,7 +152,9 @@ class InstallCommandTest {
                 "--bin-dir",
                 bin.toString(),
                 "--lib-dir",
-                lib.toString());
+                lib.toString(),
+                "--m2-dir",
+                tempDir.resolve("m2").toString());
         assertThat(exit).isEqualTo(0);
 
         Path launcher = bin.resolve("widget");

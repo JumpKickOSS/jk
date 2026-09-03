@@ -137,7 +137,6 @@
     1  server/engine/src/main/java/cc/jumpkick/engine/journal/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/engine/listen/package-info.java
    1  server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java
-    1  server/engine/src/main/java/cc/jumpkick/engine/verbs/LockVerb.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/NativeVerb.java
     1  server/engine/src/main/java/cc/jumpkick/engine/verbs/package-info.java
     1  server/engine/src/main/java/cc/jumpkick/giter8/Giter8Render.java

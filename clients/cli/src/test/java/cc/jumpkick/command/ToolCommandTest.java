@@ -169,6 +169,8 @@ class ToolCommandTest {
         int exit = Jk.execute(
                 "tool",
                 "install",
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
                 source.toString(),
                 "--bin",
                 "../outside",

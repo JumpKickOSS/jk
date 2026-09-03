@@ -31,6 +31,13 @@ public record BuildRequest(
         boolean keepGoing,
         @Nullable String workspaceTarget,
         @Nullable Map<String, String> graalHomes,
+        /**
+         * Install only: the client-resolved local Maven repo root ({@code --m2-dir}). Rides the
+         * wire for the same reason {@code graalHomes} does — the daemon does not inherit the
+         * caller's environment, so a spec rebuilt without this falls back to the <em>engine's</em>
+         * {@code ~/.m2} and a redirected install writes the real one.
+         */
+        @Nullable String m2Dir,
         /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
         @Nullable String trigger,
         /** Progress-bar mode the requester's environment asked for; null for auto. */
@@ -66,6 +73,7 @@ public record BuildRequest(
                 .optionalTrue("keepGoing", keepGoing)
                 .optionalNonBlankString("workspaceTarget", workspaceTarget)
                 .optionalMap("graalHomes", graalHomes)
+                .optionalNonBlankString("m2Dir", m2Dir)
                 .optionalNonBlankString("trigger", trigger)
                 .optionalNonBlankString("progressMode", progressMode)
                 .finish();
@@ -94,6 +102,7 @@ public record BuildRequest(
                 Jsonl.bool(json, "keepGoing", false),
                 Jsonl.str(json, "workspaceTarget"),
                 Jsonl.strMap(json, "graalHomes"),
+                Jsonl.str(json, "m2Dir"),
                 Jsonl.str(json, "trigger"),
                 Jsonl.str(json, "progressMode"));
     }

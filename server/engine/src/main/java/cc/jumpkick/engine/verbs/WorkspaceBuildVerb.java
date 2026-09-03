@@ -115,6 +115,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 false,
                                 null,
                                 Map.of(),
+                                null,
                                 "web",
                                 null)
                         .encode(),
@@ -216,7 +217,12 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             }
             if ("install".equals(workspaceTarget)) {
                 Set<Path> selected = dirty == null ? Set.of() : dirty;
-                req = req.withSpec(WorkspaceSpec.install(selected, graalByDir, null));
+                // The m2 root is the client's answer for the same reason the Graal homes are:
+                // rebuilding the spec with null here sent every workspace install to the daemon's
+                // own ~/.m2, so `--m2-dir` was honored for a lone module and silently dropped for
+                // a workspace — the redirect a test asks for landing in the real home repo.
+                Path m2 = body.m2Dir() == null || body.m2Dir().isBlank() ? null : Path.of(body.m2Dir());
+                req = req.withSpec(WorkspaceSpec.install(selected, graalByDir, m2));
             } else if (!graalByDir.isEmpty()) {
                 WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
                 req = req.withSpec(spec.withGraalByDir(graalByDir));

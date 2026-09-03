@@ -50,7 +50,8 @@ class InstallAndBuildTest {
                         "--group=lib",
                         "--name=greeter",
                         "--ver=1.0.0",
-                        "--cache-dir=" + cache))
+                        "--cache-dir=" + cache,
+                        "--m2-dir=" + tempDir.resolve("m2")))
                 .isEqualTo(0);
 
         // Create a project that depends on the installed JAR via sha256.
@@ -97,7 +98,8 @@ class InstallAndBuildTest {
                         "--group=lib",
                         "--name=mylib",
                         "--ver=1.0.0",
-                        "--cache-dir=" + cache))
+                        "--cache-dir=" + cache,
+                        "--m2-dir=" + tempDir.resolve("m2")))
                 .isEqualTo(0);
 
         Path projectDir = tempDir.resolve("proj");
@@ -149,7 +151,8 @@ class InstallAndBuildTest {
                         "--group=lib",
                         "--name=util",
                         "--ver=1.0.0",
-                        "--cache-dir=" + cache))
+                        "--cache-dir=" + cache,
+                        "--m2-dir=" + tempDir.resolve("m2")))
                 .isEqualTo(0);
 
         Path projectDir = tempDir.resolve("proj");

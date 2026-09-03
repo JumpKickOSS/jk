@@ -609,6 +609,16 @@ object Guards {
                 description = "Fail when a JSON object is spliced by hand outside Jsonl.append",
             ),
             spec(
+                61,
+                "checkInstallTestsRedirectM2",
+                "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",
+                "ban in both builds; self-fail when the scan stops finding install invocations",
+                GuardHome.ROOT,
+                tableTask = "`checkInstallTestsRedirectM2` (root project) + `.jk/after-build.kts`",
+                attach = emptySet(),
+                description = "Fail when a test runs the install verb without --m2-dir",
+            ),
+            spec(
                 task = "checkStageDocs",
                 rule = "the published stage taxonomy differs from BuildStage",
                 form = "exact list comparison",

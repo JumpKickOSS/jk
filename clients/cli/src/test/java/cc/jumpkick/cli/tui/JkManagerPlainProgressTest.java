@@ -25,8 +25,8 @@ class JkManagerPlainProgressTest {
         cm.setWindowTitle("JumpKick - Building cc.jumpkick:jk:0.12.0...");
         String set = buf.toString(StandardCharsets.UTF_8);
         // OSC 0: half-circle glyph + base, terminated with ST (ESC \), not BEL.
-        String expected = "\033]0;" + JkManager.WINDOW_TITLE_GLYPH_A
-                + " JumpKick - Building cc.jumpkick:jk:0.12.0...\033\\";
+        String expected =
+                "\033]0;" + JkManager.WINDOW_TITLE_GLYPH_A + " JumpKick - Building cc.jumpkick:jk:0.12.0...\033\\";
         assertThat(set).contains(expected);
         buf.reset();
         cm.finishBuildPlanSuccess("ok", List.of());

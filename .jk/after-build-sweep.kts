@@ -54,8 +54,17 @@ val homeCap = Cap("test-jk-home", Duration.ofDays(7), 1L shl 30)
 // rather than a target.
 val m2Cap = Cap("test-m2", Duration.ofDays(30), 2L shl 30)
 
-/** Directories that never contain a sandbox, and one that would cost a walk of the whole tree. */
-val skipDirs = setOf("src", "build", ".git", ".gradle", "node_modules", ".board", ".kotlin", ".firebase")
+// Directories that never contain a sandbox, and one that would cost a walk of the whole tree.
+//
+// `tmp` is here for a second reason as well as its size. It is the forked test JVMs' temp root
+// (`TestEnv` points `TMPDIR` at `<module-target>/tmp/`), so while a suite runs it churns
+// `junit-*` directories in and out of existence — and this sweep runs at `after-build`, with
+// other modules' tests still going. Walking into it raced them: a directory listed and then
+// deleted before it was visited threw `NoSuchFileException` out of the walk and failed the build
+// with a bare path for a message. Sandboxes are siblings of `tmp`, never inside it, so pruning
+// costs nothing and closes the window rather than catching it after the fact.
+val skipDirs =
+    setOf("src", "build", ".git", ".gradle", "node_modules", ".board", ".kotlin", ".firebase", "tmp")
 
 /**
  * Sandbox directories, found by name rather than by reconstructing the layout.
@@ -87,6 +96,12 @@ fun sandboxes(): Pair<List<Path>, List<Path>> {
                 else -> FileVisitResult.CONTINUE
             }
         }
+
+        // Same reason `bytesUpTo` has one: a build output tree is live while other modules' tests
+        // run, and a directory that vanished between listing and visiting is not a reason to fail
+        // a build this script is only measuring. Pruning `tmp` closes the window this actually
+        // hit; this keeps the next one from being a red build either.
+        override fun visitFileFailed(f: Path, e: java.io.IOException): FileVisitResult = FileVisitResult.CONTINUE
     })
     return homes to m2s
 }

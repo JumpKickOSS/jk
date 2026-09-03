@@ -12,6 +12,7 @@ import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -76,6 +77,25 @@ class EngineJobsEncodeTest {
                                 null)
                         .encode())
                 .contains("\"graalHome\":\"/jdks/graalvm-25\"");
+    }
+
+    /**
+     * {@code --m2-dir} is the client's answer, like the Graal homes: a resident daemon does not
+     * inherit the caller's environment, so an install spec that does not carry it has the engine
+     * fall back to its <em>own</em> {@code ~/.m2} — which is how a redirected workspace install
+     * came to write the real home repo.
+     */
+    @Test
+    void the_m2_root_rides_the_install_request() {
+        WorkspaceRequest req = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), Path.of("/tmp/ws/m2")));
+
+        BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
+
+        assertThat(back.workspaceTarget()).isEqualTo("install");
+        assertThat(back.m2Dir()).isEqualTo("/tmp/ws/m2");
+        // Default ~/.m2 stays off the wire, so the engine's own fallback still applies.
+        WorkspaceRequest plain = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
+        assertThat(EngineJobs.encodeWorkspaceRequest(plain, Session.defaults())).doesNotContain("m2Dir");
     }
 
     @Test

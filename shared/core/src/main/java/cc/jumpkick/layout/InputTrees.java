@@ -22,7 +22,8 @@ import java.util.function.Predicate;
  *
  * <p>Retained bytes are live, not reserved: a job may grow until {@code min(vfs-max-mb, process
  * pool remaining)}. The process pool is 75% of {@code max-heap-mb}. A job that finds the pool
- * empty at first retain is sticky stream-only. Never {@code target/} / CAS / scratch.
+ * empty at first retain is sticky stream-only. Never {@code target/}, whose one carve-out is the
+ * declared scratch root inside it ({@code tmp/}) — see {@link #isBuildOutput}.
  */
 public final class InputTrees {
 
@@ -527,12 +528,48 @@ public final class InputTrees {
         return new Listing(root, skipId, List.copyOf(files));
     }
 
-    /** True when any segment of {@code abs} is the build-output directory name. */
+    /**
+     * True when {@code abs} is a tree this job writes — a {@link BuildLayout#TARGET} segment, with
+     * {@link BuildLayout#TMP} carved out.
+     *
+     * <p>{@link BuildLayout#TMP} is declared scratch ({@link BuildLayout#tmpDir}), not the job's
+     * own writing: nothing in a build plan compiles or generates into it. It is inside
+     * {@code target/} only so {@code jk clean} can reach it, and it is where a forked test JVM's
+     * temp root lives — so under {@code jk test} every {@code @TempDir} fixture acquires a
+     * {@code target} ancestor, and a name-only rule answers "build output" for a tree the build
+     * never touched. That is the same defect {@link BuildLayout#isBuildOutput} anchors away from:
+     * a textual ancestor is not a structural one.
+     *
+     * <p>The scratch root is matched as <em>any</em> {@code tmp} segment inside the target tree
+     * rather than a fixed depth, because its depth is a layout decision:
+     * {@code <module>/target/tmp/} standalone, {@code <workspace>/target/<rel>/tmp/} for a member,
+     * and the worker pool splits it again per worker. {@code tmp} is a name jk reserves under
+     * {@code target/} for exactly this ({@link BuildLayout#TMP}), so a segment spelling it inside
+     * the build output <em>is</em> the scratch root.
+     *
+     * <p>Scanning resumes past the scratch root rather than stopping, so a {@code target/} tree
+     * <em>inside</em> a scratch tree is build output again — which is exactly what a fixture that
+     * builds one is asserting about.
+     */
     static boolean isBuildOutput(Path abs) {
-        for (Path segment : abs) {
-            if (BuildLayout.TARGET.equals(segment.toString())) return true;
+        int n = abs.getNameCount();
+        for (int i = 0; i < n; i++) {
+            if (!BuildLayout.TARGET.equals(abs.getName(i).toString())) continue;
+            int scratch = segmentIndex(abs, BuildLayout.TMP, i + 1, n);
+            if (scratch < 0) return true;
+            // Resume past the scratch root, not at it: the tail is judged on its own, so a
+            // target/ tree a scratch tree contains is build output again.
+            i = scratch;
         }
         return false;
+    }
+
+    /** First index in {@code [from, to)} whose segment is {@code name}, or {@code -1}. */
+    private static int segmentIndex(Path abs, String name, int from, int to) {
+        for (int i = from; i < to; i++) {
+            if (name.equals(abs.getName(i).toString())) return i;
+        }
+        return -1;
     }
 
     private static boolean tryCharge(long n) {

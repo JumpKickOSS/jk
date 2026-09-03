@@ -321,6 +321,33 @@ class InputTreesTest {
                 .isFalse();
     }
 
+    /**
+     * The scratch carve-out, which is why the fixtures above can be {@code @TempDir} at all: under
+     * {@code jk test} a forked worker's temp root is {@code <module>/target/tmp/}, so a name-only
+     * rule answered "build output" for every tree a test builds.
+     */
+    @Test
+    void the_declared_scratch_root_is_not_this_jobs_writing() {
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/tmp/junit123/src")))
+                .as("a forked test JVM's temp root is scratch, not output")
+                .isFalse();
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/shared/core/tmp/junit123/src")))
+                .as("a workspace member's scratch sits a module path deeper")
+                .isFalse();
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/shared/core/tmp/w20/junit123/src")))
+                .as("and deeper again once the worker pool splits it")
+                .isFalse();
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/tmp/junit123/target/generated/ksp")))
+                .as("a target/ tree inside a scratch tree is output again")
+                .isTrue();
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/shared/core/classes/main")))
+                .as("real module output is untouched")
+                .isTrue();
+        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/tmpfiles/x")))
+                .as("the reserved name, not every name starting with it")
+                .isTrue();
+    }
+
     /** The real shape of an unlistable tree: a subdirectory this process cannot open. */
     @Test
     void an_unopenable_subdirectory_streams_instead_of_covering_a_hole(@TempDir Path dir) throws Exception {
